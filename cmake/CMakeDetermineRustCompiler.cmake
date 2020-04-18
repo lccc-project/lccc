@@ -1,3 +1,4 @@
+
 if(NOT CMAKE_Rust_COMPILER)
 	find_package(Rust)
 	if(RUST_FOUND)
