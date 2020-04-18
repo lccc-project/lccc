@@ -1,5 +1,5 @@
 
-#[lang_item = "partial_eq"]
+#[lang= "eq"]
 pub trait PartialEq<Rhs=Self>{
     #[must_use = "Comparison Operations are generally free from side effects"]
     fn eq(&self,other: &Rhs) -> bool;
@@ -9,7 +9,7 @@ pub trait PartialEq<Rhs=Self>{
     }
 }
 
-#[lang_item = "partial_ord"]
+#[lang= "partial_ord"]
 pub trait PartialOrd<Rhs=Self> : PartialEq<Rhs>{
 
 }
