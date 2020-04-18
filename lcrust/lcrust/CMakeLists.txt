@@ -1,1 +1,1 @@
-cargo_build()
+cargo_build(NAME lcrust)
