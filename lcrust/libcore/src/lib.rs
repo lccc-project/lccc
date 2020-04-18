@@ -8,11 +8,11 @@ use crate::marker::Sized;
 #[cfg_attr(feature="enable_stability_attributes",unstable(feature = "reciever_trait", issue = "none"))]
 #[lang = "receiver"]
 #[doc(hidden)]
-pub unsafe trait Reciever<T: ?Sized>{}
+pub unsafe trait Reciever{}
 // Huh
 
-unsafe impl<T: ?Sized> Reciever<T> for &'_ T{}
-unsafe impl<T: ?Sized> Reciever<T> for &'_ mut T{}
+unsafe impl<T: ?Sized> Reciever for &'_ T{}
+unsafe impl<T: ?Sized> Reciever for &'_ mut T{}
 
 pub mod marker;
 pub mod clone;
