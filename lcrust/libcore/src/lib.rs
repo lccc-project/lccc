@@ -1,5 +1,5 @@
 #![feature(lang_items,intrinsics,no_core,optin_builtin_traits)]
-#![feature(rustc_attrs,arbitrary_self_types)]
+#![feature(rustc_attrs)]
 #![no_core]
 
 use crate::marker::Sized;
@@ -7,9 +7,10 @@ use crate::marker::Sized;
 
 #[cfg_attr(feature="enable_stability_attributes",unstable(feature = "reciever_trait", issue = "none"))]
 #[lang = "receiver"]
+#[doc(hidden)]
 pub unsafe trait Reciever<T: ?Sized>{}
+// Huh
 
-unsafe impl<T> Reciever<T> for T{}
 unsafe impl<T: ?Sized> Reciever<T> for &'_ T{}
 unsafe impl<T: ?Sized> Reciever<T> for &'_ mut T{}
 
