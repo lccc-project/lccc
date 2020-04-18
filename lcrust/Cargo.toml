@@ -1,6 +1,0 @@
-[package]
-name = "lcrust"
-version = "0.0.1"
-authors = ["Connor Horman", "Ray Redondo <rdrpenguin04@gmail.com>"]
-
-[dependencies]
