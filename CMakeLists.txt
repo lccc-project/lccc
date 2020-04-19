@@ -3,8 +3,14 @@ project(lccc)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
-enable_language(Rust)
+if(NOT DEFINED LCCC_ENABLE_LANGUAGES)
+    set(LCCC_ENABLE_LANGUAGES c++ java rust)
+endif()
+
+
+
 include(CMakeCargo)
 
-add_subdirectory(lcrust)
-add_subdirectory(lcjdk)
+foreach(lang ${LCCC_ENABLE_LANGUAGES})
+    add_subdirectory(${lang})
+endforeach()
