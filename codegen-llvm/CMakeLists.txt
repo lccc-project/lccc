@@ -9,8 +9,9 @@ if(DEFINED LCCC_ENABLE_LIBCXX)
 endif()
 
 if(LCCC_LLVM_USE_MLIR)
-    set(LLVM_ENABLE_PROJECTS "mlir;ldd")
+    set(LLVM_ENABLE_PROJECTS "mlir;lld")
+else()
+    set(LLVM_ENABLE_PROJECTS "lld")
 endif()
 
 add_subdirectory(llvm-project/llvm)
-message("-- Building Backend: llvm")
