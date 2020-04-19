@@ -7,3 +7,4 @@ enable_language(Rust)
 include(CMakeCargo)
 
 add_subdirectory(lcrust)
+add_subdirectory(lcjdk)
