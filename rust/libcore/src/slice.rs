@@ -1,7 +1,7 @@
 use crate::intrinsics::transmute;
 
 
-// lcrust implementation detail. Might open an RFC to make this part of rust
+// rust implementation detail. Might open an RFC to make this part of rust
 #[repr(C)]
 struct RawSlice<T>{
     ptr: *mut T,

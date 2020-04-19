@@ -3,8 +3,22 @@ project(lccc)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
-enable_language(Rust)
-include(CMakeCargo)
+if(NOT DEFINED LCCC_ENABLE_LANGUAGES)
+    set(LCCC_ENABLE_LANGUAGES c++ java rust)
+endif()
 
-add_subdirectory(lcrust)
-add_subdirectory(lcjdk)
+if(NOT DEFINED LCCC_ENABLE_BACKENDS)
+    set(LCCC_ENABLE_BACKENDS llvm)
+endif()
+
+
+include(CMakeCargo)
+include(LCCCSelectors)
+
+foreach(backend ${LCCC_ENABLE_BACKENDS})
+    lccc_add_codegen(${backend})
+endforeach()
+
+foreach(lang ${LCCC_ENABLE_LANGUAGES})
+    lccc_add_language(${lang})
+endforeach()
