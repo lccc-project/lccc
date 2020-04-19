@@ -1,17 +1,19 @@
 use std::env;
 
-static mut progname: &str = "";
+static mut PROGNAME: &str = "";
 
-fn log() {
-    print!("{}", progname);
+fn log(text: String) {
+    unsafe {
+        println!("{}: {}", PROGNAME, text);
+    }
 }
 
 fn main() {
     let mut args = env::args();
 
-    progname = args.next().unwrap().split('/').last().unwrap();
+    unsafe { PROGNAME = args.next().unwrap().split('/').last().unwrap(); }
 
     for arg in args {
-        println!("{:?}", arg);
+        log(format!("{:?}", arg));
     }
 }
