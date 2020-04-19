@@ -1,5 +1,9 @@
 
 
+pub struct NameAndType<'a>{
+    name: &'a str,
+    descriptor: &'a str
+}
 
 
 pub enum ConstantPoolEntry<'a>{

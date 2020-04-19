@@ -29,7 +29,7 @@ fn fatal(text: String) {
 }
 
 fn exit(code: i32) -> ! {
-    std::process::exit(code);
+    std::process::exit(code)
 }
 
 fn main() {
