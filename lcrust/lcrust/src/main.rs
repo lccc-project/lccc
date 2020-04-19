@@ -3,7 +3,9 @@ use std::env;
 static mut PROGNAME: &str = "";
 
 fn log(text: String) {
-    unsafe { println!("{}: {}", PROGNAME, text); }
+    unsafe {
+        println!("{}: {}", PROGNAME, text);
+    }
 }
 
 fn main() {
