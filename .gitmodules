@@ -1,0 +1,3 @@
+[submodule "lcjdk/lcjrt"]
+	path = lcjdk/lcjrt
+	url = https://github.com/LightningCreations/lcjrt.git
