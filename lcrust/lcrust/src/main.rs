@@ -1,6 +1,6 @@
 use std::env;
 
-static mut PROGNAME: &str = "";
+static mut PROGNAME: String = String::new();
 
 fn log(text: String) {
     unsafe {
@@ -11,7 +11,7 @@ fn log(text: String) {
 fn main() {
     let mut args = env::args();
 
-    unsafe { PROGNAME = args.next().unwrap().split('/').last().unwrap(); }
+    unsafe { PROGNAME = args.next().unwrap().split('/').last().unwrap().to_string(); }
 
     for arg in args {
         log(format!("{:?}", arg));
