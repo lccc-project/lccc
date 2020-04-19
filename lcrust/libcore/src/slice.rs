@@ -26,5 +26,7 @@ pub unsafe fn from_raw_parts_mut<'a,T>(ptr: *mut T,len: usize) -> &'a mut [T]{
 
 #[lang = "slice"]
 impl<T> [T]{
-
+    pub const fn size(&self) -> usize{
+        unsafe{transmute::<_,RawSlice<T>>(self).len}
+    }
 }
