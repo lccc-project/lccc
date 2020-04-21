@@ -29,6 +29,6 @@ endfunction()
 
 function(lccc_depend_backends lib)
     foreach(backend ${LCCC_ENABLE_BACKENDS})
-        add_dependencies(${lib} "codegen-${backend}-libraries")
+        add_dependencies(${lib} "codegen-${backend}-library")
     endforeach()
 endfunction()

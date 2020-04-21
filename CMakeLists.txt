@@ -22,6 +22,8 @@ if(NOT (mlir_found EQUAL -1))
     set(_LCCC_LLVM_USE_MLIR ON)
 endif()
 
+set(ENV{LCCC_BACKENDS} ${LCCC_ENABLE_BAKCENDS})
+
 foreach(backend ${LCCC_ENABLE_BACKENDS})
     lccc_add_codegen(${backend})
 endforeach()
