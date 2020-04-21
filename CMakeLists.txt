@@ -17,10 +17,9 @@ include(CMakeCargo)
 include(LCCCSelectors)
 
 # MLIR is special, so do special stuff
-list(FIND ${LCCC_ENABLE_BACKENDS} "mlir" mlir_found)
+list(FIND LCCC_ENABLE_BACKENDS "mlir" mlir_found)
 if(NOT (mlir_found EQUAL -1))
     set(_LCCC_LLVM_USE_MLIR ON)
-    list(REMOVE_AT LCCC_ENABLE_BACKENDS ${mlir_found})
 endif()
 
 foreach(backend ${LCCC_ENABLE_BACKENDS})
