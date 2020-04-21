@@ -2,6 +2,7 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/lcjdk/lcjrt" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/codegen-llvm/llvm-project" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/lcjrt" vcs="Git" />
   </component>
 </project>
