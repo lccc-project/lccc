@@ -1,8 +1,14 @@
 #![feature(lang_items,intrinsics,no_core,optin_builtin_traits)]
 #![feature(rustc_attrs,const_fn,reciever_trait)]
+#![feature(lccc_const_transmute,lccc_slice_layout,lccc_const_zeroed)]
 #![no_core]
 
+#[prelude_import]
+pub use prelude::v1::*;
 
+
+mod bool;
+mod unit;
 
 pub mod marker;
 pub mod clone;
@@ -13,5 +19,6 @@ pub mod slice;
 pub mod intrinsics;
 pub mod ops;
 pub mod mem;
-mod primitive;
-pub use primitive::bool;
+pub mod primitive;
+pub mod option;
+pub mod prelude;

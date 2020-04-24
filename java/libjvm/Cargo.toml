@@ -8,6 +8,11 @@ edition = "2018"
 
 [features]
 jit = []
-jit-lcir-backend = ["jit"]
+codegen-lcir = ["jit"]
+codegen-llvm = ["jit"]
+codegen-mlir = ["jit"]
+java11 = []
+java8 = []
+java14 = []
 
 [dependencies]
