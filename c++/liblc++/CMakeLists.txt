@@ -1,7 +1,9 @@
 
-include_directories(SYSTEM include)
+
 
 add_library(lc++ SHARED include/type_traits src/dummy.cpp include/bits/TypeTraits.hpp)
+
+target_include_directories(lc++ SYSTEM PUBLIC include)
 
 target_compile_definitions(lc++ PRIVATE -D_LCCC_BOOTSTRAP)
 target_compile_options(lc++ PUBLIC -nostdinc)
