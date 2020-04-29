@@ -1,0 +1,15 @@
+#ifndef __LCCXX_TYPE_TRAITS_2020_04_23_13_21_03
+#define __LCCXX_TYPE_TRAITS_2020_04_23_13_21_03
+
+#if __cplusplus<201103L
+#error "<type_traits> is not available on version "
+#endif
+
+#include <bits/TypeTraits.hpp>
+
+// Shutup Clang Tidy
+namespace std{ // NOLINT
+
+}
+
+#endif

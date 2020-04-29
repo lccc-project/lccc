@@ -37,6 +37,30 @@ impl<T> DerefMut for &'_ mut T{
     }
 }
 
+#[lang = "add"]
+pub trait Add<Rhs=Self>{
+    type Output;
+    fn add(self,rhs: Rhs) -> Self::Output;
+}
+
+#[lang = "sub"]
+pub trait Sub<Rhs=Self>{
+    type Output;
+    fn sub(self,rhs: Rhs) -> Self::Output;
+}
+
+#[lang = "mul"]
+pub trait Mul<Rhs=Self>{
+    type Output;
+    fn mul(self,rhs: Rhs) -> Self::Output;
+}
+
+#[lang = "div"]
+pub trait Div<Rhs=Self>{
+    type Output;
+    fn div(self,rhs: Rhs) -> Self::Output;
+}
+
 #[unstable(feature = "reciever_trait", issue = "none")]
 #[lang = "receiver"]
 #[doc(hidden)]
