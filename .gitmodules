@@ -3,4 +3,4 @@
 	url = https://github.com/LightningCreations/lcjrt.git
 [submodule "codegen-llvm/llvm-project"]
 	path = codegen-llvm/llvm-project
-	url = git@github.com:chorman0773/llvm-project.git
+	url = https://github.com/chorman0773/llvm-project.git
