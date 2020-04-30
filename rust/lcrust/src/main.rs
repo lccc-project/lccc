@@ -32,6 +32,19 @@ fn exit(code: i32) -> ! {
     std::process::exit(code)
 }
 
+enum Token {
+    Keyword(name: String),
+    Identifier(name: String),
+    CharLiteral(value: char),
+    StringLiteral(value: &str),
+    ByteLiteral(value: u8),
+    ByteStringLiteral(value: &[u8])
+}
+
+fn lex(file: File) {
+    let tokens = Vec<Box<Token>>::new();
+}
+
 fn main() {
     let mut args = env::args();
 
@@ -42,11 +55,6 @@ fn main() {
             Ok(curfile) => curfile,
             Err(_e) => { fatal(format!("{}: no such file or directory", arg)); exit(1) }
         };
-        let mut data = String::new();
-        match curfile.read_to_string(&mut data) {
-            Ok(_) => (),
-            Err(_) => { fatal(format!("{}: Permission denied", arg)); exit(1) }
-        }
-        log(data);
+        let tokens = lex(curfile);
     }
 }
