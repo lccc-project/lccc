@@ -3,6 +3,10 @@ project(lccc)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
+if(LCCC_STAGE2)
+    set(_LCCC_STAGE_SUFFIX -stage2)
+endif()
+
 if(NOT DEFINED LCCC_ENABLE_LANGUAGES)
     set(LCCC_ENABLE_LANGUAGES c++ java rust)
 endif()

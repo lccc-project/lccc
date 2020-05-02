@@ -61,7 +61,7 @@ function(cargo_build)
         OUTPUT ${LIB_FILE}
         COMMAND ${CARGO_ENV_COMMAND} ${CARGO_EXECUTABLE} ARGS ${CARGO_ARGS}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        DEPENDS ${LIB_SOURCES} Cargo.toml
+        DEPENDS ${LIB_SOURCES} Cargo.toml ${_LCCC_STAGE_RUST_DEPENDS}
         COMMENT "running cargo")
     add_custom_target(${CARGO_NAME}_target ALL DEPENDS ${LIB_FILE})
     add_library(${CARGO_NAME} STATIC IMPORTED GLOBAL)
