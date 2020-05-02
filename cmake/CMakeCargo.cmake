@@ -55,7 +55,7 @@ function(cargo_build)
 
     file(GLOB_RECURSE LIB_SOURCES "*.rs")
 
-    set(CARGO_ENV_COMMAND ${CMAKE_COMMAND} -E env "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}")
+    set(CARGO_ENV_COMMAND ${CMAKE_COMMAND} -E env "RUSTC=${CMAKE_Rust_COMPILER}" "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}")
 
     add_custom_command(
         OUTPUT ${LIB_FILE}
