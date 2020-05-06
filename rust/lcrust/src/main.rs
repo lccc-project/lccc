@@ -33,16 +33,16 @@ fn exit(code: i32) -> ! {
 }
 
 enum Token {
-    Keyword(name: String),
-    Identifier(name: String),
-    CharLiteral(value: char),
-    StringLiteral(value: &str),
-    ByteLiteral(value: u8),
-    ByteStringLiteral(value: &[u8])
+    Keyword(String),
+    Identifier(String),
+    CharLiteral(char),
+    StringLiteral(String),
+    ByteLiteral(u8),
+    ByteStringLiteral(Box<[u8]>)
 }
 
 fn lex(file: File) {
-    let tokens = Vec<Box<Token>>::new();
+    let tokens = Vec::<Token>::new();
 }
 
 fn main() {

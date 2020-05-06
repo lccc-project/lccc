@@ -12,5 +12,5 @@ extern"rust-intrinsic" {
     pub fn init<T>()->T;
 
     #[rustc_const_unstable(feature="lccc_const_zeroed",issue="none")]
-    pub fn panic_if_uninhabited<T>()'
+    pub fn panic_if_uninhabited<T>();
 }

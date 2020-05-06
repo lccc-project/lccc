@@ -29,17 +29,17 @@ unsafe impl<T: ?Sized + Sync> Sync for &'_ T{}
 #[lang = "copy"]
 pub trait Copy: Clone{}
 
-#[cfg_attr(feature="enable_stability_attributes",unstable(feature = "structural_match", issue = "31434"))]
+#[unstable(feature = "structural_match", issue = "31434")]
 #[rustc_on_unimplemented(message = "the type `{Self}` does not `#[derive(Eq)]`")]
 #[lang = "structural_teq"]
 pub trait StructuralEq { }
 
-#[cfg_attr(feature="enable_stability_attributes",unstable(feature = "structural_match", issue = "31434"))]
+#[unstable(feature = "structural_match", issue = "31434")]
 #[rustc_on_unimplemented(message = "the type `{Self}` does not `#[derive(PartialEq)]`")]
 #[lang = "structural_peq"]
 pub trait StructuralPartialEq{}
 
-#[cfg_attr(feature="enable_stability_attributes",unstable(feature = "unsize", issue = "27732"))]
+#[unstable(feature = "unsize", issue = "27732")]
 #[lang = "unsize"]
 pub trait Unsize<T: ?Sized>{}
 

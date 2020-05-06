@@ -70,3 +70,10 @@ pub unsafe trait Reciever{}
 unsafe impl<T: ?Sized> Reciever for &'_ T{}
 unsafe impl<T: ?Sized> Reciever for &'_ mut T{}
 
+#[unstable(feature = "unsize", issue = "27732")]
+#[lang = "unsize"]
+pub trait Unsize<T: ?Sized>{}
+
+#[unstable(feature = "unsize", issue="277732")]
+#[lang = "coerce_unsized"]
+pub trait CoereceUnsized<T: ?Sized>{}
