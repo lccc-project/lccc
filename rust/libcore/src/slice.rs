@@ -32,7 +32,7 @@ impl<T> [T]{
         unsafe{transmute::<_,RawSlice<T>>(self).len}
     }
     pub const fn is_empty(&self) -> bool{
-        unsafe{transmute::<_,RawSliced>(self).len == 0}
+        unsafe{transmute::<_,RawSlice<T>>(self).len == 0}
     }
 }
 

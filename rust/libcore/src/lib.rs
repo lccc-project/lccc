@@ -1,7 +1,7 @@
 #![feature(lang_items,intrinsics,no_core,optin_builtin_traits)]
 #![feature(rustc_attrs,const_fn,reciever_trait)]
 #![feature(lccc_const_transmute,lccc_slice_layout,lccc_const_zeroed)]
-#![feature(unsize)]
+#![feature(unsize,negative_impls,no_niche,untagged_unions,prelude_import)]
 #![no_core]
 
 #[prelude_import]
