@@ -1,0 +1,20 @@
+Lightning Creations Compiler Collection
+
+
+
+
+License
+
+Copyright (C) 2020, Lightning Creations
+
+All Software for complete compilers is Licensed under the terms of the GNU General Public License,
+see the COPYING file.
+Additionally, lcjrt (Java Runtime Library implementation, under java language),
+ and liblc++ (C++ standard library, under c++ language) are licensed under the terms of the GNU
+ the GNU Lesser General Public License (see also the COPYING.LESSER file).
+All libraries under rust, which form reimplementations of the rust standard libraries
+ (libcore, liballoc, libstd, and libproc_macro) are dual licensed under
+  the MIT License and the Apache v2 License. See License-MIT.txt and License-APACHE.txt under the rust language folder.
+
+The llvm-project, included by codegen-llvm is Copyright (C) The LLVM project,
+ licensed under the Apache v2.
