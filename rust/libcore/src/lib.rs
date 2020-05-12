@@ -23,3 +23,9 @@ pub mod mem;
 pub mod primitive;
 pub mod option;
 pub mod prelude;
+pub mod ptr;
+pub mod alloc;
+
+#[rustc_builtin_macro]
+#[allow_internal_unstable(core_intrinsics)]
+pub macro panic($($input:tt),*){}

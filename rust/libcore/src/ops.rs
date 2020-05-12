@@ -77,3 +77,12 @@ pub trait Unsize<T: ?Sized>{}
 #[unstable(feature = "unsize", issue="277732")]
 #[lang = "coerce_unsized"]
 pub trait CoereceUnsized<T: ?Sized>{}
+
+
+#[cfg(feature="lccc_lang_items")]
+#[doc(hidden)]
+#[unstable(feature="lccc_lang_items",issue="none",reason="This is an internal API of lcrust libcore, it is not guaranteed to be portable")]
+#[lang = "unwrapping_deref"]
+pub trait DerefMove: DerefMut<Target: Sized> + Sized{
+   fn deref_move(self) -> Self::Target;
+}

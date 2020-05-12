@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.17)
-project(lccc)
+project(lccc CXX)
+
+set(CMAKE_CXX_STANDARD_REQUIRED 17)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
@@ -33,6 +35,8 @@ foreach(backend ${LCCC_ENABLE_BACKENDS})
 endforeach()
 
 add_subdirectory(libcodegen)
+add_subdirectory(libtemplate)
+add_subdirectory(libxlang)
 
 foreach(lang ${LCCC_ENABLE_LANGUAGES})
     lccc_add_language(${lang})

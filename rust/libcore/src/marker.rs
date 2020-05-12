@@ -39,9 +39,6 @@ pub trait StructuralEq { }
 #[lang = "structural_peq"]
 pub trait StructuralPartialEq{}
 
-#[unstable(feature = "unsize", issue = "27732")]
-#[lang = "unsize"]
-pub trait Unsize<T: ?Sized>{}
 
 #[lang = "freeze"]
 pub(crate) unsafe auto trait Freeze {}
