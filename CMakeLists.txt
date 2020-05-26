@@ -34,9 +34,6 @@ foreach(backend ${LCCC_ENABLE_BACKENDS})
     lccc_add_codegen(${backend})
 endforeach()
 
-add_subdirectory(libcodegen)
-add_subdirectory(libtemplate)
-add_subdirectory(libxlang)
 
 foreach(lang ${LCCC_ENABLE_LANGUAGES})
     lccc_add_language(${lang})

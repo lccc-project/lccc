@@ -1,0 +1,16 @@
+[workspace]
+
+members = [
+    "xlang",
+    "codegen",
+    "c++",
+    "rust/lcrust",
+    "java/libjvm",
+    "java/lcjrt/java.base/src/natives"
+]
+
+exclude = [
+    "rust/libcore",
+    "rust/liballoc",
+    "rust/libstd"
+]

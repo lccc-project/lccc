@@ -68,7 +68,6 @@ impl Layout for IntegerLayout{
 }
 
 pub struct UnitLayout;
-
 impl Layout for UnitLayout{
     fn size(&self) -> Option<usize> {
         Some(0)
@@ -103,6 +102,8 @@ impl Layout for EmptyLayout{
 
 pub struct PointerLayout{
     pointed_to: Box<dyn Layout>,
+    nonnull: bool,
+    aligned: bool,
 
 }
 

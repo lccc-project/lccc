@@ -2,6 +2,8 @@ use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 
+extern crate xlang;
+
 static mut PROGNAME: String = String::new();
 
 fn log(text: String) {
