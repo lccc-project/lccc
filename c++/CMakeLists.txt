@@ -10,5 +10,3 @@ set(_LCCC_ENABLE_CXX_STANDARDS 98 11 14 17 20)
 if(NOT LCCC_NO_CXXLIB)
 add_subdirectory(liblc++)
 endif()
-
-add_subdirectory(libcpp)

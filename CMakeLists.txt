@@ -13,9 +13,9 @@ if(NOT DEFINED LCCC_ENABLE_LANGUAGES)
     set(LCCC_ENABLE_LANGUAGES c++ java rust)
 endif()
 
-if(NOT DEFINED LCCC_ENABLE_BACKENDS)
-    set(LCCC_ENABLE_BACKENDS llvm)
-endif()
+#if(NOT DEFINED LCCC_ENABLE_BACKENDS)
+#    set(LCCC_ENABLE_BACKENDS llvm)
+#endif()
 list(REMOVE_DUPLICATES LCCC_ENABLE_BACKENDS)
 list(REMOVE_DUPLICATES LCCC_ENABLE_LANGUAGES)
 
@@ -28,7 +28,8 @@ if(NOT (mlir_found EQUAL -1))
     set(_LCCC_LLVM_USE_MLIR ON)
 endif()
 
-set(ENV{LCCC_BACKENDS} ${LCCC_ENABLE_BAKCENDS})
+
+add_subdirectory(xlang)
 
 foreach(backend ${LCCC_ENABLE_BACKENDS})
     lccc_add_codegen(${backend})
