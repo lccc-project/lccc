@@ -1,7 +1,7 @@
 use crate::intrinsics::transmute;
 
 
-// rust implementation detail. Might open an RFC to make this part of rust
+// lcrust implementation detail. Might open an RFC to make this part of rust
 #[repr(C)]
 #[doc(hidden)]
 #[unstable(feature="lccc_slice_layout")]

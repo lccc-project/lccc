@@ -2,6 +2,10 @@
 #![feature(rustc_attrs,const_fn,reciever_trait)]
 #![feature(lccc_const_transmute,lccc_slice_layout,lccc_const_zeroed)]
 #![feature(unsize,negative_impls,no_niche,untagged_unions,prelude_import)]
+#![feature(lccc_borrowck_helpers)]
+#![feature(lccc_trait_object)]
+#![feature(lccc_lang_items)]
+#![feature(fn_traits)]
 #![no_core]
 
 #[prelude_import]
@@ -25,6 +29,11 @@ pub mod option;
 pub mod prelude;
 pub mod ptr;
 pub mod alloc;
+pub mod raw;
+pub mod result;
+pub mod convert;
+pub mod default;
+pub mod iter;
 
 #[rustc_builtin_macro]
 #[allow_internal_unstable(core_intrinsics)]

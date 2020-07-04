@@ -1,6 +1,8 @@
 
-pub use crate::intrinsics::{self,size_of};
+pub use crate::intrinsics::{size_of};
 use crate::Sized;
+use crate::intrinsics;
+use crate::default::Default;
 
 #[rustc_const_unstable(feature="lccc_const_zeroed",issue="none")]
 pub unsafe fn zeroed<T>()->T{
@@ -48,15 +50,29 @@ impl<T> ManuallyDrop<T>{
     }
     #[must_use = "if you don't need the value, use `ManuallyDrop::drop` instead"]
     pub unsafe fn take(slot: &mut ManuallyDrop<T>) -> T{
-        read(slot as *mut T)
+        intrinsics::read(slot as *mut _ as *mut T)
     }
 }
 
 impl<T: ?Sized> ManuallyDrop<T>{
-
+    pub unsafe fn drop(slot: &mut ManuallyDrop<T>){
+        crate::ptr::drop_in_place(slot as *mut _ as *mut T)
+    }
 }
 
 
 pub fn forget<T>(x: T){
+    ManuallyDrop::new(x);
+}
 
+pub fn take<T: Default>(r: &mut T)->T{
+    replace(r,Default::default())
+}
+
+pub fn replace<T>(r: &mut T,val: T)->T{
+    unsafe{
+        let ret = intrinsics::read(r);
+        intrinsics::write(r,val);
+        ret
+    }
 }

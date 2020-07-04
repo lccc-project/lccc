@@ -86,3 +86,64 @@ pub trait CoereceUnsized<T: ?Sized>{}
 pub trait DerefMove: DerefMut<Target: Sized> + Sized{
    fn deref_move(self) -> Self::Target;
 }
+
+#[lang = "drop"]
+pub trait Drop{
+    fn drop(&mut self);
+}
+
+#[lang = "fn_once"]
+#[unstable(feature="fn_traits")]
+#[must_use = "Closures are lazy and do nothing unless called"]
+pub trait FnOnce<Args>{
+    type Output;
+    extern"rust-call" fn call_once(self,args: Args)->Self::Output;
+}
+
+#[lang = "fn_mut"]
+#[unstable(feature="fn_traits")]
+#[must_use = "Closures are lazy and do nothing unless called"]
+pub trait FnMut<Args>: FnOnce<Args>{
+    extern"rust-call" fn call_mut(&mut self,args: Args)->Self::Output;
+}
+
+#[lang = "fn"]
+#[unstable(feature="fn_traits")]
+#[must_use = "Closures are lazy and do nothing unless called"]
+pub trait Fn<Args>: FnMut<Args>{
+    extern"rust-call" fn call(&self,args: Args)->Self::Output;
+}
+
+impl<A,F: ?Sized> FnOnce<A> for &'_ mut F where F: FnMut<A>{
+    type Output = F::Output;
+
+    fn call_once(self, args: A) -> Self::Output {
+        <F as FnMut<A>>::call_mut(self,args)
+    }
+}
+
+impl<A,F: ?Sized> FnOnce<A> for &'_ F where F: Fn<A>{
+    type Output = F::Output;
+
+    fn call_once(self, args: A) -> Self::Output {
+        <F as Fn<A>>::call(self,args)
+    }
+}
+
+impl<A,F: ?Sized> FnMut<A> for &'_ mut F where F: FnMut<A>{
+    fn call_mut(&mut self, args: A) -> Self::Output {
+        <F as FnMut<A>>::call_mut(*self,args)
+    }
+}
+
+impl<A,F: ?Sized> FnMut<A> for &'_ F where F: Fn<A>{
+    fn call_mut(&mut self, args: A) -> Self::Output {
+        <F as Fn<A>>::call(*self,args)
+    }
+}
+
+impl<A,F: ?Sized> Fn<A> for &'_ F where F: Fn<A>{
+    fn call(&self, args: A) -> Self::Output {
+        <F as Fn<A>>::call(*self,args)
+    }
+}

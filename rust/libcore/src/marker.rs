@@ -1,10 +1,12 @@
 use crate::clone::Clone;
 use crate::cell::UnsafeCell;
+use crate::mem::ManuallyDrop;
+use crate::ops::Drop;
 
 #[lang = "sized"]
 pub trait Sized{}
 
-#[lang = "phantom_data"]
+
 pub struct PhantomData<T: ?Sized>{}
 
 #[lang = "unpin"]
@@ -50,4 +52,37 @@ unsafe impl<T: ?Sized> Freeze for *mut T {}
 unsafe impl<T: ?Sized> Freeze for &T {}
 unsafe impl<T: ?Sized> Freeze for &mut T {}
 
+#[lang = "owning"]
+#[doc(hidden)]
+#[unstable(feature = "lccc_borrowck_helpers")]
+#[fundamental]
+#[lccc_auto_trait_default(false)]
+pub unsafe auto trait Owning<T: ?Sized>{}
 
+unsafe impl<T: ?Sized> Owning<T> for T{}
+unsafe impl<T: ?Sized> Owning<T> for PhantomData<T>{}
+impl<T: ?Sized> !Owning<T> for *mut T{}
+impl<T: ?Sized> !Owning<T> for *const T{}
+impl<T: ?Sized> !Owning<T> for &mut T{}
+impl<T: ?Sized> !Owning<T> for &T{}
+
+#[lang = "non_trivial_destroy"]
+#[doc(hidden)]
+#[unstable(feature = "lccc_borrowck_helpers")]
+#[lccc_auto_trait_default(false)]
+pub unsafe auto trait NonTrivialDestruction{}
+
+unsafe impl<T: ?Sized + Drop> NonTrivialDestruction for T{}
+unsafe impl<T: ?Sized + TraitObject> NonTrivialDestruction for T{}
+unsafe impl<T: ?Sized + NonTrivialDestruction> NonTrivialDestruction for PhantomData<T>{}
+impl<T: ?Sized> !NonTrivialDestruction for ManuallyDrop<T>{}
+impl<T: ?Sized> !NonTrivialDestruction for &T{}
+impl<T: ?Sized> !NonTrivialDestruction for &mut T{}
+impl<T: ?Sized> !NonTrivialDestruction for *const T{}
+impl<T: ?Sized> !NonTrivialDestruction for *mut T{}
+
+#[lang = "trait_object_marker"]
+#[doc(hidden)]
+#[unstable(feature = "lccc_trait_object")]
+#[fundamental]
+pub unsafe trait TraitObject{}
