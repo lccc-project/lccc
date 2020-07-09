@@ -194,7 +194,10 @@ impl<T> Option<T>{
     }
 
     pub fn get_or_insert(&mut self,v: T) -> &mut T{
-
+        if let None = self{
+            *self = Some(v);
+        }
+        self.as_mut().unwrap_or_else(|| unsafe { crate::intrinsics::unreachable() })
     }
 
     pub fn get_or_insert_with<F: FnOnce()->T>(&mut self,op: F) -> &mut T{
