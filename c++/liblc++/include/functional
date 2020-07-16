@@ -1,0 +1,29 @@
+#ifndef __LIBLCXX_FUNCTIONAL
+#define __LIBLCXX_FUNCTIONAL
+
+#include <bits/XLangAttributes.hpp>
+#include <bits/Constexpr.hpp>
+#include <bits/Deprecated.hpp>
+#include <bits/TypeTraits.hpp>
+
+namespace std{
+
+#if __cplusplus>201103L
+    template<typename T> struct _XLANG_LAYOUT(transparent) reference_wrapper{
+        typedef T type;
+#if __cplusplus<202002L
+
+#endif
+    private:
+        static void __test_allow_ref_wrapper(T&)noexcept;
+        static void __test_allow_ref_wrapper(T&&)=delete;
+        _XLANG_POINTER_ATTRIBUTES(dereference_write_if(!__is_const(T),__xlang_sizeof(T)),
+                dereferenceable(__xlang_sizeof(T)),volatile_if(__is_volatile(T)),
+                aligned(__xlang_alignof(T))) _XLANG_BOUNDS_HINT(this) T* _M_ref;
+    public:
+    };
+#endif
+
+}
+
+#endif

@@ -29,14 +29,14 @@ namespace lccc::xlang{
         virtual void visitDiagnostic(std::string_view);
     };
 
-    struct IdentifierVisitor : virtual Visitor{
+    struct IdentifierVisitor : Visitor{
         explicit IdentifierVisitor(IdentifierVisitor* other=nullptr);
         virtual void visitRoot();
         virtual void visitComponent(std::string_view);
         virtual void visitSpecialComponent(std::string_view);
     };
 
-    struct AnnotationVisitor : virtual Visitor{
+    struct AnnotationVisitor : Visitor{
         explicit AnnotationVisitor(AnnotationVisitor* other=nullptr);
         virtual AnnotationVisitor* visitMeta();
         virtual IdentifierVisitor* visitIdentifier();
@@ -44,14 +44,14 @@ namespace lccc::xlang{
         virtual void visitItem(std::uint64_t);
     };
 
-    struct AnnotatedElementVisitor : virtual Visitor{
+    struct AnnotatedElementVisitor : Visitor{
         explicit AnnotatedElementVisitor(AnnotatedElementVisitor* other=nullptr);
         virtual AnnotationVisitor* visitAnnotation();
     };
     struct ScopeMemberVisitor;
 
 
-    struct ScopeVisitor : virtual AnnotatedElementVisitor{
+    struct ScopeVisitor : AnnotatedElementVisitor{
         explicit ScopeVisitor(ScopeVisitor* other=nullptr);
         virtual ScopeMemberVisitor* visitScopeMember();
     };
@@ -68,10 +68,11 @@ namespace lccc::xlang{
     struct TypeAliasVisitor;
     struct GenericParameterVisitor;
     struct ExprVisitor;
+    struct ValueVisitor;
     struct GenericMemberVisitor;
     struct GenericItemVisitor;
 
-    struct ScopeMemberVisitor : virtual AnnotatedElementVisitor{
+    struct ScopeMemberVisitor : AnnotatedElementVisitor{
     public:
         explicit ScopeMemberVisitor(ScopeMemberVisitor* other=nullptr);
         virtual void visitVisibility(Visibility);
@@ -81,28 +82,104 @@ namespace lccc::xlang{
         virtual GenericMemberVisitor* visitGenericDeclaration();
     };
 
-    struct GenericDeclarationVisitor : virtual Visitor{
+    struct GenericDeclarationVisitor : Visitor{
         explicit GenericDeclarationVisitor(GenericDeclarationVisitor* parent=nullptr);
         virtual GenericParameterVisitor* visitGenericParameter();
     };
 
-    struct GenericMemberVisitor : virtual GenericDeclarationVisitor, virtual ScopeMemberVisitor{
+    struct GenericMemberVisitor : GenericDeclarationVisitor{
         explicit GenericMemberVisitor(GenericMemberVisitor* parent=nullptr);
+        virtual ScopeMemberVisitor* visit();
     };
 
     struct TypeGenericParameterVisitor;
     struct ConstGenericParameterVisitor;
+    struct BoundGenericParameterVisitor;
 
     struct GenericParameterVisitor : virtual AnnotatedElementVisitor{
         explicit GenericParameterVisitor(GenericParameterVisitor* parent=nullptr);
         virtual TypeGenericParameterVisitor* visitTypeParameter();
-        virtual TypeVisitor* visitConstParameter();
+        virtual ConstGenericParameterVisitor* visitConstParameter();
+        virtual BoundGenericParameterVisitor* visitBoundParameter();
         virtual GenericDeclarationVisitor* visitGenericType();
         virtual void visitParameterPack();
         virtual IdentifierVisitor* visitName();
         virtual TypeVisitor* visitDefaultType();
         virtual ExprVisitor* visitDefaultValue();
         virtual GenericItemVisitor* visitDefaultGenericType();
+    };
+
+    struct ScalarTypeVisitor;
+    struct PointerTypeVisitor;
+
+    struct GenericInstantiationVisitor;
+
+    struct TypeVisitor : AnnotatedElementVisitor {
+        explicit TypeVisitor(TypeVisitor* parent=nullptr);
+        virtual ScalarTypeVisitor* visitScalarType();
+        virtual PointerTypeVisitor* visitPointerType();
+        virtual IdentifierVisitor* visitNamedType();
+        virtual GenericInstantiationVisitor* visitGenericType();
+        virtual void visitGenericParameter(uint32_t pnum);
+        virtual ValueVisitor* visitAlignedAs();
+    };
+
+    struct BoundVisitor;
+
+    struct GenericInstantiationVisitor : Visitor{
+        explicit GenericInstantiationVisitor(GenericInstantiationVisitor* visitor=nullptr);
+        virtual GenericItemVisitor* visitGenericItem();
+        virtual GenericItemVisitor* visitGenericParameter();
+        virtual TypeVisitor* visitTypeParameter();
+        virtual ValueVisitor* visitConstParameter();
+        virtual BoundVisitor* visitBoundParameter();
+    };
+
+    enum class PointerAliasingRule : std::uint8_t{
+        Unique,
+        ReadOnly,
+        ReadShallow,
+        Invalid,
+        Nonnull,
+        Volatile,
+        VolatileWrite
+    };
+
+    enum class ValidRangeType : std::uint8_t{
+        Dereference,
+        DereferenceWrite,
+        WriteOnly,
+        NullOrDereference,
+        NullOrDereferenceWrite,
+        NullOrWriteOnly
+    };
+
+    struct PointerTypeVisitor : Visitor{
+        explicit PointerTypeVisitor(PointerTypeVisitor* parent=nullptr);
+        virtual TypeVisitor* visitPointeeType();
+        virtual void visitAliasingRule(PointerAliasingRule aliasingRule);
+        virtual ValueVisitor* visitValidRange(ValidRangeType validRange);
+        virtual ValueVisitor* visitAligned();
+        virtual BoundVisitor* visitRequiredBounds();
+    };
+
+    struct IntegerTypeVisitor;
+    struct FloatingTypeVisitor;
+
+    struct ScalarTypeVisitor : Visitor{
+        explicit ScalarTypeVisitor(ScalarTypeVisitor* parent=nullptr);
+        virtual IntegerTypeVisitor* visitIntegerType();
+        virtual FloatingTypeVisitor* visitFloatingPointType();
+        virtual void visitBitSize(uint16_t bits);
+        virtual void visitVectorSize(uint16_t vector);
+    };
+
+
+    struct IntegerTypeVisitor : Visitor{
+        explicit IntegerTypeVisitor(ScalarTypeVisitor* parent=nullptr);
+        virtual void visitSigned();
+        virtual void visitMinimumValue(std::intmax_t val);
+        virtual void visitMaximumValue(std::intmax_t val);
     };
 }
 

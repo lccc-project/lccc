@@ -1,6 +1,7 @@
 
 
-set(_LCCC_LIBLCXX_FILES include/type_traits src/dummy.cpp include/bits/TypeTraits.hpp)
+set(_LCCC_LIBLCXX_FILES include/type_traits src/dummy.cpp include/bits/TypeTraits.hpp include/functional
+        include/bits/XLangAttributes.hpp include/bits/Constexpr.hpp include/bits/Deprecated.hpp)
 
 
 
