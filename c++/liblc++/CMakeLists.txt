@@ -5,7 +5,6 @@ set(_LCCC_LIBLCXX_FILES include/type_traits src/dummy.cpp include/bits/TypeTrait
 
 
 
-
 add_library(lc++-objects OBJECT ${_LCCC_LIBLCXX_FILES})
 
 foreach(langv ${LCCC_ENABLE_CXX_STANDARDS})

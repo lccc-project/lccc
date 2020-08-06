@@ -23,7 +23,7 @@ pub fn from_ref<T>(obj: &T) -> &'_ [T]{
 }
 
 pub unsafe fn from_raw_parts_mut<'a,T>(ptr: *mut T,len: usize) -> &'a mut [T]{
-    transmute(RawSlice{ptr: ptr as *mut (),len})
+    transmute(RawSlice{ptr,len})
 }
 
 #[lang = "slice"]

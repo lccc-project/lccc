@@ -52,39 +52,21 @@ unsafe impl<T: ?Sized> Freeze for *mut T {}
 unsafe impl<T: ?Sized> Freeze for &T {}
 unsafe impl<T: ?Sized> Freeze for &mut T {}
 
-#[lang = "owning"]
+
+#[lang = "trivial_destroy"]
 #[doc(hidden)]
 #[unstable(feature = "lccc_borrowck_helpers")]
-#[lccc_builtin_trait]
-#[lccc_auto_mode(existence)]
-pub unsafe auto trait Owning<T: ?Sized>{}
+#[lccc::builtin_trait]
+pub unsafe auto trait TrivialDestruction{}
 
-unsafe impl<T: ?Sized> Owning<T> for T{}
-unsafe impl<T: ?Sized> Owning<T> for PhantomData<T>{}
-impl<T: ?Sized> !Owning<T> for *mut T{}
-impl<T: ?Sized> !Owning<T> for *const T{}
-impl<T: ?Sized> !Owning<T> for &mut T{}
-impl<T: ?Sized> !Owning<T> for &T{}
+impl<T: ?Sized + Drop> !TrivialDestruction for T{}
+impl<T: ?Sized + TraitObject> !TrivialDestruction for T{}
 
-#[lang = "non_trivial_destroy"]
-#[doc(hidden)]
-#[unstable(feature = "lccc_borrowck_helpers")]
-#[lccc_auto_mode(existence)]
-#[lccc_builtin_trait]
-pub unsafe auto trait NonTrivialDestruction{}
+unsafe impl<T: ?Sized> TrivialDestruction for &T{}
 
-unsafe impl<T: ?Sized + Drop> NonTrivialDestruction for T{}
-default unsafe impl<T: ?Sized + TraitObject> NonTrivialDestruction for T{}
-unsafe impl<T: ?Sized + NonTrivialDestruction> NonTrivialDestruction for PhantomData<T>{}
-impl<T: ?Sized> !NonTrivialDestruction for ManuallyDrop<T>{}
-impl<T: ?Sized> !NonTrivialDestruction for &T{}
-impl<T: ?Sized> !NonTrivialDestruction for &mut T{}
-impl<T: ?Sized> !NonTrivialDestruction for &mut T{}
-impl<T: ?Sized> !NonTrivialDestruction for *const T{}
-impl<T: ?Sized> !NonTrivialDestruction for *mut T{}
 
 #[lang = "trait_object_marker"]
 #[doc(hidden)]
 #[unstable(feature = "lccc_trait_object")]
-#[lccc_builtin_trait]
+#[lccc::builtin_trait]
 pub unsafe trait TraitObject{}

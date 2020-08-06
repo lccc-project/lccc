@@ -31,7 +31,58 @@ impl<T> MaybeUninit<T>{
     pub unsafe fn assume_init(self) -> T{
         self.valid
     }
+    #[unstable(feature="maybe_uninit_uninit_array")]
+    pub fn uninit_array<const LEN: usize>() -> [Self;LEN]{
+        unsafe{MaybeUninit::uninit().assume_init()}
+    }
+    #[unstable(feature="internal_uninit_const")]
+    pub const UNINIT: Self = Self::uninit();
 
+    pub fn write(&mut self,val: T) -> &mut T{
+        unsafe {
+            core::ptr::write(self.as_mut_ptr(), val);
+            self.get_mut()
+        }
+    }
+
+    pub fn as_ptr(&self) -> *const T{
+        self as *const Self as *const T
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut T{
+        self as *mut Self as *mut T
+    }
+
+    pub unsafe fn read(&self) -> T{
+        core::ptr::read(self.as_ptr())
+    }
+
+    pub unsafe fn get_ref(&self) -> &T{
+        &*self.as_ptr()
+    }
+    pub unsafe fn get_mut(&mut self) -> &mut T{
+        &mut *self.as_mut_ptr()
+    }
+
+    #[unstable(feature="maybe_uninit_slice_assume_init")]
+    pub unsafe fn slice_get_ref(slice: &[Self]) -> &[T]{
+        core::mem::transmute(slice)
+    }
+
+    #[unstable(feature="maybe_uninit_slice_assume_init")]
+    pub unsafe fn slice_get_mut(slice: &mut [Self]) ->&mut [T]{
+        core::mem::transmute(slice)
+    }
+
+    #[unstable(feature="maybe_uninit_slice",issue="63569")]
+    pub fn first_ptr(slice: &[Self]) -> *const T{
+        slice.as_ptr() as *const T
+    }
+
+    #[unstable(feature="maybe_uninit_slice",issue="63569")]
+    pub fn first_ptr_mut(slice: &mut [Self]) -> *mut T{
+        slice.as_mut_ptr() as *mut T
+    }
 }
 
 #[repr(transparent)]

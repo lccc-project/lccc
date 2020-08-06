@@ -198,6 +198,13 @@ namespace lccc::xlang{
             return nullptr;
     }
 
+    BoundVisitor *GenericParameterVisitor::visitDefaultBound() {
+        if(auto* id = this->get_parent<GenericParameterVisitor>();id)
+            return id->visitDefaultBound();
+        else
+            return nullptr;
+    }
+
 
     TypeVisitor::TypeVisitor(TypeVisitor *parent) : AnnotatedElementVisitor{parent} {}
 
@@ -237,6 +244,27 @@ namespace lccc::xlang{
     ValueVisitor *TypeVisitor::visitAlignedAs() {
         if(auto* id = this->get_parent<TypeVisitor>();id)
             return id->visitAlignedAs();
+        else
+            return nullptr;
+    }
+
+    ProductTypeVisitor *TypeVisitor::visitProductType() {
+        if(auto* id = this->get_parent<TypeVisitor>();id)
+            return id->visitProductType();
+        else
+            return nullptr;
+    }
+
+    SumTypeVisitor *TypeVisitor::visitSumType() {
+        if(auto* id = this->get_parent<TypeVisitor>();id)
+            return id->visitSumType();
+        else
+            return nullptr;
+    }
+
+    FunctionTypeVisitor *TypeVisitor::visitFunctionType() {
+        if(auto* id = this->get_parent<TypeVisitor>();id)
+            return id->visitFunctionType();
         else
             return nullptr;
     }
@@ -322,7 +350,7 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    FloatingTypeVisitor *ScalarTypeVisitor::visitFloatingPointType() {
+    FloatTypeVisitor *ScalarTypeVisitor::visitFloatingPointType() {
         if(auto* id = this->get_parent<ScalarTypeVisitor>();id)
             return id->visitFloatingPointType();
         else
@@ -339,7 +367,7 @@ namespace lccc::xlang{
             id->visitVectorSize(vector);
     }
 
-    IntegerTypeVisitor::IntegerTypeVisitor(ScalarTypeVisitor *parent) : Visitor{parent} {}
+    IntegerTypeVisitor::IntegerTypeVisitor(IntegerTypeVisitor *parent) : Visitor{parent} {}
 
     void IntegerTypeVisitor::visitSigned() {
         if(auto* id = this->get_parent<IntegerTypeVisitor>();id)
@@ -354,4 +382,98 @@ namespace lccc::xlang{
         if(auto* id = this->get_parent<IntegerTypeVisitor>();id)
             id->visitMaximumValue(val);
     }
+
+    ProductTypeVisitor::ProductTypeVisitor(ProductTypeVisitor *parent) : Visitor{parent} {}
+
+    TypeVisitor *ProductTypeVisitor::visitType() {
+        if(auto* id = this->get_parent<ProductTypeVisitor>();id)
+            return id->visitType();
+        else
+            return nullptr;
+    }
+
+    SumTypeVisitor::SumTypeVisitor(SumTypeVisitor *parent) : Visitor{parent} {}
+
+    TypeVisitor *SumTypeVisitor::visitType() {
+        if(auto* id = this->get_parent<SumTypeVisitor>();id)
+            return id->visitType();
+        else
+            return nullptr;
+    }
+
+    FloatTypeVisitor::FloatTypeVisitor(FloatTypeVisitor *vparent) : Visitor{vparent} {}
+
+    void FloatTypeVisitor::visitComplex() {
+        if(auto* id = this->get_parent<FloatTypeVisitor>();id)
+            id->visitComplex();
+    }
+
+    FunctionTypeVisitor::FunctionTypeVisitor(FunctionTypeVisitor *parent) : Visitor{parent} {
+
+    }
+
+    TypeVisitor *FunctionTypeVisitor::visitReturnType() {
+        if(auto* visitor=this->get_parent<FunctionTypeVisitor>();visitor)
+            return visitor->visitReturnType();
+        else
+            return nullptr;
+    }
+
+    TypeVisitor *FunctionTypeVisitor::visitParameterType() {
+        if(auto* visitor=this->get_parent<FunctionTypeVisitor>();visitor)
+            return visitor->visitParameterType();
+        else
+            return nullptr;
+    }
+
+    void FunctionTypeVisitor::visitVarargs() {
+        if(auto* visitor=this->get_parent<FunctionTypeVisitor>();visitor)
+            visitor->visitVarargs();
+    }
+
+    IdentifierVisitor *FunctionTypeVisitor::visitLinkage() {
+        if(auto* visitor=this->get_parent<FunctionTypeVisitor>();visitor)
+            return visitor->visitLinkage();
+        else
+            return nullptr;
+    }
+
+    IdentifierVisitor *FunctionTypeVisitor::visitTag() {
+        if(auto* visitor=this->get_parent<FunctionTypeVisitor>();visitor)
+            return visitor->visitTag();
+        else
+            return nullptr;
+    }
+
+    BoundVisitor::BoundVisitor(BoundVisitor *vparent) : Visitor{vparent} {
+
+    }
+
+    void BoundVisitor::visitGenericBound(std::uint32_t param) {
+        if(auto* visitor=this->get_parent<BoundVisitor>();visitor)
+            visitor->visitGenericBound(param);
+
+    }
+
+    void BoundVisitor::visitStatic() {
+        if(auto* visitor=this->get_parent<BoundVisitor>();visitor)
+            visitor->visitStatic();
+    }
+
+    void BoundVisitor::visitToken(std::uint64_t token) {
+        if(auto* visitor=this->get_parent<BoundVisitor>();visitor)
+            visitor->visitToken(token);
+    }
+
+    BoundGenericParameterVisitor::BoundGenericParameterVisitor(BoundGenericParameterVisitor *visitor) : Visitor{visitor} {
+
+    }
+
+    BoundVisitor *BoundGenericParameterVisitor::visitEnclosedBy() {
+        if(auto* visitor=this->get_parent<BoundGenericParameterVisitor>();visitor)
+            return visitor->visitEnclosedBy();
+        else
+            return nullptr;
+    }
+
 }

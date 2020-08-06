@@ -95,6 +95,7 @@ namespace lccc::xlang{
     struct TypeGenericParameterVisitor;
     struct ConstGenericParameterVisitor;
     struct BoundGenericParameterVisitor;
+    struct BoundVisitor;
 
     struct GenericParameterVisitor : virtual AnnotatedElementVisitor{
         explicit GenericParameterVisitor(GenericParameterVisitor* parent=nullptr);
@@ -106,6 +107,7 @@ namespace lccc::xlang{
         virtual IdentifierVisitor* visitName();
         virtual TypeVisitor* visitDefaultType();
         virtual ExprVisitor* visitDefaultValue();
+        virtual BoundVisitor* visitDefaultBound();
         virtual GenericItemVisitor* visitDefaultGenericType();
     };
 
@@ -113,6 +115,10 @@ namespace lccc::xlang{
     struct PointerTypeVisitor;
 
     struct GenericInstantiationVisitor;
+
+    struct ProductTypeVisitor;
+    struct SumTypeVisitor;
+    struct FunctionTypeVisitor;
 
     struct TypeVisitor : AnnotatedElementVisitor {
         explicit TypeVisitor(TypeVisitor* parent=nullptr);
@@ -122,9 +128,36 @@ namespace lccc::xlang{
         virtual GenericInstantiationVisitor* visitGenericType();
         virtual void visitGenericParameter(uint32_t pnum);
         virtual ValueVisitor* visitAlignedAs();
+        virtual ProductTypeVisitor* visitProductType();
+        virtual SumTypeVisitor* visitSumType();
+        virtual FunctionTypeVisitor* visitFunctionType();
     };
 
-    struct BoundVisitor;
+    struct ProductTypeVisitor : Visitor{
+        explicit ProductTypeVisitor(ProductTypeVisitor* parent=nullptr);
+        virtual TypeVisitor* visitType();
+    };
+
+    struct SumTypeVisitor : Visitor{
+        explicit SumTypeVisitor(SumTypeVisitor* parent=nullptr);
+        virtual TypeVisitor* visitType();
+    };
+
+    struct FunctionTypeVisitor : Visitor{
+        explicit FunctionTypeVisitor(FunctionTypeVisitor* parent=nullptr);
+        virtual TypeVisitor* visitReturnType();
+        virtual TypeVisitor* visitParameterType();
+        virtual void visitVarargs();
+        virtual IdentifierVisitor* visitLinkage();
+        virtual IdentifierVisitor* visitTag();
+    };
+
+
+
+    struct BoundGenericParameterVisitor : Visitor{
+        explicit BoundGenericParameterVisitor(BoundGenericParameterVisitor *visitor=nullptr);
+        virtual BoundVisitor* visitEnclosedBy();
+    };
 
     struct GenericInstantiationVisitor : Visitor{
         explicit GenericInstantiationVisitor(GenericInstantiationVisitor* visitor=nullptr);
@@ -142,7 +175,8 @@ namespace lccc::xlang{
         Invalid,
         Nonnull,
         Volatile,
-        VolatileWrite
+        VolatileWrite,
+        NullOrInvalid
     };
 
     enum class ValidRangeType : std::uint8_t{
@@ -164,23 +198,36 @@ namespace lccc::xlang{
     };
 
     struct IntegerTypeVisitor;
-    struct FloatingTypeVisitor;
+    struct FloatTypeVisitor;
 
     struct ScalarTypeVisitor : Visitor{
         explicit ScalarTypeVisitor(ScalarTypeVisitor* parent=nullptr);
         virtual IntegerTypeVisitor* visitIntegerType();
-        virtual FloatingTypeVisitor* visitFloatingPointType();
+        virtual FloatTypeVisitor* visitFloatingPointType();
         virtual void visitBitSize(uint16_t bits);
         virtual void visitVectorSize(uint16_t vector);
     };
 
 
     struct IntegerTypeVisitor : Visitor{
-        explicit IntegerTypeVisitor(ScalarTypeVisitor* parent=nullptr);
+        explicit IntegerTypeVisitor(IntegerTypeVisitor* parent=nullptr);
         virtual void visitSigned();
         virtual void visitMinimumValue(std::intmax_t val);
         virtual void visitMaximumValue(std::intmax_t val);
     };
+
+    struct FloatTypeVisitor : Visitor{
+        explicit FloatTypeVisitor(FloatTypeVisitor *vparent=nullptr);
+        virtual void visitComplex();
+    };
+
+    struct BoundVisitor : Visitor{
+        explicit BoundVisitor(BoundVisitor *vparent=nullptr);
+        virtual void visitGenericBound(std::uint32_t param);
+        virtual void visitStatic();
+        virtual void visitToken(std::uint64_t token);
+    };
+
 }
 
 #endif //XLANG_VISIT_HPP

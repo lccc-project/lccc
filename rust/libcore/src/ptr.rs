@@ -5,10 +5,7 @@ use crate::clone::Clone;
 use crate::convert::From;
 use crate::marker::PhantomData;
 
-#[lang = "drop_in_place"]
-pub unsafe fn drop_in_place<T: ?Sized>(to_drop: *mut T){
-    drop_in_place(to_drop)
-}
+pub use lccc::drop_in_place;
 
 #[lang = "const_ptr"]
 impl<T: ?Sized> *const T{
@@ -78,7 +75,7 @@ impl<T: ?Sized> From<&T> for NonNull<T>{
     }
 }
 
-#[lccc_pointer_attributes(unique,aligned,deepen)]
+#[lccc::xlang_pointer_attributes(unique,aligned)]
 #[repr(transparent)]
 #[unstable(feature="lccc_unique_ptr")]
 pub struct Unique<T: ?Sized>{

@@ -1,11 +1,12 @@
+#![deny(lccc::unprefixed_features)]
+#![allow(lccc::rustc_incomplete_features)]
 #![feature(lang_items,intrinsics,no_core,optin_builtin_traits)]
 #![feature(rustc_attrs,const_fn,reciever_trait)]
-#![feature(lccc_const_transmute,lccc_slice_layout,lccc_const_zeroed)]
+#![feature(lccc_const_transmute,lccc_slice_layout,lccc_const_zeroed,lccc_slice_layout,lccc_unique_ptr)]
 #![feature(unsize,negative_impls,no_niche,untagged_unions,prelude_import)]
-#![feature(lccc_borrowck_helpers)]
-#![feature(lccc_trait_object)]
-#![feature(lccc_lang_items)]
+#![feature(lccc_borrowck_helpers,lccc_trait_object,lccc_lang_items)]
 #![feature(fn_traits)]
+#![feature(lccc_stability_attributes)]
 #![no_core]
 
 #[prelude_import]
@@ -35,6 +36,6 @@ pub mod convert;
 pub mod default;
 pub mod iter;
 
-#[rustc_builtin_macro]
+#[lccc::builtin_macro]
 #[allow_internal_unstable(core_intrinsics)]
 pub macro panic($($input:tt),*){}
