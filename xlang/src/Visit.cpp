@@ -476,4 +476,142 @@ namespace lccc::xlang{
             return nullptr;
     }
 
+    ValueVisitor::ValueVisitor(ValueVisitor *vparent) : Visitor{vparent} {
+
+    }
+
+    ConstantVisitor *ValueVisitor::visitConstantValue() {
+        if(auto* parent =this->get_parent<ValueVisitor>();parent)
+            return parent->visitConstantValue();
+        else
+            return nullptr;
+    }
+
+    ExprVisitor *ValueVisitor::visitExpression() {
+        if(auto* parent =this->get_parent<ValueVisitor>();parent)
+            return parent->visitExpression();
+        else
+            return nullptr;
+    }
+
+    void ValueVisitor::visitUndefined(UndefinedValueKind kind) {
+        if(auto* parent = this->get_parent<ValueVisitor>();parent)
+            parent->visitUndefined(kind);
+    }
+
+    void ValueVisitor::visitLocal(uint32_t var) {
+        if(auto* parent = this->get_parent<ValueVisitor>();parent)
+            parent->visitLocal(var);
+    }
+
+    ConstantVisitor::ConstantVisitor(ConstantVisitor *vparent) : Visitor{vparent} {
+
+    }
+
+    TypeVisitor *ConstantVisitor::visitInteger(std::intmax_t value) {
+        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+            return parent->visitInteger(value);
+        else
+            return nullptr;
+    }
+
+    StringLiteralVisitor *ConstantVisitor::visitStringLiteral() {
+        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+            return parent->visitStringLiteral();
+        else
+            return nullptr;
+    }
+
+    void ConstantVisitor::visitBooleanLiteral(bool value) {
+        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+            parent->visitBooleanLiteral(value);
+    }
+
+    PointerConstantVisitor *ConstantVisitor::visitPointerConstant() {
+        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+            return parent->visitPointerConstant();
+        else
+            return nullptr;
+    }
+
+    TypeVisitor *ConstantVisitor::visitExcessValueInteger(const std::vector<uint8_t> &bytes) {
+        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+            return parent->visitExcessValueInteger(bytes);
+        else
+            return nullptr;
+    }
+
+    ConstantVisitor *ConstantVisitor::visitConstantArray(const std::function<void(ValueVisitor *)> &size) {
+        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+            return parent->visitConstantArray(size);
+        else
+            return nullptr;
+    }
+
+    PointerConstantVisitor::PointerConstantVisitor(PointerConstantVisitor *vparent) : Visitor{vparent} {
+
+    }
+
+    PointerTypeVisitor *PointerConstantVisitor::visitType() {
+        if(auto* parent = this->get_parent<PointerConstantVisitor>();parent)
+            return parent->visitType();
+        else
+            return nullptr;
+    }
+
+    void PointerConstantVisitor::visitNullPointer() {
+        if(auto* parent = this->get_parent<PointerConstantVisitor>();parent)
+            parent->visitNullPointer();
+    }
+
+    IdentifierVisitor *PointerConstantVisitor::visitGlobalAddress() {
+        if(auto* parent = this->get_parent<PointerConstantVisitor>();parent)
+            return parent->visitGlobalAddress();
+        else
+            return nullptr;
+    }
+
+    IdentifierVisitor *PointerConstantVisitor::visitFunctionAddress() {
+        if(auto* parent = this->get_parent<PointerConstantVisitor>();parent)
+            return parent->visitFunctionAddress();
+        else
+            return nullptr;
+    }
+
+    void PointerConstantVisitor::visitLabelAddress(std::uint32_t label) {
+        if(auto* parent = this->get_parent<PointerConstantVisitor>();parent)
+            parent->visitLabelAddress(label);
+    }
+
+    StringLiteralVisitor::StringLiteralVisitor(PointerConstantVisitor *vparent) : Visitor{vparent} {
+
+    }
+
+    TypeVisitor *StringLiteralVisitor::visitType() {
+        if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
+            return parent->visitType();
+        else
+            return nullptr;
+    }
+
+    void StringLiteralVisitor::visitByteString(std::string_view value) {
+        if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
+            parent->visitByteString(value);
+    }
+    void StringLiteralVisitor::visitUTF8String(std::string_view value) {
+        if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
+            parent->visitUTF8String(value);
+    }
+    void StringLiteralVisitor::visitUTF16String(std::u16string_view value) {
+        if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
+            parent->visitUTF16String(value);
+    }
+    void StringLiteralVisitor::visitUTF32String(std::u32string_view value) {
+        if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
+            parent->visitUTF32String(value);
+    }
+    void StringLiteralVisitor::visitWideString(std::wstring_view value) {
+        if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
+            parent->visitWideString(value);
+    }
 }

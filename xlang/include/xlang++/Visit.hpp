@@ -228,6 +228,56 @@ namespace lccc::xlang{
         virtual void visitToken(std::uint64_t token);
     };
 
+
+    struct ConstantVisitor;
+
+    enum class UndefinedValueKind{
+        Invalid,
+        Uninitialized,
+        Poison
+    };
+
+    struct ValueVisitor : Visitor{
+        explicit ValueVisitor(ValueVisitor *vparent=nullptr);
+        virtual ConstantVisitor* visitConstantValue();
+        virtual ExprVisitor* visitExpression();
+        virtual void visitUndefined(UndefinedValueKind kind);
+        virtual void visitLocal(uint32_t var);
+
+    };
+
+    struct StringLiteralVisitor;
+    struct PointerConstantVisitor;
+
+    struct ConstantVisitor : Visitor{
+        explicit ConstantVisitor(ConstantVisitor *vparent=nullptr);
+        virtual TypeVisitor* visitInteger(std::intmax_t value);
+        virtual StringLiteralVisitor* visitStringLiteral();
+        virtual void visitBooleanLiteral(bool value);
+        virtual PointerConstantVisitor* visitPointerConstant();
+        virtual TypeVisitor* visitExcessValueInteger(const std::vector<uint8_t>& bytes);
+        virtual ConstantVisitor* visitConstantArray(const std::function<void(ValueVisitor*)>& size);
+    };
+
+    struct PointerConstantVisitor : Visitor{
+        explicit PointerConstantVisitor(PointerConstantVisitor *vparent=nullptr);
+        virtual PointerTypeVisitor* visitType();
+        virtual void visitNullPointer();
+        virtual IdentifierVisitor* visitGlobalAddress();
+        virtual IdentifierVisitor* visitFunctionAddress();
+        virtual void visitLabelAddress(std::uint32_t label);
+    };
+
+    struct StringLiteralVisitor : Visitor{
+        explicit StringLiteralVisitor(PointerConstantVisitor *vparent=nullptr);
+        virtual TypeVisitor* visitType();
+        virtual void visitByteString(std::string_view value);
+        virtual void visitUTF8String(std::string_view value);
+        virtual void visitUTF16String(std::u16string_view value);
+        virtual void visitUTF32String(std::u32string_view value);
+        virtual void visitWideString(std::wstring_view value);
+    };
+
 }
 
 #endif //XLANG_VISIT_HPP
