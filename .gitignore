@@ -3,3 +3,5 @@ build/
 /rust/libcore/Cargo.lock
 /rust/libcore/target/
 /rust/liballoc/Cargo.lock
+/.cache/
+/.vscode/

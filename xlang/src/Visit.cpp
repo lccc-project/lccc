@@ -11,7 +11,7 @@ namespace lccc::xlang{
         if(other)
             other->visitEnd();
     }
-    void Visitor::visitDiagnostic(std::string_view sv) {
+    void Visitor::visitDiagnostic(lccc::string_view sv) {
         if(other)
             other->visitDiagnostic(sv);
     }
@@ -25,12 +25,12 @@ namespace lccc::xlang{
             id->visitRoot();
     }
 
-    void IdentifierVisitor::visitComponent(std::string_view name) {
+    void IdentifierVisitor::visitComponent(lccc::string_view name) {
         if(auto* id = this->get_parent<IdentifierVisitor>();id)
             id->visitComponent(name);
     }
 
-    void IdentifierVisitor::visitSpecialComponent(std::string_view name) {
+    void IdentifierVisitor::visitSpecialComponent(lccc::string_view name) {
         if(auto* id = this->get_parent<IdentifierVisitor>();id)
             id->visitSpecialComponent(name);
     }
@@ -53,7 +53,7 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    void AnnotationVisitor::visitItem(std::string_view value) {
+    void AnnotationVisitor::visitItem(lccc::string_view value) {
         if(auto* id = this->get_parent<AnnotationVisitor>();id)
             id->visitItem(value);
     }
@@ -97,7 +97,7 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    void ScopeMemberVisitor::visitStaticAssertion(const std::function<void(ExprVisitor &)>& fn, std::string_view diagnostic) {
+    void ScopeMemberVisitor::visitStaticAssertion(const lccc::function<void(ValueVisitor &)>& fn, std::string_view diagnostic) {
         if(auto* member = this->get_parent<ScopeMemberVisitor>();member)
             member->visitStaticAssertion(fn,diagnostic);
     }
@@ -112,6 +112,41 @@ namespace lccc::xlang{
     GenericMemberVisitor *ScopeMemberVisitor::visitGenericDeclaration() {
         if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
             return id->visitGenericDeclaration();
+        else
+            return nullptr;
+    }
+
+    TypeDefinitionVisitor *ScopeMemberVisitor::visitTypeDefinition() {
+        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
+            return id->visitTypeDefinition();
+        else
+            return nullptr;
+    }
+
+    GlobalVariableVisitor *ScopeMemberVisitor::visitGlobalVariable() {
+        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
+            return id->visitGlobalVariable();
+        else
+            return nullptr;
+    }
+
+    FunctionVisitor *ScopeMemberVisitor::visitFunction() {
+        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
+            return id->visitFunction();
+        else
+            return nullptr;
+    }
+
+    TypeScopeVisitor *ScopeMemberVisitor::visitTypeScope() {
+        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
+            return id->visitTypeScope();
+        else
+            return nullptr;
+    }
+
+    NamespaceVisitor *ScopeMemberVisitor::visitNamespaceScope() {
+        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
+            return id->visitNamespaceScope();
         else
             return nullptr;
     }
@@ -534,14 +569,14 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    TypeVisitor *ConstantVisitor::visitExcessValueInteger(const std::vector<uint8_t> &bytes) {
+    TypeVisitor *ConstantVisitor::visitExcessValueInteger(const lccc::span<uint8_t> &bytes) {
         if(auto* parent = this->get_parent<ConstantVisitor>();parent)
             return parent->visitExcessValueInteger(bytes);
         else
             return nullptr;
     }
 
-    ConstantVisitor *ConstantVisitor::visitConstantArray(const std::function<void(ValueVisitor *)> &size) {
+    ConstantVisitor *ConstantVisitor::visitConstantArray(const lccc::function<void(ValueVisitor *)> &size) {
         if(auto* parent = this->get_parent<ConstantVisitor>();parent)
             return parent->visitConstantArray(size);
         else
@@ -594,24 +629,63 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    void StringLiteralVisitor::visitByteString(std::string_view value) {
+    void StringLiteralVisitor::visitByteString(lccc::string_view value) {
         if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
             parent->visitByteString(value);
     }
-    void StringLiteralVisitor::visitUTF8String(std::string_view value) {
+    void StringLiteralVisitor::visitUTF8String(lccc::string_view value) {
         if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
             parent->visitUTF8String(value);
     }
-    void StringLiteralVisitor::visitUTF16String(std::u16string_view value) {
+    void StringLiteralVisitor::visitUTF16String(lccc::u16string_view value) {
         if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
             parent->visitUTF16String(value);
     }
-    void StringLiteralVisitor::visitUTF32String(std::u32string_view value) {
+    void StringLiteralVisitor::visitUTF32String(lccc::u32string_view value) {
         if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
             parent->visitUTF32String(value);
     }
-    void StringLiteralVisitor::visitWideString(std::wstring_view value) {
+    void StringLiteralVisitor::visitWideString(lccc::wstring_view value) {
         if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
             parent->visitWideString(value);
+    }
+
+    TypeDefinitionVisitor::TypeDefinitionVisitor(TypeDefinitionVisitor *visitor) : Visitor{visitor} {
+
+    }
+
+    StructTypeVisitor *TypeDefinitionVisitor::visitStruct() {
+        if(auto* parent = this->get_parent<TypeDefinitionVisitor>();parent)
+            return parent->visitStruct();
+        else
+            return nullptr;
+    }
+
+    EnumTypeVisitor *TypeDefinitionVisitor::visitEnum() {
+        if(auto* parent = this->get_parent<TypeDefinitionVisitor>();parent)
+            return parent->visitEnum();
+        else
+            return nullptr;
+    }
+
+    UnionTypeVisitor *TypeDefinitionVisitor::visitUnion() {
+        if(auto* parent = this->get_parent<TypeDefinitionVisitor>();parent)
+            return parent->visitUnion();
+        else
+            return nullptr;
+    }
+
+    VariantTypeVisitor *TypeDefinitionVisitor::visitVariant() {
+        if(auto* parent = this->get_parent<TypeDefinitionVisitor>();parent)
+            return parent->visitVariant();
+        else
+            return nullptr;
+    }
+
+    IdentifierVisitor *TypeDefinitionVisitor::visitName() {
+        if(auto* parent = this->get_parent<TypeDefinitionVisitor>();parent)
+            return parent->visitName();
+        else
+            return nullptr;
     }
 }

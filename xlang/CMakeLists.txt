@@ -7,7 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include_directories(include)
 
-add_library(xlang-objects OBJECT include/xlang++/Visit.hpp src/Visit.cpp)
+add_library(xlang-objects OBJECT include/xlang++/Visit.hpp src/Visit.cpp include/xlang++/Layout.h include/xlang++/Properties.h)
 set_target_properties(xlang-objects PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(xlang-shared SHARED $<TARGET_OBJECTS:xlang-objects>)

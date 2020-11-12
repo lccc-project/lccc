@@ -11,8 +11,7 @@ pub unsafe fn zeroed<T>()->T{
 }
 
 
-#[repr(transparent,no_niche)]
-#[lang = "maybe_uninit"]
+#[repr(transparent)]
 pub union MaybeUninit<T>{
     valid: T,
     uninit: ()
@@ -85,8 +84,9 @@ impl<T> MaybeUninit<T>{
     }
 }
 
+unsafe impl<T> TrivialDestruction for MaybeUninit<T>{}
+
 #[repr(transparent)]
-#[lang = "manually_drop"]
 #[derive(Copy,Clone,PartialEq,Eq,PartialOrd,Ord)]
 pub struct ManuallyDrop<T: ?Sized>{
     inner: T
@@ -127,3 +127,9 @@ pub fn replace<T>(r: &mut T,val: T)->T{
         ret
     }
 }
+
+unsafe impl<T: ?Sized> TrivialDestruction for ManuallyDrop<T>{}
+
+
+
+pub use ::__lccc::builtins::rust::__builtin_uninitialized as uninitialized;

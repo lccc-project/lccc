@@ -84,7 +84,8 @@ pub trait CoereceUnsized<T: ?Sized>{}
 #[unstable(feature="lccc_lang_items",issue="none",reason="This is an internal API of lcrust libcore, it is not guaranteed to be portable")]
 #[lang = "unwrapping_deref"]
 pub trait DerefMove: DerefMut<Target: Sized> + Sized{
-   fn deref_move(self) -> Self::Target;
+    #[unstable(feature="lccc_lang_items",issue="none")]
+    fn deref_move(self) -> Self::Target;
 }
 
 #[lang = "drop"]
@@ -145,5 +146,32 @@ impl<A,F: ?Sized> FnMut<A> for &'_ F where F: Fn<A>{
 impl<A,F: ?Sized> Fn<A> for &'_ F where F: Fn<A>{
     fn call(&self, args: A) -> Self::Output {
         <F as Fn<A>>::call(*self,args)
+    }
+}
+
+#[lang = "index"]
+pub trait Index{
+    type Output: ?Sized;
+    fn index(&self)->&Self::Output;
+}
+
+#[lang = "index_mut"]
+pub trait IndexMut : Index{
+    fn index_mut(&mut self) -> &mut Self::Output;
+}
+
+#[lang = "Range"]
+pub struct Range<T>{
+    pub start: T,
+    pub end: T
+}
+
+impl<T: PartialOrd<T>> Range<T>{
+    pub fn contains<U>(&self,idx: &U) -> bool where U: PartialOrd<T>, T: PartialOrd<U>{
+        !(idx < &self.start || &self.end < idx)
+    }
+
+    pub fn is_empty() -> bool{
+        !(start<end)
     }
 }

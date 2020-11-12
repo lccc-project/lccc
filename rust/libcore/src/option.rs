@@ -137,11 +137,11 @@ impl<T> Option<T>{
     }
 
     pub fn iter(&self) -> Iter<T>{
-        Iter {opt: self.as_ref()}
+        Iter (IntoIter{opt: self.as_ref()})
     }
 
     pub fn iter_mut(&mut self) -> IterMut<T>{
-        IterMut{opt: self.as_mut()}
+        IterMut(IntoIter{opt: self.as_mut()})
     }
 
     pub fn and<U>(self,other: Option<U>) -> Option<U>{
@@ -253,7 +253,17 @@ impl<T: Copy> Option<&'_ mut T>{
 }
 
 impl<T: Clone> Option<&'_ T>{
-    pub fn clone(self) -> Option<T>{
+    pub fn cloned(self) -> Option<T>{
+        if let Some(t) = self{
+            Some(t.clone())
+        }else{
+            None
+        }
+    }
+}
+
+impl<T: Clone> Option<&'_ mut T>{
+    pub fn cloned(self) -> Option<T>{
         if let Some(t) = self{
             Some(t.clone())
         }else{
@@ -330,14 +340,15 @@ impl<T> From<T> for Option<T>{
     }
 }
 
-struct OptionIter<T>{
+#[derive(Clone,Debug)]
+pub struct IntoIter<T>{
     opt: Option<T>
 }
 
-pub type Iter<'a,A: 'a> = OptionIter<&'a A>;
-pub type IterMut<'a,A: 'a> = OptionIter<&'a mut A>;
+pub struct Iter<'a,A: 'a>(IntoIter<&'a A>);
+pub type IterMut<'a,A: 'a>(IntoIter<&'a mut A>);
 
-impl<T> Iterator for OptionIter<T>{
+impl<T> Iterator for IntoIter<T>{
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -345,12 +356,28 @@ impl<T> Iterator for OptionIter<T>{
     }
 }
 
+
+
+impl<'a,A> Iterator for Iter<'a,A>{
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item>{
+        self.0.next()
+    }
+}
+
+impl<'a,A> Iterator for IterMut<'a,A>{
+    type Item = &'a mut T;
+    fn next(&mut self) -> Option<Self::Item>{
+        self.0.next()
+    }
+}
+
 impl<T> IntoIterator for Option<T>{
     type Item = T;
-    type IntoIter = OptionIter<T>;
+    type IntoIter = IntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        OptionIter{opt: self}
+        IntoIter{opt: self}
     }
 }
 

@@ -1,13 +1,16 @@
-#![deny(lccc::unprefixed_features)]
-#![allow(lccc::rustc_incomplete_features)]
-#![feature(lang_items,intrinsics,no_core,optin_builtin_traits)]
+#![feature(lccc_intrinsic_crate)]
+#![deny(__lccc::unprefixed_features)]
+#![allow(__lccc::rustc_incomplete_features)]
+#![feature(lang_items,intrinsics,no_core,optin_builtin_traits,negative_trait_bounds)]
 #![feature(rustc_attrs,const_fn,reciever_trait)]
 #![feature(lccc_const_transmute,lccc_slice_layout,lccc_const_zeroed,lccc_slice_layout,lccc_unique_ptr)]
 #![feature(unsize,negative_impls,no_niche,untagged_unions,prelude_import)]
 #![feature(lccc_borrowck_helpers,lccc_trait_object,lccc_lang_items)]
 #![feature(fn_traits)]
-#![feature(lccc_stability_attributes)]
+#![feature(lccc_stability_attributes,lccc_same_trait)]
 #![no_core]
+
+extern crate self as core;
 
 #[prelude_import]
 pub use prelude::v1::*;
@@ -35,7 +38,10 @@ pub mod result;
 pub mod convert;
 pub mod default;
 pub mod iter;
+pub mod ffi;
+pub mod hint;
+pub mod sync;
 
-#[lccc::builtin_macro]
+#[__lccc::builtin_macro]
 #[allow_internal_unstable(core_intrinsics)]
 pub macro panic($($input:tt),*){}

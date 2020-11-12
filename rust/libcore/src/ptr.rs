@@ -5,25 +5,32 @@ use crate::clone::Clone;
 use crate::convert::From;
 use crate::marker::PhantomData;
 
-pub use lccc::drop_in_place;
+#[lang = "drop_in_place"]
+#[inline(always)]
+pub unsafe fn drop_in_place<T: ?Sized>(x: *mut T){
+    ::__lccc::__maybe_adl__::__evaluate_destructor_at__(x)
+}
+
+#[inline(always)]
 
 #[lang = "const_ptr"]
 impl<T: ?Sized> *const T{
     pub const fn is_null(self)->bool{
-        self as usize == 0
+        (::__lccc::xir!("convert reinterpret *uint(8)":[self: *const T]:[yield: *const u8]))==crate::mem::zeroed()
     }
 }
 
 #[lang = "mut_ptr"]
 impl<T: ?Sized> *mut T{
     pub const fn is_null(self)->bool{
-        self as usize == 0
+        (::__lccc::xir!("convert reinterpret *uint(8)":[self: *const T]:[yield: *const u8]))==crate::mem::zeroed()
     }
 }
 
-#[lccc_pointer_attributes(nonnull)]
+
 #[repr(transparent)]
 pub struct NonNull<T: ?Sized>{
+    #[lccc::xlang_pointer_attributes(nonnull)]
     ptr: *const T
 }
 
@@ -37,7 +44,7 @@ impl<T: ?Sized> Copy for NonNull<T>{}
 
 impl<T> NonNull<T>{
     pub const fn dangling() -> Self{
-        NonNull{ptr: unsafe{crate::intrinsics::min_align_of::<T>()} as *const T}
+        NonNull{ptr: unsafe{crate::intrinsics::align_of::<T>()} as *const T}
     }
 }
 
@@ -75,10 +82,11 @@ impl<T: ?Sized> From<&T> for NonNull<T>{
     }
 }
 
-#[lccc::xlang_pointer_attributes(unique,aligned)]
+
 #[repr(transparent)]
 #[unstable(feature="lccc_unique_ptr")]
 pub struct Unique<T: ?Sized>{
+    #[lccc::xlang_pointer_attributes(unique,aligned)]
     ptr: NonNull<T>,
     data: PhantomData<T>
 }
@@ -97,3 +105,15 @@ impl<T: ?Sized> Unique<T>{
         NonNull::new(ptr).map(|ptr|Self{ptr,data:PhantomData})
     }
 }
+
+pub unsafe fn swap<T>(x: *mut T, y: *mut T){
+    let tmp = read(x);
+    write(x,read(y));
+    write(y,tmp);
+}
+
+pub use crate::intrinsics::read;
+pub use crate::intrinsics::write;
+pub use crate::intrinsics::copy_nonoverlapping;
+pub use crate::intrinsics::copy;
+pub use crate::intrinsics::swap_nonoverlapping;

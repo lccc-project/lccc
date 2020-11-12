@@ -1,0 +1,23 @@
+#ifndef __lcxx_tuple_2020_08_31_21_00_16
+#define __lcxx_tuple_2020_08_31_21_00_16
+
+#include <bits/TypeTraits.hpp>
+
+#if __cplusplus<201103L
+#error "Cannot include this header on C++98 or C++03"
+#endif
+
+
+namespace std{
+    template<typename T> struct _TupleAssign{
+    private:
+        T _M_value;
+    public:
+        _TupleAssign()=default;
+        template<std::_EnableIf<std::_IsCopyC
+
+    };
+
+}
+
+#endif

@@ -6,8 +6,8 @@ use crate::ops::Drop;
 #[lang = "sized"]
 pub trait Sized{}
 
-#[lang = "phantom_data"] // Still needed for variance
-pub struct PhantomData<T: ?Sized>;
+#[lang = "phantom_data"] // Still needed for variance and auto trait propagation
+pub struct PhantomData<#[__lccc::no_unused_type_param] T: ?Sized>;
 
 #[lang = "unpin"]
 pub auto trait Unpin{}
@@ -56,17 +56,46 @@ unsafe impl<T: ?Sized> Freeze for &mut T {}
 #[lang = "trivial_destroy"]
 #[doc(hidden)]
 #[unstable(feature = "lccc_borrowck_helpers")]
-#[lccc::builtin_trait]
+#[__lccc::builtin_trait]
 pub unsafe auto trait TrivialDestruction{}
 
 impl<T: ?Sized + Drop> !TrivialDestruction for T{}
 impl<T: ?Sized + TraitObject> !TrivialDestruction for T{}
 
-unsafe impl<T: ?Sized> TrivialDestruction for &T{}
+impl<T: ?Sized + !TrivialDestruction> !TrivialDestruction for PhantomData<T>{}
+
+unsafe impl<'a,T: ?Sized> TrivialDestruction for &'a T{}
+unsafe impl<'a,T: ?Sized> TrivialDestruction for &'a mut T{}
+unsafe impl<T: ?Sized> TrivialDestruction for *const T{}
+unsafe impl<T: ?Sized> TrivialDestruction for *mut T{}
+
+#[lang = "non_owning"]
+#[doc(hidden)]
+#[unstable(feature = "lccc_borrowck_helpers")]
+#[__lccc::builtin_trait]
+pub unsafe auto trait NonOwning<T: ?Sized>{}
+
+impl<T: ?Sized> !NonOwning<T> for T{}
+
+impl<T: ?Sized> !NonOwning<T> for PhantomData<T>{}
+
+#[lang="same"]
+#[doc(hidden)]
+#[unstable(feature="lccc_same_trait")]
+#[__lccc::builtin_trait]
+pub trait Same<T: ?Sized>{}
+
+impl<T: ?Sized> Same<T> for T{}
+
+unsafe impl<'a,T: ?Sized,U: ?Sized> NonOwning<T> for &'a U where &'a U: !Same<T>{}
+unsafe impl<'a,T: ?Sized,U: ?Sized> NonOwning<T> for &'a mut U where &'a mut U: !Same<T>{}
+unsafe impl<T: ?Sized,U: ?Sized> NonOwning<T> for *mut U  where *mut U: !Same<T>{}
+unsafe impl<T: ?Sized,U: ?Sized> NonOwning<T> for *const U where *const U: !Same<T>{}
+
 
 
 #[lang = "trait_object_marker"]
 #[doc(hidden)]
 #[unstable(feature = "lccc_trait_object")]
-#[lccc::builtin_trait]
+#[__lccc::builtin_trait]
 pub unsafe trait TraitObject{}
