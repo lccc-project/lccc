@@ -16,6 +16,16 @@ namespace lccc::xlang{
             other->visitDiagnostic(sv);
     }
 
+    void Visitor::visitLine(std::uint64_t ln) {
+        if(other)
+            other->visitLine(ln);
+    }
+
+    void Visitor::visitSourceFile(lccc::string_view name) {
+        if(other)
+            other->visitSourceFile(name);
+    }
+
     IdentifierVisitor::IdentifierVisitor(IdentifierVisitor *other) : Visitor{other} {
 
     }
@@ -33,6 +43,20 @@ namespace lccc::xlang{
     void IdentifierVisitor::visitSpecialComponent(lccc::string_view name) {
         if(auto* id = this->get_parent<IdentifierVisitor>();id)
             id->visitSpecialComponent(name);
+    }
+
+    TypeVisitor *IdentifierVisitor::visitDependentName() {
+        if(auto* parent = this->get_parent<IdentifierVisitor>();parent)
+            return parent->visitDependentName();
+        else
+            return nullptr;
+    }
+
+    GenericInstantiationVisitor *IdentifierVisitor::visitGenericArgs() {
+        if(auto* parent = this->get_parent<IdentifierVisitor>();parent)
+            return parent->visitGenericArgs();
+        else
+            return nullptr;
     }
 
     AnnotationVisitor::AnnotationVisitor(AnnotationVisitor *other) : Visitor{other} {
@@ -53,15 +77,13 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    void AnnotationVisitor::visitItem(lccc::string_view value) {
-        if(auto* id = this->get_parent<AnnotationVisitor>();id)
-            id->visitItem(value);
+    ValueVisitor *AnnotationVisitor::visitItem() {
+        if(auto* parent = this->get_parent<AnnotationVisitor>();parent)
+            return parent->visitItem();
+        else
+            return nullptr;
     }
 
-    void AnnotationVisitor::visitItem(std::uint64_t value) {
-        if(auto* id = this->get_parent<AnnotationVisitor>();id)
-            id->visitItem(value);
-    }
 
     AnnotatedElementVisitor::AnnotatedElementVisitor(AnnotatedElementVisitor *other) : Visitor{other} {}
 
@@ -83,6 +105,13 @@ namespace lccc::xlang{
             return nullptr;
     }
 
+    GenericInstantiationVisitor *ScopeVisitor::visitExplicitInstantiation() {
+        if(auto* parent = this->get_parent<ScopeVisitor>();parent)
+            return parent->visitExplicitInstantiation();
+        else
+            return nullptr;
+    }
+
     ScopeMemberVisitor::ScopeMemberVisitor(ScopeMemberVisitor *other) : AnnotatedElementVisitor{other} {}
 
     void ScopeMemberVisitor::visitVisibility(Visibility visibility) {
@@ -97,12 +126,12 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    void ScopeMemberVisitor::visitStaticAssertion(const lccc::function<void(ValueVisitor &)>& fn, std::string_view diagnostic) {
+    void ScopeMemberVisitor::visitStaticAssertion(const lccc::function<void(ValueVisitor &)>& fn, lccc::string_view diagnostic) {
         if(auto* member = this->get_parent<ScopeMemberVisitor>();member)
             member->visitStaticAssertion(fn,diagnostic);
     }
 
-    TypeAliasVisitor *ScopeMemberVisitor::visitTypeAlias() {
+    TypeVisitor *ScopeMemberVisitor::visitTypeAlias() {
         if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
             return id->visitTypeAlias();
         else
@@ -137,18 +166,17 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    TypeScopeVisitor *ScopeMemberVisitor::visitTypeScope() {
+    ScopeVisitor *ScopeMemberVisitor::visitScope() {
         if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
-            return id->visitTypeScope();
+            return id->visitScope();
         else
             return nullptr;
     }
 
-    NamespaceVisitor *ScopeMemberVisitor::visitNamespaceScope() {
-        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
-            return id->visitNamespaceScope();
-        else
-            return nullptr;
+
+    void ScopeMemberVisitor::visitExternalScope() {
+        if(auto* parent = this->get_parent<ScopeMemberVisitor>();parent)
+            this->visitExternalScope();
     }
 
 
@@ -157,6 +185,13 @@ namespace lccc::xlang{
     GenericParameterVisitor *GenericDeclarationVisitor::visitGenericParameter() {
         if(auto* id = this->get_parent<GenericDeclarationVisitor>();id)
             return id->visitGenericParameter();
+        else
+            return nullptr;
+    }
+
+    ValueVisitor *GenericDeclarationVisitor::visitRequiresClause() {
+        if(auto* id = this->get_parent<GenericDeclarationVisitor>();id)
+            return id->visitRequiresClause();
         else
             return nullptr;
     }
@@ -205,13 +240,6 @@ namespace lccc::xlang{
             id->visitParameterPack();
     }
 
-    IdentifierVisitor *GenericParameterVisitor::visitName() {
-        if(auto* id = this->get_parent<GenericParameterVisitor>();id)
-            return id->visitName();
-        else
-            return nullptr;
-    }
-
     TypeVisitor *GenericParameterVisitor::visitDefaultType() {
         if(auto* id = this->get_parent<GenericParameterVisitor>();id)
             return id->visitDefaultType();
@@ -226,7 +254,7 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    GenericItemVisitor *GenericParameterVisitor::visitDefaultGenericType() {
+    IdentifierVisitor *GenericParameterVisitor::visitDefaultGenericType() {
         if(auto* id = this->get_parent<GenericParameterVisitor>();id)
             return id->visitDefaultGenericType();
         else
@@ -304,9 +332,51 @@ namespace lccc::xlang{
             return nullptr;
     }
 
+    TypeDefinitionVisitor *TypeVisitor::visitElaboratedType() {
+        if(auto* id = this->get_parent<TypeVisitor>();id)
+            return id->visitElaboratedType();
+        else
+            return nullptr;
+    }
+
+    ConceptVisitor *TypeVisitor::visitErasedConceptType() {
+        if(auto* id = this->get_parent<TypeVisitor>();id)
+            return id->visitErasedConceptType();
+        else
+            return nullptr;
+    }
+
+    ConceptVisitor *TypeVisitor::visitReifiedConceptType() {
+        if(auto* id = this->get_parent<TypeVisitor>();id)
+            return id->visitReifiedConceptType();
+        else
+            return nullptr;
+    }
+
+    TypeVisitor *TypeVisitor::visitSlice() {
+        if(auto* id = this->get_parent<TypeVisitor>();id)
+            return id->visitSlice();
+        else
+            return nullptr;
+    }
+
+    ArrayTypeVisitor *TypeVisitor::visitArray() {
+        if(auto* id = this->get_parent<TypeVisitor>();id)
+            return id->visitArray();
+        else
+            return nullptr;
+    }
+
+    ExprVisitor *TypeVisitor::visitDecltype() {
+        if(auto* id = this->get_parent<TypeVisitor>();id)
+            return id->visitDecltype();
+        else
+            return nullptr;
+    }
+
     GenericInstantiationVisitor::GenericInstantiationVisitor(GenericInstantiationVisitor *visitor) : Visitor(visitor) {}
 
-    GenericItemVisitor *GenericInstantiationVisitor::visitGenericItem() {
+    IdentifierVisitor *GenericInstantiationVisitor::visitGenericItem() {
         if(auto* id = this->get_parent<GenericInstantiationVisitor>();id)
             return id->visitGenericItem();
         else
@@ -320,7 +390,7 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    GenericItemVisitor *GenericInstantiationVisitor::visitGenericParameter() {
+    IdentifierVisitor *GenericInstantiationVisitor::visitGenericParameter() {
         if(auto* id = this->get_parent<GenericInstantiationVisitor>();id)
             return id->visitGenericParameter();
         else
@@ -438,8 +508,8 @@ namespace lccc::xlang{
 
     FloatTypeVisitor::FloatTypeVisitor(FloatTypeVisitor *vparent) : Visitor{vparent} {}
 
-    void FloatTypeVisitor::visitComplex() {
-        if(auto* id = this->get_parent<FloatTypeVisitor>();id)
+    void ScalarTypeVisitor::visitComplex() {
+        if(auto* id = this->get_parent<ScalarTypeVisitor>();id)
             id->visitComplex();
     }
 
@@ -529,15 +599,13 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    void ValueVisitor::visitUndefined(UndefinedValueKind kind) {
+    TypeVisitor* ValueVisitor::visitUndefined(UndefinedValueKind kind) {
         if(auto* parent = this->get_parent<ValueVisitor>();parent)
-            parent->visitUndefined(kind);
+            return parent->visitUndefined(kind);
+        else
+            return nullptr;
     }
 
-    void ValueVisitor::visitLocal(uint32_t var) {
-        if(auto* parent = this->get_parent<ValueVisitor>();parent)
-            parent->visitLocal(var);
-    }
 
     ConstantVisitor::ConstantVisitor(ConstantVisitor *vparent) : Visitor{vparent} {
 
@@ -569,16 +637,16 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    TypeVisitor *ConstantVisitor::visitExcessValueInteger(const lccc::span<uint8_t> &bytes) {
+    TypeVisitor *ConstantVisitor::visitExcessValueInteger(lccc::span<const uint8_t> bytes) {
         if(auto* parent = this->get_parent<ConstantVisitor>();parent)
             return parent->visitExcessValueInteger(bytes);
         else
             return nullptr;
     }
 
-    ConstantVisitor *ConstantVisitor::visitConstantArray(const lccc::function<void(ValueVisitor *)> &size) {
+    ArrayConstantVisitor *ConstantVisitor::visitConstantArray() {
         if(auto* parent = this->get_parent<ConstantVisitor>();parent)
-            return parent->visitConstantArray(size);
+            return parent->visitConstantArray();
         else
             return nullptr;
     }
@@ -606,19 +674,12 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    IdentifierVisitor *PointerConstantVisitor::visitFunctionAddress() {
-        if(auto* parent = this->get_parent<PointerConstantVisitor>();parent)
-            return parent->visitFunctionAddress();
-        else
-            return nullptr;
-    }
-
     void PointerConstantVisitor::visitLabelAddress(std::uint32_t label) {
         if(auto* parent = this->get_parent<PointerConstantVisitor>();parent)
             parent->visitLabelAddress(label);
     }
 
-    StringLiteralVisitor::StringLiteralVisitor(PointerConstantVisitor *vparent) : Visitor{vparent} {
+    StringLiteralVisitor::StringLiteralVisitor(StringLiteralVisitor *vparent) : Visitor{vparent} {
 
     }
 
@@ -650,7 +711,7 @@ namespace lccc::xlang{
             parent->visitWideString(value);
     }
 
-    TypeDefinitionVisitor::TypeDefinitionVisitor(TypeDefinitionVisitor *visitor) : Visitor{visitor} {
+    TypeDefinitionVisitor::TypeDefinitionVisitor(TypeDefinitionVisitor *visitor) : AnnotatedElementVisitor{visitor} {
 
     }
 
@@ -668,24 +729,466 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    UnionTypeVisitor *TypeDefinitionVisitor::visitUnion() {
+    StructTypeVisitor *TypeDefinitionVisitor::visitUnion() {
         if(auto* parent = this->get_parent<TypeDefinitionVisitor>();parent)
             return parent->visitUnion();
         else
             return nullptr;
     }
 
-    VariantTypeVisitor *TypeDefinitionVisitor::visitVariant() {
-        if(auto* parent = this->get_parent<TypeDefinitionVisitor>();parent)
-            return parent->visitVariant();
+
+    StructTypeVisitor::StructTypeVisitor(StructTypeVisitor *vparent) : AnnotatedElementVisitor{vparent} {
+
+    }
+
+    StructFieldVisitor *StructTypeVisitor::visitStructField(Visibility vis) {
+        if(auto* parent = this->get_parent<StructTypeVisitor>();parent)
+            return parent->visitStructField(vis);
         else
             return nullptr;
     }
 
-    IdentifierVisitor *TypeDefinitionVisitor::visitName() {
-        if(auto* parent = this->get_parent<TypeDefinitionVisitor>();parent)
+    TypeVisitor *StructTypeVisitor::visitBaseClass(Visibility vis) {
+        if(auto* parent = this->get_parent<StructTypeVisitor>();parent)
+            return parent->visitBaseClass(vis);
+        else
+            return nullptr;
+    }
+
+    TypeVisitor *StructTypeVisitor::visitVirtualBaseClass(Visibility vis) {
+        if(auto* parent = this->get_parent<StructTypeVisitor>();parent)
+            return parent->visitVirtualBaseClass(vis);
+        else
+            return nullptr;
+    }
+
+    EnumTypeVisitor::EnumTypeVisitor(EnumTypeVisitor *vparent) : AnnotatedElementVisitor{vparent} {
+
+    }
+
+    void EnumTypeVisitor::visitStrong() {
+        if(auto* parent = this->get_parent<EnumTypeVisitor>();parent)
+            parent->visitStrong();
+    }
+
+    TypeVisitor *EnumTypeVisitor::visitUnderlyingType() {
+        if(auto* parent = this->get_parent<EnumTypeVisitor>();parent)
+            return parent->visitUnderlyingType();
+        else
+            return nullptr;
+    }
+
+    EnumeratorVisitor *EnumTypeVisitor::visitEnumerator() {
+        if(auto* parent = this->get_parent<EnumTypeVisitor>();parent)
+            return parent->visitEnumerator();
+        else
+            return nullptr;
+    }
+
+    StructFieldVisitor::StructFieldVisitor(StructFieldVisitor *vparent) : AnnotatedElementVisitor{vparent} {
+
+    }
+
+    IdentifierVisitor *StructFieldVisitor::visitName() {
+        if(auto* parent = this->get_parent<StructFieldVisitor>();parent)
             return parent->visitName();
         else
             return nullptr;
     }
+
+    TypeVisitor *StructFieldVisitor::visitType() {
+        if(auto* parent = this->get_parent<StructFieldVisitor>();parent)
+            return parent->visitType();
+        else
+            return nullptr;
+    }
+
+    ValueVisitor *StructFieldVisitor::visitBitFieldLength() {
+        if(auto* parent = this->get_parent<StructFieldVisitor>();parent)
+            return parent->visitBitFieldLength();
+        else
+            return nullptr;
+    }
+
+    EnumeratorVisitor::EnumeratorVisitor(EnumeratorVisitor *vparent) : AnnotatedElementVisitor(vparent) {
+
+    }
+
+    IdentifierVisitor *EnumeratorVisitor::visitName() {
+        if(auto* parent = this->get_parent<EnumeratorVisitor>();parent)
+            return parent->visitName();
+        else
+            return nullptr;
+    }
+
+    ValueVisitor *EnumeratorVisitor::visitValue() {
+        if(auto* parent = this->get_parent<EnumeratorVisitor>();parent)
+            return parent->visitValue();
+        else
+            return nullptr;
+    }
+
+
+    TypeGenericParameterVisitor::TypeGenericParameterVisitor(TypeGenericParameterVisitor *vparent) : AnnotatedElementVisitor{vparent} {
+
+    }
+
+    ConceptVisitor *TypeGenericParameterVisitor::visitConcept() {
+        if(auto* parent = this->get_parent<TypeGenericParameterVisitor>();parent)
+            return parent->visitConcept();
+        else
+            return nullptr;
+    }
+
+    ConstGenericParameterVisitor::ConstGenericParameterVisitor(ConstGenericParameterVisitor *vparent) : AnnotatedElementVisitor{vparent} {
+
+    }
+
+    TypeVisitor *ConstGenericParameterVisitor::visitType() {
+        if(auto* parent = this->get_parent<ConstGenericParameterVisitor>();parent)
+            return parent->visitType();
+        else
+            return nullptr;
+    }
+
+    ArrayTypeVisitor::ArrayTypeVisitor(ArrayTypeVisitor *parent) : Visitor{parent} {
+
+    }
+
+    TypeVisitor *ArrayTypeVisitor::visitComponentType() {
+        if(auto* parent = this->get_parent<ArrayTypeVisitor>();parent)
+            return parent->visitComponentType();
+        else
+            return nullptr;
+    }
+
+    ValueVisitor *ArrayTypeVisitor::visitExtent() {
+        if(auto* parent = this->get_parent<ArrayTypeVisitor>();parent)
+            return parent->visitExtent();
+        else
+            return nullptr;
+    }
+
+    ArrayConstantVisitor::ArrayConstantVisitor(ArrayConstantVisitor *vparent) : Visitor{vparent} {
+
+    }
+
+    TypeVisitor *ArrayConstantVisitor::visitType() {
+        if(auto* parent = this->get_parent<ArrayConstantVisitor>();parent)
+            return parent->visitType();
+        else
+            return nullptr;
+    }
+
+    ValueVisitor *ArrayConstantVisitor::visitRepeatLength() {
+        if(auto* parent = this->get_parent<ArrayConstantVisitor>();parent)
+            return parent->visitRepeatLength();
+        else
+            return nullptr;
+    }
+
+    ValueVisitor *ArrayConstantVisitor::visitValue() {
+        if(auto* parent = this->get_parent<ArrayConstantVisitor>();parent)
+            return parent->visitValue();
+        else
+            return nullptr;
+    }
+
+    ExprVisitor::ExprVisitor(ExprVisitor *vparent) : Visitor{vparent} {
+
+    }
+
+    ValueVisitor *ExprVisitor::visitConst() {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            return parent->visitConst();
+        else
+            return nullptr;
+    }
+
+    FunctionTypeVisitor *ExprVisitor::visitFunctionCall() {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            return parent->visitFunctionCall();
+        else
+            return nullptr;
+    }
+
+    IdentifierVisitor *ExprVisitor::visitMember(MemberAccessType type) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            return parent->visitMember(type);
+        else
+            return nullptr;
+    }
+
+    void ExprVisitor::visitLocal(uint32_t var) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitLocal(var);
+    }
+
+    void ExprVisitor::visitAsRvalue(AccessClass cl) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitAsRvalue(cl);
+    }
+
+    void ExprVisitor::visitAsTemporary() {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitAsTemporary();
+    }
+
+    TypeVisitor *ExprVisitor::visitConversion(ConversionStrength st) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            return parent->visitConversion(st);
+        else
+            return nullptr;
+    }
+
+    void ExprVisitor::visitUnaryOperator(UnaryOperation op) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitUnaryOperator(op);
+    }
+
+    void ExprVisitor::visitBinaryOperator(BinaryOperation op) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitBinaryOperator(op);
+    }
+
+    void ExprVisitor::visitIndirection() {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitIndirection();
+    }
+
+    BoundVisitor *ExprVisitor::visitLock(PointerSharing type) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            return parent->visitLock(type);
+        else
+            return nullptr;
+    }
+
+    void ExprVisitor::visitPointerTo() {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitPointerTo();
+    }
+
+    PointerTypeVisitor *ExprVisitor::visitDerive() {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            return parent->visitDerive();
+        else
+            return nullptr;
+    }
+
+    void ExprVisitor::visitSequence(AccessClass cl) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitSequence(cl);
+    }
+
+    void ExprVisitor::visitFence(AccessClass cl) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitFence(cl);
+    }
+
+    void ExprVisitor::visitAssignment(AccessClass cl) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitAssignment(cl);
+    }
+
+    void ExprVisitor::visitCompoundAssignment(BinaryOperation op, AccessClass cl) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitCompoundAssignment(op,cl);
+    }
+
+    void ExprVisitor::visitUnaryLValue(UnaryLValueOperation op, AccessClass cl) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitUnaryLValue(op,cl);
+    }
+
+    void ExprVisitor::visitDestroy() {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitDestroy();
+    }
+
+    void ExprVisitor::pop(uint8_t cnt) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->pop(cnt);
+    }
+
+    void ExprVisitor::dup(uint8_t cnt) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->dup(cnt);
+    }
+
+    BlockVisitor *ExprVisitor::visitBlock() {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            return parent->visitBlock();
+        else
+            return nullptr;
+    }
+
+    void ExprVisitor::visitTupleExpression(uint16_t values) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitTupleExpression(values);
+    }
+
+    TypeVisitor *ExprVisitor::visitAggregateConstruction(uint16_t values) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            return parent->visitAggregateConstruction(values);
+        else
+            return nullptr;
+    }
+
+    void ExprVisitor::visitBlockExit(uint32_t blk, uint8_t values) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            parent->visitBlockExit(blk,values);
+    }
+
+    StackItemsVisitor::StackItemsVisitor(StackItemsVisitor *visitor) : Visitor{visitor} {
+
+    }
+
+    TypeVisitor *StackItemsVisitor::visitLvalue() {
+        if(auto* parent = this->get_parent<StackItemsVisitor>();parent)
+            return parent->visitLvalue();
+        else
+            return nullptr;
+    }
+
+    TypeVisitor *StackItemsVisitor::visitRvalue() {
+        if(auto* parent = this->get_parent<StackItemsVisitor>();parent)
+            return parent->visitRvalue();
+        else
+            return nullptr;
+    }
+
+
+    CaseVisitor::CaseVisitor(CaseVisitor *vparent) : Visitor{vparent} {
+
+    }
+
+    ValueVisitor *CaseVisitor::visitValue() {
+        if(auto* parent = this->get_parent<CaseVisitor>();parent)
+            return parent->visitValue();
+        else
+            return nullptr;
+    }
+
+    void CaseVisitor::visitTarget(std::uint32_t item) {
+        if(auto* parent = this->get_parent<CaseVisitor>();parent)
+            parent->visitTarget(item);
+    }
+
+    void SwitchVisitor::visitDefault(std::uint32_t item) {
+        if(auto* parent = this->get_parent<SwitchVisitor>();parent)
+            parent->visitDefault(item);
+    }
+
+    CaseVisitor *SwitchVisitor::visitCase() {
+        if(auto* parent = this->get_parent<SwitchVisitor>();parent)
+            return parent->visitCase();
+        else
+            return nullptr;
+    }
+
+    SwitchVisitor::SwitchVisitor(SwitchVisitor *vparent) : Visitor{vparent} {
+
+    }
+
+    BlockVisitor::BlockVisitor(BlockVisitor *parent) : ScopeVisitor{parent} {
+
+    }
+
+    ExprVisitor *BlockVisitor::visitExpression() {
+        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+            return parent->visitExpression();
+        else
+            return nullptr;
+    }
+
+    StackItemsVisitor *BlockVisitor::visitTarget(std::uint32_t item) {
+        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+            return parent->visitTarget(item);
+        else
+            return nullptr;
+    }
+
+    void BlockVisitor::visitBeginTag(std::uint32_t item) {
+        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+            parent->visitBeginTag(item);
+    }
+
+    void BlockVisitor::visitEndTag(std::uint32_t item) {
+        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+            parent->visitEndTag(item);
+    }
+
+    void BlockVisitor::visitBranch(std::uint32_t item, Condition condition) {
+        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+            parent->visitBranch(item,condition);
+    }
+
+    SwitchVisitor *BlockVisitor::visitSwitch() {
+        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+            return parent->visitSwitch();
+        else
+            return nullptr;
+    }
+
+    FunctionVisitor::FunctionVisitor(FunctionVisitor *fnVisitor) : AnnotatedElementVisitor{fnVisitor} {
+
+    }
+
+    FunctionTypeVisitor *FunctionVisitor::visitType() {
+        if(auto* parent = this->get_parent<FunctionVisitor>();parent)
+            return parent->visitType();
+        else
+            return nullptr;
+    }
+
+    BlockVisitor *FunctionVisitor::visitInitialBlock() {
+        if(auto* parent = this->get_parent<FunctionVisitor>();parent)
+            return parent->visitInitialBlock();
+        else
+            return nullptr;
+    }
+
+    TypeVisitor *FunctionVisitor::visitLocalVariable() {
+        if(auto* parent = this->get_parent<FunctionVisitor>();parent)
+            return parent->visitLocalVariable();
+        else
+            return nullptr;
+    }
+
+    FileVisitor::FileVisitor(FileVisitor *vparent) : ScopeVisitor{vparent} {
+
+    }
+
+    void FileVisitor::visitInputFile(FILE *file) {
+        if(auto* parent = this->get_parent<FileVisitor>();parent)
+            parent->visitInputFile(file);
+    }
+
+    void FileVisitor::visitOutputFile(FILE *file) {
+        if(auto* parent = this->get_parent<FileVisitor>();parent)
+            parent->visitOutputFile(file);
+    }
+
+    void FileVisitor::visitDiagnosticFile(FILE *file) {
+        if(auto* parent = this->get_parent<FileVisitor>();parent)
+            parent->visitDiagnosticFile(file);
+    }
+
+    GlobalVariableVisitor::GlobalVariableVisitor(GlobalVariableVisitor *parent) : AnnotatedElementVisitor{parent} {
+
+    }
+
+    TypeVisitor *GlobalVariableVisitor::visitVariableType() {
+        if(auto* parent = this->get_parent<GlobalVariableVisitor>();parent)
+            return parent->visitVariableType();
+        else
+            return nullptr;
+    }
+
+    void GlobalVariableVisitor::visitStorageClass(StorageClass cl) {
+        if(auto* parent = this->get_parent<GlobalVariableVisitor>();parent)
+            parent->visitStorageClass(cl);
+    }
 }
+
+

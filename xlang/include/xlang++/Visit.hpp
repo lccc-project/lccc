@@ -50,7 +50,20 @@ namespace lccc::xlang{
          * visits a diagnostic, which results in a compilation error
          */
         virtual void visitDiagnostic(lccc::string_view);
+
+        /**
+         * Visits a line Number
+         */
+        virtual void visitLine(std::uint64_t ln);
+
+        /**
+         * Visits a Source name
+         */
+        virtual void visitSourceFile(lccc::string_view name);
     };
+
+    struct TypeVisitor;
+    struct GenericInstantiationVisitor;
 
     /**
      * A visitor which visits a (potentially qualified) identifier.
@@ -69,6 +82,21 @@ namespace lccc::xlang{
          *  which resolves to the namespace with the given name in the namespace provided by the previous components.
          */
         virtual void visitComponent(lccc::string_view);
+
+        /**
+         * @brief Visits a Dependent name, something that depends on one or more generic parameters
+         * 
+         * @return TypeVisitor* A visitor for the dependent type, or null if this visitor is not interested.
+         */
+        virtual TypeVisitor* visitDependentName();
+
+        /**
+         * @brief Visits generic args. 
+         * 
+         * @return GenericInstantiationVisitor* A visitor for the generic args, or null if this visitor is not interested.
+         */
+        virtual GenericInstantiationVisitor* visitGenericArgs();
+
         /**
          * Visits a special component, with a language-specific form.
          */
@@ -131,6 +159,8 @@ namespace lccc::xlang{
          * @return A visitor which visits the member, or null if this visitor is not interested in visiting a member.
          */
         virtual ScopeMemberVisitor* visitScopeMember();
+
+        virtual GenericInstantiationVisitor* visitExplicitInstantiation();
     };
 
     /**
@@ -156,24 +186,20 @@ namespace lccc::xlang{
          */
         Private,
         /**
-         * A scope member which cannot be named. m
+         * A scope member which cannot be named.
          */
         None
     };
 
     struct GenericDeclarationVisitor;
     struct TypeVisitor;
-    struct TypeAliasVisitor;
     struct GenericParameterVisitor;
     struct ExprVisitor;
     struct ValueVisitor;
     struct GenericMemberVisitor;
-    struct GenericItemVisitor;
     struct TypeDefinitionVisitor;
     struct GlobalVariableVisitor;
     struct FunctionVisitor;
-    struct TypeScopeVisitor;
-    struct NamespaceVisitor;
 
     /**
      * A visitor which visits the member of a scope
@@ -202,7 +228,7 @@ namespace lccc::xlang{
          * Visits an alias of a type
          * @return A visitor which visits the type alias, or null if this visitor is not interested in visiting a type alias.
          */
-        virtual TypeAliasVisitor* visitTypeAlias();
+        virtual TypeVisitor* visitTypeAlias();
         /**
          * Visits a generic declaration
          * @return  A visitor which visits the generic declaration, or null if this visitor is not interested in visiting a generic declaration.
@@ -225,16 +251,19 @@ namespace lccc::xlang{
         virtual FunctionVisitor* visitFunction();
 
         /**
-         * Visits a subscope headed by the name of a type
+         * Visits a subscope
          * @return A visitor which visits the new scope
          */
-        virtual TypeScopeVisitor* visitTypeScope();
+        virtual ScopeVisitor* visitScope();
+
         /**
-         * Visits a subscope headed by a namespace scope
-         * @return A visitor which visits the new scope
+         * Visits an external scope, that is, one defined in a different source file.
+         * 
          */
-        virtual NamespaceVisitor* visitNamespaceScope();
+        virtual void visitExternalScope();
+
     };
+
     /**
      * An intermediate class for generic declarations
      */
@@ -248,6 +277,8 @@ namespace lccc::xlang{
          * @return A visitor which visits the parameter,
          */
         virtual GenericParameterVisitor* visitGenericParameter();
+
+        virtual ValueVisitor* visitRequiresClause();
     };
 
     /**
@@ -266,23 +297,17 @@ namespace lccc::xlang{
 
     struct StructTypeVisitor;
     struct EnumTypeVisitor;
-    struct UnionTypeVisitor;
-    struct VariantTypeVisitor;
 
     /**
      * A visitor which visits the definition of a type
      */
-    struct TypeDefinitionVisitor : Visitor{
+    struct TypeDefinitionVisitor : AnnotatedElementVisitor{
     public:
         /**
          * Constructs a new TypeDefinitionVisitor with an optional parent
          */
         explicit TypeDefinitionVisitor(TypeDefinitionVisitor* visitor=nullptr);
-        /**
-         * Visits the name of this type
-         * @return A visitor which visits the name of the type, or null if this visitor is not interested in visiting its name
-         */
-        virtual IdentifierVisitor* visitName();
+        
         /**
          * Visits a structure definition
          * @return A visitor which visits the structure definition, or null if this visitor is not interested in visiting such a definition
@@ -297,21 +322,41 @@ namespace lccc::xlang{
          * Visits a union definition
          * @return A visitor which visits the union definition, or null if this visitor is not interested in visiting such a definition
          */
-        virtual UnionTypeVisitor* visitUnion();
-        /**
-         * Visits a variant (discriminated union) definition
-         * @return A visitor which visits the structure definition, or null if this visitor is not interested in visiting such a definition
-         */
-        virtual VariantTypeVisitor* visitVariant();
+        virtual StructTypeVisitor* visitUnion();
     };
 
     struct StructFieldVisitor;
     struct EnumeratorVisitor;
-    struct VariantConstructorVisitor;
 
-    struct StructTypeVisitor : Visitor{
+    struct StructTypeVisitor : AnnotatedElementVisitor{
     public:
+        explicit StructTypeVisitor(StructTypeVisitor* vparent=nullptr);
+        virtual StructFieldVisitor* visitStructField(Visibility);
+        virtual TypeVisitor* visitBaseClass(Visibility);
+        virtual TypeVisitor* visitVirtualBaseClass(Visibility);
+    };
 
+    struct EnumTypeVisitor : AnnotatedElementVisitor{
+    public:
+        explicit EnumTypeVisitor(EnumTypeVisitor* vparent=nullptr);
+        virtual void visitStrong();
+        virtual TypeVisitor* visitUnderlyingType();
+        virtual EnumeratorVisitor* visitEnumerator();
+    };
+
+    struct StructFieldVisitor : AnnotatedElementVisitor{
+    public:
+        explicit StructFieldVisitor(StructFieldVisitor* vparent=nullptr);
+        virtual IdentifierVisitor* visitName();
+        virtual TypeVisitor* visitType();
+        virtual ValueVisitor* visitBitFieldLength();
+    };
+
+    struct EnumeratorVisitor : AnnotatedElementVisitor{
+    public:
+        explicit EnumeratorVisitor(EnumeratorVisitor* vparent=nullptr);
+        virtual IdentifierVisitor* visitName();
+        virtual ValueVisitor* visitValue();
     };
 
 
@@ -327,11 +372,22 @@ namespace lccc::xlang{
         virtual BoundGenericParameterVisitor* visitBoundParameter();
         virtual GenericDeclarationVisitor* visitGenericType();
         virtual void visitParameterPack();
-        virtual IdentifierVisitor* visitName();
         virtual TypeVisitor* visitDefaultType();
         virtual ExprVisitor* visitDefaultValue();
         virtual BoundVisitor* visitDefaultBound();
-        virtual GenericItemVisitor* visitDefaultGenericType();
+        virtual IdentifierVisitor* visitDefaultGenericType();
+    };
+
+    struct ConceptVisitor;
+
+    struct TypeGenericParameterVisitor : AnnotatedElementVisitor{
+        explicit TypeGenericParameterVisitor(TypeGenericParameterVisitor* vparent=nullptr);
+        virtual ConceptVisitor* visitConcept();
+    };
+
+    struct ConstGenericParameterVisitor : AnnotatedElementVisitor{
+        explicit ConstGenericParameterVisitor(ConstGenericParameterVisitor* vparent=nullptr);
+        virtual TypeVisitor* visitType();
     };
 
     struct ScalarTypeVisitor;
@@ -342,18 +398,27 @@ namespace lccc::xlang{
     struct ProductTypeVisitor;
     struct SumTypeVisitor;
     struct FunctionTypeVisitor;
+    struct ArrayTypeVisitor;
 
     struct TypeVisitor : AnnotatedElementVisitor {
         explicit TypeVisitor(TypeVisitor* parent=nullptr);
         virtual ScalarTypeVisitor* visitScalarType();
         virtual PointerTypeVisitor* visitPointerType();
         virtual IdentifierVisitor* visitNamedType();
+        virtual TypeDefinitionVisitor* visitElaboratedType();
         virtual GenericInstantiationVisitor* visitGenericType();
         virtual void visitGenericParameter(uint32_t pnum);
         virtual ValueVisitor* visitAlignedAs();
         virtual ProductTypeVisitor* visitProductType();
         virtual SumTypeVisitor* visitSumType();
         virtual FunctionTypeVisitor* visitFunctionType();
+        // dyn Trait
+        virtual ConceptVisitor* visitErasedConceptType();
+        // impl Trait or Concept at type position, includes auto
+        virtual ConceptVisitor* visitReifiedConceptType();
+        virtual TypeVisitor* visitSlice();
+        virtual ArrayTypeVisitor* visitArray();
+        virtual ExprVisitor* visitDecltype();
     };
 
     struct ProductTypeVisitor : Visitor{
@@ -375,6 +440,12 @@ namespace lccc::xlang{
         virtual IdentifierVisitor* visitTag();
     };
 
+    struct ArrayTypeVisitor : Visitor{
+        explicit ArrayTypeVisitor(ArrayTypeVisitor* parent=nullptr);
+        virtual TypeVisitor* visitComponentType();
+        virtual ValueVisitor* visitExtent();
+    };
+
 
 
     struct BoundGenericParameterVisitor : Visitor{
@@ -384,8 +455,8 @@ namespace lccc::xlang{
 
     struct GenericInstantiationVisitor : Visitor{
         explicit GenericInstantiationVisitor(GenericInstantiationVisitor* visitor=nullptr);
-        virtual GenericItemVisitor* visitGenericItem();
-        virtual GenericItemVisitor* visitGenericParameter();
+        virtual IdentifierVisitor* visitGenericItem();
+        virtual IdentifierVisitor* visitGenericParameter();
         virtual TypeVisitor* visitTypeParameter();
         virtual ValueVisitor* visitConstParameter();
         virtual BoundVisitor* visitBoundParameter();
@@ -429,6 +500,7 @@ namespace lccc::xlang{
         virtual FloatTypeVisitor* visitFloatingPointType();
         virtual void visitBitSize(uint16_t bits);
         virtual void visitVectorSize(uint16_t vector);
+        virtual void visitComplex();
     };
 
 
@@ -441,7 +513,7 @@ namespace lccc::xlang{
 
     struct FloatTypeVisitor : Visitor{
         explicit FloatTypeVisitor(FloatTypeVisitor *vparent=nullptr);
-        virtual void visitComplex();
+
     };
 
     struct BoundVisitor : Visitor{
@@ -456,21 +528,19 @@ namespace lccc::xlang{
 
     enum class UndefinedValueKind{
         Invalid,
-        Uninitialized,
-        Poison
+        Uninitialized
     };
 
     struct ValueVisitor : Visitor{
         explicit ValueVisitor(ValueVisitor *vparent=nullptr);
         virtual ConstantVisitor* visitConstantValue();
         virtual ExprVisitor* visitExpression();
-        virtual void visitUndefined(UndefinedValueKind kind);
-        virtual void visitLocal(uint32_t var);
-
+        virtual TypeVisitor* visitUndefined(UndefinedValueKind kind);
     };
 
     struct StringLiteralVisitor;
     struct PointerConstantVisitor;
+    struct ArrayConstantVisitor;
 
     struct ConstantVisitor : Visitor{
         explicit ConstantVisitor(ConstantVisitor *vparent=nullptr);
@@ -478,8 +548,16 @@ namespace lccc::xlang{
         virtual StringLiteralVisitor* visitStringLiteral();
         virtual void visitBooleanLiteral(bool value);
         virtual PointerConstantVisitor* visitPointerConstant();
-        virtual TypeVisitor* visitExcessValueInteger(lccc::span<uint8_t,lccc::dynamic_extent> bytes);
-        virtual ConstantVisitor* visitConstantArray(const lccc::function<void(ValueVisitor*)>& size);
+        virtual TypeVisitor* visitExcessValueInteger(lccc::span<const uint8_t> bytes);
+        virtual ArrayConstantVisitor* visitConstantArray();
+    };
+
+    struct ArrayConstantVisitor : Visitor{
+    public:
+        explicit ArrayConstantVisitor(ArrayConstantVisitor* vparent=nullptr);
+        virtual TypeVisitor* visitType();
+        virtual ValueVisitor* visitRepeatLength();
+        virtual ValueVisitor* visitValue();
     };
 
     struct PointerConstantVisitor : Visitor{
@@ -487,12 +565,12 @@ namespace lccc::xlang{
         virtual PointerTypeVisitor* visitType();
         virtual void visitNullPointer();
         virtual IdentifierVisitor* visitGlobalAddress();
-        virtual IdentifierVisitor* visitFunctionAddress();
         virtual void visitLabelAddress(std::uint32_t label);
     };
 
     struct StringLiteralVisitor : Visitor{
-        explicit StringLiteralVisitor(PointerConstantVisitor *vparent=nullptr);
+        explicit StringLiteralVisitor(StringLiteralVisitor *vparent=nullptr);
+
         virtual TypeVisitor* visitType();
         virtual void visitByteString(lccc::string_view value);
         virtual void visitUTF8String(lccc::string_view value);
@@ -525,6 +603,7 @@ namespace lccc::xlang{
         CmpGt = 14,
         CmpGe = 15,
         CmpSpaceship = 16,
+        CmpExcg = 17
     };
 
     enum class ConversionStrength : uint8_t {
@@ -533,7 +612,9 @@ namespace lccc::xlang{
         Reinterpret = 2
     };
     enum class MemberAccessType : uint8_t {
+        // lvalue %0->lvalue %1
         Struct = 0,
+        // *%0->*%1
         Indirect = 1,
     };
 
@@ -554,9 +635,9 @@ namespace lccc::xlang{
         AtomicRelease = 3,
         AtomicAcqRel = 4,
         AtomicSeqCst = 5,
-        Voatile = 0x10,
+        Volatile = 0x10,
         Freeze = 0x20,
-        Nontemporal = 0x40,
+        NonTemporal = 0x40,
     };
 
     AccessClass operator|(AccessClass a,AccessClass b){
@@ -579,6 +660,7 @@ namespace lccc::xlang{
         virtual ValueVisitor* visitConst();
         virtual FunctionTypeVisitor* visitFunctionCall();
         virtual IdentifierVisitor* visitMember(MemberAccessType type);
+        virtual void visitLocal(uint32_t var);
         
         virtual void visitAsRvalue(AccessClass cl);
         virtual void visitAsTemporary();
@@ -590,6 +672,7 @@ namespace lccc::xlang{
         virtual BoundVisitor* visitLock(PointerSharing type);
         virtual void visitPointerTo();
         virtual PointerTypeVisitor* visitDerive();
+        virtual void visitDestroy();
         // compiler_fence/atomic_signal_fence or sequence point
         virtual void visitSequence(AccessClass cl);
         // fence/atomic_thread_fence
@@ -607,9 +690,23 @@ namespace lccc::xlang{
 
     struct StackItemsVisitor : Visitor{
     public:
-        StackItemsVisitor(StackItemsVisitor* visitor=nullptr);
-        TypeVisitor* visitLvalue();
-        TypeVisitor* visitRvalue();
+        explicit StackItemsVisitor(StackItemsVisitor* visitor=nullptr);
+        virtual TypeVisitor* visitLvalue();
+        virtual TypeVisitor* visitRvalue();
+    };
+
+    struct CaseVisitor : Visitor{
+    public:
+        explicit CaseVisitor(CaseVisitor* vparent=nullptr);
+        virtual ValueVisitor* visitValue();
+        virtual void visitTarget(std::uint32_t item);
+    };
+
+    struct SwitchVisitor : Visitor{
+    public:
+        explicit SwitchVisitor(SwitchVisitor* vparent=nullptr);
+        virtual CaseVisitor* visitCase();
+        virtual void visitDefault(std::uint32_t item);
     };
 
     enum Condition : uint8_t{
@@ -618,16 +715,50 @@ namespace lccc::xlang{
         Greater = 2,
         Zero = 3,
         Always = 4,
-        Never = 5
+        Never = 5 // Allows typechecking of the Expression Stack against a target
     };
 
-    struct BlockVisitor : AnnotatedElementVisitor{
+    struct BlockVisitor : ScopeVisitor{
     public:
-        BlockVisitor(BlockVisitor* parent=nullptr);
+        explicit BlockVisitor(BlockVisitor* parent=nullptr);
         virtual ExprVisitor* visitExpression();
         virtual StackItemsVisitor* visitTarget(std::uint32_t item);
+        virtual void visitBeginTag(std::uint32_t);
+        virtual void visitEndTag(std::uint32_t);
         virtual void visitBranch(std::uint32_t item,Condition condition);
-    }
+        virtual SwitchVisitor* visitSwitch();
+    };
+
+    struct FunctionVisitor : AnnotatedElementVisitor{
+    public:
+        explicit FunctionVisitor(FunctionVisitor* fnVisitor);
+        virtual FunctionTypeVisitor* visitType();
+        virtual BlockVisitor* visitInitialBlock();
+        virtual TypeVisitor* visitLocalVariable();
+    };
+
+    enum class StorageClass : std::uint8_t{
+        None,
+        Static,
+        Extern,
+        Thread,
+        Const
+    };
+
+    struct GlobalVariableVisitor : AnnotatedElementVisitor{
+    public:
+        explicit GlobalVariableVisitor(GlobalVariableVisitor* parent=nullptr);
+        virtual TypeVisitor* visitVariableType();
+        virtual void visitStorageClass(StorageClass cl);
+    };
+
+    struct FileVisitor : ScopeVisitor{
+    public:
+        explicit FileVisitor(FileVisitor* vparent=nullptr);
+        virtual void visitInputFile(FILE* file);
+        virtual void visitOutputFile(FILE* file);
+        virtual void visitDiagnosticFile(FILE* file);
+    };
 
 }
 

@@ -229,12 +229,12 @@ namespace lccc{
 
         template<typename=std::enable_if_t<Extent==0>> constexpr span() : _m_begin(nullptr){}
 
-        template<typename Iter,std::size_t N,
-            typename=std::enable_if_t<std::is_base_of_v<std::random_access_iterator_tag,std::iterator_traits<Iter>::iterator_category>>>>
-             constexpr explicit span(Iter begin,N size) : _m_begin(&*begin){}
+        template<typename Iter,
+            typename=std::enable_if_t<std::is_base_of_v<std::random_access_iterator_tag,typename std::iterator_traits<Iter>::iterator_category>>>
+             constexpr explicit span(Iter begin,std::size_t size) : _m_begin(&*begin){}
 
-        template<typename Iter,std::size_t N,
-            typename=std::enable_if_t<std::is_base_of_v<std::random_access_iterator_tag,std::iterator_traits<Iter>::iterator_category>>>>
+        template<typename Iter,
+            typename=std::enable_if_t<std::is_base_of_v<std::random_access_iterator_tag,typename std::iterator_traits<Iter>::iterator_category>>>
              constexpr explicit span(Iter begin,Iter end) : _m_begin(&*begin){}
 
         constexpr span(type_identity_t<element_type>(&arr)[Extent]) : _m_begin(limit(arr,Extent)){}
@@ -312,15 +312,15 @@ namespace lccc{
 
         constexpr span() : _m_ptr{}, _m_size{}{}
 
-        template<typename Iter,std::size_t N,
-            typename=std::enable_if_t<std::is_base_of_v<std::random_access_iterator_tag,std::iterator_traits<Iter>::iterator_category>>>>
-             constexpr span(Iter begin,N size) : _m_ptr(&*begin), _m_size(size){}
+        template<typename Iter,
+            typename=std::enable_if_t<std::is_base_of_v<std::random_access_iterator_tag,typename std::iterator_traits<Iter>::iterator_category>>>
+             constexpr span(Iter begin,std::size_t size) : _m_ptr(&*begin), _m_size(size){}
 
         template<typename Iter,std::size_t N,
-            typename=std::enable_if_t<std::is_base_of_v<std::random_access_iterator_tag,std::iterator_traits<Iter>::iterator_category>>>>
+            typename=std::enable_if_t<std::is_base_of_v<std::random_access_iterator_tag,typename std::iterator_traits<Iter>::iterator_category>>>
              constexpr span(Iter begin,Iter end) : _m_ptr(&*begin), _m_size(end-begin){}
 
-        template<std::size_t N> constexpr span(type_identity_t<element_type>(&arr)[N]) : _m_ptr{arr}, _m_size_{N}{}
+        template<std::size_t N> constexpr span(type_identity_t<element_type>(&arr)[N]) : _m_ptr{arr}, _m_size{N}{}
 
         template<typename T,std::size_t N,
                 typename = std::enable_if_t<std::is_convertible_v<T(*)[],element_type(*)[]>>>
@@ -332,10 +332,10 @@ namespace lccc{
 
         template<typename Container,typename = 
             std::enable_if_t<
-            std::is_convertible_v<std::remove_ptr_v<decltype(_detail::adl::data(std::declval<Container>()))>(*)[],
+            std::is_convertible_v<std::remove_pointer_t<decltype(_detail::adl::data(std::declval<Container>()))>(*)[],
                 element_type(*)[]>>,
                 typename = decltype(_detail::adl::size(std::declval<Container>()))>
-                constexpr span(Container&& c) : _m_ptr{_detail:;adl::data(c)}, _m_size(_detail::adl::size(c)){}
+                constexpr span(Container&& c) : _m_ptr{_detail::adl::data(c)}, _m_size(_detail::adl::size(c)){}
 
         template<typename OtherElementType,std::ptrdiff_t OtherExtent,
             typename = std::enable_if_t<std::is_convertible_v<OtherElementType(*)[],element_type(*)[]>>>
@@ -356,10 +356,10 @@ namespace lccc{
         }
 
         constexpr iterator begin()const{
-            return _m_begin;
+            return _m_ptr;
         }
         constexpr iterator end()const{
-            return _m_begin+_m_size;
+            return _m_ptr+_m_size;
         }
 
         constexpr reverse_iterator rbegin()const{
@@ -374,12 +374,12 @@ namespace lccc{
 
     template<typename T, std::ptrdiff_t N>
         span<const std::byte,N==dynamic_extent?dynamic_extent:N*sizeof(T)> as_bytes(const span<T,N>& s){
-            return span{reinterpret_cast<const std::byte*>(s.data()),s.size_bytes()}
+            return span{reinterpret_cast<const std::byte*>(s.data()),s.size_bytes()};
         }
 
     template<typename T, std::ptrdiff_t N,typename=std::enable_if_t<!std::is_const_v<T>>>
         span<std::byte,N==dynamic_extent?dynamic_extent:N*sizeof(T)> as_writable_bytes(const span<T,N>& s){
-            return span{reinterpret_cast<std::byte*>(s.data()),s.size_bytes()}
+            return span{reinterpret_cast<std::byte*>(s.data()),s.size_bytes()};
         }
 
 }

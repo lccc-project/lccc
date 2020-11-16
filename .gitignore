@@ -5,3 +5,4 @@ build/
 /rust/liballoc/Cargo.lock
 /.cache/
 /.vscode/
+target/
