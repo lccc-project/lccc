@@ -640,7 +640,7 @@ namespace lccc::xlang{
         NonTemporal = 0x40,
     };
 
-    AccessClass operator|(AccessClass a,AccessClass b){
+    constexpr AccessClass operator|(AccessClass a,AccessClass b){
         return static_cast<AccessClass>(static_cast<uint8_t>(a)|static_cast<uint8_t>(b));
     }
 

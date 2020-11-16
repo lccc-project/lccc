@@ -7,6 +7,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 
 
-add_library(xlang SHARED include/xlang++/Visit.hpp src/Visit.cpp include/xlang++/Layout.h include/xlang++/Properties.h)
+add_library(xlang SHARED include/xlang++/Visit.hpp src/Visit.cpp include/xlang++/Layout.h include/xlang++/Properties.h src/IRWriter.cpp)
 target_include_directories(xlang PUBLIC include)
+install(TARGETS xlang EXPORT xlang)
 
+add_executable(xlang-prg src/Main.cpp)
+
+target_link_libraries(xlang-prg xlang)
+
+set_target_properties(xlang PROPERTIES OUTPUT_NAME xlang)
+
+install(TARGETS xlang-prg)

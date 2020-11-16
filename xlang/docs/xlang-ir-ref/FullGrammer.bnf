@@ -1,0 +1,127 @@
+; File is in Augmented Bakus-Naur Form, specified by RFC 5234 and 7405
+; Whitespaces in rules are non-significant
+; Certain Special Rules, designated by all capital letters, are token-parts
+; There shall be no intervening whitespace between two token-parts, or a token-part and an adjacent terminal.
+; Otherwise, there may be 0 or more whitespaces between any two terminals or non-terminals, 
+; Except that there shall be an intervening whitespace between two terminals in a rule, 
+; Where the last character of the first terminal is a letter, and the first character of the following terminal is a letter 
+
+
+
+file := scope
+
+scope := [*(<scope-member>/<COMMENT>)]
+
+COMMENT := "//"[*(%x20-%x7e)]
+
+NONZERO-DIGIT := "1"/"2"/"3"/"4"/"5"/"6"/"7"/"8"/"9"
+DIGIT := "0"/NONZERO-DIGIT 
+HEX-DIGIT := DIGIT/"A"/"B"/"C"/"D"/"E"/"F" 
+
+UNICODE-NAME := "\u{"1*8<HEX-DIGIT>"}"
+
+LETTER := %x40-5a/%x60-7a
+
+ESCAPE := "\n"/"\r"/"\t"/"\e"/"\b"/"\""/"\'"
+
+ID-SYMBOL := "$"/"_"/<UNICODE-NAME>
+
+ID-START := <LETTER>/<ID-SYMBOL>
+
+ID-PART := <ID-START>/<DIGIT>
+
+CHAR := %x20-21/%x23-26/%x28-7e/<UNICODE-NAME>/<ESCAPE>
+
+QUOTE := %0x22
+
+prefix := "u8" / "u16" / "u32" / "w"
+
+char-literal := [<prefix>] "'" ( <CHAR> / <QUOTE>)   "'"
+
+string-literal := [<prefix>] <QUOTE> (0*<CHAR> / "'" ) <QUOTE>
+
+unqualified-identifier := <ID-START>[*<ID-PART>]
+
+number := "0" /(<NONZERO-DIGIT>[*<DIGIT>])/ ("0x" *<HEX-DIGIT>)
+
+special-identifier-fragment := "#" (<unqualified-identifier> / <string-literal> )
+
+meta := ("#" <identifier> ["(" (<meta> / <const>) [*("," (<meta> / <const>)] ")"]) / (<meta> <meta>)
+
+identifier-fragment := <unqualified-identifier> / <special-identifier-fragment> / <generic-args>
+
+identifier := <unqualified-identifier> / <special-identifier-fragment>  / ("%" <number>)
+    / ([<unqualified-identifier> / <special-identifier-fragment> / ("%" <number>)]"::" 0*(<identifier-fragement> "::") <identifier-fragment>)
+
+visibility := "public" / "origin" / "module" / "private" / "none"
+
+scope-member := [<meta>]  [<visibility>]  (<global-decl> / <function-decl> / <type-alias> / <type-decl> / <generic-decl> / <scope-decl> / <concept-decl>)
+
+concept-decl := "concept" [<meta>] <identifier> "=" <const> ";"
+
+storage-class := "static" / "const" / "extern" / "thread_local"
+
+global-decl := <storage-class> [<meta>] <identifier> ":" <type> ["=" <expr>] ";"
+
+function-decl := [<storage-class>] "function" [<meta>] <identifier> "(" <function-args> ")" "->" <type> "{" <block> "}"
+
+type-alias := "type" <identifier> "=" [<meta>] <type> ";"
+
+generic-decl := "generic" "<" <generic-args> ">" ["requires" <const>] <scope-member>
+
+generic-arg := ("const" [<meta>] "%" <number> ":" <type> ["=" <const>]) / ("type" [<meta>] "%" <number> [":" <identifier>]) / ("bound" "%" <number> [":" <bound>])
+
+generic-args := <generic-arg> / <generic-args> "," <generic-arg>
+
+scope-decl := "scope" <identifier> (";" / ("{" <scope> "}"))
+
+type-decl := <struct-or-union-decl> / <enum-decl>
+
+enumerator := <unqualified-identifier> ["=" <const>] [<meta>]
+
+enum-decl := "enum"  <identifier> [":" <integer-type>] [<meta>] "{" [*<enumerator>] "}"
+
+struct-or-union-decl := ("struct" / "union") <identifier> [":" [<visibility>] ["virtual"] <type> [*("," [<visibility>] ["virtual"] <type>)]]
+     [<meta>] "{" [*(<struct-member>/<COMMENT>)] "}"
+
+struct-member := [<visibility>] <unqualified-identifier> ":" <type> ["@" <const>] [<meta>]";"
+
+type := <identifier> / ("slice" "[" <type> "]") / ("[" <type> ";" <expr> "]") / <scalar-type> / <pointer-type> / <function-type> 
+    / ("(" [<type> [*("," <type>)]] ")") / ("struct" / "union") [<meta>] "{" [*<struct-member>] "}"
+
+scalar-type := ("uint" / "int" / "float") <scalar-validity> ["complex"] "(" <number> ")"
+
+scalar-validity := ["nonzero"] ["min" "(" <const> ")")] ["max" "(" <const> ")")]
+
+pointer-type := "*" <pointer-validity> <type>
+
+function-type := "fn" "(" [<type> [*("," <type>)]] ")" "->" <type>
+
+bound := "%" <number> / "#" (<number> / "static")
+
+const := "expr" <expr> / <scalar-type> ["-"] <number> / <pointer-const> / <undefined> / <type> <string-literal>
+    / "true" / "false" / "[" [<const> [*(["," <const>])]] "]" / "[" <const> ";" <const> "]"
+
+pointer-const := ("global_address" <identifier>) / ("null" <pointer-type>)
+
+undefined := "undef" ("uninit" / "invalid") <type>
+
+expr := ("call" <function-type> / "member" ("struct"/"indirect") / "local" "_" <number> / "as_rvalue" [<access-class>]
+    / "temporary" / "convert" ("weak" / "strong" / "reinterpret") / <unary-operator> 
+    / <binary-operator> / "indirect" / "indirection" / "lock" <bound> <expr>
+    / "derive" <pointer-type> <expr> / "destroy" <expr> 
+    / "sequence" <access-class> / "fence" <access-class> 
+    / "assign" <access-class> /  "compound_assign" <access-class> <binary-operator>
+    / "unary_assign" <access-class> ("preinc" / "postinc" / "predec" / "postdec")
+    / "exit" "block" "$" <number> / "pop" <number> / "dup" <number>
+    / "begin" "block" "$" <number> <block> "end" "block" "$" <number>
+    / "tuple" <number>
+    / "aggregate" <type> <number>
+
+block := *(<expr> / "begin" "tag" "#" <number> /"begin" "tag" "#" <number>/<switch>
+    /"branch" ("always"/"never"/"zero"/"nonzero"/"less"/"greater") "@"<number>
+    /"target" "@"<number> <stack-items> / <COMMENT>)
+
+stack-items := "[" [<stack-item> [("," <stack-item>)]] "]"
+
+stack-item := ["lvalue"] <type>
