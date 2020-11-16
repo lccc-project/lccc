@@ -1,13 +1,12 @@
 
-pub use crate::intrinsics::{size_of};
 use crate::Sized;
 use crate::intrinsics;
 use crate::default::Default;
 
 #[rustc_const_unstable(feature="lccc_const_zeroed",issue="none")]
 pub unsafe fn zeroed<T>()->T{
-    intrinsics::panic_if_uninhabited::<T>();
-    intrinsics::init()
+    ::__lccc::builtins::rust::panic_if_uninhabited::<T>();
+    ::__lccc::builtins::rust::zeroed()
 }
 
 

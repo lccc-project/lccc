@@ -1,4 +1,5 @@
 use crate::marker::Sized;
+use crate::PartialOrd;
 
 #[lang = "not"]
 pub trait Not{
@@ -168,10 +169,10 @@ pub struct Range<T>{
 
 impl<T: PartialOrd<T>> Range<T>{
     pub fn contains<U>(&self,idx: &U) -> bool where U: PartialOrd<T>, T: PartialOrd<U>{
-        !(idx < &self.start || &self.end < idx)
+        !(idx < &self.start || &self.end <= idx)
     }
 
     pub fn is_empty() -> bool{
-        !(start<end)
+        !(start<=end)
     }
 }

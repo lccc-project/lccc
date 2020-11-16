@@ -8,7 +8,7 @@ use crate::marker::PhantomData;
 #[lang = "drop_in_place"]
 #[inline(always)]
 pub unsafe fn drop_in_place<T: ?Sized>(x: *mut T){
-    ::__lccc::__maybe_adl__::__evaluate_destructor_at__(x)
+    ::__lccc::__maybe_adl__::__evaluate_destructor_at(x)
 }
 
 
@@ -22,7 +22,7 @@ impl<T: ?Sized> *const T{
 #[lang = "mut_ptr"]
 impl<T: ?Sized> *mut T{
     pub const fn is_null(self)->bool{
-        (::__lccc::xir!("convert reinterpret *uint(8)":[self: *const T]:[yield: *const u8]))==crate::mem::zeroed()
+        (::__lccc::xir!("convert reinterpret *uint(8)":[self: *const T]:[yield: *const u8]))==unsafe{crate::mem::zeroed()}
     }
 }
 
@@ -70,7 +70,7 @@ impl<T: ?Sized> NonNull<T>{
         &mut *(self.ptr as *mut _)
     }
 
-    pub const fn cost<U>(self) -> NonNull<U>{
+    pub const fn cast<U>(self) -> NonNull<U>{
         NonNull{ptr: self.ptr as *const U}
     }
 }
@@ -110,6 +110,10 @@ impl<T: ?Sized> Unique<T>{
 
     pub fn as_mut(&mut self) -> *mut T{
         self.ptr.as_ptr()
+    }
+
+    pub fn into_inner(self) -> NonNull<Self>{
+        self.ptr
     }
 }
 

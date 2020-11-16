@@ -1,4 +1,4 @@
-use alloc::fmt::Result;
+use core::result::Result::{self,Ok,Err};
 
 #[lang = "alloc_layout"]
 #[derive(Copy,Clone,PartialEq,Eq,Debug)]
@@ -32,9 +32,9 @@ impl Layout{
         self._align
     }
     pub const fn new<T>() -> Layout{
-        Self{sz: core::mem::size_of::<T>(),align: core::mem::align_of::<T>()}
+        Self{sz: core::mem::size_of::<T>(),_align: core::mem::align_of::<T>()}
     }
     pub fn for_value<T: ?Sized>(val: &T) -> Layout{
-        Self{sz: core::mem::size_of_val(val),align: core::mem::align_of_val(val)}
+        Self{sz: core::mem::size_of_val(val),_align: core::mem::align_of_val(val)}
     }
 }

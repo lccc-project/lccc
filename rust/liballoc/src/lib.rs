@@ -2,6 +2,7 @@
 #![feature(lccc_intrinsic_crate)]
 #![feature(allocator_api,lccc_stability_attributes)]
 #![feature(lccc_unique_ptr)]
+#![feature(lccc_lang_items)]
 #![no_std]
 
 
