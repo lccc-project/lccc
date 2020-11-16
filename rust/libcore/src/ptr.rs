@@ -11,12 +11,11 @@ pub unsafe fn drop_in_place<T: ?Sized>(x: *mut T){
     ::__lccc::__maybe_adl__::__evaluate_destructor_at__(x)
 }
 
-#[inline(always)]
 
 #[lang = "const_ptr"]
 impl<T: ?Sized> *const T{
     pub const fn is_null(self)->bool{
-        (::__lccc::xir!("convert reinterpret *uint(8)":[self: *const T]:[yield: *const u8]))==crate::mem::zeroed()
+        (::__lccc::xir!("convert reinterpret *uint(8)":[self: *const T]:[yield: *const u8]))== unsafe { crate::mem::zeroed() }
     }
 }
 
@@ -103,6 +102,14 @@ impl<T: ?Sized> Unique<T>{
     }
     pub unsafe fn new_unchecked_nullable(ptr: *mut T) -> Option<Unique<T>>{
         NonNull::new(ptr).map(|ptr|Self{ptr,data:PhantomData})
+    }
+
+    pub fn as_ptr(&self) -> *const T{
+        ::__lccc::builtins::rust::kill_mutation(self.ptr.as_ptr() as *const T)
+    }
+
+    pub fn as_mut(&mut self) -> *mut T{
+        self.ptr.as_ptr()
     }
 }
 

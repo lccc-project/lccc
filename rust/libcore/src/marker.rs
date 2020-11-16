@@ -62,7 +62,6 @@ pub unsafe auto trait TrivialDestruction{}
 impl<T: ?Sized + Drop> !TrivialDestruction for T{}
 impl<T: ?Sized + TraitObject> !TrivialDestruction for T{}
 
-impl<T: ?Sized + !TrivialDestruction> !TrivialDestruction for PhantomData<T>{}
 
 unsafe impl<'a,T: ?Sized> TrivialDestruction for &'a T{}
 unsafe impl<'a,T: ?Sized> TrivialDestruction for &'a mut T{}
@@ -87,10 +86,10 @@ pub trait Same<T: ?Sized>{}
 
 impl<T: ?Sized> Same<T> for T{}
 
-unsafe impl<'a,T: ?Sized,U: ?Sized> NonOwning<T> for &'a U where &'a U: !Same<T>{}
-unsafe impl<'a,T: ?Sized,U: ?Sized> NonOwning<T> for &'a mut U where &'a mut U: !Same<T>{}
-unsafe impl<T: ?Sized,U: ?Sized> NonOwning<T> for *mut U  where *mut U: !Same<T>{}
-unsafe impl<T: ?Sized,U: ?Sized> NonOwning<T> for *const U where *const U: !Same<T>{}
+unsafe impl<'a,T: ?Sized> NonOwning<T> for &'a T{}
+unsafe impl<'a,T: ?Sized> NonOwning<T> for &'a mut T{}
+unsafe impl<T: ?Sized> NonOwning<T> for *mut T{}
+unsafe impl<T: ?Sized> NonOwning<T> for *const T{}
 
 
 
