@@ -93,7 +93,12 @@ scalar-type := ("uint" / "int" / "float") <scalar-validity> ["complex"] "(" <num
 
 scalar-validity := ["nonzero"] ["min" "(" <const> ")")] ["max" "(" <const> ")")]
 
-pointer-type := "*" <pointer-validity> <type>
+pointer-type := "*" [*<pointer-validity>] <type>
+
+pointer-validity := "nonnull" / "invalid" 
+    / ("dereferenceable" / "dereference_write" / "write_only") "(" <const> ")"
+    / ("null_or_dereferenceable" / "null_or_dereference_write" / "null_or_write_only") "(" <const> ")"
+    / "aligned" "(" <const> ")" / "null_or_invalid" / "readonly" / "unique"
 
 function-type := "fn" "(" [<type> [*("," <type>)]] ")" "->" <type>
 
