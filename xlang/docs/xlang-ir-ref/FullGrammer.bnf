@@ -104,7 +104,7 @@ function-type := "fn" "(" [<type> [*("," <type>)]] ")" "->" <type>
 
 bound := "%" <number> / "#" (<number> / "static")
 
-const := "expr" <expr> / <scalar-type> ["-"] <number> / <pointer-const> / <undefined> / <type> <string-literal>
+const := "expr" <expr> / <scalar-type> ["-"] <number>["."*<DIGIT>]["e" ["+"/"-"] <number>] / <pointer-const> / <undefined> / <type> <string-literal>
     / "true" / "false" / "[" [<const> [*(["," <const>])]] "]" / "[" <const> ";" <const> "]"
 
 pointer-const := ("global_address" <identifier>) / ("null" <pointer-type>)
@@ -121,7 +121,13 @@ expr := ("call" <function-type> / "member" ("struct"/"indirect") / "local" "_" <
     / "exit" "block" "$" <number> / "pop" <number> / "dup" <number>
     / "begin" "block" "$" <number> <block> "end" "block" "$" <number>
     / "tuple" <number>
-    / "aggregate" <type> <number>
+    / "aggregate" <type> <number>) [";"]
+
+binary-operator := "add" / "sub" / "div" / "rem" / "band" / "bor" / "bxor" / "subscript"
+    / "cmp_eq" / "cmp_lt" / "cmp_le" / "cmp_gt" / "cmp_ge" / "cmp_ne" / "cmp_spaceship"
+    / "cmp_excg"
+
+unary-operator := "umn" / "neg" / "bneg" / "pos"
 
 block := *(<expr> / "begin" "tag" "#" <number> /"begin" "tag" "#" <number>/<switch>
     /"branch" ("always"/"never"/"zero"/"nonzero"/"less"/"greater") "@"<number>
