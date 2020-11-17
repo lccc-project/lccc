@@ -508,9 +508,19 @@ namespace lccc::xlang{
 
     FloatTypeVisitor::FloatTypeVisitor(FloatTypeVisitor *vparent) : Visitor{vparent} {}
 
+    void FloatTypeVisitor::visitDecimalFloat() {
+        if(auto* id = this->get_parent<FloatTypeVisitor>();id)
+            id->visitDecimalFloat();
+    }
+
     void ScalarTypeVisitor::visitComplex() {
         if(auto* id = this->get_parent<ScalarTypeVisitor>();id)
             id->visitComplex();
+    }
+
+    void ScalarTypeVisitor::visitNonzero() {
+        if(auto* id = this->get_parent<ScalarTypeVisitor>();id)
+            id->visitNonzero();
     }
 
     FunctionTypeVisitor::FunctionTypeVisitor(FunctionTypeVisitor *parent) : Visitor{parent} {
@@ -647,6 +657,13 @@ namespace lccc::xlang{
     ArrayConstantVisitor *ConstantVisitor::visitConstantArray() {
         if(auto* parent = this->get_parent<ConstantVisitor>();parent)
             return parent->visitConstantArray();
+        else
+            return nullptr;
+    }
+
+    TypeVisitor *ConstantVisitor::visitFloatingValue(long double val) {
+        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+            return parent->visitFloatingValue(val);
         else
             return nullptr;
     }
@@ -1039,6 +1056,13 @@ namespace lccc::xlang{
             parent->visitBlockExit(blk,values);
     }
 
+    LambdaVisitor *ExprVisitor::visitLambdaExpression(uint16_t captures) {
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            return parent->visitLambdaExpression(captures);
+        else
+            return nullptr;
+    }
+
     StackItemsVisitor::StackItemsVisitor(StackItemsVisitor *visitor) : Visitor{visitor} {
 
     }
@@ -1188,6 +1212,24 @@ namespace lccc::xlang{
     void GlobalVariableVisitor::visitStorageClass(StorageClass cl) {
         if(auto* parent = this->get_parent<GlobalVariableVisitor>();parent)
             parent->visitStorageClass(cl);
+    }
+
+    LambdaVisitor::LambdaVisitor(LambdaVisitor *vparent) : Visitor{vparent} {
+
+    }
+
+    GenericParameterVisitor *LambdaVisitor::visitGenericParameter() {
+        if(auto* parent = this->get_parent<LambdaVisitor>();parent)
+            return parent->visitGenericParameter();
+        else
+            return nullptr;
+    }
+
+    FunctionVisitor *LambdaVisitor::visitLambdaBody() {
+        if(auto* parent = this->get_parent<LambdaVisitor>();parent)
+            return parent->visitLambdaBody();
+        else
+            return nullptr;
     }
 }
 

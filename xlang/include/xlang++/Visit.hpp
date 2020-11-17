@@ -501,6 +501,7 @@ namespace lccc::xlang{
         virtual void visitBitSize(uint16_t bits);
         virtual void visitVectorSize(uint16_t vector);
         virtual void visitComplex();
+        virtual void visitNonzero();
     };
 
 
@@ -513,7 +514,7 @@ namespace lccc::xlang{
 
     struct FloatTypeVisitor : Visitor{
         explicit FloatTypeVisitor(FloatTypeVisitor *vparent=nullptr);
-
+        virtual void visitDecimalFloat();
     };
 
     struct BoundVisitor : Visitor{
@@ -549,6 +550,7 @@ namespace lccc::xlang{
         virtual void visitBooleanLiteral(bool value);
         virtual PointerConstantVisitor* visitPointerConstant();
         virtual TypeVisitor* visitExcessValueInteger(lccc::span<const uint8_t> bytes);
+        virtual TypeVisitor* visitFloatingValue(long double val);
         virtual ArrayConstantVisitor* visitConstantArray();
     };
 
@@ -655,6 +657,8 @@ namespace lccc::xlang{
 
     struct BlockVisitor;
 
+    struct LambdaVisitor;
+
     struct ExprVisitor : Visitor{
         explicit ExprVisitor(ExprVisitor *vparent=nullptr);
         virtual ValueVisitor* visitConst();
@@ -685,7 +689,8 @@ namespace lccc::xlang{
         virtual void dup(uint8_t cnt);
         virtual BlockVisitor* visitBlock();
         virtual void visitTupleExpression(uint16_t values);
-        virtual TypeVisitor* visitAggregateConstruction(uint16_t values);
+        virtual TypeVisitor* visitAggregateConstruction(uint16_t values);   
+        virtual LambdaVisitor* visitLambdaExpression(uint16_t captures);
     };
 
     struct StackItemsVisitor : Visitor{
@@ -731,10 +736,17 @@ namespace lccc::xlang{
 
     struct FunctionVisitor : AnnotatedElementVisitor{
     public:
-        explicit FunctionVisitor(FunctionVisitor* fnVisitor);
+        explicit FunctionVisitor(FunctionVisitor* fnVisitor=nullptr);
         virtual FunctionTypeVisitor* visitType();
         virtual BlockVisitor* visitInitialBlock();
         virtual TypeVisitor* visitLocalVariable();
+    };
+
+    struct LambdaVisitor : Visitor{
+    public:
+        explicit LambdaVisitor(LambdaVisitor* vparent=nullptr);
+        virtual GenericParameterVisitor* visitGenericParameter();
+        virtual FunctionVisitor* visitLambdaBody();
     };
 
     enum class StorageClass : std::uint8_t{

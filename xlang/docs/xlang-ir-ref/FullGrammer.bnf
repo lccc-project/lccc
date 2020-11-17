@@ -89,7 +89,7 @@ struct-member := [<visibility>] <unqualified-identifier> ":" <type> ["@" <const>
 type := <identifier> / ("slice" "[" <type> "]") / ("[" <type> ";" <expr> "]") / <scalar-type> / <pointer-type> / <function-type> 
     / ("(" [<type> [*("," <type>)]] ")") / ("struct" / "union") [<meta>] "{" [*<struct-member>] "}"
 
-scalar-type := ("uint" / "int" / "float") <scalar-validity> ["complex"] "(" <number> ")"
+scalar-type := ("uint" / "int" / "float" / "decimal") <scalar-validity> ["complex"] ["vector_size" "(" <number> ")"] "(" <number> ")"
 
 scalar-validity := ["nonzero"] ["min" "(" <const> ")")] ["max" "(" <const> ")")]
 
@@ -106,6 +106,7 @@ bound := "%" <number> / "#" (<number> / "static")
 
 const := "expr" <expr> / <scalar-type> ["-"] <number>["."*<DIGIT>]["e" ["+"/"-"] <number>] / <pointer-const> / <undefined> / <type> <string-literal>
     / "true" / "false" / "[" [<const> [*(["," <const>])]] "]" / "[" <const> ";" <const> "]"
+    / "requires" "(" <function-args> ")" "{" <block> "}"
 
 pointer-const := ("global_address" <identifier>) / ("null" <pointer-type>)
 
@@ -122,12 +123,16 @@ expr := ("call" <function-type> / "member" ("struct"/"indirect") / "local" "_" <
     / "begin" "block" "$" <number> <block> "end" "block" "$" <number>
     / "tuple" <number>
     / "aggregate" <type> <number>) [";"]
+    / "lambda" <number> ["<" <generic-args> ">"] "(" <function-args> ")" "->" <type> "{" <block> "}"
+
 
 binary-operator := "add" / "sub" / "div" / "rem" / "band" / "bor" / "bxor" / "subscript"
     / "cmp_eq" / "cmp_lt" / "cmp_le" / "cmp_gt" / "cmp_ge" / "cmp_ne" / "cmp_spaceship"
     / "cmp_excg"
 
 unary-operator := "umn" / "neg" / "bneg" / "pos"
+
+access-class := ["nontemporal"] ["freeze"] ["volatile"] ["atomic" ["acquire","release","acqrel","seqcst"]]
 
 block := *(<expr> / "begin" "tag" "#" <number> /"begin" "tag" "#" <number>/<switch>
     /"branch" ("always"/"never"/"zero"/"nonzero"/"less"/"greater") "@"<number>
@@ -136,3 +141,8 @@ block := *(<expr> / "begin" "tag" "#" <number> /"begin" "tag" "#" <number>/<swit
 stack-items := "[" [<stack-item> [("," <stack-item>)]] "]"
 
 stack-item := ["lvalue"] <type>
+
+function-args := [*<function-arg> [*("," <function-arg>)]]
+
+function-arg := "_" <number> ":" <type>
+

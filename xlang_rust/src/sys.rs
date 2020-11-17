@@ -1,9 +1,7 @@
 use std::mem::MaybeUninit;
 
 #[repr(transparent)]
-pub struct VTable{
-    vfn_ptrs: Option<unsafe extern"C" fn(*const core::ffi::c_void)->()>
-}
+pub struct VTable([Option<unsafe extern"C" fn(*const core::ffi::c_void)->()>;1]);
 
 
 #[repr(C)]
@@ -25,6 +23,8 @@ pub struct VisitorVTable{
 }
 
 
+
+
 #[allow(non_snake_case)]
 extern"C"{
 
@@ -39,6 +39,9 @@ extern"C"{
     pub fn _ZN4lccc5xlang7Visitor10get_parentP4lccc5xlang7Visitorv(this: &mut Visitor) -> *mut Visitor;
 
     pub fn _ZN4lccc5xlang7Visitor8visitEndvv(this: &mut Visitor);
+
+    pub fn _ZN4lccc5xlang7Visitor15visitDiagnosticvN4lccc17basic_string_viewIcE(this: &mut Visitor,diag: crate::layout::StringView);
+
 
 
 }
