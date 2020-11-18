@@ -605,7 +605,6 @@ namespace lccc::xlang{
         CmpGt = 14,
         CmpGe = 15,
         CmpSpaceship = 16,
-        CmpExcg = 17
     };
 
     enum class ConversionStrength : uint8_t {
