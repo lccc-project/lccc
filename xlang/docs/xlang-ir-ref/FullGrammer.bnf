@@ -115,7 +115,7 @@ undefined := "undef" ("uninit" / "invalid") <type>
 expr := ("call" <function-type> / "member" ("struct"/"indirect") / "local" "_" <number> / "as_rvalue" [<access-class>]
     / "temporary" / "convert" ("weak" / "strong" / "reinterpret") / <unary-operator> 
     / <binary-operator> / "indirect" / "indirection" / "lock" <bound> <expr>
-    / "derive" <pointer-type> <expr> / "destroy" <expr> 
+    / "derive" <pointer-type> [<expr>] / "destroy" <expr>
     / "sequence" <access-class> / "fence" <access-class> 
     / "assign" <access-class> /  "compound_assign" <access-class> <binary-operator>
     / "unary_assign" <access-class> ("preinc" / "postinc" / "predec" / "postdec")
@@ -124,11 +124,12 @@ expr := ("call" <function-type> / "member" ("struct"/"indirect") / "local" "_" <
     / "tuple" <number>
     / "aggregate" <type> <number>) [";"]
     / "lambda" <number> ["<" <generic-args> ">"] "(" <function-args> ")" "->" <type> "{" <block> "}"
+    / "nop" / "cmp_excg" <access-class> / "swap" <access-class>) [";"]
 
 
 binary-operator := "add" / "sub" / "div" / "rem" / "band" / "bor" / "bxor" / "subscript"
     / "cmp_eq" / "cmp_lt" / "cmp_le" / "cmp_gt" / "cmp_ge" / "cmp_ne" / "cmp_spaceship"
-    / "cmp_excg"
+
 
 unary-operator := "umn" / "neg" / "bneg" / "pos"
 

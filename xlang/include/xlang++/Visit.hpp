@@ -648,12 +648,15 @@ namespace lccc::xlang{
 
 
 
-    enum class UnaryLValueOperation : uint8_t{
+    enum class LValueOperation : uint8_t{
         PostInc = 0,
         PreInc = 1,
         PostDec = 2,
-        PreDec = 3
+        PreDec = 3,
+        CmpExcg = 4,
+        Swap = 5,
     };
+
 
     struct BlockVisitor;
 
@@ -683,7 +686,7 @@ namespace lccc::xlang{
         virtual void visitFence(AccessClass cl);
         virtual void visitAssignment(AccessClass cl);
         virtual void visitCompoundAssignment(BinaryOperation op,AccessClass cl);
-        virtual void visitUnaryLValue(UnaryLValueOperation op,AccessClass cl);
+        virtual void visitLValue(LValueOperation op,AccessClass cl);
         virtual void visitBlockExit(uint32_t blk, uint8_t values);
         virtual void pop(uint8_t cnt);
         virtual void dup(uint8_t cnt);

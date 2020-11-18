@@ -1012,9 +1012,9 @@ namespace lccc::xlang{
             parent->visitCompoundAssignment(op,cl);
     }
 
-    void ExprVisitor::visitUnaryLValue(UnaryLValueOperation op, AccessClass cl) {
+    void ExprVisitor::visitLValue(LValueOperation op, AccessClass cl) {
         if(auto* parent = this->get_parent<ExprVisitor>();parent)
-            parent->visitUnaryLValue(op,cl);
+            parent->visitLValue(op,cl);
     }
 
     void ExprVisitor::visitDestroy() {
