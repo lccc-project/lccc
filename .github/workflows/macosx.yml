@@ -33,7 +33,7 @@ jobs:
             ${{matrix.config.name}}-ccache-macos-
 
       - name: Clang Build
-        uses: LightningCreations/action-cmake-build@v1.1
+        uses: LightningCreations/action-cmake-build@v1.2
         with:
           # C Compiler for toolchain
           cc: clang # optional
