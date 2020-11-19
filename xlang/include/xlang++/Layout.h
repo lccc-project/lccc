@@ -77,7 +77,7 @@ namespace lccc{
         }
 
         template<typename CharTraits> operator std::basic_string_view<CharT,CharTraits>()const{
-            return std::basic_string_view(_begin,_end);
+            return std::basic_string_view<CharT,CharTraits>(_begin,_end-_begin);
         }
 
         [[nodiscard]] const CharT& operator[](difference_type dif)const{

@@ -33,7 +33,6 @@ public:
     void visitDiagnostic(lccc::string_view)final;
     void visitEnd()override;
 
-    IRScopeMemberWriter*
 };
 
 

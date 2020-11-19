@@ -7,4 +7,6 @@ pub mod v1{
     pub use crate::cmp::{Eq,PartialEq,Ord,PartialOrd,Ordering};
 
     pub use crate::result::*;
+
+    pub use crate::ops::Drop;
 }

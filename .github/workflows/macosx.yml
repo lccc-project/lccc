@@ -1,0 +1,46 @@
+name: C/C++ CI OSX
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build_macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2.3.0
+        with:
+          submodules: true
+      - name: Install packages
+        run: brew install ninja ccache
+
+      - name: Prepare ccache timestamp
+        id: ccache_cache_timestamp
+        shell: cmake -P {0}
+        run: |
+          string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
+          message("::set-output name=timestamp::${current_date}")
+
+      - name: ccache cache files
+        uses: actions/cache@v1.1.0
+        with:
+          path: ${{github.workspace}}/.ccache
+          key: ${{matrix.config.name}}-ccache-macos-${{steps.ccache_cache_timestamp.outputs.timestamp}}
+          restore-keys: |
+            ${{matrix.config.name}}-ccache-macos-
+
+      - name: Clang Build
+        uses: ashutoshvarma/action-cmake-build@v1
+        with:
+          # C Compiler for toolchain
+          cc: clang # optional
+          # C++ Compiler for toolchain
+          cxx: clang++ # optional
+          update-submodules: true
+          parallel: 8
+          build-dir: ${{github.workspace}}/build-macos
+          build-type: Release
+          configure-options: -GNinja -DLLVM_CCACHE_BUILD=ON -DLLVM_CCACHE_DIR=${{github.workspace}}/.ccache -DLLVM_APPEND_VC_REV=OFF -DLLVM_PARALLEL_LINK_JOBS=2

@@ -1,33 +1,34 @@
 cmake_minimum_required(VERSION 3.17)
 project(lccc CXX)
-
-set(CMAKE_CXX_STANDARD_REQUIRED 17)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-if(LCCC_STAGE2)
-    set(_LCCC_STAGE_SUFFIX -stage2)
-endif()
+set(LCCC_ENABLE_LANGUAGES c++;rust CACHE STRING "List of language frontends to build")
 
-if(NOT DEFINED LCCC_ENABLE_LANGUAGES)
-    set(LCCC_ENABLE_LANGUAGES c++ java rust)
-endif()
+set(LCCC_ENABLE_BACKENDS llvm CACHE STRING "List of backends to build")
 
-#if(NOT DEFINED LCCC_ENABLE_BACKENDS)
-#    set(LCCC_ENABLE_BACKENDS llvm)
-#endif()
-list(REMOVE_DUPLICATES LCCC_ENABLE_BACKENDS)
-list(REMOVE_DUPLICATES LCCC_ENABLE_LANGUAGES)
-
-include(CMakeCargo)
 include(LCCCSelectors)
+include(GNUInstallDirs)
 
-# MLIR is special, so do special stuff
-list(FIND LCCC_ENABLE_BACKENDS "mlir" mlir_found)
-if(NOT (mlir_found EQUAL -1))
-    set(_LCCC_LLVM_USE_MLIR ON)
+set(LCCC_XLANG_PLUGIN_SEARCH_PATH lccc/xlang/plugins CACHE PATH "The Path to search for plugins")
+set(LCCC_XLANG_PLUGIN_INSTALL_DIR lccc/xlang/plugins CACHE PATH "The path to install xlang plugins into")
+
+if(IS_ABSOLUTE ${LCCC_XLANG_PLUGIN_SEARCH_PATH})
+    set(LCCC_FULL_XLANG_PLUGIN_SEARCH_PATH ${LCCC_XLANG_PLUGIN_SEARCH_PATH})
+else()
+    set(LCCC_FULL_XLANG_PLUGIN_SEARCH_PATH ${CMAKE_INSTALL_FULL_LIBDIR}/${LCCC_XLANG_PLUGIN_SEARCH_PATH})
 endif()
 
+if(IS_ABSOLUTE ${LCCC_XLANG_PLUGIN_INSTALL_DIR})
+    set(LCCC_FULL_XLANG_PLUGIN_INSTALL_DIR ${LCCC_XLANG_PLUGIN_INSTALL_DIR})
+else()
+    set(LCCC_FULL_XLANG_PLUGIN_INSTALL_DIR ${CMAKE_INSTALL_FULL_LIBDIR}/${LCCC_XLANG_PLUGIN_INSTALL_DIR})
+endif()
+
+message(STATUS "Searching for xlang plugins in directory: ${LCCC_FULL_XLANG_PLUGIN_SEARCH_PATH}")
+message(STATUS "Installing xlang plugins into: ${LCCC_FULL_XLANG_PLUGIN_INSTALL_DIR}")
 
 add_subdirectory(xlang)
 

@@ -1,23 +1,12 @@
 
 
+add_subdirectory(llvm-project/llvm EXCLUDE_FROM_ALL)
 
-if(DEFINED LCCC_ENABLE_LLD)
-    set(LLVM_ENABLE_LLD ${LCCC_ENABLE_LLD})
-endif()
-if(DEFINED LCCC_ENABLE_LIBCXX)
-    set(LLVM_ENABLE_LIBCXX ${LCCC_ENABLE_LIBCXX})
-endif()
+add_library(codegen-llvm MODULE src/Main.cpp)
 
-if(_LCCC_LLVM_USE_MLIR)
-    set(LLVM_ENABLE_PROJECTS "mlir;lld")
-else()
-    set(LLVM_ENABLE_PROJECTS "lld")
-endif()
+target_link_libraries(codegen-llvm xlang LLVMCore)
 
-add_subdirectory(llvm-project/llvm)
+set_target_properties(codegen-llvm PROPERTIES
+        PREFIX "xlang")
 
-if(_LCCC_LLVM_USE_MLIR)
-    add_library(codegen-mlir-library ALIAS MLIRIR)
-endif()
-
-add_library(codegen-llvm-library ALIAS LLVMCore)
+install(TARGETS codegen-llvm DESTINATION ${LCCC_FULL_XLANG_PLUGIN_INSTALL_DIR})

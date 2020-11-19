@@ -25,7 +25,7 @@
 #endif
 
 #ifndef limit
-#define limit(ptr,size) ((size),(ptr))
+#define limit(ptr,size) (static_cast<void>(size),(ptr))
 #endif
 
 
