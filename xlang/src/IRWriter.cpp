@@ -37,10 +37,8 @@ public:
 
 
 [[gnu::used]]
-extern"C" lccc::unique_ptr<lccc::xlang::FileVisitor> xlang_irwriter_main(lccc::span<lccc::string_view> args,lccc::xlang::FileVisitor*){
-    for(lccc::string_view arg:args){
+extern"C" lccc::unique_ptr<lccc::xlang::FileVisitor> xlang_irwriter_main(lccc::xlang::FileVisitor* parent,lccc::span<lccc::string_view> args){
 
-    }
     return {};
 }
 
