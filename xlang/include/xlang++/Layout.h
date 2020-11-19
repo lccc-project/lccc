@@ -431,6 +431,11 @@ namespace lccc{
         const T* operator->()const{
             return this->_m_ptr;
         }
+
+        void reset(T *n=nullptr) {
+            if((n=std::exchange(this->_m_ptr,n)))
+                this->_m_delete(n);
+        }
     };
 }
 
