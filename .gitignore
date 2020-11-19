@@ -1,5 +1,5 @@
-build/
-/cmake-build-debug/
+build*/
+/cmake-build-*/
 /rust/libcore/Cargo.lock
 /rust/libcore/target/
 /rust/liballoc/Cargo.lock

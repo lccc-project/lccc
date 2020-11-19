@@ -36,10 +36,13 @@ public:
 };
 
 
-[[gnu::used]]
-extern"C" lccc::unique_ptr<lccc::xlang::FileVisitor> xlang_irwriter_main(lccc::xlang::FileVisitor* parent,lccc::span<lccc::string_view> args){
+extern "C" {
+    [[gnu::used]]
+    lccc::unique_ptr<lccc::xlang::FileVisitor>
+        xlang_irwriter_main(lccc::xlang::FileVisitor *parent, lccc::span<lccc::string_view> args) {
 
-    return {};
+        return {};
+    }
 }
 
 void IRFileWriter::visitOutputFile(FILE *output) {

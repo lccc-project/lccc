@@ -5,8 +5,12 @@
 #include <xlang++/Layout.h>
 #include <xlang++/Visit.hpp>
 
-[[gnu::used]]
-extern"C" lccc::unique_ptr<lccc::xlang::FileVisitor> xlang_plugin_main(lccc::xlang::FileVisitor* parent,lccc::span<lccc::string_view> args){
+extern "C" {
+    [[gnu::used]]
+    lccc::unique_ptr<lccc::xlang::FileVisitor>
+    xlang_plugin_main(lccc::xlang::FileVisitor *parent, lccc::span<lccc::string_view> args) {
 
-    return {};
+        return {};
+    }
+
 }
