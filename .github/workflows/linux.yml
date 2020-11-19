@@ -33,7 +33,7 @@ jobs:
            ${{matrix.config.name}}-ccache-clang-
         
     - name: Clang Build
-      uses: ashutoshvarma/action-cmake-build@v1
+      uses: LightningCreations/action-cmake-build@v1.1
       with:
         # C Compiler for toolchain
         cc: clang # optional
@@ -70,7 +70,7 @@ jobs:
            ${{matrix.config.name}}-ccache-gcc-
         
     - name: GCC Build
-      uses: ashutoshvarma/action-cmake-build@v1
+      uses: LightningCreations/action-cmake-build@v1.1
       with:
         # C Compiler for toolchain
         cc: gcc # optional
