@@ -1,0 +1,30 @@
+# XLang Introduction [intro]
+
+1. This document describes formally, an intermediate representation called xir, for frontend compilers of other programming languages. It specifies a text based and binary format for the intermediate representation, as well as an API which plugins may interact with to visit entities in defined in xir. 
+2. Plugins are independent computer programs operated by the xlang program, or a similar program written with the same purpose, which operates on the constructs defined within the specification. To ensure that compiler frontends may properly implement any programming language, this document defines specific constructs which may be transformed by plugins to any extent, as permitted by the following `[intro.abstract]` and `[intro.compliance]` sections. 
+3. An *implementation* refers collectively to the xlang program, or similar program, and all plugins being operated by that program, and any mechanism to evaluate the result as a computer program. Implementation may also refer individual plugins. 
+4. Plugins which operate directly on constructs of this specification, transforming them for further operation, are called transformers.
+5. _Note 1 - Transformers may be further categorized into optimizers, which transform the constructs based on known equivalences for the purposes of optimization, and reduces, which transform higher level constructs into lower-level ones - End Note_
+6. Plugins which accept the constructs of this specification, and transform them into a different programming language, are called code generators. 
+
+## Abstract Machine [intro.abstract]
+
+1. The Semantic Descriptions in this document define a paremeterized, non-deterministic abstract machine. This document defines specifically the abstract machine enclosing all constructs. Plugins which operate on the constructs here need only operate on those which it supports, and may not result in a program that exactly implements or emulates this abstract machine. Rather, plugins need only preserve the *observable behaviour* of the constructs it visits as described below. 
+2. Certain constructs of this specification are documented as *implementation-defined*. These represent parameters of the abstract machine. The implementation shall choose the value of each of these parameters, and document that choice. Only the actual behaviour of the construct need be documented. Plugins which do not alter this behaviour need not document such. *Implementation-defined* behaviour includes whether a particular *conditionally-supported* construct is supported.
+3. _Note 1 - In particular, transformer plugins need not document implementation-defined behaviour pertaining to constructs which are not affected by such transformations. - End Note_
+4. _Note 2 - Code generators, which do not maintain any constructs of the specification in their present form, likely need to document all implementation-defined behaviour of any constructs which it supports - End Note_
+5. Certain other constructs of this specification are documented as *unspecified*. These represent non-deterministic aspects of the specification. Implementations may choose how these constructs operate. This document may limit the choices available.
+6. _Note 3 - It is not necessary that implementations documentation the choice for unspecified behaviour - End Note_
+7. Certain other constructs of this specification are documented as *undefined*. There are no semantic requirements for such constructs imposed on implementations.
+8. _Note 4 - If a particular evaluation of a program results in undefined behaviour, the results of that evaluate are not constrained, even with respect to any operations before the first undefined operation - End Note_
+9. During execution of a well-formed program, an implementation shall ensure that the observable behaviour of the result corresponds to at least one execution of the current paremeterized abstract machine, provided that execution does not result in undefined behaviour. 
+10. _Note 5 - An implementation need not preserve the observable behaviour of an execution that results in undefined behaviour - End Note_
+11. The obvervable behaviour of a program shall consistent of the following
+    - The number, order, and value stored (if any) of all accesses with the class volatile shall be preserved exactly by the implementation.
+    - _Note 6 - An implementation need not produce a program that distinguishes between volatile an non-volatile accesses, provided the accesses qualified as volatile by this specification remain precisely as described by this specification - End Note_
+    - Any writes performed to a file shall be reflected on the file system by the time the program terminates.
+    - Any writes to an interactive device shall be reflected in that device by the time the program terminates, or a read occurs from that interactive device. What constitutes an interactive device is implementation-defined.
+    - _Note 7 - While this specification defines no constructs that performs I/O on files or interactive devices, other specifications may define such constructs. The behaviour of such constructs shall be maintained as defined - End Note_
+    - Beyond the above, library functions defined by other specifications may contain additional observable behaviour. The implementation shall maintain this observable behaviour as that specification requires it, to the extent that the operation of surrounding constructs need only consider the requirements of the xlang abstract machine. 
+    - _Note 8 - For example, a fictional specification may define a function foo::bar, which accepts a type for which `int(32)` is appropriate, and performs some operation designated as observable behaviour. An implementation shall maintain the call to `foo::bar`, as well as the resulting semantics of that call, but the computation for it's parameter need only respect the constructs of this specification, even if it would be an incorrect transformation according to the specification that defines `foo::bar` - End Note_
+
