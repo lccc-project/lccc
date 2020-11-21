@@ -668,6 +668,20 @@ namespace lccc::xlang{
             return nullptr;
     }
 
+    TypeVisitor *ConstantVisitor::visitSizeOf(){
+        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+            return parent->visitSizeOf();
+        else
+            return nullptr;
+    }
+
+    TypeVisitor *ConstantVisitor::visitAlignOf(){
+        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+            return parent->visitAlignOf();
+        else
+            return nullptr;
+    }
+
     PointerConstantVisitor::PointerConstantVisitor(PointerConstantVisitor *vparent) : Visitor{vparent} {
 
     }

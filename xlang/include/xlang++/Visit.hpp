@@ -552,6 +552,8 @@ namespace lccc::xlang{
         virtual TypeVisitor* visitExcessValueInteger(lccc::span<const uint8_t> bytes);
         virtual TypeVisitor* visitFloatingValue(long double val);
         virtual ArrayConstantVisitor* visitConstantArray();
+        virtual TypeVisitor* visitSizeOf();
+        virtual TypeVisitor* visitAlignOf();
     };
 
     struct ArrayConstantVisitor : Visitor{
