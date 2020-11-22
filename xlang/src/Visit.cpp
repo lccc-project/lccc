@@ -960,11 +960,6 @@ namespace lccc::xlang{
             parent->visitAsRvalue(cl);
     }
 
-    void ExprVisitor::visitAsTemporary() {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
-            parent->visitAsTemporary();
-    }
-
     TypeVisitor *ExprVisitor::visitConversion(ConversionStrength st) {
         if(auto* parent = this->get_parent<ExprVisitor>();parent)
             return parent->visitConversion(st);
@@ -1166,6 +1161,16 @@ namespace lccc::xlang{
             return parent->visitSwitch();
         else
             return nullptr;
+    }
+
+    void BlockVisitor::visitBeginStorage(std::uint32_t local) {
+        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+            parent->visitBeginStorage(local);
+    }
+
+    void BlockVisitor::visitEndStorage(std::uint32_t local) {
+        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+            parent->visitEndStorage(local);
     }
 
     FunctionVisitor::FunctionVisitor(FunctionVisitor *fnVisitor) : AnnotatedElementVisitor{fnVisitor} {

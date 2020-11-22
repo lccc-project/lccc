@@ -671,7 +671,6 @@ namespace lccc::xlang{
         virtual void visitLocal(uint32_t var);
         
         virtual void visitAsRvalue(AccessClass cl);
-        virtual void visitAsTemporary();
         virtual TypeVisitor* visitConversion(ConversionStrength);
 
         virtual void visitUnaryOperator(UnaryOperation op);
@@ -736,6 +735,8 @@ namespace lccc::xlang{
         virtual void visitEndTag(std::uint32_t);
         virtual void visitBranch(std::uint32_t item,Condition condition);
         virtual SwitchVisitor* visitSwitch();
+        virtual void visitBeginStorage(std::uint32_t local);
+        virtual void visitEndStorage(std::uint32_t local);
     };
 
     struct FunctionVisitor : AnnotatedElementVisitor{

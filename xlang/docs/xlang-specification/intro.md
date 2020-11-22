@@ -61,10 +61,10 @@
             - A floating point conversion
             - A boolean conversion
         - A reinterpret conversion
-        - A unary operator expression, other than bit_neg, applied to an integer type, or floating-point type
-        - A bit_neg expression, applied to an integer type
-        - A binary operator expression, other than a bitwise operation, a subscript, or a three-way comparison, applied to two expressions of the same integer or floating-point type. 
-        - A binary bitwise operation, applied to two expressions of the same integer type
+        - A unary operator expression, other than bit_neg, applied to an integer type, floating-point type, or a vector type. 
+        - A bit_neg expression, applied to an integer type, or a vector of an integer type
+        - A binary operator expression, other than a bitwise operation, a subscript, or a three-way comparison, applied to two expressions of the same integer, floating-point, or vector type. 
+        - A binary bitwise operation, applied to two expressions of the same integer type or a vector of an integer type
         - A binary add, sub, or subscript, operation applied to an expression of a pointer type, except a pointer-to-function type, or a pointer to an incomplete or unsized type, and an expression of an integer type.
         - A binary sub operation applied to two expressions of the same pointer type, except a pointer-to-function type, or a pointer to an incomplete or unsized type.
         - A destroy or derive expression, with up to 16 total destroy, derive, or (if supported) lock, expressions nested. 
