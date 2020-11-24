@@ -3,11 +3,23 @@ project(lccc CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
+
+
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 set(LCCC_ENABLE_LANGUAGES c++;rust CACHE STRING "List of language frontends to build")
 
 set(LCCC_ENABLE_BACKENDS llvm CACHE STRING "List of backends to build")
+
+
+if(NOT DEFINED LCCC_HAS_WNO_RETURN_TYPE_C_LINKAGE)
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-Wno-return-type-c-linkage" LCCC_HAS_WNO_RETURN_TYPE_C_LINKAGE)
+endif()
+
+if(LCCC_HAS_WNO_RETURN_TYPE_C_LINKAGE)
+    add_compile_options("-Wno-return-type-c-linkage")
+endif()
 
 include(LCCCSelectors)
 include(GNUInstallDirs)

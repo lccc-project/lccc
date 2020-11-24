@@ -5,6 +5,9 @@
 #include <xlang++/Layout.h>
 #include <xlang++/Visit.hpp>
 
+#include "XIRFile.hpp"
+
+
 extern "C" {
     [[gnu::used]]
     lccc::unique_ptr<lccc::xlang::FileVisitor>
@@ -14,3 +17,4 @@ extern "C" {
     }
 
 }
+
