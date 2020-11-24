@@ -15,7 +15,7 @@ jobs:
         with:
           submodules: true
       - name: Install packages
-        run: brew install ninja ccache
+        run: brew install ninja
 
       - name: Prepare ccache timestamp
         id: ccache_cache_timestamp
@@ -27,10 +27,10 @@ jobs:
       - name: ccache cache files
         uses: actions/cache@v1.1.0
         with:
-          path: ${{github.workspace}}/.ccache
-          key: ${{matrix.config.name}}-ccache-macos-${{steps.ccache_cache_timestamp.outputs.timestamp}}
+          path: ${{github.workspace}}/build-macos
+          key: ${{matrix.config.name}}-cache-macos-${{steps.ccache_cache_timestamp.outputs.timestamp}}
           restore-keys: |
-            ${{matrix.config.name}}-ccache-macos-
+            ${{matrix.config.name}}-cache-macos-
 
       - name: Clang Build
         uses: LightningCreations/action-cmake-build@v1.2
@@ -43,4 +43,4 @@ jobs:
           parallel: 8
           build-dir: ${{github.workspace}}/build-macos
           build-type: Release
-          configure-options: -GNinja -DLLVM_CCACHE_BUILD=ON -DLLVM_CCACHE_DIR=${{github.workspace}}/.ccache -DLLVM_APPEND_VC_REV=OFF -DLLVM_PARALLEL_LINK_JOBS=2
+          configure-options: -GNinja -DLLVM_APPEND_VC_REV=OFF -DLLVM_PARALLEL_LINK_JOBS=2
