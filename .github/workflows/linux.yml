@@ -15,7 +15,7 @@ jobs:
       with:
         submodules: true 
     - name: Install packages
-      run: sudo apt-get install ninja-build
+      run: sudo apt-get install ninja-build ccache
       
     - name: Prepare ccache timestamp
       id: ccache_cache_timestamp
@@ -27,10 +27,10 @@ jobs:
     - name: ccache cache files
       uses: actions/cache@v1.1.0
       with:
-          path: ${{github.workspace}}/build-clang 
-          key: ${{matrix.config.name}}-cache-clang-${{steps.ccache_cache_timestamp.outputs.timestamp}}
+          path: ${{github.workspace}}/.ccache
+          key: ${{matrix.config.name}}-ccache-clang-${{steps.ccache_cache_timestamp.outputs.timestamp}}
           restore-keys: |
-           ${{matrix.config.name}}-cache-clang-
+           ${{matrix.config.name}}-ccache-clang-
         
     - name: Clang Build
       uses: LightningCreations/action-cmake-build@v1.2
@@ -43,7 +43,7 @@ jobs:
         parallel: 8
         build-dir: ${{github.workspace}}/build-clang 
         build-type: Release
-        configure-options: -GNinja -DLLVM_APPEND_VC_REV=OFF -DLLVM_PARALLEL_LINK_JOBS=2
+        configure-options: -GNinja -DLLVM_CCACHE_BUILD=ON -DLLVM_CCACHE_DIR=${{github.workspace}}/.ccache -DLLVM_APPEND_VC_REV=OFF -DLLVM_PARALLEL_LINK_JOBS=2
   build_gcc:
     runs-on: ubuntu-20.04
     steps:
@@ -52,7 +52,7 @@ jobs:
       with:
         submodules: true 
     - name: Install packages
-      run: sudo apt-get install ninja-build
+      run: sudo apt-get install ninja-build ccache
       
     - name: Prepare ccache timestamp
       id: ccache_cache_timestamp
@@ -64,10 +64,10 @@ jobs:
     - name: ccache cache files
       uses: actions/cache@v1.1.0
       with:
-          path: ${{github.workspace}}/build-gcc 
-          key: ${{matrix.config.name}}-cache-gcc-${{steps.ccache_cache_timestamp.outputs.timestamp}}
+          path: ${{github.workspace}}/.ccache
+          key: ${{matrix.config.name}}-ccache-gcc-${{steps.ccache_cache_timestamp.outputs.timestamp}}
           restore-keys: |
-           ${{matrix.config.name}}-cache-gcc-
+           ${{matrix.config.name}}-ccache-gcc-
         
     - name: GCC Build
       uses: LightningCreations/action-cmake-build@v1.2
@@ -80,4 +80,4 @@ jobs:
         parallel: 8
         build-dir: ${{github.workspace}}/build-gcc 
         build-type: Release
-        configure-options: -GNinja -DLLVM_APPEND_VC_REV=OFF -DLLVM_PARALLEL_LINK_JOBS=2
+        configure-options: -GNinja -DLLVM_CCACHE_BUILD=ON -DLLVM_CCACHE_DIR=${{github.workspace}}/.ccache -DLLVM_APPEND_VC_REV=OFF -DLLVM_PARALLEL_LINK_JOBS=2
