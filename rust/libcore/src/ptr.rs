@@ -26,10 +26,53 @@ impl<T: ?Sized> *mut T{
     }
 }
 
+impl<T> *mut [T]{
+    #[unstable(feature="slice_ptr_len",issue="71146")]
+    pub fn len(self) -> usize{
+        let raw: crate::slice::RawSlice<T> = crate::mem::transmute(self);
+        raw.len
+    }
+
+    #[unstable(feature="slice_ptr_get",issue="74265")]
+    pub fn as_mut_ptr(self) -> *mut T{
+        let raw: crate::slice::RawSlice<T> = crate::mem::transmute(self);
+        raw.ptr as *mut T
+    }
+}
+
+impl<T> *const [T]{
+    #[unstable(feature="slice_ptr_len",issue="71146")]
+    pub fn len(self) -> usize{
+        let raw: crate::slice::RawSlice<T> = crate::mem::transmute(self);
+        raw.len
+    }
+
+    #[unstable(feature="slice_ptr_get",issue="74265")]
+    pub fn as_ptr(self) -> *const T{
+        let raw: crate::slice::RawSlice<T> = crate::mem::transmute(self);
+        raw.ptr as *const T
+    }
+}
+
+pub fn slice_from_raw_parts(ptr: *const T,len: usize) -> *const [T]{
+    crate::mem::transmute(crate::slice::RawSlice<T>{
+        ptr: ptr as *mut T,
+        len
+    })
+}
+
+pub fn slice_from_raw_parts_mut(ptr: *mut T,len: usize) -> *mut [T]{
+    crate::mem::transmute(crate::slice::RawSlice<T>{
+        ptr,
+        len
+    })
+}
+
 
 #[repr(transparent)]
+#[__lccc::transparent_as_unreified_field] // Fields with the type just become the transparent field type.
 pub struct NonNull<T: ?Sized>{
-    #[lccc::xlang_pointer_attributes(nonnull)]
+    #[__lccc::xlang_pointer_attributes(nonnull)]
     ptr: *const T
 }
 
@@ -82,10 +125,12 @@ impl<T: ?Sized> From<&T> for NonNull<T>{
 }
 
 
+
 #[repr(transparent)]
 #[unstable(feature="lccc_unique_ptr")]
+#[__lccc::transparent_as_unreified_field]
 pub struct Unique<T: ?Sized>{
-    #[lccc::xlang_pointer_attributes(unique,aligned)]
+    #[__lccc::xlang_pointer_attributes(unique,aligned)]
     ptr: NonNull<T>,
     data: PhantomData<T>
 }
@@ -112,15 +157,24 @@ impl<T: ?Sized> Unique<T>{
         self.ptr.as_ptr()
     }
 
+    pub fn as_non_null_mut(&mut self) -> NonNull<T>{
+        self.ptr
+    }
+
     pub fn into_inner(self) -> NonNull<Self>{
         self.ptr
+    }
+
+    pub fn cast<U>(self) -> Unique<U>{
+        Unique{
+            ptr: self.ptr.cast<U>(),
+            data: PhantomData
+        }
     }
 }
 
 pub unsafe fn swap<T>(x: *mut T, y: *mut T){
-    let tmp = read(x);
-    write(x,read(y));
-    write(y,tmp);
+    ::__lccc::xir!("swap":[ref *x, ref *y]);
 }
 
 pub use crate::intrinsics::read;
@@ -128,3 +182,18 @@ pub use crate::intrinsics::write;
 pub use crate::intrinsics::copy_nonoverlapping;
 pub use crate::intrinsics::copy;
 pub use crate::intrinsics::swap_nonoverlapping;
+
+#[allow_internal_unstable(lccc_intrinsic_crate)]
+macro_rules! raw_const{
+    ($e:expr) => {
+        unsafe{::__lccc::xir!("address_of":[ref e]:[yield: *const ::__lccc::decltype!({e})])}
+    }
+}
+
+#[allow_internal_unstable(lccc_intrinsic_crate)]
+macro_rules! raw_mut{
+    ($e:expr) => {
+        unsafe{::__lccc::xir!("address_of":[ref e]:[yield: *mut ::__lccc::decltype!({e})])}
+    }
+}
+

@@ -8,15 +8,14 @@ pub struct Layout{
 }
 
 #[derive(Clone,Debug,Eq, PartialEq)]
-pub struct LayoutError{
-    sz: usize,
-    _align: usize
+pub struct LayoutErr{
+    priv: ()
 }
 
 impl Layout{
-    pub const fn from_size_align(sz: usize,_align: usize) -> Result<Self,LayoutError>{
-        if _align==0 || (_align & (_align-1))!=0{Err(LayoutError{sz,_align})}
-        else if (sz%align)!=0 {Err(LayoutError{sz,_align})}
+    pub const fn from_size_align(sz: usize,_align: usize) -> Result<Self,LayoutErr>{
+        if _align==0 || (_align & (_align-1))!=0{Err(LayoutErr{priv: ()})}
+        else if (sz%align)!=0 {Err(LayoutErr{priv: ()})}
         else { Ok(Self{sz,_align})}
     }
 
@@ -36,5 +35,13 @@ impl Layout{
     }
     pub fn for_value<T: ?Sized>(val: &T) -> Layout{
         Self{sz: core::mem::size_of_val(val),_align: core::mem::align_of_val(val)}
+    }
+
+    pub fn array<T>(len: usize) -> Result<Layout,LayoutError>{
+        if let Some(len) = len.checked_multiply(core::mem::size_of<T>()){
+            Ok{Self{sz: len,_align: core::mem::align_of::<T>()}}
+        }else{
+            Err(LayoutErr{priv: ()})
+        }
     }
 }

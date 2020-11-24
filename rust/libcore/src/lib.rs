@@ -41,6 +41,7 @@ pub mod iter;
 pub mod ffi;
 pub mod hint;
 pub mod sync;
+pub mod pin;
 
 #[__lccc::builtin_macro]
 #[allow_internal_unstable(core_intrinsics)]

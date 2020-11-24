@@ -3,6 +3,7 @@
 #![feature(allocator_api,lccc_stability_attributes)]
 #![feature(lccc_unique_ptr)]
 #![feature(lccc_lang_items)]
+#![feature(slice_ptr_get,slice_ptr_len)]
 #![no_std]
 
 

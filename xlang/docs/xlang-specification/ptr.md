@@ -94,7 +94,7 @@
 
 4. A byte *n* is not reachable from a pointer p if it is part of the *object-representation* of an object pointed to by a `unique` pointer which is neither a derivative nor an orginator of p.
 
-5. A byte *n* is not reachable for the purposes of writing from a pointer p if it is part of the *object-representation* of an object pointed to by a `readonly` pointer, which is not a derivative of p, or if it is part of the *object-representation* of an object with static storage duration that is declared `#const` and is not part of the *object-representation* of a mutable subobject thereof (pending resolution of <https://github.com/rust-lang/unsafe-code-guidelines/issues/236>).
+5. A byte *n* is not reachable for the purposes of writing from a pointer p if it is part of the *object-representation* of an object pointed to by a `readonly` pointer, or a pointer returned from `::__lccc::builtins::rust::kill_mutation`, which is not a derivative of p, or if it is part of the *object-representation* of an object with static storage duration that is declared `#const` and is not part of the *object-representation* of a mutable subobject thereof (pending resolution of <https://github.com/rust-lang/unsafe-code-guidelines/issues/236>).
 
 6. If a valid pointer is produced via a derive expression that has a `dereferenceable(n)`, `dereference_write(n)`, or `write_only(n)` attribute, where n bytes from the address represented by the pointer value are not all reachable from that pointer, the behaviour is undefined. 
 7. If a valid pointer is produced via a derive expression that has a `dereference_write(n)` or `write_only(n)` attribute, where `n` bytes from the address represented by the pointer are not all reachable from that pointer for the purposes of writing, the behaviour is undefined. 
@@ -129,7 +129,7 @@
 5. A null pointer shall convert to the value 0 of all integer types.
 
 6. It shall be possible to convert, via a `convert reinterpret` expression, any value of an integer type to any pointer type of the same size. 
-7. If the integer value was obtained by converting a pointer value, possibly applying any sequence of `add` or `sub` operations, such that the equivalent operations applied to the original pointer would have defined behaviour, the result shall be that original pointer with the equivalent operations applied. 
+7. If the integer value was obtained by converting a pointer value, possibly applying any sequence of `add` or `sub` operations, such that the equivalent operations applied to the original pointer would have defined behaviour, the result shall be that original pointer with the equivalent operations applied, if the pointer types are the same, otherwise the result shall be the same as converting to the original pointer type, then converting to the target type by a `convert reinterpret` expression.  
 8. Otherwise, the result is unspecified. If the chosen value is not valid for the type, or does not satisfy a non-trivial validity requirement of the pointer type, the result is `invalid`.
 
 9. It shall be possible to convert a pointer value to any other integer type by a `convert reinterpret` expression, as though by converting to an unspecified integer type of the same size as the pointer type, then to the requested type, by two separate, consecutive, `convert reinterpret` expressions. 
