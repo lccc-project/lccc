@@ -437,6 +437,61 @@ namespace lccc{
                 this->_m_delete(n);
         }
     };
+
+    enum class Architecture : std::uint32_t {
+        X86_64 = 0,
+        IX86 = 1,
+        W65816 = 2,
+        ARM = 3,
+        AARCH64 = 4,
+        SUPERH = 5,
+        MIPS = 6,
+        POWERPC = 7,
+        POWERPC64 = 8,
+        AVR = 9,
+        M68000 = 10,
+
+        SPARC = 14,
+        RISCV32 = 15,
+        RISCV64 = 16,
+        WASM32 = 17,
+        WASM64 = 18,
+
+        UNKNOWN = static_cast<std::uint32_t>(-1)
+    };
+
+    enum class Vendor : std::uint32_t {
+        PC = 0,
+        APPLE = 1,
+        SNES = 2,
+
+        UNKNOWN = static_cast<std::uint32_t>(-1)
+    };
+
+    enum class OperatingSystem : std::uint32_t{
+        LINUX =0,
+        WINDOWS = 2,
+        MINGW32 = 3,
+        MACOS = 4,
+        IOS = 5,
+        PHANTOM = 6,
+
+        UNKNOWN = static_cast<std::uint32_t>(-1)
+    };
+
+    enum class Environment :std::uint32_t{
+        GNU = 0,
+        EABI = 1,
+        NONE = 2,
+        MSVC = 3,
+        MUSL = 4,
+        LC = 5,
+        PHANTOM_STD = 6,
+        PHANTOM_KERNEL = 7,
+
+
+        UNKNOWN = static_cast<std::uint32_t>(-1)
+    };
 }
 
 #endif //LCCC_LAYOUT_H

@@ -24,6 +24,20 @@ endif()
 include(LCCCSelectors)
 include(GNUInstallDirs)
 
+option(LCCC_CROSS_COMPILING "Set if lccc is being cross compiled" ${CMAKE_CROSSCOMPILING})
+
+if(NOT DEFINED LCCC_DETECTED_HOST_TARGET)
+    add_subdirectory(cmake/target) # Needed to get path to config.guess and be usable
+endif()
+
+set(LCCC_DEFAULT_TARGET ${LCCC_DETECTED_HOST_TARGET} CACHE STRING "The default target name for lccc")
+set(LCCC_LIBRARIES_TARGETS ${LCCC_DEFAULT_TARGET} CACHE STRING "The target (or targets) to build standard libraries for")
+
+list(JOIN LCCC_LIBRARIES_TARGETS ", " _LCCC_LIBRARIES_TARGETS)
+
+message(STATUS "Targeting ${LCCC_DEFAULT_TARGET}")
+message(STATUS "Building libraries for targets: ${_LCCC_LIBRARIES_TARGETS}")
+
 set(LCCC_XLANG_PLUGIN_SEARCH_PATH lccc/xlang/plugins CACHE PATH "The Path to search for plugins")
 set(LCCC_XLANG_PLUGIN_INSTALL_DIR lccc/xlang/plugins CACHE PATH "The path to install xlang plugins into")
 
