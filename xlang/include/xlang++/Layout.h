@@ -119,23 +119,23 @@ namespace lccc{
         return std::equal(sv1.begin(),sv1.end(),s2.begin(),s2.end());
     }
 
-    template<typename CharT> bool operator!=(lccc::basic_string_view<CharT> sv1,lccc::basic_string_view<CharT> sv2) noexcept(sv1==sv2){
+    template<typename CharT> bool operator!=(lccc::basic_string_view<CharT> sv1,lccc::basic_string_view<CharT> sv2) noexcept(noexcept(sv1==sv2)){
         return !(sv1==sv2);
     }
 
-    template<typename CharT,typename CharTraits> bool operator!=(lccc::basic_string_view<CharT> sv1,std::basic_string_view<CharT,CharTraits> sv2) noexcept(sv1==sv2){
+    template<typename CharT,typename CharTraits> bool operator!=(lccc::basic_string_view<CharT> sv1,std::basic_string_view<CharT,CharTraits> sv2) noexcept(noexcept(sv1==sv2)){
         return !(sv1==sv2);
     }
 
-    template<typename CharT,typename CharTraits> bool operator!=(std::basic_string_view<CharT,CharTraits> sv2,lccc::basic_string_view<CharT> sv1) noexcept(sv1==sv2){
+    template<typename CharT,typename CharTraits> bool operator!=(std::basic_string_view<CharT,CharTraits> sv2,lccc::basic_string_view<CharT> sv1) noexcept(noexcept(sv1==sv2)){
         return !(sv1==sv2);
     }
 
-    template<typename CharT,typename CharTraits,typename Allocator> bool operator!=(lccc::basic_string_view<CharT> sv1,const std::basic_string<CharT,CharTraits,Allocator>& sv2) noexcept(sv1==sv2){
+    template<typename CharT,typename CharTraits,typename Allocator> bool operator!=(lccc::basic_string_view<CharT> sv1,const std::basic_string<CharT,CharTraits,Allocator>& sv2) noexcept(noexcept(sv1==sv2)){
         return !(sv1==sv2);
     }
 
-    template<typename CharT,typename CharTraits,typename Allocator> bool operator!=(std::basic_string_view<CharT,CharTraits> sv2,const std::basic_string<CharT,CharTraits,Allocator>& sv1) noexcept(sv1==sv2){
+    template<typename CharT,typename CharTraits,typename Allocator> bool operator!=(std::basic_string_view<CharT,CharTraits> sv2,const std::basic_string<CharT,CharTraits,Allocator>& sv1) noexcept(noexcept(sv1==sv2)){
         return !(sv1==sv2);
     }
 
