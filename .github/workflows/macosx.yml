@@ -2,9 +2,9 @@ name: C/C++ CI OSX
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   build_macos:
