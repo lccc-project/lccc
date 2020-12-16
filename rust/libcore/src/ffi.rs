@@ -1,4 +1,5 @@
 
+#[__lccc::mangle_itanium_type_as("v")]
 #[repr(i8)]
 pub enum c_void{
     #[unstable(feature="lccc_c_void_internal_field",issue="none")]

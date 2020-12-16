@@ -55,14 +55,14 @@ impl<T> *const [T]{
 }
 
 pub fn slice_from_raw_parts(ptr: *const T,len: usize) -> *const [T]{
-    crate::mem::transmute(crate::slice::RawSlice<T>{
+    crate::mem::transmute(crate::slice::RawSlice::<T>{
         ptr: ptr as *mut T,
         len
     })
 }
 
 pub fn slice_from_raw_parts_mut(ptr: *mut T,len: usize) -> *mut [T]{
-    crate::mem::transmute(crate::slice::RawSlice<T>{
+    crate::mem::transmute(crate::slice::RawSlice::<T>{
         ptr,
         len
     })
@@ -176,6 +176,7 @@ impl<T: ?Sized> Unique<T>{
 pub unsafe fn swap<T>(x: *mut T, y: *mut T){
     ::__lccc::xir!("swap":[ref *x, ref *y]);
 }
+
 
 pub use crate::intrinsics::read;
 pub use crate::intrinsics::write;

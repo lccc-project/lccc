@@ -1,24 +1,24 @@
 use core::ops::{Deref, DerefMut, DerefMove};
 use core::mem::{ManuallyDrop, forget};
-use crate::alloc::{Global,AllocRef,Layout};
+use crate::alloc::{Global,Allocator,Layout};
 
-pub struct Box<T: ?Sized,#[unstable(feature="allocator_api",issue="32838")] A: AllocRef = Global>{
+pub struct Box<T: ?Sized,#[unstable(feature="allocator_api",issue="32838")] A: Allocator = Global>{
     #[__lccc::xlang_pointer_attributes(dereference_write)]
-    #[__lccc::destroy_pointer_field]
+    #[__lccc::ptr_destroyed_by_drop]
     ptr: core::ptr::Unique<T>,
     #[__lccc::reify_as_transparent_if_field_zero_sized]
     alloc: A
 }
 
-impl<T: ?Sized,A: AllocRef> Drop for Box<T,A>{
+impl<T: ?Sized,A: Allocator> Drop for Box<T,A>{
     fn drop(&mut self){
         let layout = Layout::for_value(unsafe{&*self.ptr.as_ptr()});
-        xir!("destroy sequence atomic release":[self.ptr]); // Only need a sequence, because &mut excludes multiple threads.
+        __lccc::xir!("destroy sequence atomic release":[self.ptr]); // Only need a sequence, because &mut excludes multiple threads.
         if layout.size()!=0{self.alloc.dealloc(self.ptr.as_non_null_mut(),layout)}
     }
 }
 
-impl<T: ?Sized,A: AllocRef> Deref for Box<T,A>{
+impl<T: ?Sized,A: Allocator> Deref for Box<T,A>{
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -26,18 +26,20 @@ impl<T: ?Sized,A: AllocRef> Deref for Box<T,A>{
     }
 }
 
-impl<T: ?Sized,A: AllocRef> DerefMut for Box<T,A>{
+impl<T: ?Sized,A: Allocator> DerefMut for Box<T,A>{
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe{&mut &self.ptr.as_mut()}
+        unsafe{&mut *self.ptr.as_mut()}
     }
 }
 
-impl<T,A: AllocRef> DerefMove for Box<T,A: AllocRef>{
+impl<T,A: Allocator> DerefMove for Box<T,A: Allocator>{
     #[__lccc::ignore_stability_on_implicit_call]
     fn deref_move(mut self) -> Self::Target {
-        let value = ManuallyDrop::new(unsafe { core::ptr::read(self.ptr.as_ptr()) });
-
-        unsafe { self.alloc.dealloc(self.ptr.into_inner().cast(),Layout::new::<T>()) }
+        let storage = ManuallyDrop::new(self);
+        let value = ManuallyDrop::new(unsafe { core::ptr::read(storage.ptr.as_ptr()) });
+        
+        unsafe { self.alloc.deallocate(storage.ptr.into_inner().cast(),Layout::new::<T>()) }
+        
         value.into_inner()
     }
 }
@@ -62,14 +64,14 @@ impl<T> Box<T,Global>{
     }
 }
 
-impl<T,A: AllocRef> Box<T,A>{
+impl<T,A: Allocator> Box<T,A>{
     #[unstable(feature="allocator_api",issue="32838")]
     pub fn new_in(x: T,alloc: A) -> Self{
         let layout = Layout::new<T>();
         let ptr = if layout.size()==0{
             core::ptr::Unique::dangling()
         }else{
-            core::ptr::Unique::new_unchecked(alloc.alloc(layout))
+            unsafe{core::ptr::Unique::new_unchecked(alloc.allocate(layout).unwrap_or(alloc::alloc::handle_alloc_error()).into_inner() as *mut u8).cast()}
         };
         core::ptr::write(ptr,x);
         Self{
@@ -84,7 +86,7 @@ impl<T,A: AllocRef> Box<T,A>{
         let ptr = if layout.size()==0{
             core::ptr::Unique::dangling()
         }else{
-            core::ptr::Unique::new_unchecked(alloc.alloc(layout)).cast()
+            unsafe{core::ptr::Unique::new_unchecked(alloc.allocate(layout).unwrap_or(alloc::alloc::handle_alloc_error())).cast()}
         };
         Self{
             ptr,
@@ -94,11 +96,11 @@ impl<T,A: AllocRef> Box<T,A>{
 
     #[unstable(feature="allocator_api",issue="32838")]
     pub fn new_zeroed_in(alloc: A) -> Box<MaybeUninit<T>,A>{
-        let layout = Layout::new<T>();
+        let layout = Layout::new::<T>();
         let ptr = if layout.size()==0{
             core::ptr::Unique::dangling()
         }else{
-            unsafe{core::ptr::Unique::new_unchecked(alloc::alloc::handle_alloc_error(layout)).cast()}
+            unsafe{core::ptr::Unique::new_unchecked(alloc.allocate(layout).unwrap_or(alloc::alloc::handle_alloc_error(layout)).into_inner() as *mut u8).cast()}
         };
         Self{
             ptr,
@@ -136,7 +138,7 @@ impl<T> Box<[T],Global>{
     }
 }
 
-impl<T,A: AllocRef> Box<[T],A>{
+impl<T,A: Allocator> Box<[T],A>{
     #[unstable(feature="allocator_api",issue="32838")]
     pub fn new_uninit_slice_in(len: usize,alloc: A) -> Box<[MaybeUninit<T>],A>{
         let layout = Layout::array<T>(len);
@@ -144,8 +146,8 @@ impl<T,A: AllocRef> Box<[T],A>{
             core::ptr::Unique::dangling()
         }else{
             // SAFETY:
-            // The requirements of AllocRef guarantee the resulting pointer is unique and well-aligned.
-            unsafe{core::ptr::Unique::new_unchecked(alloc.alloc(layout).unwrap_or_else(alloc::alloc::handle_alloc_error(layout))).cast::<[T;1]>()}
+            // The requirements of Allocator guarantee the resulting pointer is unique and well-aligned.
+            unsafe{core::ptr::Unique::new_unchecked(alloc.allocate(layout).unwrap_or_else(alloc::alloc::handle_alloc_error(layout))).cast::<[T;1]>()}
         };
         Self{
             ptr,
@@ -155,7 +157,7 @@ impl<T,A: AllocRef> Box<[T],A>{
 }
 
 
-impl<T,A: AllocRef> Box<MaybeUninit<T>,A>{
+impl<T,A: Allocator> Box<MaybeUninit<T>,A>{
     #[unstable(feature="new_uninit",issue="63291")]
     pub unsafe fn assume_init(this: Self) -> Box<T,A>{
         let (ptr,alloc) = Self::into_raw_with_alloc(this);
@@ -166,7 +168,7 @@ impl<T,A: AllocRef> Box<MaybeUninit<T>,A>{
     }
 }
 
-impl<T,A: AllocRef> Box<[MaybeUninit<T>],A>{
+impl<T,A: Allocator> Box<[MaybeUninit<T>],A>{
     #[unstable(feature="new_uninit",issue="63291")]
     pub unsafe fn assume_init(this: Self) -> Box<[T],A>{
         let (ptr,alloc) = Self::into_raw_with_alloc(this);

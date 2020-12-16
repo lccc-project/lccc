@@ -31,17 +31,18 @@ namespace lccc{
         const CharT* _begin;
         const CharT* _end;
     public:
-        basic_string_view() : _begin(), _end(){}
-        basic_string_view(const CharT* string) : _begin(limit(string,std::strlen(string))), _end(string+std::strlen(string)){}
-        basic_string_view(const CharT* begin,const CharT* end) : _begin(limit(begin,end-begin)), _end(end) {}
+        basic_string_view() noexcept : _begin(), _end(){}
+        basic_string_view(const CharT* string) noexcept : basic_string_view(std::basic_string_view<CharT>(string)){}
+        basic_string_view(const CharT* begin,const CharT* end) noexcept : _begin(limit(begin,end-begin)), _end(end) {}
+        basic_string_view(const CharT* begin,std::size_t len) noexcept : _begin(limit(begin,len)), _end(begin+len) {}
         template<typename CharTraits,typename Allocator>
-            basic_string_view(const std::basic_string<CharT,CharTraits,Allocator>& s) : _begin(s.data()), _end(s.data()+s.size()){}
+            basic_string_view(const std::basic_string<CharT,CharTraits,Allocator>& s) noexcept : _begin(s.data()), _end(s.data()+s.size()){}
 
         template<typename CharTraits>
-            basic_string_view(std::basic_string_view<CharT,CharTraits> sv) :
-                _begin(sv.data()), _end(sv.data()+sv.size()){}
+            basic_string_view(std::basic_string_view<CharT,CharTraits> sv) noexcept :
+                _begin(limit(sv.data(),sv.size())), _end(sv.data()+sv.size()){}
 
-        basic_string_view(const basic_string_view&)=default;
+        basic_string_view(const basic_string_view&) noexcept=default;
         basic_string_view(basic_string_view&&) noexcept =default;
         basic_string_view& operator=(const basic_string_view&)=default;
         basic_string_view& operator=(basic_string_view&&) noexcept =default;
@@ -54,36 +55,89 @@ namespace lccc{
         using size_type = std::size_t;
         using difference_type = std::ptrdiff_t;
 
-        [[nodiscard]] iterator begin()const{
+        constexpr static inline size_type npos = static_cast<size_type>(-1);
+
+        [[nodiscard]] iterator begin()const noexcept{
             return _begin;
         }
-        [[nodiscard]] iterator end()const{
+        [[nodiscard]] iterator end()const noexcept{
             return _end;
         }
-        [[nodiscard]] const_iterator cbegin()const{
+        [[nodiscard]] const_iterator cbegin()const noexcept{
             return _begin;
         }
-        [[nodiscard]] const_iterator cend()const{
+        [[nodiscard]] const_iterator cend()const noexcept{
             return _end;
         }
 
-        [[nodiscard]] size_type size()const{
+        [[nodiscard]] size_type size()const noexcept{
             return _end-_begin;
         }
 
 
-        [[nodiscard]] const value_type* data()const{
+        [[nodiscard]] const value_type* data()const noexcept{
             return limit(_begin,_end-_begin);
         }
 
-        template<typename CharTraits> operator std::basic_string_view<CharT,CharTraits>()const{
+        template<typename CharTraits> operator std::basic_string_view<CharT,CharTraits>()const noexcept{
             return std::basic_string_view<CharT,CharTraits>(_begin,_end-_begin);
         }
 
-        [[nodiscard]] const CharT& operator[](difference_type dif)const{
+        [[nodiscard]] reference operator[](difference_type dif)const noexcept{
             return _begin[dif];
         }
+
+
+
+        basic_string_view subview(size_type begin,size_type end=npos) noexcept{
+            if(end==npos)
+                return basic_string_view{this->_begin+begin,this->_end};
+            else
+                return basic_string_view{this->_begin+begin,this->_begin+end};
+        }
+
+
     };
+
+    template<typename CharT> bool operator==(lccc::basic_string_view<CharT> sv1,lccc::basic_string_view<CharT> sv2) noexcept(noexcept(std::equal(sv1.begin(),sv1.end(),sv2.begin(),sv2.end()))){
+        return std::equal(sv1.begin(),sv1.end(),sv2.begin(),sv2.end());
+    }
+
+    template<typename CharT,typename CharTraits> bool operator==(lccc::basic_string_view<CharT> sv1,std::basic_string_view<CharT,CharTraits> sv2) noexcept(noexcept(std::equal(sv1.begin(),sv1.end(),sv2.begin(),sv2.end()))){
+        return std::equal(sv1.begin(),sv1.end(),sv2.begin(),sv2.end());
+    }
+
+    template<typename CharT,typename CharTraits> bool operator==(std::basic_string_view<CharT,CharTraits> sv2,lccc::basic_string_view<CharT> sv1) noexcept(noexcept(std::equal(sv1.begin(),sv1.end(),sv2.begin(),sv2.end()))){
+        return std::equal(sv1.begin(),sv1.end(),sv2.begin(),sv2.end());
+    }
+
+    template<typename CharT,typename CharTraits,typename Allocator> bool operator==(lccc::basic_string_view<CharT> sv1,const std::basic_string<CharT,CharTraits,Allocator>& s2 ) noexcept(noexcept(std::equal(sv1.begin(),sv1.end(),s2.begin(),s2.end()))){
+        return std::equal(sv1.begin(),sv1.end(),s2.begin(),s2.end());
+    }
+
+    template<typename CharT,typename CharTraits,typename Allocator> bool operator==(const std::basic_string<CharT,CharTraits,Allocator>& s2,lccc::basic_string_view<CharT> sv1) noexcept(noexcept(std::equal(sv1.begin(),sv1.end(),s2.begin(),s2.end()))){
+        return std::equal(sv1.begin(),sv1.end(),s2.begin(),s2.end());
+    }
+
+    template<typename CharT> bool operator!=(lccc::basic_string_view<CharT> sv1,lccc::basic_string_view<CharT> sv2) noexcept(sv1==sv2){
+        return !(sv1==sv2);
+    }
+
+    template<typename CharT,typename CharTraits> bool operator!=(lccc::basic_string_view<CharT> sv1,std::basic_string_view<CharT,CharTraits> sv2) noexcept(sv1==sv2){
+        return !(sv1==sv2);
+    }
+
+    template<typename CharT,typename CharTraits> bool operator!=(std::basic_string_view<CharT,CharTraits> sv2,lccc::basic_string_view<CharT> sv1) noexcept(sv1==sv2){
+        return !(sv1==sv2);
+    }
+
+    template<typename CharT,typename CharTraits,typename Allocator> bool operator!=(lccc::basic_string_view<CharT> sv1,const std::basic_string<CharT,CharTraits,Allocator>& sv2) noexcept(sv1==sv2){
+        return !(sv1==sv2);
+    }
+
+    template<typename CharT,typename CharTraits,typename Allocator> bool operator!=(std::basic_string_view<CharT,CharTraits> sv2,const std::basic_string<CharT,CharTraits,Allocator>& sv1) noexcept(sv1==sv2){
+        return !(sv1==sv2);
+    }
 
     using string_view = basic_string_view<char>;
     using wstring_view = basic_string_view<wchar_t>;
@@ -292,6 +346,8 @@ namespace lccc{
         constexpr reverse_iterator rend()const{
             return reverse_iterator{begin()};
         }
+
+
     };
 
     template<typename ElementT> struct span<ElementT,dynamic_extent>{
@@ -491,6 +547,32 @@ namespace lccc{
 
 
         UNKNOWN = static_cast<std::uint32_t>(-1)
+    };
+
+    struct Target{
+    private:
+        lccc::string_view name;
+        Architecture arch;
+        Vendor vendor;
+        OperatingSystem os;
+        Environment env;
+    public:
+        explicit Target(lccc::string_view)noexcept;
+
+        lccc::string_view getName()const noexcept;
+
+        lccc::string_view getArch()const noexcept;
+        lccc::string_view getCanonicalArch()const noexcept;
+
+        lccc::string_view getVendor()const noexcept;
+        lccc::string_view getCanonicalVendor()const noexcept;
+
+        lccc::string_view getOperatingSystem()const noexcept;
+        lccc::string_view getCanonicalOperatingSystem()const noexcept;
+
+        lccc::string_view getEnvironment()const noexcept;
+        lccc::string_view getCanonicalEnvironment()const noexcept;
+
     };
 }
 

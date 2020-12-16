@@ -31,34 +31,34 @@ pub unsafe trait GlobalAlloc{
 pub struct AllocError;
 
 #[unstable(feature="allocator_api",issue="32838")]
-pub unsafe trait AllocRef{
-    fn alloc(&self,layout: Layout) -> Result<NonNull<[u8]>,AllocError>;
-    unsafe fn dealloc(&self,ptr: NonNull<u8>,layout: Layout);
+pub unsafe trait Allocator{
+    fn allocate(&self,layout: Layout) -> Result<NonNull<[u8]>,AllocError>;
+    unsafe fn deallocate(&self,ptr: NonNull<u8>,layout: Layout);
 
-    fn alloc_zeroed(&self,layout: Layout) -> Result<NonNull<[u8]>,AllocError>{
-        let block = self.alloc(layout)?;
+    fn allocate_zeroed(&self,layout: Layout) -> Result<NonNull<[u8]>,AllocError>{
+        let block = self.allocate(layout)?;
         ::__lccc::builtins::C::__builtin_memset(bytes.as_ptr() as *mut u8,0,layout.size());
         Ok(block)
     }
 
     unsafe fn grow(&self,ptr: NonNull<u8>,old_layout: Layout,new_layout: Layout) -> Result<NonNull<[u8]>,AllocError>{
-        let block = self.alloc(new_layout)?;
+        let block = self.allocate(new_layout)?;
         core::ptr::copy_nonoverlapping(ptr.as_ptr(),block.as_ptr() as *mut u8,old_layout.size());
-        self.dealloc(ptr,old_layout);
+        self.deallocate(ptr,old_layout);
         Ok(block)
     }
 
     unsafe fn grow_zeroed(&self,ptr: NonNull<u8>,old_layout: Layout,new_layout: Layout) -> Result<NonNull<[u8]>,AllocError>{
-        let block = self.alloc_zeroed(new_layout)?;
+        let block = self.allocate_zeroed(new_layout)?;
         core::ptr::copy_nonoverlapping(ptr.as_ptr(),block.as_ptr() as *mut u8,old_layout.size());
-        self.dealloc(ptr,old_layout);
+        self.deallocate(ptr,old_layout);
         Ok(block)
     }
 
     unsafe fn shrink(&self,ptr: NonNull<u8>,old_layout: Layout,new_layout: Layout) -> Result<NonNull<[u8]>,AllocError>{
-        let block = self.alloc(new_layout)?;
+        let block = self.allocate(new_layout)?;
         core::ptr::copy_nonoverlapping(ptr.as_ptr(),block.as_ptr() as *mut u8,new_layout.size());
-        self.dealloc(ptr,old_layout);
+        self.deallocate(ptr,old_layout);
         Ok(block)
     }
 
@@ -67,17 +67,17 @@ pub unsafe trait AllocRef{
     }
 }
 
-unsafe impl<A: AllocRef> AllocRef for &'_ A{
-    fn alloc(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        (*self).alloc(layout)
+unsafe impl<A: Allocator> Allocator for &'_ A{
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        (*self).allocate(layout)
     }
 
-    unsafe fn dealloc(&self, ptr: NonNull<u8>, layout: Layout) {
-        (*self).dealloc(ptr,layout)
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        (*self).deallocate(ptr,layout)
     }
 
-    fn alloc_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        (*self).alloc_zeroed(layout)
+    fn allocate_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        (*self).allocate_zeroed(layout)
     }
 
     unsafe fn grow(&self, ptr: NonNull<u8>, old_layout: Layout, new_layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
@@ -123,7 +123,7 @@ pub fn handle_alloc_error(layout: Layout) -> !{
 }
 
 #[no_mangle]
-#[lccc::weak]
+#[__lccc::weak]
 extern"Rust" fn __lccc_rust_handle_alloc_error_impl(_: Layout) -> !{
     ::__lccc::builtins::C::__builtin_trap()
 }
@@ -131,8 +131,8 @@ extern"Rust" fn __lccc_rust_handle_alloc_error_impl(_: Layout) -> !{
 #[unstable(feature="allocator_api",issue="32838")]
 pub struct Global;
 
-unsafe impl AllocRef for Global{
-    fn alloc(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+unsafe impl Allocator for Global{
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         if layout.size()==0{
             Ok(unsafe{NonNull::new_unchecked(core::ptr::slice_from_raw_parts_mut(1usize as *mut u8,0))})
         }else {
@@ -145,7 +145,7 @@ unsafe impl AllocRef for Global{
         }
     }
 
-    unsafe fn dealloc(&self, ptr: NonNull<u8>, layout: Layout) {
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         if layout.size()==0{
             ()
         }else {
@@ -153,7 +153,7 @@ unsafe impl AllocRef for Global{
         }
     }
 
-    fn alloc_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+    fn allocate_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         if layout.size()==0{
             Ok(unsafe{NonNull::new_unchecked(core::ptr::slice_from_raw_parts_mut(1usize as *mut u8,0))})
         }else {

@@ -1,6 +1,8 @@
 #[derive(Copy,Clone,Ord, PartialOrd, Eq, PartialEq,Hash)]
 pub enum Option<T>{
+    #[lang = "some"]
     Some(T),
+    #[lang = "none"]
     None
 }
 use Option::*;
@@ -62,6 +64,26 @@ impl<T> Option<T>{
             Some(t)
         }else{
             None
+        }
+    }
+
+    pub fn as_pin_ref<'a>(self: Pin<&'a Self>) -> Option<Pin<&'a T>>{
+        match self.get_ref(){
+            /// SAFETY:
+            /// This is a structural pin, and Option<T>: Unpin iff T: Unpin
+            Some(r) => Some(unsafe{Pin::new_unchecked(r)}),
+            None => None
+        }
+    }
+
+    pub fn as_pin_mut<'a>(self: Pin<&'a mut Self>) -> Option<Pin<&'a mut T>>{
+        /// SAFETY:
+        /// the match is not used to move from
+        match unsafe{self.get_unchecked_mut()}{
+            /// SAFETY:
+            /// This is a structural pin, and Option<T>: Unpin iff T: Unpin
+            Some(r) => Some(unsafe{Pin::new_unchecked(r)}),
+            None => None
         }
     }
 
@@ -197,14 +219,14 @@ impl<T> Option<T>{
         if let None = self{
             *self = Some(v);
         }
-        self.as_mut().unwrap_or_else(|| unsafe { crate::intrinsics::unreachable() })
+        self.as_mut().unwrap_or_else(|| unsafe { crate::hint::unreachable_unchecked() })
     }
 
     pub fn get_or_insert_with<F: FnOnce()->T>(&mut self,op: F) -> &mut T{
         if let None = self{
             *self = Some(op());
         }
-        self.as_mut().unwrap_or_else(|| unsafe { crate::intrinsics::unreachable() })
+        self.as_mut().unwrap_or_else(|| unsafe { crate::hint::unreachable_unchecked() })
     }
 
     pub fn take(&mut self) -> Option<T>{
@@ -346,7 +368,7 @@ pub struct IntoIter<T>{
 }
 
 pub struct Iter<'a,A: 'a>(IntoIter<&'a A>);
-pub type IterMut<'a,A: 'a>(IntoIter<&'a mut A>);
+pub struct IterMut<'a,A: 'a>(IntoIter<&'a mut A>);
 
 impl<T> Iterator for IntoIter<T>{
     type Item = T;

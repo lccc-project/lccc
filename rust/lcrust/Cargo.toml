@@ -1,7 +1,0 @@
-[package]
-name = "lcrust"
-version = "0.0.1"
-authors = []
-
-[dependencies]
-xlang = {path="../../xlang"}
