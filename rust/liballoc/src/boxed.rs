@@ -22,13 +22,13 @@ impl<T: ?Sized,A: Allocator> Deref for Box<T,A>{
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        unsafe{&*self.ptr.as_ptr()}
+        unsafe{self.ptr.as_ref()}
     }
 }
 
 impl<T: ?Sized,A: Allocator> DerefMut for Box<T,A>{
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe{&mut *self.ptr.as_mut()}
+        unsafe{self.ptr.as_mut()}
     }
 }
 
@@ -179,3 +179,65 @@ impl<T,A: Allocator> Box<[MaybeUninit<T>],A>{
     }
 }
 
+impl<T: ?Sized,A: Allocator> Box<T,A>{
+    pub fn leak<'a>(this: Self) -> &'a mut T where T: 'a, A: 'a{
+        let ptr = Self::into_raw(this);
+        // SAFETY: 
+        // ptr is valid because it is returned from Self::into_raw
+        // It is known to be valid for 'a, Because leak prevents it from being deallocated
+        // And A is valid for 'a (by the above where clause) 
+        unsafe{*ptr}
+    }
+
+    pub fn into_raw(this: Self) -> *mut T{
+        let no_drop = ManuallyDrop::new(this);
+        // SAFETY:
+        // This is safe because we are reading out of a reference 
+        // And the target is unused behind a ManuallyDrop
+        unsafe{core::ptr::read(&no_drop.ptr).as_mut_ptr()}
+    }
+
+    #[unstable(feature="allocator_api",issue="32838")]
+    pub fn into_raw_with_alloc(this: Self) -> (*mut T,A){
+        let no_drop = ManuallDrop::new(this);
+        (core::ptr::read(&no_drop.ptr).as_mut_ptr(),core::ptr::read(&no_drop.alloc))
+    }
+
+    #[unstable(feature="allocator_api",issue="32838")]
+    pub fn allocator(b: &Self) -> &A{
+        &b.alloc
+    }
+
+    #[unstable(feature="box_into_pin",issue="62370")]
+    pub fn into_pin(this: Self) -> Pin<Self> where A: 'static{
+        // SAFETY:
+        // Pinning a Box is always sound, as it is by-reference
+        unsafe{Pin::new_unchecked(this)}
+    }
+}
+
+impl<T: ?Sized,A: Allocator> AsMut<T> for Box<T,A>{
+    fn as_mut(&mut self) -> &mut T{
+        self.deref_mut()
+    }
+}
+
+impl<T: ?Sized,A: Allocator> AsRef<T> for Box<T,A>{
+    fn as_ref(&self) -> &T{
+        self.deref()
+    }
+}
+
+impl<T: ?Sized,A: Allocator + 'static> Unpin for Box<T,A>{} 
+
+#[unstable(feature="lccc_boxed_macro",issue="none")]
+#[allow_internal_unstable(box_syntax,new_uninit,allocator_api,lccc_intrinsic_crate)]
+macro_rules! boxed {
+    ($item: expr) => {{
+        type _T = ::__lccc::decltype!($item);
+        let b = Box::new_uninit();
+        let ptr: *mut T = ::__lccc::builtins::CXX::__builtin_new(size_of::<_T>(),b.as_mut_ptr());
+        ::__lccc::xir!("assign nocopy {}":[ref *ptr]::[$item]);
+        b.assume_init()
+    }}
+}

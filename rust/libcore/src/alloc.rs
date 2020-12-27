@@ -45,3 +45,7 @@ impl Layout{
         }
     }
 }
+
+#[macro_export]
+#[__lccc::builtin_macro]
+pub macro global_allocator($($tt:tt)*){}

@@ -153,8 +153,17 @@ impl<T: ?Sized> Unique<T>{
         ::__lccc::builtins::rust::kill_mutation(self.ptr.as_ptr() as *const T)
     }
 
-    pub fn as_mut(&mut self) -> *mut T{
+    pub fn as_mut_ptr(&mut self) -> *mut T{
         self.ptr.as_ptr()
+    }
+
+    pub unsafe fn as_ref(&self) -> &T{
+        &*self.as_ptr()
+    }
+
+    
+    pub unsafe fn as_mut(&mut self) -> &mut T{
+        &*self.as_mut()
     }
 
     pub fn as_non_null_mut(&mut self) -> NonNull<T>{

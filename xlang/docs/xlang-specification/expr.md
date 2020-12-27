@@ -124,6 +124,8 @@
 
 7. If `T` and *type* are both vector types with the same vector size, the result is the same as converting each element of the vector according to the above rules.
 
+8. If the incoming value is uninit, the result is uninit
+
 #### Reinterpret Conversion [expr.reinterpret]
 
 1. Syntax:
@@ -141,10 +143,49 @@
 
 6. If either `T` and *type* are both pointer types, or one is a pointer type, and the other is an integer type, `t` is converted to the result according to the rules described by `[ptr.convert]`.
 
-### Unary Operators [expr.unary]
+7. If `t` is uninit, the result is uninit. 
+
+### Branch [expr.branch]
 
 1. Syntax:
+```
+condition := always / equal / less / greater / less_or_equal / greater_or_equal / not_equal / never / zero / nonzero / negative / positive / negative_or_zero / positive_or_zero
+expr /= "branch" [<condition>] "@"<number>
+```
 
+2. Type checking: Given the target `@`*`n`* for a branch to `@`*`n`* recieves `[T...]`, and each `Ti` in `T...` may be an `lvalue` or an `rvalue` operand, and `N` is an integer. 
 ```
-("neg" / "bneg" / "pos" / "umn")
+If the branch is taken: [..,T...,int(N)] => [T...]
+If the branch is not taken: [..,int(N)] => [..]
+If the branch is taken: [..,T...,uint(N)] => [T...]
+If the branch is not taken: [..,uint(N)] => [..]
 ```
+
+3. Operands:
+```
+[..,t...,v] => [t...] or [..,t...]
+```
+
+4. Branches to the target if `v` satisfies the condition. 
+
+5. If the condition is satisfied, the top `n` items from the expression stack are preserved by the branch, where `n` is the number of the recieving items in the `stack-item-list` of the target, and other operands are disguarded. If any disgarded item has *non-trivial destruction*, whether or not the destructor is performed on the value is unspecified. After the branch, the next expression to be evaluated is the expression immediately following the target. 
+
+5. If  the condition is not satisfied, the next expression to be evaluated is the expression immediately following the branch expression. The operand stack is not modified (after `v` is removed from it).
+
+6. The conditions are satisfied as follows:
+    * The condition `always` (which is default if omitted) is always satisfied (the branch is always taken)
+    * The condition `equal` or `zero` is satisfied if `v` has the value `0`.
+    * The condition `less` or `negative` is satisfied if `v` has a value less than `0` (note: this condition is never satisfied if `v` is an unsigned integer type)
+    * The condition `greater` or `positive` is satisfied if `v` has a value greater than `0`.
+    * The condition `less_or_equal` or `negative_or_zero` is satisfied if `v` has a value less than or equal to `0`
+    * The condition `greater_or_equal` or `positive_or_zero` is satisfied if `v` has a value greater than or equal to `0` (note: this coniditon is always satisfied for unsigned integer types)
+    * The condition `never` is not satisfied (note that it still performs typechecking of the target)
+
+7. If the execution of a branch expression crosses the end of a tag, all pointers bounded by that tag are invalidated. 
+
+8. If the execution of a branch expression enters the storage region for a local variable, the storage for the object begins, and is initialized with the value `uninit`.
+
+9. If the execution of a branch expression leaves the storage region for a local variable, the storage for the local ends, and all pointers to that object are invalidated. If any such local variable has *non trivial destruction*, the destructor operation is performed on that local variable prior to the branch being taken. 
+
+10. _Note 1 -  When performing type checking, expressions following the branch directly are typechecked against all items on the expression stack. Expressions following the target are typechecked against the expression stack specification at the target - End Note_
+

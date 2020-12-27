@@ -27,6 +27,7 @@ pub unsafe trait GlobalAlloc{
     }
 }
 
+
 #[unstable(feature="allocator_api",issue="32838")]
 pub struct AllocError;
 
@@ -93,36 +94,78 @@ unsafe impl<A: Allocator> Allocator for &'_ A{
     }
 }
 
+unsafe impl<A: Allocator> Allocator for &'_ mut A{
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        (*self).allocate(layout)
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        (*self).deallocate(ptr,layout)
+    }
+
+    fn allocate_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        (*self).allocate_zeroed(layout)
+    }
+
+    unsafe fn grow(&self, ptr: NonNull<u8>, old_layout: Layout, new_layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        (*self).grow(ptr,old_layout,new_layout)
+    }
+
+    unsafe fn grow_zeroed(&self, ptr: NonNull<u8>, old_layout: Layout, new_layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        (*self).grow_zeroed(ptr,old_layout,new_layout)
+    }
+
+    unsafe fn shrink(&self, ptr: NonNull<u8>, old_layout: Layout, new_layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        (*self).shrink(ptr,old_layout,new_layout)
+    }
+}
+
+
 extern"Rust"{
     #[no_mangle]
-    static __lccc_rust_global_alloc_impl: &dyn GlobalAlloc;
+    static _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE: &dyn GlobalAlloc;
 }
 
 pub unsafe fn alloc(layout: Layout) -> *mut u8{
-    __lccc_rust_global_alloc_impl_symbol.alloc(layout)
+    if core::ptr::raw_ref!(_ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE).is_null(){
+        handle_alloc_error(layout)
+    }else{
+        _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE.alloc(layout)
+    }
+    
 }
 
 pub unsafe fn alloc_zeroed(layout: Layout) -> *mut u8{
-    __lccc_rust_global_alloc_impl_symbol.alloc_zeroed(layout)
+    if core::ptr::raw_ref!(_ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE).is_null(){
+        handle_alloc_error(layout)
+    }else{
+        _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE.alloc_zeroed(layout)
+    }
 }
 
 pub unsafe fn dealloc(ptr: *mut u8,layout: Layout){
-    __lccc_rust_global_alloc_impl_symbol.dealloc(ptr,layout)
+    if core::ptr::raw_ref!(_ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE).is_null(){
+    }else{
+        _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE.dealloc(ptr,layout)
+    }
 }
 
 pub unsafe fn realloc(ptr: *mut u8,old_layout: Layout,new_size: usize) -> *mut u8{
-    __lccc_rust_global_alloc_impl_symbol.realloc(ptr,old_layout,new_size)
+    if core::ptr::raw_ref!(_ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE).is_null(){
+        handle_alloc_error(layout)
+    }else{
+        _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE.realloc(ptr,old_layout,new_size)
+    }
 }
 
 pub fn handle_alloc_error(layout: Layout) -> !{
     extern"Rust"{
         #[no_mangle]
-        fn __lccc_rust_handle_alloc_error_impl(_: Layout) -> !;
+        fn _ZN5alloc5alloc35__lccc_rust_handle_alloc_error_implu5neverN4core5alloc6Layout(_: Layout) -> !;
     }
-    unsafe{__lccc_rust_handle_alloc_error_impl(layout)}
+    unsafe{_ZN5alloc5alloc35__lccc_rust_handle_alloc_error_implu5neverN4core5alloc6Layout(layout)}
 }
 
-#[no_mangle]
 #[__lccc::weak]
 extern"Rust" fn __lccc_rust_handle_alloc_error_impl(_: Layout) -> !{
     ::__lccc::builtins::C::__builtin_trap()

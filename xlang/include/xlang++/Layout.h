@@ -33,13 +33,13 @@ namespace lccc{
     public:
         basic_string_view() noexcept : _begin(), _end(){}
         basic_string_view(const CharT* string) noexcept : basic_string_view(std::basic_string_view<CharT>(string)){}
-        basic_string_view(const CharT* begin,const CharT* end) noexcept : _begin(limit(begin,end-begin)), _end(end) {}
-        basic_string_view(const CharT* begin,std::size_t len) noexcept : _begin(limit(begin,len)), _end(begin+len) {}
+        constexpr basic_string_view(const CharT* begin,const CharT* end) noexcept : _begin(limit(begin,end-begin)), _end(end) {}
+        constexpr basic_string_view(const CharT* begin,std::size_t len) noexcept : _begin(limit(begin,len)), _end(begin+len) {}
         template<typename CharTraits,typename Allocator>
             basic_string_view(const std::basic_string<CharT,CharTraits,Allocator>& s) noexcept : _begin(s.data()), _end(s.data()+s.size()){}
 
         template<typename CharTraits>
-            basic_string_view(std::basic_string_view<CharT,CharTraits> sv) noexcept :
+            constexpr basic_string_view(std::basic_string_view<CharT,CharTraits> sv) noexcept :
                 _begin(limit(sv.data(),sv.size())), _end(sv.data()+sv.size()){}
 
         basic_string_view(const basic_string_view&) noexcept=default;
@@ -139,10 +139,28 @@ namespace lccc{
         return !(sv1==sv2);
     }
 
+
+
     using string_view = basic_string_view<char>;
     using wstring_view = basic_string_view<wchar_t>;
     using u16string_view = basic_string_view<char16_t>;
     using u32string_view = basic_string_view<char32_t>;
+
+    constexpr string_view operator""_sv(const char* c,std::size_t sz){
+        return string_view{c,c+sz};
+    }
+
+    constexpr wstring_view operator""_sv(const wchar_t* c,std::size_t sz){
+        return wstring_view{c,c+sz};
+    }
+
+    constexpr u16string_view operator""_sv(const char16_t* c,std::size_t sz){
+        return u16string_view{c,c+sz};
+    }
+
+    constexpr u32string_view operator""_sv(const char32_t* c,std::size_t sz){
+        return u32string_view{c,c+sz};
+    }
 
     struct bad_function_call{};
 

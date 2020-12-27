@@ -6,8 +6,21 @@ use crate::ops::Drop;
 #[lang = "sized"]
 pub trait Sized{}
 
-#[lang = "phantom_data"] // Still needed for variance and auto trait propagation
+#[lang = "phantom_data"] // Still needed for variance
 pub struct PhantomData<#[__lccc::no_unused_type_param] T: ?Sized>;
+
+
+impl<T: ?Sized> Clone for PhantomData<T>{
+    fn clone(&self) -> Self{
+        *self
+    }
+}
+
+impl<T: ?Sized> Copy for PhantomData<T>{}
+
+impl<T: ?Sized + Send> Send for PhantomData<T>{}
+impl<T: ?Sized + Sync> Sync for PhantomData<T>{}
+impl<T: ?Sized + Unpin> Unpin for PhantomData<T>{}
 
 #[lang = "unpin"]
 pub auto trait Unpin{}
@@ -61,11 +74,12 @@ pub unsafe auto trait TrivialDestruction{}
 
 impl<T: ?Sized + Drop> !TrivialDestruction for T{}
 
-
 unsafe impl<'a,T: ?Sized> TrivialDestruction for &'a T{}
 unsafe impl<'a,T: ?Sized> TrivialDestruction for &'a mut T{}
 unsafe impl<T: ?Sized> TrivialDestruction for *const T{}
 unsafe impl<T: ?Sized> TrivialDestruction for *mut T{}
+
+unsafe impl<T: ?Sized + TrivialDestruction> TrivialDestruction for PhantomData<T>{}
 
 #[lang = "non_owning"]
 #[doc(hidden)]

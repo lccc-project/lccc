@@ -4,7 +4,10 @@
 pub enum c_void{
     #[unstable(feature="lccc_c_void_internal_field",issue="none")]
     #[doc(hidden)]
-    __lccc_c_void_internal_field = 0xFF
+    __lccc_c_void_internal_field = 0xFF,
+    #[unstable(feature="lccc_c_void_internal_field_2",issue="none")]
+    #[doc(hidden)]
+    __lccc_c_void_internal_field_2 = 0
 }
 
 #[repr(transparent)]

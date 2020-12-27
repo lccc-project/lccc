@@ -88,19 +88,26 @@ unsafe impl<T> TrivialDestruction for MaybeUninit<T>{}
 #[repr(transparent)]
 #[derive(Copy,Clone,PartialEq,Eq,PartialOrd,Ord)]
 pub struct ManuallyDrop<T: ?Sized>{
-    inner: T
+    inner: __lccc::trivial::<T>
 }
 
 impl<T> ManuallyDrop<T>{
     pub const fn new(value: T) -> ManuallyDrop<T>{
-        ManuallyDrop{inner: value}
+        // SAFETY:
+        // convert weak from T to trivial<T> is always defined.
+        // The result cannot be an invalid value of trivial<T> because  it was a valid value of T.
+        ManuallyDrop{inner: unsafe{__lccc::xir!("convert weak":[value]:[yield:__lccc::trivial::<T>])}}
+        
     }
     pub const fn into_inner(slot: ManuallyDrop<T>) -> T{
-        slot.inner
+        // SAFETY:
+        // convert weak from trivial<T> to T is always defined.
+        // The result cannot be an invalid value of T because it was a valid value of trivial<T>.
+        unsafe{__lccc::xir!("convert weak":[slot.inner]:[yield: T])}
     }
     #[must_use = "if you don't need the value, use `ManuallyDrop::drop` instead"]
     pub unsafe fn take(slot: &mut ManuallyDrop<T>) -> T{
-        intrinsics::read(slot as *mut _ as *mut T)
+        core::ptr::read(slot as *mut _ as *mut T)
     }
 }
 
@@ -131,4 +138,7 @@ unsafe impl<T: ?Sized> TrivialDestruction for ManuallyDrop<T>{}
 
 
 
-pub use ::__lccc::builtins::rust::__builtin_uninitialized as uninitialized;
+#[deprecated("use MaybeUninit instead")]
+pub unsafe fn uninitialized<T>() -> T{
+    __lccc::xir!("const undef uninit %0"::[yield: T])
+}
