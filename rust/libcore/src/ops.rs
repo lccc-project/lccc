@@ -80,7 +80,7 @@ pub trait Unsize<T: ?Sized>{}
 pub trait CoereceUnsized<T: ?Sized>{}
 
 
-#[cfg(feature="lccc_lang_items")]
+
 #[doc(hidden)]
 #[unstable(feature="lccc_lang_items",issue="none",reason="This is an internal API of lcrust libcore, it is not guaranteed to be portable")]
 #[lang = "unwrapping_deref"]
@@ -88,6 +88,17 @@ pub trait DerefMove: DerefMut<Target: Sized> + Sized{
     #[unstable(feature="lccc_lang_items",issue="none")]
     fn deref_move(self) -> Self::Target;
 }
+
+
+
+#[doc(hidden)]
+#[unstable(feature="lccc_lang_items",issue="none",reason="This is an internal API of lcrust libcore, it is not guaranteed to be portable")]
+#[lang = "placement_deref"]
+pub unsafe trait DerefPlace: DerefMut<Target: Sized>{
+    #[unstable(feature="lccc_lang_items",issue="none")]
+    fn deref_place(&mut self) -> *mut Self::Target;
+}
+
 
 #[lang = "drop"]
 pub trait Drop{
@@ -99,13 +110,20 @@ pub trait Drop{
 #[must_use = "Closures are lazy and do nothing unless called"]
 pub trait FnOnce<Args>{
     type Output;
-    extern"rust-call" fn call_once(self,args: Args)->Self::Output;
+    #[__lccc::ignore_stability_on_implicit_call]
+    extern"rust-call" fn call_once(self,args: Args)->Self::Output where Self: Sized;
+
+    #[unstable(feature="lccc_fn_once_call_unsized")]
+    unsafe extern"rust-call" fn call_once_unsized(&mut self,args: Args) -> Self::Output{
+        core::ptr::read(self).call_once(args)
+    }  
 }
 
 #[lang = "fn_mut"]
 #[unstable(feature="fn_traits")]
 #[must_use = "Closures are lazy and do nothing unless called"]
 pub trait FnMut<Args>: FnOnce<Args>{
+    #[__lccc::ignore_stability_on_implicit_call]
     extern"rust-call" fn call_mut(&mut self,args: Args)->Self::Output;
 }
 
@@ -113,6 +131,7 @@ pub trait FnMut<Args>: FnOnce<Args>{
 #[unstable(feature="fn_traits")]
 #[must_use = "Closures are lazy and do nothing unless called"]
 pub trait Fn<Args>: FnMut<Args>{
+    #[__lccc::ignore_stability_on_implicit_call]
     extern"rust-call" fn call(&self,args: Args)->Self::Output;
 }
 

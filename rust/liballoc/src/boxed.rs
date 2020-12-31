@@ -5,7 +5,9 @@ use crate::alloc::{Global,Allocator,Layout};
 pub struct Box<T: ?Sized,#[unstable(feature="allocator_api",issue="32838")] A: Allocator = Global>{
     #[__lccc::xlang_pointer_attributes(dereference_write)]
     #[__lccc::ptr_destroyed_by_drop]
-    ptr: core::ptr::Unique<T>,
+    #[__lccc::drop_target]
+    #[unstable(feature="lccc_box_internals",issue="none",reason="Internal implementation detail of ")]
+    pub ptr: core::ptr::Unique<T>,
     #[__lccc::reify_as_transparent_if_field_zero_sized]
     alloc: A
 }
@@ -43,6 +45,15 @@ impl<T,A: Allocator> DerefMove for Box<T,A: Allocator>{
         value.into_inner()
     }
 }
+
+unsafe impl<T,A: Allocator> DerefPlace for Box<T,A: Allocator>{
+    #[__lccc::ignore_stability_on_implicit_call]
+    fn deref_place(&mut self) -> *mut Self::Target{
+        self.ptr.as_mut_ptr()
+    }
+}
+
+
 
 impl<T> Box<T,Global>{
     pub fn new(x: T) -> Self{
@@ -229,6 +240,26 @@ impl<T: ?Sized,A: Allocator> AsRef<T> for Box<T,A>{
 }
 
 impl<T: ?Sized,A: Allocator + 'static> Unpin for Box<T,A>{} 
+
+impl<Args,T: ?Sized + FnOnce<Args>,A: Allocator> FnOnce<Args> for Box<T,A>{
+    type Output = <T as FnOnce<Args>>::Output;
+
+    extern"rust-call" fn call_once(mut self,args: Args) -> Self::Output{
+        (*self).call_once_unsized(args)
+    }
+}
+
+impl<Args,T: ?Sized + FnMut<Args>,A: Allocator> FnMut<Args> for Box<T,A>{
+    extern"rust-call" fn call_mut(&mut self,args: Args) -> Self::Output{
+        (**self).call_mut(args)
+    }
+}
+
+impl<Args,T: ?Sized + Fn<Args>,A: Allocator> Fn<Args> for Box<T,A>{
+    extern"rust-call" fn call(&self,args: Args) -> Self::Output{
+        (**self).call(args)
+    }
+}
 
 #[unstable(feature="lccc_boxed_macro",issue="none")]
 #[allow_internal_unstable(box_syntax,new_uninit,allocator_api,lccc_intrinsic_crate)]
