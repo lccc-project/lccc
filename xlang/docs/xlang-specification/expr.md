@@ -8,6 +8,19 @@
 4. This document will indicate operands by `[..,op1,op2,...opN]`, where `op1`, `op2`, ..., `opN` represent *N* items on the expression stack. 
 5. A type variable, such as `T`, `U`, or `V` may appear in place of a type name above. Each use of such a type variable appears in the "Type checking" portion of an expression represent some type. All occurances of a particular type variable refer to the same type
 
+## Access Classes [expr.class]
+
+1. Syntax:
+```
+atomic-class-specifier := atomic (relaxed / release / acquire / acqrel / seqcst) [fail relaxed] 
+nonatomic-class-specifier := volatile / nontemporal / freeze
+access-class := *(atomic-class-specifier / nonatomic-class-specifier)
+```
+
+2. Certain operations on memory may be said to be done according to some access class. The access class affects how the operation is performed.
+
+3. An access-class specifier may include at most one atomic-class-specifier, and at most one occurance of each 
+
 ## Constant Values [expr.const]
 
 1. Syntax:

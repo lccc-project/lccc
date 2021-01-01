@@ -111,7 +111,7 @@ pub trait Drop{
 pub trait FnOnce<Args>{
     type Output;
     #[__lccc::ignore_stability_on_implicit_call]
-    extern"rust-call" fn call_once(self,args: Args)->Self::Output where Self: Sized;
+    extern"rust-call" fn call_once(self,args: Args)->Self::Output;
 
     #[unstable(feature="lccc_fn_once_call_unsized")]
     unsafe extern"rust-call" fn call_once_unsized(&mut self,args: Args) -> Self::Output{

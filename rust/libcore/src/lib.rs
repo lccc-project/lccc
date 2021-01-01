@@ -6,8 +6,9 @@
 #![feature(lccc_const_transmute,lccc_slice_layout,lccc_const_zeroed,lccc_slice_layout,lccc_unique_ptr)]
 #![feature(unsize,negative_impls,no_niche,untagged_unions,prelude_import)]
 #![feature(lccc_borrowck_helpers,lccc_trait_object,lccc_lang_items)]
-#![feature(fn_traits,cell_update)]
+#![feature(fn_traits,cell_update,unboxed_closures)]
 #![feature(lccc_stability_attributes,lccc_same_trait)]
+#![feature(or_patterns)]
 #![no_core]
 
 extern crate self as core;

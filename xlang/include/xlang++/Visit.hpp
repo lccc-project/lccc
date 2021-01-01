@@ -607,6 +607,8 @@ namespace lccc::xlang{
         CmpGt = 14,
         CmpGe = 15,
         CmpSpaceship = 16,
+
+        Fetch = 0x80
     };
 
     enum class ConversionStrength : uint8_t {
@@ -631,7 +633,7 @@ namespace lccc::xlang{
         return static_cast<PointerSharing>(static_cast<uint8_t>(a)|static_cast<uint8_t>(b));
     }
 
-    enum class AccessClass : uint8_t {
+    enum class AccessClass : uint16_t { // Hope I didn't break anything 
         Normal = 0,
         AtomicRelaxed = 1,
         AtomicAcquire = 2,
@@ -641,6 +643,7 @@ namespace lccc::xlang{
         Volatile = 0x10,
         Freeze = 0x20,
         NonTemporal = 0x40,
+        FailRelaxed = 0x80,
     };
 
     constexpr AccessClass operator|(AccessClass a,AccessClass b){
@@ -656,6 +659,7 @@ namespace lccc::xlang{
         PreDec = 3,
         CmpExcg = 4,
         Swap = 5,
+        CmpExcgWeak = 6,
     };
 
 

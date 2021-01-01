@@ -62,6 +62,8 @@ impl AtomicBool{
     }
 
     pub fn get_mut(&mut self) -> &mut bool{
+        // SAFETY:
+        // This is valid because self is uniquely borrowed for the implicit lifetime
         unsafe{transmute(self.inner.get_mut())}
     }
 
@@ -71,13 +73,16 @@ impl AtomicBool{
     }
 
     pub fn into_inner(self) -> bool{
+        // SAFETY:
+        // This is valid because self is uniquely owned here, 
+        // So there is a static guarantee that no race occurs. 
         unsafe{*(self.inner.get() as *mut bool)}
     }
 
     pub fn load(&self,ord: Ordering) -> bool{
         // SAFETY:
         // self.inner.get() is valid because it is contained within &self, which is valid
-        // AtomicBool has a validity invariant equivalent to the one for bool
+        // AtomicBool has a "validity" invariant equivalent to the one for bool
         unsafe{transmute(ops::atomic_load(self.inner.get(),ord))}
     }
 
@@ -100,9 +105,33 @@ impl AtomicBool{
         current
     }
 
-    pub fn compare_exchange(&self,mut expected: bool,update: bool,success_ord: Ordering,failure_ord: Ordering) -> Result<bool,bool>{
-
+    pub fn compare_exchange_weak(&self,mut expected: bool,update: bool,success_ord: Ordering,failure_ord: Ordering) -> Result<bool,bool>{
+        if match (success_ord,failure_ord){
+            (o @ Ordering::SeqCst,Ordering::Acquire | Ordering::SeqCst) => unsafe{ops::atomic_compare_exchange_weak(self.inner.get(),&mut current as *mut bool as *mut u8,val as u8,o)},
+            (o @ Ordering::AcqRel | Ordering::Acquire,Ordering::Acquire) => unsafe{ops::atomic_compare_exchange_weak(self.inner.get(),&mut current as *mut bool as *mut u8,val as u8,o)},
+            (o,Ordering::Relaxed) => unsafe{ops::atomic_compare_exchange_weak_fail_relaxed(self.inner.get(),&mut current as *mut bool as *mut u8,val as u8,o)}
+            _ => panic!("Invalid ordering pair for compare_exchange_weak")
+        }{
+            Ok(expected)
+        }else{
+            Err(expected)
+        }
     }
+
+    pub fn compare_exchange(&self,mut expected: bool,update: bool,success_ord: Ordering,failure_ord: Ordering) -> Result<bool,bool>{
+        if match (success_ord,failure_ord){
+            (o @ Ordering::SeqCst,Ordering::Acquire | Ordering::SeqCst) => unsafe{ops::atomic_compare_exchange(self.inner.get(),&mut current as *mut bool as *mut u8,val as u8,o)},
+            (o @ Ordering::AcqRel | Ordering::Acquire,Ordering::Acquire) => unsafe{ops::atomic_compare_exchange(self.inner.get(),&mut current as *mut bool as *mut u8,val as u8,o)},
+            (o,Ordering::Relaxed) => unsafe{ops::atomic_compare_exchange_fail_relaxed(self.inner.get(),&mut current as *mut bool as *mut u8,val as u8,o)}
+            _ => panic!("Invalid ordering pair for compare_exchange")
+        }{
+            Ok(expected)
+        }else{
+            Err(expected)
+        }
+    }
+
+    pub fn fetch_and(&self,)
 }
 
 mod ops{
@@ -137,46 +166,128 @@ mod ops{
         match ord{
             Release | AcqRel => __lccc::xir!(r"
                 assign atomic release
-            ":[lvalue unsafe{*mem},val]),
+            ":[lvalue *mem,val]),
             Relaxed => __lccc::xir!(r"
                 assign atomic
-            ":[lvalue unsafe{*mem},val]),
+            ":[lvalue *mem,val]),
             SeqCst => __lccc::xir!(r"
                 assign atomic seq_cst
-            ":[lvalue unsafe{*mem},val]),
+            ":[lvalue *mem,val]),
             _ => panic!("Bad ordering")
         }
     }
 
-    pub unsafe fn atomic_compare_exchange(mem: *mut T,expected: *mut T,value: T,ord: Ordering) -> bool{
+    pub unsafe fn atomic_compare_exchange<T>(mem: *mut T,expected: *mut T,value: T,ord: Ordering) -> bool{
         if ::__lccc::atomic_not_lock_free::<T>() {
             panic!("Cannot perform non-lock free atomic store")
         }
 
         match ord{
             Acquire => __lccc::xir!(r"
-                indirect
                 cmp_excg atomic acquire
                 convert strong uint(1)
-            ":[lvalue unsafe{*mem},lvalue unsafe{*expected},val]:[yield:bool]),
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
             Release => __lccc::xir!(r"
-                indirect
                 cmp_excg atomic release
                 convert strong uint(1)
-            ":[lvalue unsafe{*mem},lvalue *expected,val]:[yield:bool]),
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
             AcqRel => __lccc::xir!(r"
-                indirect
                 cmp_excg atomic acqrel
                 convert strong uint(1)
-            ":[lvalue unsafe{*mem},lvalue *expected,val]:[yield:bool]),
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
             Relaxed => __lccc::xir!(r"
-                indirect
-                cmp_excg atomic
+                cmp_excg atomic relaxed
                 convert strong uint(1)
-            ":[lvalue unsafe{*mem},lvalue *expected,val]:[yield:bool]),
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
             SeqCst => __lccc::xir!(r"
-                indirect
                 cmp_excg atomic seq_cst
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool])
+        }
+    }
+
+    pub unsafe fn atomic_compare_exchange_fail_relaxed<T>(mem: *mut T,expected: *mut T,value: T,ord: Ordering) -> bool{
+        if ::__lccc::atomic_not_lock_free::<T>() {
+            panic!("Cannot perform non-lock free atomic store")
+        }
+
+        match ord{
+            Acquire => __lccc::xir!(r"
+                cmp_excg atomic acquire fail relaxed
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            Release => __lccc::xir!(r"
+                cmp_excg atomic release fail relaxed
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            AcqRel => __lccc::xir!(r"
+                cmp_excg atomic acqrel fail relaxed
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            Relaxed => __lccc::xir!(r"
+                cmp_excg atomic relaxed
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            SeqCst => __lccc::xir!(r"
+                cmp_excg atomic seq_cst fail relaxed
+                convert strong uint(1)
+            ":[lvalue unsafe{*mem},lvalue *expected,val]:[yield:bool])
+        }
+    }
+
+    pub unsafe fn atomic_compare_exchange_weak<T>(mem: *mut T,expected: *mut T,value: T,ord: Ordering) -> bool{
+        if ::__lccc::atomic_not_lock_free::<T>() {
+            panic!("Cannot perform non-lock free atomic store")
+        }
+
+        match ord{
+            Acquire => __lccc::xir!(r"
+                cmp_excg_weak atomic acquire
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            Release => __lccc::xir!(r"
+                cmp_excg_weak atomic release
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            AcqRel => __lccc::xir!(r"
+                cmp_excg_weak atomic acqrel
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            Relaxed => __lccc::xir!(r"
+                cmp_excg_weak atomic relaxed
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            SeqCst => __lccc::xir!(r"
+                cmp_excg_weak atomic seq_cst
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool])
+        }
+    }
+
+    pub unsafe fn atomic_compare_exchange_weak_fail_relaxed<T>(mem: *mut T,expected: *mut T,value: T,ord: Ordering) -> bool{
+        if ::__lccc::atomic_not_lock_free::<T>() {
+            panic!("Cannot perform non-lock free atomic store")
+        }
+
+        match ord{
+            Acquire => __lccc::xir!(r"
+                cmp_excg_weak atomic acquire fail relaxed
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            Release => __lccc::xir!(r"
+                cmp_excg_weak atomic release fail relaxed
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            AcqRel => __lccc::xir!(r"
+                cmp_excg_weak atomic acqrel fail relaxed
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            Relaxed => __lccc::xir!(r"
+                cmp_excg_weak atomic relaxed
+                convert strong uint(1)
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            SeqCst => __lccc::xir!(r"
+                cmp_excg_weak atomic seq_cst fail relaxed
                 convert strong uint(1)
             ":[lvalue unsafe{*mem},lvalue *expected,val]:[yield:bool])
         }
@@ -189,33 +300,48 @@ mod ops{
 
         match ord{
             Acquire => __lccc::xir!(r"
-                indirect
                 swap atomic acquire
                 convert strong uint(1)
-            ":[lvalue unsafe{*mem},lvalue unsafe{*expected},val]:[yield:bool]),
+            ":[lvalue *mem,lvalue *expected]:[yield:bool]),
             Release => __lccc::xir!(r"
-                indirect
                 swap atomic release
                 convert strong uint(1)
-            ":[lvalue unsafe{*mem},lvalue unsafe{*expected},val]:[yield:bool]),
+            ":[lvalue *mem,lvalue *expected]:[yield:bool]),
             AcqRel => __lccc::xir!(r"
-                indirect
                 swap atomic acqrel
                 convert strong uint(1)
-            ":[lvalue unsafe{*mem},lvalue unsafe{*expected},val]:[yield:bool]),
+            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
             Relaxed => __lccc::xir!(r"
-                indirect
-                swap atomic
+                swap atomic 
                 convert strong uint(1)
-            ":[lvalue unsafe{*mem},lvalue unsafe{*expected},val]:[yield:bool]),
+            ":[lvalue *mem,lvalue *expected]:[yield:bool]),
             SeqCst => __lccc::xir!(r"
-                indirect
                 swap atomic seq_cst
                 convert strong uint(1)
-            ":[lvalue unsafe{*mem},lvalue unsafe{*expected}]:[yield:bool])
+            ":[lvalue *mem,lvalue *expected]:[yield:bool])
         }
     }
 
+
+    pub fn fetch_and<T: And>(mem: *mut T,value: T,ord: Ordering) -> T{
+        match ord{
+            Relaxed => __lccc::xir!(r"
+                compound_assign fetch and atomic relaxed 
+            ":[lvalue *mem,value]:[yield:T]),
+            Acquire => __lccc::xir!(r"
+                compound_assign fetch and atomic release 
+            ":[lvalue *mem,value]:[yield:T]),
+            Release => __lccc::xir!(r"
+                compound_assign fetch and atomic release 
+            ":[lvalue *mem,value]:[yield:T]),
+            AcqRel => __lccc::xir!(r"
+                compound_assign fetch and atomic acqrel 
+            ":[lvalue *mem,value]:[yield:T]),
+            SeqCst => __lccc::xir!(r"
+                compound_assign fetch and atomic seqcst 
+            ":[lvalue *mem,value]:[yield:T]),
+        }
+    }
 
 
 
