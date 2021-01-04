@@ -2,6 +2,7 @@
 pub use ::core::alloc::*;
 use core::ptr::NonNull;
 
+#[__lccc::stable_vtable_layout]
 #[lang = "global_alloc"]
 pub unsafe trait GlobalAlloc{
     unsafe fn alloc(&self,layout: Layout) -> *mut u8;

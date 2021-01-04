@@ -44,6 +44,13 @@ impl Layout{
             Err(LayoutErr{_priv: ()})
         }
     }
+
+    #[unstable(feature="alloc_layout_extra",issue="55724")]
+    pub fn dangling(&self) -> NonNull<u8>{
+        // SAFETY:
+        // _align is a power of two, and thus, the resulting pointer is non-null.
+        unsafe{NonNull::new_unchecked(self._align as *mut u8)}
+    }
 }
 
 #[macro_export]
