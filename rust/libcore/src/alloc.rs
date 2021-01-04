@@ -9,7 +9,7 @@ pub struct Layout{
 
 #[derive(Clone,Debug,Eq, PartialEq)]
 pub struct LayoutErr{
-    priv: ()
+    _priv: ()
 }
 
 impl Layout{
@@ -41,11 +41,11 @@ impl Layout{
         if let Some(len) = len.checked_multiply(core::mem::size_of<T>()){
             Ok{Self{sz: len,_align: core::mem::align_of::<T>()}}
         }else{
-            Err(LayoutErr{priv: ()})
+            Err(LayoutErr{_priv: ()})
         }
     }
 }
 
 #[macro_export]
-#[__lccc::builtin_macro]
-pub macro global_allocator($($tt:tt)*){}
+#[__lccc::builtin_attribute]
+pub macro global_allocator($tt:tt){}

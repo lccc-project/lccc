@@ -9,4 +9,11 @@ pub mod v1{
     pub use crate::result::*;
 
     pub use crate::ops::Drop;
+
+    #[__lccc::builtin_macro]
+    pub macro RustcDecodable($($tt:tt)*){}
+
+    #[__lccc::builtin_macro]
+    pub macro RustcEncodable($($tt:tt)*){}
+
 }

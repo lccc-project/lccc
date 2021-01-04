@@ -47,3 +47,13 @@ pub mod pin;
 #[__lccc::builtin_macro]
 #[allow_internal_unstable(core_intrinsics)]
 pub macro panic($($input:tt),*){}
+
+#[__lccc::builtin_macro]
+pub macro env($name:lit){}
+
+#[__lccc::builtin_macro]
+pub macro option_env($name:lit){}
+
+
+
+
