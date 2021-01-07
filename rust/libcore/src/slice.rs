@@ -80,3 +80,83 @@ impl<T> [T] {
         unsafe { transmute::<_, RawSlice<T>>(self).ptr }
     }
 }
+
+mod sealed {
+    pub trait SealedSliceIndex<T: ?Sized> {}
+}
+
+pub unsafe trait SliceIndex<T: ?Sized>: sealed::SealedSliceIndex<T> {
+    type Output: ?Sized;
+
+    #[unstable(feature = "slice_index_methods")]
+    fn get(self, slice: &T) -> Option<&Self::Output>;
+    #[unstable(feature = "slice_index_methods")]
+    fn get_mut(self, slice: &mut T) -> Option<&mut Self::Output>;
+    #[unstable(feature = "slice_index_methods")]
+    unsafe fn get_unchecked(self, slice: *const T) -> *const Self::Output;
+    #[unstable(feature = "slice_index_methods")]
+    unsafe fn get_unchecked_mut(self, slice: *mut T) -> *mut Self::Output;
+    #[unstable(feature = "slice_index_methods")]
+    fn index(self, slice: &T) -> &Self::Output;
+    #[unstable(feature = "slice_index_methods")]
+    fn index_mut(self, slice: &mut T) -> &mut Self::Output;
+}
+
+impl<T> sealed::SealedSliceIndex<[T]> for usize {}
+impl<T> SliceIndex<[T]> for usize {
+    type Output = T;
+
+    #[inline]
+    fn get(self, slice: &[T]) -> Option<&T> {
+        if self <= slice.len() {
+            // SAFETY:
+            // Length is checked above
+            Some(unsafe { &*slice.as_ptr().offset(self) })
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn get_mut(self, slice: &mut [T]) -> Option<&mut T> {
+        if self <= slice.len() {
+            // SAFETY:
+            // Length is checked above
+            Some(unsafe { &*slice.as_mut_ptr().offset(self) })
+        } else {
+            None
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn get_unchecked(self, slice: *const [T]) -> *const T {
+        slice.as_ptr().offset(self)
+    }
+
+    #[inline(always)]
+    unsafe fn get_unchecked_mut(self, slice: *mut [T]) -> *mut T {
+        slice.as_mut_ptr().offset(self)
+    }
+
+    #[inline]
+    fn index(self, slice: &[T]) -> &T {
+        if self <= slice.len() {
+            // SAFETY:
+            // Length is checked above
+            unsafe { &*slice.as_ptr().offset(self) }
+        } else {
+            panic!();
+        }
+    }
+
+    #[inline]
+    fn index_mut(self, slice: &mut [T]) -> &mut T {
+        if self <= slice.len() {
+            // SAFETY:
+            // Length is checked above
+            unsafe { &mut *slice.as_mut_ptr().offset(self) }
+        } else {
+            panic!();
+        }
+    }
+}
