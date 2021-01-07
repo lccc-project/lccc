@@ -1,5 +1,5 @@
 use crate::Sized;
 
-pub trait Default: Sized{
-    pub fn default()->Self;
+pub trait Default: Sized {
+    fn default() -> Self;
 }

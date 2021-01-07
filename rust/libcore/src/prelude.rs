@@ -1,19 +1,17 @@
-
-pub mod v1{
-    pub use crate::marker::{Copy,Sync,Send,Sized,Unpin};
+pub mod v1 {
+    pub use crate::marker::{Copy, Send, Sized, Sync, Unpin};
 
     pub use crate::option::*;
 
-    pub use crate::cmp::{Eq,PartialEq,Ord,PartialOrd,Ordering};
+    pub use crate::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
 
     pub use crate::result::*;
 
     pub use crate::ops::Drop;
 
     #[__lccc::builtin_macro]
-    pub macro RustcDecodable($($tt:tt)*){}
+    pub macro RustcDecodable($($tt:tt)*) {}
 
     #[__lccc::builtin_macro]
-    pub macro RustcEncodable($($tt:tt)*){}
-
+    pub macro RustcEncodable($($tt:tt)*) {}
 }

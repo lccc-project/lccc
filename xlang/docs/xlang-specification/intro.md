@@ -79,7 +79,9 @@
         - A nested block
         - An aggregate constructor, or a tuple expression
     - 1024 targets in a block
-    - 4096 targets in a block and each of it's nested blocks.
+    - 4096 total targets in a block and each of it's nested blocks.
+    - 1024 tags in a function
+    - 16777216 tags total in a file. 
     - Any number of branches, or switches, applied to an expression of an integer type.
     - A type which consists of only the following, in any combination, where the size of the type is a representable value of an implementation-defined integer type.  
         - An integer type, with a width at most 128.
@@ -92,5 +94,5 @@
         - A structure or union type
         - A product type, with at most 256 elements.
     - A structure or union declaration with at most 512 members.
-    - An identifier in a declaration, which consists of an optional root component, followed by a single non-special component that has at most 4096 characters, includ.  
+    - An identifier in a declaration, which consists of an optional root component, followed by a single non-special component that has at most 4096 characters.   
 
