@@ -567,7 +567,7 @@ namespace lccc{
         UNKNOWN = static_cast<std::uint32_t>(-1)
     };
 
-    struct Target{
+    struct XLANG_API Target{
     private:
         lccc::string_view name;
         Architecture arch;

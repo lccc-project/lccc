@@ -11,8 +11,13 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 set(LCCC_ENABLE_LANGUAGES c++;rust CACHE STRING "List of language frontends to build")
 
-set(LCCC_ENABLE_BACKENDS llvm CACHE STRING "List of backends to build")
+set(LCCC_ALL_BACKENDS llvm x86)
 
+set(LCCC_ENABLE_BACKENDS all CACHE STRING "List of backends to build")
+
+if(LCCC_ENABLE_BACKENDS STREQUAL "all")
+   set(LCCC_ENABLE_BACKENDS ${LCCC_ALL_BACKENDS})
+endif()
 
 if(NOT DEFINED LCCC_HAS_WNO_RETURN_TYPE_C_LINKAGE)
     include(CheckCXXCompilerFlag)
@@ -62,9 +67,6 @@ set(LCCC_DEFAULT_CXX_INCLUDE_DIRS ${CMAKE_FULL_INSTALL_INCLUDEDIR}/lccc/${LCCC_V
 
 message(STATUS "Using --sysroot=${LCCC_DEFAULT_SYSROOT} by default")
 
-if(NOT IS_ABSOLUTE LCCC_DEFAULT_SYSROOT)
-    message(FATAL "Sysroot is not an absolute path")
-endif()
 
 if(IS_ABSOLUTE ${LCCC_XLANG_PLUGIN_SEARCH_PATH})
     set(LCCC_FULL_XLANG_PLUGIN_SEARCH_PATH ${LCCC_XLANG_PLUGIN_SEARCH_PATH})

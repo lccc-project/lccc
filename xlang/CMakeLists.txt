@@ -13,6 +13,7 @@ message(STATUS "Building xlang API Version ${LCCC_XLANG_VERSION}")
 
 add_library(xlang SHARED include/xlang++/Visit.hpp src/Visit.cpp include/xlang++/Layout.h include/xlang++/Properties.h src/IRWriter.cpp src/Layout.cpp)
 target_include_directories(xlang PUBLIC include)
+target_compile_definitions(xlang PRIVATE BUILD_LIBXLANG)
 install(TARGETS xlang EXPORT xlang)
 set_target_properties(xlang PROPERTIES
         SOVERSION ${LCCC_XLANG_VERSION})
