@@ -13,11 +13,19 @@ namespace lccc::lcrust{
         std::set<std::string> active_features;
         std::stack<std::set<std::string>> stacked_features;
     public:
-        
+        ///
+        /// Checks if a particular feature is enabled 
         bool is_feature_enabled(const std::string& name) const noexcept;
+        ///
+        /// Enables a named feature. 
         void enable_feature(std::string name);
 
+        ///
+        /// Pushes the current feature state and resets active feature list
         void push_feature_state();
+        ///
+        /// Pops the current feature state that is previous pushed, or resets it if
+        ///  no feature state is currently stacked. 
         void pop_feature_state();
     };
 }

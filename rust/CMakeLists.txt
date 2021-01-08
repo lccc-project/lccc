@@ -1,2 +1,2 @@
-enable_language(Rust)
 
+add_subdirectory(lcrust)

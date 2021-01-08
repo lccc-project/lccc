@@ -63,7 +63,7 @@ set(LCCC_DEFAULT_CXX_INCLUDE_DIRS ${CMAKE_FULL_INSTALL_INCLUDEDIR}/lccc/${LCCC_V
 message(STATUS "Using --sysroot=${LCCC_DEFAULT_SYSROOT} by default")
 
 if(NOT IS_ABSOLUTE LCCC_DEFAULT_SYSROOT)
-    message(ERROR "Sysroot is not an absolute path")
+    message(FATAL "Sysroot is not an absolute path")
 endif()
 
 if(IS_ABSOLUTE ${LCCC_XLANG_PLUGIN_SEARCH_PATH})
