@@ -19,10 +19,12 @@ if(LCCC_ENABLE_BACKENDS STREQUAL "all")
    set(LCCC_ENABLE_BACKENDS ${LCCC_ALL_BACKENDS})
 endif()
 
+include(CheckCXXCompilerFlag)
+
 if(NOT DEFINED LCCC_HAS_WNO_RETURN_TYPE_C_LINKAGE)
-    include(CheckCXXCompilerFlag)
     check_cxx_compiler_flag("-Wno-return-type-c-linkage" LCCC_HAS_WNO_RETURN_TYPE_C_LINKAGE)
 endif()
+
 
 if(LCCC_HAS_WNO_RETURN_TYPE_C_LINKAGE)
     add_compile_options("-Wno-return-type-c-linkage")
@@ -37,6 +39,7 @@ if(NOT DEFINED LCCC_DETECTED_HOST_TARGET)
     add_subdirectory(cmake/target) # Needed to get path to config.guess and be usable
 endif()
 
+set(LCCC_HOST_TARGET ${LCCC_DETECTED_HOST_TARGET} CACHE STRING "The host target name of lccc")
 set(LCCC_DEFAULT_TARGET ${LCCC_DETECTED_HOST_TARGET} CACHE STRING "The default target name for lccc")
 set(LCCC_LIBRARIES_TARGETS ${LCCC_DEFAULT_TARGET} CACHE STRING "The target (or targets) to build standard libraries for")
 
@@ -61,7 +64,7 @@ set(LCCC_DEFAULT_CXXLIB "" CACHE STRING "Name of the default C++ Standard librar
 
 set_property(CACHE LCCC_DEFAULT_CXXLIB PROPERTY STRINGS "" stdc++ libstdc++ c++ libc++ lc++ liblc++)
 
-set(LCCC_DEFAULT_INCLUDE_DIRS include usr/include usr/local/include CACHE PATH "Default include paths to search for headers")
+set(LCCC_DEFAULT_INCLUDE_DIRS include usr/include usr/local/include CACHE PATH "Default include paths to search for headers, resolved within the sysroot")
 
 set(LCCC_DEFAULT_CXX_INCLUDE_DIRS ${CMAKE_FULL_INSTALL_INCLUDEDIR}/lccc/${LCCC_VERSION} CACHE PATH "Default include paths to search for c++ standard library headers (when using liblc++)")
 
@@ -93,4 +96,10 @@ endforeach()
 foreach(lang ${LCCC_ENABLE_LANGUAGES})
     lccc_add_language(${lang})
 endforeach()
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Definitions.hpp.in ${CMAKE_CURRENT_BINARY_DIR}/Definitions.hpp)
+
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+add_executable(lccc ${CMAKE_CURRENT_BINARY_DIR}/Definitions.hpp src/main.cpp)
 
