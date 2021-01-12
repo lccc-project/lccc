@@ -558,7 +558,6 @@ namespace lccc{
         NONE = 0,
         GNU = 1,
         EABI = 2,
-        NONE = 3,
         MSVC = 4,
         MUSL = 5,
         LC = 6,
