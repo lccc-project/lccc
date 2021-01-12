@@ -3,6 +3,7 @@
 A collection of compilers for various languages, including C, C++, and Rust,
  all using a uniform intermediate representation and architecture. 
 
+Currently work in progress for all frontends and backends.
 
 ## License
 
@@ -20,3 +21,17 @@ All libraries contained within are dual licensed under the MIT License and the A
 The llvm-project, included by codegen-llvm is Copyright (C) The LLVM project,
  licensed under the Apache v2.
 
+## Frontends
+
+The following language frontends are available (A check indicates the frontend is complete):
+
+- [ ] C
+- [ ] C++
+- [ ] Rust
+
+## Backends
+
+The following code generators are available (A check indicates the backend is complete):
+
+- [ ] x86 (direct codegen)
+- [ ] llvm 
