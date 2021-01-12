@@ -23,7 +23,7 @@ The llvm-project, included by codegen-llvm is Copyright (C) The LLVM project,
 
 ## Frontends
 
-The following language frontends are available (A check indicates the frontend is complete):
+The following language frontends are available or planned (A check indicates the frontend is complete):
 
 - [ ] C
 - [ ] C++
@@ -31,7 +31,7 @@ The following language frontends are available (A check indicates the frontend i
 
 ## Backends
 
-The following code generators are available (A check indicates the backend is complete):
+The following code generators are available or planned (A check indicates the backend is complete):
 
 - [ ] x86 (direct codegen)
 - [ ] llvm 
