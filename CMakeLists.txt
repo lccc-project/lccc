@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.17)
 project(lccc CXX)
+
+set(CMAKE_MESSAGE_CONTEXT "lccc")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
@@ -35,9 +38,7 @@ include(GNUInstallDirs)
 
 option(LCCC_CROSS_COMPILING "Set if lccc is being cross compiled" ${CMAKE_CROSSCOMPILING})
 
-if(NOT DEFINED LCCC_DETECTED_HOST_TARGET)
-    add_subdirectory(cmake/target) # Needed to get path to config.guess and be usable
-endif()
+add_subdirectory(cmake/target)
 
 set(LCCC_HOST_TARGET ${LCCC_DETECTED_HOST_TARGET} CACHE STRING "The host target name of lccc")
 set(LCCC_DEFAULT_TARGET ${LCCC_DETECTED_HOST_TARGET} CACHE STRING "The default target name for lccc")
@@ -48,14 +49,63 @@ list(JOIN LCCC_LIBRARIES_TARGETS ", " _LCCC_LIBRARIES_TARGETS)
 message(STATUS "Targeting ${LCCC_DEFAULT_TARGET}")
 message(STATUS "Building libraries for targets: ${_LCCC_LIBRARIES_TARGETS}")
 
+set(LCCC_DEFAULT_SYSROOT_DIR ${CMAKE_INSTALL_LIBDIR}/lccc/sysroot CACHE PATH "The path (relative to the prefix) to install target sysroots to")
+
+GNUInstallDirs_get_absolute_install_dir(LCCC_FULL_DEFAULT_SYSROOT_DIR LCCC_DEFAULT_SYSROOT_DIR)
+
+foreach(target ${LCCC_LIBRARIES_TARGETS})
+    if(target STREQUAL LCCC_HOST_TARGET)
+        set(LCCC_${target}_SYSROOT "" CACHE PATH "The sysroot for ${target}")
+        if(LCCC_${target}_SYSROOT STREQUAL "")
+            set(LCCC_${target}_FULL_SYSROOT "/")
+        endif()
+    else()
+        set(LCCC_${target}_SYSROOT ${LCCC_DEFAULT_SYSROOT_DIR}/${target} CACHE PATH "The sysroot for ${target}")
+        GNUInstallDirs_get_absolute_install_dir(LCCC_${target}_FULL_SYSROOT LCCC_${target}_SYSROOT)
+    endif()
+    
+    message(STATUS "Installing libraries for target ${target} to ${LCCC_${target}_FULL_SYSROOT}")
+    message(CHECK_START "Checking if hosted libraries are available for ${target}")
+    if(NOT DEFINED LCCC_${target}_HOSTED)
+        list(APPEND CMAKE_MESSAGE_INDENT "  ")
+        message(CHECK_START "Searching for os libraries for target ${target} in ${LCCC_${target}_FULL_SYSROOT}")
+        get_target_aliases(${target} LCCC_${target}_ALIASES)
+        message(DEBUG "${LCCC_${target}_ALIASES}")
+        set(LCCC_${target}_SEARCH_PATHS "")
+        foreach(dir lib usr/lib)
+            message(DEBUG "Within search path loop for ${dir}")
+            list(APPEND LCCC_${target}_SEARCH_PATHS ${LCCC_${target}_FULL_SYSROOT}/${dir})
+            foreach(t ${LCCC_${target}_ALIASES})
+                list(APPEND LCCC_${target}_SEARCH_PATHS ${LCCC_${target}_FULL_SYSROOT}/${dir}/${t})
+            endforeach()
+        endforeach()
+        message(DEBUG "${LCCC_${target}_SEARCH_PATHS}")
+
+        find_library(_LCCC_${target}_SYSROOT_BASE_LIB
+            NAMES libc.so libc.so.1 libc.so.2 libc.so.3 libc.so.4 libc.so.5 libc.so.6 libc.a NAMES_PER_DIR
+            PATHS ${LCCC_${target}_SEARCH_PATHS}
+            NO_DEFAULT_PATH)
+        if(_LCCC_${target}_SYSROOT_BASE_LIB STREQUAL "_LCCC_${target}_SYSROOT_BASE_LIB-NOTFOUND")
+            set(LCCC_${target}_HOSTED_INIT FALSE)
+            message(CHECK_FAIL "Not Found")
+        else()
+            set(LCCC_${target}_HOSTED_INIT TRUE)
+            message(CHECK_PASS "${_LCCC_${target}_SYSROOT_BASE_LIB}")
+        endif()
+        list(POP_BACK CMAKE_MESSAGE_INDENT)
+        set(LCCC_${target}_HOSTED ${LCCC_${target}_HOSTED_INIT} CACHE BOOL "If ON, build all libraries for the target. Otherwise, only build freestanding libraries")
+    endif()
+    if(LCCC_${target}_HOSTED)
+        message(CHECK_PASS "Yes")
+    else()
+        message(CHECK_FAIL "No")
+    endif()
+endforeach()
+
 set(LCCC_XLANG_PLUGIN_SEARCH_PATH lccc/xlang/plugins CACHE PATH "The Path to search for plugins")
 set(LCCC_XLANG_PLUGIN_INSTALL_DIR lccc/xlang/plugins CACHE PATH "The path to install xlang plugins into")
 
-if(DEFINED LCCC_${LCCC_DEFAULT_TARGET}_SYSROOT)
-    set(LCCC_DEFAULT_SYSROOT_INIT ${LCCC_${LCCC_DEFAULT_TARGET}_SYSROOT})
-elseif(LCCC_DEFAULT_TARGET STREQUAL LCCC_DETECTED_HOST_TARGET)
-    set(LCCC_DEFAULT_SYSROOT_INIT "/")
-endif()
+set(LCCC_DEFAULT_SYSROOT_INIT ${LCCC_${LCCC_DEFAULT_TARGET}_FULL_SYSROOT})
 
 set(LCCC_DEFAULT_SYSROOT ${LCCC_DEFAULT_SYSROOT_INIT} CACHE PATH "The default value for the sysroot")
 

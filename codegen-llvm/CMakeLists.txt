@@ -1,6 +1,7 @@
 
-
+set(CMAKE_MESSAGE_CONTEXT "")
 add_subdirectory(llvm-project/llvm EXCLUDE_FROM_ALL)
+
 
 add_library(codegen-llvm MODULE src/Main.cpp)
 

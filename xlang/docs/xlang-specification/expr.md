@@ -19,7 +19,14 @@ access-class := *(atomic-class-specifier / nonatomic-class-specifier)
 
 2. Certain operations on memory may be said to be done according to some access class. The access class affects how the operation is performed.
 
-3. An access-class specifier may include at most one atomic-class-specifier, and at most one occurance of each 
+3. An access-class specifier may include at most one atomic-class-specifier, and at most one occurance of each nonatomic-class-specifier. 
+
+4. An read is an atomic load if the read occurs as part of an expression with an access-class that contains an atomic-class-specifier. A write is an atomic store if the write occurs as part of an expression with an access-class that contains an atomic-class-specifier. A compound assignment, or a swap operation is an atomic read-modify-write, if the operation occurs as part of an expression with an access-class that contains an atomic-class specifier. A compare exchange operation that succeeds is an atomic read-modify-write, and a compare exchange operation that fails is an atomic load, if the operation occurs as part of an expression with an access-class that contains an atomic-class specifier. 
+
+5. _Note 1 - an atomic read-modify-write is also an atomic load and an atomic store - End Note_
+
+6. An atomic load according to the access-class `atomic acquire`, `atomic acq_rel`, or `atomic seq_cst` is an acquire operation. Memory accesses sequenced-after an acquire operation shall not be reordered relative to that acquire operation. An acquire operation `A` which reads from an object `o` *synchronizes-with*
+
 
 ## Constant Values [expr.const]
 

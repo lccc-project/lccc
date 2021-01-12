@@ -93,7 +93,7 @@ scalar-type := ("uint" / "int" / "float" / "decimal") <scalar-validity> ["comple
 
 scalar-validity := ["nonzero"] ["min" "(" <const> ")")] ["max" "(" <const> ")")]
 
-pointer-type := "*" [*<pointer-validity>] <type>
+pointer-type := "*" [*<pointer-validity>] ["ref"] <type>
 
 pointer-validity := "nonnull" / "invalid" 
     / ("dereferenceable" / "dereference_write" / "write_only") "(" <const> ")"
@@ -117,23 +117,26 @@ expr := ("call" <function-type> / "member" ("struct"/"indirect") / "local" "_" <
     / <binary-operator> / "indirect" / "indirection" / "lock" <bound> <expr>
     / "derive" <pointer-type> [<expr>] / "destroy" <expr>
     / "sequence" <access-class> / "fence" <access-class> 
-    / "assign" <access-class> /  "compound_assign" <access-class> <binary-operator>
+    / "assign" <access-class> /  "compound_assign" ["fetch"] <access-class> <binary-operator> 
     / "unary_assign" <access-class> ("preinc" / "postinc" / "predec" / "postdec")
-    / "exit" "block" "$" <number> / "pop" <number> / "dup" <number>
+    / "exit" "block" "$" <number> <number> / "pop" <number> / "dup" <number>
     / "begin" "block" "$" <number> <block> "end" "block" "$" <number>
     / "tuple" <number>
     / "aggregate" <type> <number>) [";"]
     / "lambda" <number> ["<" <generic-args> ">"] "(" <function-args> ")" "->" <type> "{" <block> "}"
-    / "nop" / "cmp_excg" <access-class> / "swap" <access-class>) [";"]
+    / "nop" / "cmp_excg" <access-class>
+    / "cmp_excg_weak" <access-class>
+    / "swap" <access-class>) [";"]
 
 
 binary-operator := "add" / "sub" / "div" / "rem" / "band" / "bor" / "bxor" / "subscript"
     / "cmp_eq" / "cmp_lt" / "cmp_le" / "cmp_gt" / "cmp_ge" / "cmp_ne" / "cmp_spaceship"
+    / "cmp"
 
 
 unary-operator := "umn" / "neg" / "bneg" / "pos"
 
-access-class := ["nontemporal"] ["freeze"] ["volatile"] ["atomic" ["acquire","release","acqrel","seqcst"]]
+access-class := ["nontemporal"] ["freeze"] ["volatile"] ["atomic" ["relaxed"/"acquire"/"release"/"acqrel"/"seqcst"] ["fail" "relaxed"]] 
 
 block := *(<expr> / "begin" "tag" "#" <number> /"begin" "tag" "#" <number>/<switch>
     /"branch" ("always"/"never"/"zero"/"nonzero"/"less"/"greater") "@"<number>
