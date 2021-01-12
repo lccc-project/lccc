@@ -234,7 +234,9 @@ pub fn handle_alloc_error(layout: Layout) -> ! {
 }
 
 #[__lccc::weak]
-fn __lccc_rust_handle_alloc_error_impl(_: Layout) -> ! {
+#[__lccc::use_mangling("itanium")]
+#[unstable(feature="lccc_handle_alloc_error_impl")]
+pub fn __lccc_rust_handle_alloc_error_impl(_: Layout) -> ! {
     ::__lccc::builtins::C::__builtin_trap()
 }
 

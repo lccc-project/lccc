@@ -12,7 +12,7 @@ pub struct Box<
     #[unstable(
         feature = "lccc_box_internals",
         issue = "none",
-        reason = "Internal implementation detail of "
+        reason = "Internal implementation detail of Box"
     )]
     pub ptr: core::ptr::Unique<T>,
     #[__lccc::reify_as_transparent_if_field_zero_sized]
@@ -293,7 +293,16 @@ impl<Args, T: ?Sized + FnOnce<Args>, A: Allocator> FnOnce<Args> for Box<T, A> {
     type Output = <T as FnOnce<Args>>::Output;
 
     extern "rust-call" fn call_once(mut self, args: Args) -> Self::Output {
-        (*self).call_once_unsized(args)
+        let (ptr,alloc) = Box::into_inner_with_alloc(self);
+
+        <T as FnOnce<Args>>::call_once_unsized(ptr);
+        let layout = Layout::for_value_raw(ptr);
+        unsafe {
+            __lccc::xir!("destroy sequence atomic release":[self.ptr]);
+        } // Only need a sequence, because &mut excludes multiple threads.
+        if layout.size() != 0 {
+            self.alloc.dealloc(NonNull::new_unchecked(ptr), layout)
+        }
     }
 }
 
@@ -310,13 +319,13 @@ impl<Args, T: ?Sized + Fn<Args>, A: Allocator> Fn<Args> for Box<T, A> {
 }
 
 #[unstable(feature = "lccc_boxed_macro", issue = "none")]
-#[allow_internal_unstable(box_syntax, new_uninit, allocator_api, lccc_intrinsic_crate)]
+#[allow_internal_unstable(new_uninit, allocator_api, lccc_intrinsic_crate)]
 macro_rules! boxed {
     ($item: expr) => {{
         type _T = ::__lccc::decltype!($item);
         let b = Box::new_uninit();
         let ptr: *mut T = ::__lccc::builtins::CXX::__builtin_new(size_of::<_T>(),b.as_mut_ptr());
-        ::__lccc::xir!("assign nocopy {}":[ref *ptr]::[$item]);
-        b.assume_init()
+        ::__lccc::construct_in_place(ptr,$item);
+        Box::assume_init(b)
     }}
 }

@@ -9,3 +9,7 @@ edition = "2018"
 [dependencies]
 libcore = {path ="../libcore"}
 liballoc = {path = "../liballoc"}
+libstd = {path = "../libstd"}
+
+[lib]
+crate-type=["dylib"]

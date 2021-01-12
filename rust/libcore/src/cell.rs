@@ -1,4 +1,4 @@
-use crate::marker::{Sized, Sync};
+use crate::{marker::{Sized, Sync}, ops::FnOnce};
 use crate::ops::CoereceUnsized;
 
 #[repr(transparent)]

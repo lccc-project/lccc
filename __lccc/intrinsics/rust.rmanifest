@@ -1,0 +1,5 @@
+root-path: ::__lccc::builtins::rust
+contents: 
+      - function: size_of_val
+        signature: <T: ?::core::marker::Sized>(val: *const T) -> usize
+        

@@ -46,6 +46,15 @@ impl Layout {
             _align: core::mem::align_of_val(val),
         }
     }
+    #[unstable(feature="layout_for_ptr")]
+    pub fn for_value_raw<T: ?Sized>(ptr: *const T) -> Layout{
+        // Note:
+        // The lccc builtin versions of these accept raw pointers, while the definitions in core::mem are not
+        Self {
+            sz: ::__lccc::builtins::rust::size_of_val(ptr),
+            _align: ::__lccc::builtins::rust::align_of_val(ptr)
+        }
+    }
 
     pub fn array<T>(len: usize) -> Result<Layout, LayoutError> {
         if let Some(len) = len.checked_multiply(core::mem::size_of::<T>()) {

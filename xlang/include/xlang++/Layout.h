@@ -543,7 +543,8 @@ namespace lccc{
     };
 
     enum class OperatingSystem : std::uint32_t{
-        LINUX =0,
+        NONE = 0,
+        LINUX = 1,
         WINDOWS = 2,
         MINGW32 = 3,
         MACOS = 4,
@@ -554,14 +555,15 @@ namespace lccc{
     };
 
     enum class Environment :std::uint32_t{
-        GNU = 0,
-        EABI = 1,
-        NONE = 2,
-        MSVC = 3,
-        MUSL = 4,
-        LC = 5,
-        PHANTOM_STD = 6,
-        PHANTOM_KERNEL = 7,
+        NONE = 0,
+        GNU = 1,
+        EABI = 2,
+        NONE = 3,
+        MSVC = 4,
+        MUSL = 5,
+        LC = 6,
+        PHANTOM_STD = 7,
+        PHANTOM_KERNEL = 8,
 
 
         UNKNOWN = static_cast<std::uint32_t>(-1)

@@ -5,10 +5,10 @@
     lang_items,
     intrinsics,
     no_core,
-    optin_builtin_traits,
+    auto_traits,
     negative_trait_bounds
 )]
-#![feature(rustc_attrs, const_fn, reciever_trait)]
+#![feature(const_fn, reciever_trait)]
 #![feature(
     lccc_const_transmute,
     lccc_slice_layout,

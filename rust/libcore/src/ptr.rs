@@ -202,16 +202,16 @@ pub use crate::intrinsics::read;
 pub use crate::intrinsics::swap_nonoverlapping;
 pub use crate::intrinsics::write;
 
-#[allow_internal_unstable(lccc_intrinsic_crate)]
+#[allow_internal_unstable(raw_ref)]
 macro_rules! raw_const{
     ($e:expr) => {
-        unsafe{::__lccc::xir!("address_of":[ref e]:[yield: *const ::__lccc::decltype!({e})])}
+        (&raw const e)
     }
 }
 
-#[allow_internal_unstable(lccc_intrinsic_crate)]
+#[allow_internal_unstable(raw_ref)]
 macro_rules! raw_mut{
     ($e:expr) => {
-        unsafe{::__lccc::xir!("address_of":[ref e]:[yield: *mut ::__lccc::decltype!({e})])}
+        (&raw mut e)
     }
 }

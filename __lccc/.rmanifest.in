@@ -1,0 +1,24 @@
+root-path: __lccc
+stability: 
+    feature: lccc_intrinsic_crate
+    issue: https://github.com/LightningCreations/lccc/issues/1
+    stable: false
+host-std: 2018
+target-std: |
+    2015
+    2018
+    2021
+content: 
+      - module: intrinsics
+        files: |
+            "intrinsics.xmanifest"
+            "intrinsics.rmanifest"
+      - module: __intrinsics
+        files: |
+            "intrinsics.xmanifest"
+            "intrinsics.rmanifest"
+      - module: __intrinsics__
+        files: |
+            "intrinsics.xmanifest"
+            "intrinsics.rmanifest"          
+host-target: ${LCCC_HOST_TARGET}

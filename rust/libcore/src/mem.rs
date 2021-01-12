@@ -126,8 +126,8 @@ pub fn take<T: Default>(r: &mut T) -> T {
 
 pub fn replace<T>(r: &mut T, val: T) -> T {
     unsafe {
-        let ret = intrinsics::read(r);
-        intrinsics::write(r, val);
+        let ret = ptr::read(r);
+        ptr::write(r, val);
         ret
     }
 }
@@ -137,4 +137,14 @@ unsafe impl<T: ?Sized> TrivialDestruction for ManuallyDrop<T> {}
 #[deprecated("use MaybeUninit instead")]
 pub unsafe fn uninitialized<T>() -> T {
     __lccc::xir!("const undef uninit %0"::[yield: T])
+}
+
+#[__lccc::allow_constant_promotion]
+pub const fn size_of<T>() -> T{
+    ::__lccc::builtins::rust::size_of::<T>()
+}
+
+#[__lccc::allow_constant_promotion]
+pub const fn align_of<T>() -> T{
+    ::__lccc::builtins::rust::align_of::<T>()
 }
