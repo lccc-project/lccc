@@ -24,23 +24,30 @@
 #include <vector>
 #include <string>
 
-namespace lccc{
-    struct Plugin{
+namespace lccc
+{
+    struct PluginImpl;
+    XLANG_API [[noreturn]] void throw_symbol_not_found(lccc::string_view);
+    struct XLANG_API Plugin
+    {
     private:
-        std::string args_stored;
-        std::vector<lccc::string_view> args;
-        lccc::unique_ptr<xlang::FileVisitor> visitor;
-        std::string name;
-        lccc::unique_ptr<xlang::FileVisitor>(*entry_point)(xlang::FileVisitor*,lccc::span<lccc::string_view>);
-        void* handle;
+        lccc::unique_ptr<struct PluginImpl> impl;
+        void *find_sym(lccc::string_view name);
+
     public:
-        Plugin(std::string name,std::string args);
+        Plugin(lccc::string_view name, lccc::string_view args);
         ~Plugin();
-        xlang::FileVisitor* load(xlang::FileVisitor* parent);
+        xlang::FileVisitor *load(xlang::FileVisitor *parent);
+        template <typename T>
+        T &find_symbol(lccc::string_view name)
+        {
+            if (void *v = find_sym(name); v)
+                return *static_cast<T *>(v);
+            else
+                throw_symbol_not_found(name);
+        }
     };
 
-
-
-}
+} // namespace lccc
 
 #endif //LCCC_PLUGINS_H

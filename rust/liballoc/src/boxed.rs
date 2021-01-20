@@ -18,7 +18,7 @@
  */
 use crate::alloc::{Allocator, Global, Layout};
 use core::mem::{forget, ManuallyDrop};
-use core::ops::{Deref, DerefMove, DerefMut};
+use core::ops::{Deref, DerefMove, DerefMut,DerefPure};
 
 pub struct Box<
     T: ?Sized,
@@ -84,6 +84,8 @@ unsafe impl<T, A: Allocator> DerefPlace for Box<T, A: Allocator> {
         self.ptr.as_mut_ptr()
     }
 }
+
+unsafe impl<T, A: Allocator> DerefPure for Box<T, A: Allocator>{}
 
 impl<T> Box<T, Global> {
     pub fn new(x: T) -> Self {
