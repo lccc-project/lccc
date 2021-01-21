@@ -16,6 +16,12 @@
  * When dealing in this software, you may, at your option, do so under only those terms,
  *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
  */
+
+#[repr(C)]
+pub struct Span{
+    
+}
+
 extern"C"{
     
 }

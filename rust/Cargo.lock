@@ -3,9 +3,6 @@
 [[package]]
 name = "liballoc"
 version = "0.1.0"
-dependencies = [
- "libcore",
-]
 
 [[package]]
 name = "libcore"
@@ -14,7 +11,7 @@ version = "0.1.0"
 [[package]]
 name = "libproc_macro"
 version = "0.1.0"
-dependencies = [
- "liballoc",
- "libcore",
-]
+
+[[package]]
+name = "libstd"
+version = "0.1.0"

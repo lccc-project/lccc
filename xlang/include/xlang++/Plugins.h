@@ -27,7 +27,7 @@
 namespace lccc
 {
     struct PluginImpl;
-    XLANG_API [[noreturn]] void throw_symbol_not_found(lccc::string_view);
+    [[noreturn]] XLANG_API void throw_symbol_not_found(lccc::string_view);
     struct XLANG_API Plugin
     {
     private:

@@ -28,7 +28,7 @@ using namespace std::string_literals;
 
 namespace lccc
 {
-    XLANG_API [[noreturn]] void throw_symbol_not_found(lccc::string_view sv)
+    [[noreturn]] XLANG_API void throw_symbol_not_found(lccc::string_view sv)
     {
         throw std::runtime_error{std::string{sv}};
     }

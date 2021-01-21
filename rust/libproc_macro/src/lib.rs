@@ -19,7 +19,7 @@
 
 // This library is garbage, and needs to chat with xlangrust.so
 // Which is, of course, written in C++. 
-#![feature(lccc_intrinsic_crate)]
+#![feature(lccc_intrinsic_crate,extern_types)]
 #![__lccc::mangle_as("10proc_macro")]
 
 
@@ -28,5 +28,6 @@ extern crate libcore as core;
 extern crate libstd as std;
 extern crate self as proc_macro;
 
+mod cxx;
 mod token_stream_impl;
 mod span_impl;

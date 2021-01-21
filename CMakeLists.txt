@@ -154,3 +154,5 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 add_executable(lccc ${CMAKE_CURRENT_BINARY_DIR}/Definitions.hpp src/main.cpp)
 
 target_link_libraries(lccc xlang)
+
+option(LCCC_BOOTSTRAP "Bootstrap lccc by recompiling after finishing the stage 1 build" OFF)
