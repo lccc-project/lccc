@@ -37,40 +37,44 @@ pub enum Ordering {
 #[inline]
 #[__lccc::xlang_opt_hint(contains_sequence)]
 pub fn compiler_fence(ord: Ordering) {
-    match ord {
-        Ordering::Release => {
-            __lccc::xir!("sequence atomic release")
+    unsafe{
+        match ord {
+            Ordering::Release => {
+                __lccc::xir!("sequence atomic release")
+            }
+            Ordering::Acquire => {
+                __lccc::xir!("sequence atomic acquire")
+            }
+            Ordering::AcqRel => {
+                __lccc::xir!("sequence atomic acqrel")
+            }
+            Ordering::SeqCst => {
+                __lccc::xir!("sequence atomic seq_cst")
+            }
+            ord => panic!("Invalid ordering {}", ord),
         }
-        Ordering::Acquire => {
-            __lccc::xir!("sequence atomic acquire")
-        }
-        Ordering::AcqRel => {
-            __lccc::xir!("sequence atomic acqrel")
-        }
-        Ordering::SeqCst => {
-            __lccc::xir!("sequence atomic seq_cst")
-        }
-        ord => panic!("Invalid ordering {}", ord),
     }
 }
 
 #[inline]
 #[__lccc::xlang_opt_hint(contains_fence)]
 pub fn fence(ord: Ordering) {
-    match ord {
-        Ordering::Release => {
-            __lccc::xir!("fence atomic release")
+    unsafe{
+        match ord {
+            Ordering::Release => {
+                __lccc::xir!("fence atomic release")
+            }
+            Ordering::Acquire => {
+                __lccc::xir!("fence atomic acquire")
+            }
+            Ordering::AcqRel => {
+                __lccc::xir!("fence atomic acqrel")
+            }
+            Ordering::SeqCst => {
+                __lccc::xir!("fence atomic seq_cst")
+            }
+            _ => panic!("Invalid ordering {}"),
         }
-        Ordering::Acquire => {
-            __lccc::xir!("fence atomic acquire")
-        }
-        Ordering::AcqRel => {
-            __lccc::xir!("fence atomic acqrel")
-        }
-        Ordering::SeqCst => {
-            __lccc::xir!("fence atomic seq_cst")
-        }
-        _ => panic!("Invalid ordering {}"),
     }
 }
 
@@ -438,7 +442,7 @@ mod ops {
         }
     }
 
-    pub fn fetch_and<T: And>(mem: *mut T, value: T, ord: Ordering) -> T {
+    pub unsafe fn fetch_and<T: And>(mem: *mut T, value: T, ord: Ordering) -> T {
         match ord {
             Relaxed => __lccc::xir!(r"
                 compound_assign fetch and atomic relaxed 

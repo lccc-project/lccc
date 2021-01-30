@@ -65,7 +65,7 @@ impl Layout {
         }
     }
     #[unstable(feature="layout_for_ptr")]
-    pub fn for_value_raw<T: ?Sized>(ptr: *const T) -> Layout{
+    pub unsafe fn for_value_raw<T: ?Sized>(ptr: *const T) -> Layout{
         // Note:
         // The lccc builtin versions of these accept raw pointers, while the definitions in core::mem are not
         Self {

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.17)
 project(lccc CXX)
 
-set(CMAKE_MESSAGE_CONTEXT "lccc")
+list(APPEND CMAKE_MESSAGE_CONTEXT "lccc")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
@@ -81,8 +81,8 @@ foreach(target ${LCCC_LIBRARIES_TARGETS})
         endforeach()
         message(DEBUG "${LCCC_${target}_SEARCH_PATHS}")
 
-        find_library(_LCCC_${target}_SYSROOT_BASE_LIB
-            NAMES libc.so libc.so.1 libc.so.2 libc.so.3 libc.so.4 libc.so.5 libc.so.6 libc.a NAMES_PER_DIR
+        find_file(_LCCC_${target}_SYSROOT_BASE_LIB
+            NAMES libc.so libc.so.1 libc.so.2 libc.so.3 libc.so.4 libc.so.5 libc.so.6 libc.a libcygwin1.dll.a libucrt.lib ucrt.lib
             PATHS ${LCCC_${target}_SEARCH_PATHS}
             NO_DEFAULT_PATH)
         if(_LCCC_${target}_SYSROOT_BASE_LIB STREQUAL "_LCCC_${target}_SYSROOT_BASE_LIB-NOTFOUND")

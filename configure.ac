@@ -7,4 +7,4 @@ AC_PROG_INSTALL
 
 AC_CONFIG_FILES([Makefile])
 
-AC_CONFIG_SUBDIRS([xlang ])
+AC_CONFIG_SUBDIRS([xlang])

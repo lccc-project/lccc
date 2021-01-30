@@ -136,8 +136,9 @@ impl<T: Default> Cell<T> {
         // SAFETY:
         // ptr from &self, ops are balanced.
         unsafe {
+            let def = Default::default();
             let tmp = core::ptr::read(self.inner.get());
-            core::ptr::write(self.inner.get(), Default::default());
+            core::ptr::write(self.inner.get(), def);
             tmp
         }
     }
@@ -192,7 +193,7 @@ impl<'a, T: ?Sized + 'a> Drop for Ref<'a, T> {
     fn drop(&mut self) {
         // Why do we need atomics for something clearly thread safe?
         // ¯\_(ツ)_/¯
-        ::__lccc::xir!("destroy sequence atomic acquire":[self.inner]);
+        unsafe{::__lccc::xir!("destroy sequence atomic acquire":[self.inner]);}
         self.scount.update(|s| s - 1);
     }
 }

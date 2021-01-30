@@ -7,3 +7,4 @@ build*/
 /.vscode/
 target/
 !/cmake/target/
+/autom4te.cache

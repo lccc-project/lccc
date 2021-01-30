@@ -3,5 +3,6 @@ members = [
     "libcore",
     "liballoc",
     "libproc_macro",
-    "libstd"
+    "libstd",
+    "stdos"
 ]
