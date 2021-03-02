@@ -78,7 +78,6 @@ enum class TargetStage
     Assembly,
     Compile,
     CompileAndLink,
-    RLib,
     Dependencies,
     ModuleServer
 };
@@ -91,6 +90,14 @@ enum class DependencyStyle
     XIRModules,
     // Yes, this produces a <name>.xmanifest file
     Manifest,
+    // This produces .rmanifest file
+    RustManifest,
+    // This produces lang.rtable
+    RustLangItems,
+    // These produce the above outputs, but as object files.
+    SharedManfiest,
+    SharedRustManfiest,
+    SharedRustLangItems
 };
 
 enum class OutputFormat

@@ -143,3 +143,5 @@ where
         self.pin.deref_mut()
     }
 }
+
+unsafe impl<P: DerefPure> DerefPure for Pin<P>{}

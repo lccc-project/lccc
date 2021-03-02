@@ -1,0 +1,120 @@
+pub trait Hasher{
+    fn finish(&self) -> u64;
+    fn write_bytes(&mut self,bytes: &[u8]);
+    fn write_u8(&mut self,i: u8) {
+        self.write_bytes(core::slice::from_ref(&i));
+    }
+    fn write_i8(&mut self,i: i8){
+        self.write_u8(i as u8)
+    }
+    fn write_u16(&mut self,i: u16){
+        self.write_bytes(i.as_ne_bytes())
+    }
+    fn write_i16(&mut self,i: i16){
+        self.write_bytes(i.as_ne_bytes())
+    }
+    fn write_u32(&mut self,i: u32){
+        self.write_bytes(i.as_ne_bytes())
+    }
+    fn write_i32(&mut self,i: i32){
+        self.write_bytes(i.as_ne_bytes())
+    }
+    fn write_u64(&mut self,i: u64){
+        self.write_bytes(i.as_ne_bytes())
+    }
+    fn write_i64(&mut self,i: i64){
+        self.write_bytes(i.as_ne_bytes())
+    }
+    fn write_u128(&mut self,i: u128){
+        self.write_bytes(i.as_ne_bytes())
+    }
+    fn write_i128(&mut self,i: i128){
+        self.write_bytes(i.as_ne_bytes())
+    }
+    fn write_usize(&mut self,i: usize){
+        self.write_bytes(i.as_ne_bytes())
+    }
+    fn write_isize(&mut self,i: isize){
+        self.write_bytes(i.as_ne_bytes())
+    }
+}
+
+impl<H: Hasher> Hasher for &mut H{
+    fn finish(&self) -> u64{
+        <H as Hasher>::finish(self)
+    }
+    fn write_bytes(&mut self,bytes: &[u8]){
+        <H as Hasher>::write_bytes(bytes)
+    }
+    fn write_u8(&mut self,i: u8) {
+        <H as Hasher>::write_u8(i)
+    }
+    fn write_i8(&mut self,i: i8){
+        <H as Hasher>::write_i8(i)
+    }
+    fn write_u16(&mut self,i: u16){
+        <H as Hasher>::write_u16(i)
+    }
+    fn write_i16(&mut self,i: i16){
+        <H as Hasher>::write_i16(i)
+    }
+    fn write_u32(&mut self,i: u32){
+        <H as Hasher>::write_u32(i)
+    }
+    fn write_i32(&mut self,i: i32){
+        <H as Hasher>::write_i32(i)
+    }
+    fn write_u64(&mut self,i: u64){
+        <H as Hasher>::write_u64(i)
+    }
+    fn write_i64(&mut self,i: i64){
+        <H as Hasher>::write_i64(i)
+    }
+    fn write_u128(&mut self,i: u128){
+        <H as Hasher>::write_u128(i)
+    }
+    fn write_i128(&mut self,i: i128){
+        <H as Hasher>::write_i128(i)
+    }
+    fn write_usize(&mut self,i: usize){
+        <H as Hasher>::write_usize(i)
+    }
+    fn write_isize(&mut self,i: isize){
+        <H as Hasher>::write_isize(i)
+    }
+}
+
+pub trait BuildHasher{
+    type Hasher: Hasher;
+    fn build_hasher(&self) -> Self::Hasher;
+}
+
+use core::marker::PhantomData;
+use core::default::Default;
+use core::clone::Clone;
+use core::cmp::*;
+
+pub struct BuildHasherDefault<H>(PhantomData<H>);
+
+impl<H> Default for BuildHasherDefault<H>{
+    fn default() -> Self{
+        Self(PhantomData)
+    }
+}
+
+impl<H: Default + Hasher> BuildHasher for BuildHasherDefault<H>{
+    type Hasher = H;
+    fn build_haser(&self) -> Self::Hasher{
+        Default::default()
+    }
+}
+
+pub trait Hash{
+    fn hash<H: Hasher>(&self,state: &mut H);
+
+    fn hash_slice<H: Hasher>(data: &[Self],state: &mut H) where Self: Sized{
+        for v in data{
+            v.hash(state)
+        }
+    }
+}

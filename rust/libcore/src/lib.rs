@@ -41,6 +41,8 @@
 #![feature(lccc_stability_attributes, lccc_same_trait)]
 #![feature(or_patterns)]
 #![no_core]
+#![__lccc::mangle_as("std")]
+#![__lccc::abi_tag("lccc_stdlib")]
 
 extern crate self as core;
 
@@ -50,6 +52,7 @@ pub use prelude::v1::*;
 mod bool;
 mod unit;
 
+pub mod any;
 pub mod alloc;
 pub mod borrow;
 pub mod cell;
@@ -58,6 +61,7 @@ pub mod cmp;
 pub mod convert;
 pub mod default;
 pub mod ffi;
+pub mod hash;
 pub mod hint;
 pub mod intrinsics;
 pub mod iter;

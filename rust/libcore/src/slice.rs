@@ -64,6 +64,7 @@ pub unsafe fn from_raw_parts_mut<'a, T>(ptr: *mut T, len: usize) -> &'a mut [T] 
 }
 
 #[lang = "slice"]
+#[__lccc::mangle_as("std::slice::slice")]
 impl<T> [T] {
     #[inline(always)]
     pub const fn size(&self) -> usize {

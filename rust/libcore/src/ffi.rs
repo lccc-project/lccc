@@ -17,7 +17,7 @@
  *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
  */
 
-#[__lccc::mangle_itanium_type_as("v")]
+#[__lccc::type_mangle_as("v")]
 #[repr(i8)]
 pub enum c_void {
     #[unstable(feature = "lccc_c_void_internal_field", issue = "none")]

@@ -121,7 +121,7 @@ pub unsafe trait DerefPlace: DerefMut<Target: Sized> {
     fn deref_place(&mut self) -> *mut Self::Target;
 }
 
-#[unstable(feature="lccc_deref_patterns")]
+#[unstable(feature="lccc_deref_pure")]
 #[lang = "pure_annotation"]
 pub unsafe trait DerefPure : Deref{}
 

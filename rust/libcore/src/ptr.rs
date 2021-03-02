@@ -31,6 +31,7 @@ pub unsafe fn drop_in_place<T: ?Sized>(x: *mut T) {
 }
 
 #[lang = "const_ptr"]
+#[__lccc::mangle_as("std::ptr::const_ptr")]
 impl<T: ?Sized> *const T {
     pub const fn is_null(self) -> bool {
         (::__lccc::xir!("convert reinterpret *uint(8)":[self: *const T]:[yield: *const u8]))
@@ -39,6 +40,7 @@ impl<T: ?Sized> *const T {
 }
 
 #[lang = "mut_ptr"]
+#[__lccc::mangle_as("std::ptr::mut_ptr")]
 impl<T: ?Sized> *mut T {
     pub const fn is_null(self) -> bool {
         (::__lccc::xir!("convert reinterpret *uint(8)":[self: *const T]:[yield: *const u8]))
@@ -222,15 +224,11 @@ pub use crate::intrinsics::swap_nonoverlapping;
 pub use crate::intrinsics::write;
 
 #[allow_internal_unstable(raw_ref)]
-macro_rules! raw_const{
-    ($e:expr) => {
-        (&raw const e)
-    }
+pub macro addr_of($e:expr){
+    (&raw e)
 }
 
 #[allow_internal_unstable(raw_ref)]
-macro_rules! raw_mut{
-    ($e:expr) => {
-        (&raw mut e)
-    }
+pub macro addr_of_mut($e:expr){
+    (&raw mut e)
 }

@@ -17,7 +17,8 @@
  *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
  */
 #![feature(prelude_import,lccc_intrinsic_crate)]
-#![__lccc::mangle_as("St",needs_nested=false)]
+#![__lccc::mangle_as("std")]
+#![__lccc::abi_tag("lccc_stdlib")]
 
 extern crate libcore as core;
 extern crate liballoc as alloc;

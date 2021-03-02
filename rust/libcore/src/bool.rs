@@ -19,6 +19,7 @@
 use crate::option::*;
 
 #[lang = "bool"]
+#[__lccc::mangle_as("std::bool::bool")]
 impl bool {
     #[unstable(feature = "bool_to_option", issue = "64260")]
     #[inline]

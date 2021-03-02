@@ -655,6 +655,7 @@ namespace lccc::xlang{
         AtomicRelease = 3,
         AtomicAcqRel = 4,
         AtomicSeqCst = 5,
+        AtomicUnordered = 6,
         Volatile = 0x10,
         Freeze = 0x20,
         NonTemporal = 0x40,

@@ -19,7 +19,7 @@
 
 #[inline(always)]
 pub unsafe fn unreachable_unchecked() -> ! {
-    ::__lccc::xir!("const undef invalid !"::[yield: !])
+    ::__lccc::xir!("const undef invalid uint nonzero(0)"::[yield: !])
 }
 
 #[inline(always)]
@@ -39,3 +39,16 @@ pub fn spin_loop() {
 pub fn assume(#[__lccc::xlang_scalar_attributes(nonzero)] val: bool) {
     ::__lccc::builtins::rust::__builtin_assume(val)
 }
+
+#[inline(always)]
+#[unstable(feature="lccc_non_intrinsic_likely", issue = "none")]
+pub fn likely(b: bool) -> bool{
+    ::__lccc::builtins::rust::__builtin_likely(b)
+}
+
+#[inline(always)]
+#[unstable(feature="lccc_non_intrinsic_likely", issue = "none")]
+pub fn unlikely(b: bool) -> bool{
+    ::__lccc::builtins::rust::__builtin_unlikely(b)
+}
+

@@ -19,5 +19,16 @@
 
 #![unstable(feature = "core_intrinsics", issue = "none")]
 
-pub use ::__lccc::intrinsics::rust::*;
+pub use ::__lccc::builtins::rust::*;
 
+#[stable]
+pub use ::__lccc::builtins::rust::transmute;
+#[stable]
+pub use ::__lccc::builtins::rust::transmute_copy;
+#[stable]
+pub use ::__lccc::builtins::rust::copy;
+#[stable]
+pub use ::__lccc::builtins::rust::copy_nonoverlapping;
+
+pub use ::__lccc::builtins::C::__builtin_trap;
+pub use ::__lccc::builtins::C::__builtin_trap as abort;
