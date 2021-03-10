@@ -38,6 +38,9 @@ The following language frontends are available or planned (A check indicates the
 - [ ] C++
 - [ ] Rust
 
+The rust frontend includes a definition of a stable, versioned, abi, a draft of which can be found [here](https://hackmd.io/@wSaA8OrrSQ2SlegMvA6e6A/SJ1TeE0y_). 
+No published versions exist currently, though the first version is intended to be published soon.
+
 ## Backends
 
 The following code generators are available or planned (A check indicates the backend is complete):
