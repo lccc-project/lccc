@@ -509,6 +509,12 @@ namespace lccc::xlang{
     struct IntegerTypeVisitor;
     struct FloatTypeVisitor;
 
+    enum class ScalarValidity{
+        Nonzero,
+        Finite,
+        Nonnan
+    };
+
     struct ScalarTypeVisitor : Visitor{
         explicit ScalarTypeVisitor(ScalarTypeVisitor* parent=nullptr);
         virtual IntegerTypeVisitor* visitIntegerType();
@@ -516,15 +522,15 @@ namespace lccc::xlang{
         virtual void visitBitSize(uint16_t bits);
         virtual void visitVectorSize(uint16_t vector);
         virtual void visitComplex();
-        virtual void visitNonzero();
+        virtual void visitValueValidity(ScalarValidity validity);
     };
 
 
     struct IntegerTypeVisitor : Visitor{
         explicit IntegerTypeVisitor(IntegerTypeVisitor* parent=nullptr);
         virtual void visitSigned();
-        virtual void visitMinimumValue(std::intmax_t val);
-        virtual void visitMaximumValue(std::intmax_t val);
+        virtual ValueVisitor* visitMinimumValue();
+        virtual ValueVisitor* visitMaximumValue();
     };
 
     struct FloatTypeVisitor : Visitor{
@@ -605,7 +611,7 @@ namespace lccc::xlang{
         Pos = 3,
     };
 
-    enum class BinaryOperation : uint8_t {
+    enum class BinaryOperation : uint16_t {
         Add = 0,
         Sub = 2,
         Div = 3,
@@ -622,8 +628,16 @@ namespace lccc::xlang{
         CmpGt = 14,
         CmpGe = 15,
         CmpSpaceship = 16,
+        CmpRaw = 17,
 
-        Fetch = 0x80
+
+        Fetch = 0x80,
+
+        // Overflow behaviour
+        Unchecked = 0x100,
+        Trapping = 0x200,
+        Satuturating = 0x300,
+        Checked = 0x400,
     };
 
     enum class ConversionStrength : uint8_t {
@@ -676,7 +690,13 @@ namespace lccc::xlang{
         CmpExcg = 4,
         Swap = 5,
         CmpExcgWeak = 6,
+
+        Unchecked = 0x10,
+        Trapping = 0x20,
+        Satuturating = 0x30,
+        Checked = 0x40,
     };
+
 
 
     struct BlockVisitor;

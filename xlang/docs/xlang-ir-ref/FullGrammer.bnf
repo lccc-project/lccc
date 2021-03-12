@@ -91,7 +91,7 @@ type := <identifier> / ("slice" "[" <type> "]") / ("[" <type> ";" <expr> "]") / 
 
 scalar-type := ("uint" / "int" / "float" / "decimal") <scalar-validity> ["complex"] ["vector_size" "(" <number> ")"] "(" <number> ")"
 
-scalar-validity := ["nonzero"] ["min" "(" <const> ")")] ["max" "(" <const> ")")]
+scalar-validity := ["nonzero"] ["finite"] ["nonnan"] ["min" "(" <const> ")")] ["max" "(" <const> ")")]
 
 pointer-type := "*" [*<pointer-validity>] ["ref"] <type>
 
@@ -108,21 +108,21 @@ const := "expr" <expr> / <scalar-type> ["-"] <number>["."*<DIGIT>]["e" ["+"/"-"]
     / "true" / "false" / "[" [<const> [*(["," <const>])]] "]" / "[" <const> ";" <const> "]"
     / "requires" "(" <function-args> ")" "{" <block> "}"
 
-pointer-const := ("global_address" <identifier>) / ("null" <pointer-type>)
+pointer-const := ("global_address" <identifier>) / ("null" <pointer-type>) / ("label_address" "@"<number>)
 
 undefined := "undef" ("uninit" / "invalid") <type>
 
 expr := ("call" <function-type> / "member" ("struct"/"indirect") / "local" "_" <number> / "as_rvalue" [<access-class>]
     / "temporary" / "convert" ("weak" / "strong" / "reinterpret") / <unary-operator> 
-    / <binary-operator> / "indirect" / "indirection" / "lock" <bound> <expr>
+    / <binary-operator> [<wrapping-behaviour>] / "indirect" / "indirection" / "lock" <bound> <expr>
     / "derive" <pointer-type> [<expr>] / "destroy" <expr>
     / "sequence" <access-class> / "fence" <access-class> 
-    / "assign" <access-class> /  "compound_assign" ["fetch"] <access-class> <binary-operator> 
-    / "unary_assign" <access-class> ("preinc" / "postinc" / "predec" / "postdec")
-    / "exit" "block" "$" <number> <number> / "pop" <number> / "dup" <number>
+    / "assign" <access-class> /  "compound_assign" ["fetch"] <access-class> <binary-operator> [<wrapping-behaviour>]
+    / "unary_assign" <access-class> / ("preinc" / "postinc" / "predec" / "postdec") [<wrapping-behaviour>]
+    / "exit" "block" "$" <number> <number> / "pop" <number> / "dup" [<number>]
     / "begin" "block" "$" <number> <block> "end" "block" "$" <number>
     / "tuple" <number>
-    / "aggregate" <type> <number>) [";"]
+    / "aggregate" <type> <number>
     / "lambda" <number> ["<" <generic-args> ">"] "(" <function-args> ")" "->" <type> "{" <block> "}"
     / "nop" / "cmp_excg" <access-class>
     / "cmp_excg_weak" <access-class>
@@ -133,6 +133,7 @@ binary-operator := "add" / "sub" / "div" / "rem" / "band" / "bor" / "bxor" / "su
     / "cmp_eq" / "cmp_lt" / "cmp_le" / "cmp_gt" / "cmp_ge" / "cmp_ne" / "cmp_spaceship"
     / "cmp"
 
+wrapping-behaviour := "trap" / "wrap" / "unchecked" / "checked" / "saturating"
 
 unary-operator := "umn" / "neg" / "bneg" / "pos"
 

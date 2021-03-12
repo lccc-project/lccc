@@ -146,6 +146,13 @@ impl<T: ?Sized> From<&T> for NonNull<T> {
     }
 }
 
+impl<T: ?Sized> From<&mut T> for NonNull<T>{
+    fn from(t: &mut T) -> Self{
+        NonNull {ptr: t as *mut T as *const T}
+    }
+}
+
+
 #[repr(transparent)]
 #[unstable(feature = "lccc_unique_ptr")]
 #[__lccc::transparent_as_unreified_field]

@@ -5,6 +5,7 @@ list(APPEND CMAKE_MESSAGE_CONTEXT "lccc")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(LCCC_VERSION 0.1)
 
@@ -155,4 +156,4 @@ add_executable(lccc ${CMAKE_CURRENT_BINARY_DIR}/Definitions.hpp src/main.cpp)
 
 target_link_libraries(lccc xlang)
 
-option(LCCC_BOOTSTRAP "Bootstrap lccc by recompiling after finishing the stage 1 build" OFF)
+option(LCCC_BOOTSTRAP "Bootstrap lccc by recompiling after finishing the stage 1 build (requires the C++ language be enabled at least)" OFF)

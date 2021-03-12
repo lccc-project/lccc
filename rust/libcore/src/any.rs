@@ -1,7 +1,7 @@
 
 pub struct TypeId(*const u8,usize);
 
-use core::{cmp::{PartialEq,Eq},hash::{Hash,Hasher}}
+use core::{cmp::{PartialEq,Eq,PartialOrd,Ord,Ordering},hash::{Hash,Hasher}}
 
 impl PartialEq for TypeId{
     fn eq(&self,other: &TypeId) -> bool{
@@ -30,6 +30,36 @@ impl PartialEq for TypeId{
         }
     }
 }
+
+impl PartialOrd for TypeId{
+    fn partial_cmp(&self,other: &TypeId) -> Option<Ordering>{
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TypeId{
+    fn cmp(&self, other: &TypeId) -> Ordering{
+        let mut p0 = self.0;
+        let mut p1 = other.0;
+        // Safety:
+        // both p0 and p1 point to Null Terminated Multibyte Strings according to the ABI
+        // So before the loop passes the end of the allocation, it will read a null terminator in either or both
+        unsafe{
+            loop{
+                if *p0!=*p1{
+                    return (*p0).cmp(&*p1);
+                }else if *p==0{
+                    return Ordering::Equal;
+                }
+                else{
+                    p0 = p0.offset(1);
+                    p1 = p1.offset(1);
+                }
+            }
+        }
+    }
+}
+
 
 impl Eq for TypeId{}
 

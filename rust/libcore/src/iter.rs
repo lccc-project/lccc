@@ -24,7 +24,7 @@ use alloc::str::EncodeUtf16;
 #[must_use = "Iterators are lazy, and most operations will have no effect unless consumed"]
 pub trait Iterator {
     type Item;
-
+    #[lang = "iterator_next"]
     fn next(&mut self) -> Option<Self::Item>;
 
     fn size_hint(&mut self) -> (usize, Option<usize>) {

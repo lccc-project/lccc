@@ -19,7 +19,6 @@
 
 #![unstable(feature = "core_intrinsics", issue = "none")]
 
-pub use ::__lccc::builtins::rust::*;
 
 #[stable]
 pub use ::__lccc::builtins::rust::transmute;
@@ -32,3 +31,9 @@ pub use ::__lccc::builtins::rust::copy_nonoverlapping;
 
 pub use ::__lccc::builtins::C::__builtin_trap;
 pub use ::__lccc::builtins::C::__builtin_trap as abort;
+
+
+#[track_caller]
+pub fn caller_location() -> &'static std::panicking::Location<'static>{
+    ::__lccc::builtins::rust::__builtin_caller_location()
+}

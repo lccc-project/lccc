@@ -4,6 +4,9 @@
 #include <vector>
 #include <map>
 #include <cstdio>
+#include <optional>
+#include <cstdio>
+#include <set>
 
 #include <xlang++/Layout.h>
 
@@ -114,6 +117,12 @@ enum class OutputFormat
 
 int main(int argc, char **argv)
 {
+    std::set<std::string_view> known_extensions{
+        ".c",".C",".s",".S",".rs",".cpp",".cxx",".cc",
+        ".i",".ixx",".ipp",".h",".hpp",".hxx", ".lch", ".xir",
+        ".xmanifest", ".rmanifest", ".rast", ".rlib", ".xbc",
+        ".rtable", 
+        };
     std::optional<std::string_view> sysroot{};
     lccc::string_view target{LCCC_DEFAULT_TARGET};
     lccc::string_view cxxlib{LCCC_DEFAULT_CXXLIB};
@@ -159,7 +168,7 @@ int main(int argc, char **argv)
                 input_files.emplace_back(arg);
                 auto suffix = arg.substr(arg.rfind("."sv));
                 auto main = arg.substr(0, arg.rfind("."sv));
-                if ((suffix == ".o"sv) || (suffix == ".a"sv) || (suffix == ".so"sv))
+                if (known_extensions.count(suffix)!=0)
                     linker_options.emplace_back(arg);
                 else
                 {
@@ -167,7 +176,7 @@ int main(int argc, char **argv)
                     do
                     {
                         std::tmpnam((source_file_map[arg] = std::string(L_tmpnam, ' ')).data());
-                    } while (f = std::fopen(source_file_map[arg].c_str(), "wx"));
+                    } while ((f = std::fopen(source_file_map[arg].c_str(), "wx")));
                     linker_options.emplace_back(source_file_map[arg]);
                 }
             }
@@ -223,6 +232,32 @@ int main(int argc, char **argv)
                         }
                         else
                             lang_name = arg;
+                        break;
+                    }else if (arg[0]=='o'){
+                        arg = arg.substr(1);
+                        if (arg == ""sv)
+                        {
+                            if (argv[1])
+                                output_file = *++argv;
+                            else
+                                return 1;
+                        }
+                        else
+                            output_file = arg;
+                        break;
+                    }else if (arg[0] == 'W'){
+                        std::string_view warning{};
+                        arg = arg.substr(1);
+                        if (arg == ""sv)
+                        {
+                            if (argv[1])
+                                warning = *++argv;
+                            else
+                                return 1;
+                        }
+                        else
+                            warning = arg;
+                        
                         break;
                     }
                 }

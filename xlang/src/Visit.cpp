@@ -494,13 +494,17 @@ namespace lccc::xlang{
             id->visitSigned();
     }
 
-    void IntegerTypeVisitor::visitMinimumValue(std::intmax_t val) {
+    ValueVisitor* IntegerTypeVisitor::visitMinimumValue() {
         if(auto* id = this->get_parent<IntegerTypeVisitor>();id)
-            id->visitMinimumValue(val);
+            return id->visitMinimumValue();
+        else
+            return nullptr;
     }
-    void IntegerTypeVisitor::visitMaximumValue(std::intmax_t val) {
+    ValueVisitor* IntegerTypeVisitor::visitMaximumValue() {
         if(auto* id = this->get_parent<IntegerTypeVisitor>();id)
-            id->visitMaximumValue(val);
+            return id->visitMaximumValue();
+        else
+            return nullptr;
     }
 
     ProductTypeVisitor::ProductTypeVisitor(ProductTypeVisitor *parent) : Visitor{parent} {}
@@ -533,9 +537,9 @@ namespace lccc::xlang{
             id->visitComplex();
     }
 
-    void ScalarTypeVisitor::visitNonzero() {
+    void ScalarTypeVisitor::visitValueValidity(ScalarValidity validity) {
         if(auto* id = this->get_parent<ScalarTypeVisitor>();id)
-            id->visitNonzero();
+            id->visitValueValidity(validity);
     }
 
     FunctionTypeVisitor::FunctionTypeVisitor(FunctionTypeVisitor *parent) : Visitor{parent} {
