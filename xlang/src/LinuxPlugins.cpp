@@ -60,7 +60,7 @@ namespace lccc
             impl->entry = reinterpret_cast<lccc::unique_ptr<xlang::FileVisitor> (*)(lccc::xlang::FileVisitor *parent, lccc::span<lccc::string_view> args)>(dlsym(impl->hdl,"xlang_plugin_main"));
         }
 
-        std::copy(begin(args),end(args),std::back_insert_iterator<std::vector<std::string>>{impl->args});
+        std::transform(begin(args),end(args),std::back_insert_iterator<std::vector<std::string>>{impl->args},[](auto&& a){return std::string{a};});
     }
 
     Plugin::~Plugin(){
