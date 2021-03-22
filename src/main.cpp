@@ -149,7 +149,7 @@ int main(int argc, char **argv)
 
     std::string_view lang_name{};
 
-    if (prg_name.substr(prg_name.rfind("rustc"sv)) == "rustc"sv)
+    if (auto i = prg_name.rfind("rustc"sv);i!=std::string::npos && prg_name.substr(i) == "rustc"sv)
     {
         lang_name = "rust"sv;
         std::cerr << "rustc CLI is not implemented yet\n";
@@ -157,7 +157,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        if (prg_name.substr(prg_name.rfind("c++"sv)) == "c++"sv)
+        if (auto i = prg_name.rfind("c++"sv);i!=std::string::npos && prg_name.substr(i) == "c++"sv)
             lang_name = "c++"sv;
         argv++;
         for (; *argv; argv++)
@@ -166,8 +166,9 @@ int main(int argc, char **argv)
             if (arg[0] != '-')
             {
                 input_files.emplace_back(arg);
-                auto suffix = arg.substr(arg.rfind("."sv));
-                auto main = arg.substr(0, arg.rfind("."sv));
+                auto dot_pos = arg.rfind("."sv);
+                auto suffix = dot_pos!=std::string::npos ? arg.substr(dot_pos):""sv;
+                auto main = arg.substr(0, dot_pos);
                 if (known_extensions.count(suffix)!=0)
                     linker_options.emplace_back(arg);
                 else

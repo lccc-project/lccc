@@ -35,7 +35,17 @@ namespace lccc
     struct PluginImpl
     {
         void *hdl;
-        lccc::string_view name;
+        std::string name;
+        lccc::unique_ptr<xlang::FileVisitor> (*entry)(lccc::xlang::FileVisitor *parent, lccc::span<lccc::string_view> args);
     };
+
+    Plugin::Plugin(lccc::string_view name, lccc::string_view args) : impl{lccc::make_unique<PluginImpl>()}{
+        std::string symname{"xlang_"s+std::string{name}+"_main"s};
+        if(void* v = dlsym(RTLD_DEFAULT,symname.c_str());v){
+            impl->hdl = RTLD_DEFAULT;
+            impl->entry = reinterpret_cast<lccc::unique_ptr<xlang::FileVisitor> (*)(lccc::xlang::FileVisitor *parent, lccc::span<lccc::string_view> args)>(v);
+        }
+    }
+
 
 } // namespace lccc

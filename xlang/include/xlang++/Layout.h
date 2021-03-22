@@ -668,6 +668,10 @@ namespace lccc
         }
     };
 
+    template<typename T,typename... Args,typename=std::enable_if_t<std::is_constructible_v<T,Args&&...>>> lccc::unique_ptr<T> make_unique(Args&&... args){
+        return {new T(std::forward<Args>(args)...)};
+    }
+
     enum class Architecture : std::uint32_t
     {
         X86_64 = 0,
@@ -687,6 +691,10 @@ namespace lccc
         RISCV64 = 16,
         WASM32 = 17,
         WASM64 = 18,
+
+        WDC65C816 = 19,
+        M6502     = 20,
+        M65C02    = 21,
 
         UNKNOWN = static_cast<std::uint32_t>(-1)
     };
@@ -727,6 +735,17 @@ namespace lccc
         UNKNOWN = static_cast<std::uint32_t>(-1)
     };
 
+    enum class ObjectFormat : std::uint32_t {
+        AOUT = 0,
+        COFF = 1,
+        ELF  = 2,
+        PE   = 3,
+        XCOFF= 4,
+        XO65 = 5,
+
+        UNKNOWN = static_cast<std::uint32_t>(-1) 
+    };
+
     struct XLANG_API Target
     {
     private:
@@ -741,17 +760,21 @@ namespace lccc
 
         lccc::string_view getName() const noexcept;
 
-        lccc::string_view getArch() const noexcept;
+        lccc::string_view getArchName() const noexcept;
         lccc::string_view getCanonicalArch() const noexcept;
+        Architecture getArch() const noexcept;
 
-        lccc::string_view getVendor() const noexcept;
+        lccc::string_view getVendorName() const noexcept;
         lccc::string_view getCanonicalVendor() const noexcept;
+        Vendor getVendor()const noexcept;
 
-        lccc::string_view getOperatingSystem() const noexcept;
+        lccc::string_view getOperatingSystemName() const noexcept;
         lccc::string_view getCanonicalOperatingSystem() const noexcept;
+        OperatingSystem getOperatingSystem()const noexcept;
 
-        lccc::string_view getEnvironment() const noexcept;
+        lccc::string_view getEnvironmentName() const noexcept;
         lccc::string_view getCanonicalEnvironment() const noexcept;
+        Environment getEnvironment()const noexcept;
     };
 } // namespace lccc
 
