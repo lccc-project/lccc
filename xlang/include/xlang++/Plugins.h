@@ -32,10 +32,11 @@ namespace lccc
     {
     private:
         lccc::unique_ptr<struct PluginImpl> impl;
+        lccc::unique_ptr<xlang::FileVisitor> visitor;
         void *find_sym(lccc::string_view name);
-
+        
     public:
-        Plugin(lccc::string_view name, lccc::string_view args);
+        Plugin(lccc::string_view name, lccc::span<lccc::string_view> args);
         ~Plugin();
         xlang::FileVisitor *load(xlang::FileVisitor *parent);
         template <typename T>

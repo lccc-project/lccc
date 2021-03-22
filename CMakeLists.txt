@@ -139,6 +139,19 @@ message(STATUS "Installing xlang plugins into: ${LCCC_FULL_XLANG_PLUGIN_INSTALL_
 
 add_subdirectory(xlang)
 
+function(add_xlang_plugin name)
+    add_library(${name} MODULE ${ARGN})
+    target_link_libraries(${name} xlang)
+    set_target_properties(${name} PROPERTIES
+        NO_SONAME ON
+        PREFIX "xlang"
+    )
+endfunction()
+
+function(install_xlang_plugin name)
+    install(TARGETS ${name} DESTINATION ${LCCC_XLANG_PLUGIN_INSTALL_DIR})
+endfunction()
+
 foreach(backend ${LCCC_ENABLE_BACKENDS})
     lccc_add_codegen(${backend})
 endforeach()

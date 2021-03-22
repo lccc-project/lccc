@@ -568,23 +568,39 @@ namespace lccc
             return _m_ptr;
         }
 
-        constexpr iterator begin() const
+        constexpr iterator begin() const noexcept
         {
             return _m_ptr;
         }
-        constexpr iterator end() const
+
+        constexpr friend span::iterator begin(const span& s) noexcept{
+            return s.begin();
+        }
+        constexpr iterator end() const noexcept
         {
             return _m_ptr + _m_size;
         }
 
-        constexpr reverse_iterator rbegin() const
+        constexpr friend span::iterator end(const span& s) noexcept{
+            return s.end();
+        }
+
+        constexpr reverse_iterator rbegin() const noexcept
         {
             return reverse_iterator{end()};
         }
 
-        constexpr reverse_iterator rend() const
+        constexpr friend span::reverse_iterator rbegin(const span& s) noexcept{
+            return s.rbegin();
+        }
+
+        constexpr reverse_iterator rend() const noexcept
         {
             return reverse_iterator{begin()};
+        }
+
+        constexpr friend span::reverse_iterator rend(const span& s) noexcept{
+            return s.rend();
         }
     };
 
