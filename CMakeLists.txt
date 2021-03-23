@@ -13,7 +13,13 @@ message(STATUS "LCCC Version ${LCCC_VERSION}")
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-set(LCCC_ENABLE_LANGUAGES c++;rust CACHE STRING "List of language frontends to build")
+set(LCCC_ALL_LANGUAGES rust;c++)
+
+set(LCCC_ENABLE_LANGUAGES all CACHE STRING "List of language frontends to build")
+
+if(LCCC_ENABLE_LANGUAGES STREQUAL "all")
+   set(LCCC_ENABLE_LANGUAGES ${LCCC_ALL_LANGUAGES})
+endif()
 
 set(LCCC_ALL_BACKENDS llvm x86)
 
@@ -73,13 +79,23 @@ foreach(target ${LCCC_LIBRARIES_TARGETS})
         get_target_aliases(${target} LCCC_${target}_ALIASES)
         message(DEBUG "${LCCC_${target}_ALIASES}")
         set(LCCC_${target}_SEARCH_PATHS "")
-        foreach(dir lib usr/lib)
-            message(DEBUG "Within search path loop for ${dir}")
-            list(APPEND LCCC_${target}_SEARCH_PATHS ${LCCC_${target}_FULL_SYSROOT}/${dir})
-            foreach(t ${LCCC_${target}_ALIASES})
-                list(APPEND LCCC_${target}_SEARCH_PATHS ${LCCC_${target}_FULL_SYSROOT}/${dir}/${t})
+        set(LCCC_${target}_LIBDIRS lib)
+
+        foreach(t ${LCCC_${target}_ALIASES})
+            list(APPEND LCCC_${target}_LIBDIRS lib/${t} ${t}/lib)
+        endforeach()
+
+        if(${target} MATCHES "x86_64-([A-Za-z0-9_]+)-linux-gnu")
+            list(APPEND LCCC_${target}_LIBDIRS lib64)
+        endif()
+
+        foreach(dir ${LCCC_${target}_LIBDIRS})
+            foreach(prefix "" usr)
+                message(DEBUG "Within search path loop for ${prefix}/${dir}")
+                list(APPEND LCCC_${target}_SEARCH_PATHS ${LCCC_${target}_FULL_SYSROOT}/${prefix}/${dir})
             endforeach()
         endforeach()
+
         message(DEBUG "${LCCC_${target}_SEARCH_PATHS}")
 
         find_file(_LCCC_${target}_SYSROOT_BASE_LIB
