@@ -1236,6 +1236,11 @@ namespace lccc::xlang{
             parent->visitDiagnosticFile(file);
     }
 
+    void FileVisitor::visitTarget(lccc::Target tgt){
+        if(auto* parent = this->get_parent<FileVisitor>();parent)
+            parent->visitTarget(tgt);
+    }
+
     GlobalVariableVisitor::GlobalVariableVisitor(GlobalVariableVisitor *parent) : AnnotatedElementVisitor{parent} {
 
     }

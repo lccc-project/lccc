@@ -815,6 +815,7 @@ namespace lccc::xlang{
         virtual void visitInputFile(FILE* file);
         virtual void visitOutputFile(FILE* file);
         virtual void visitDiagnosticFile(FILE* file);
+        virtual void visitTarget(lccc::Target tgt);
     };
 
 }

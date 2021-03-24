@@ -1,4 +1,4 @@
 
 include_directories(include)
 
-add_library(lcrust-frontend MODULE include/CompilationState.hpp src/Unstable.cpp)
+add_xlang_plugin(frontend-lcrust include/CompilationState.hpp src/Unstable.cpp)

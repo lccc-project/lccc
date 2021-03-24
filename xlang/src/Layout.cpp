@@ -30,6 +30,6 @@ lccc::string_view Target::getName()const noexcept{
 
 Target::Target(lccc::string_view name) noexcept : name{name} {
     std::string_view st_name{name};
-
+    
 }
 

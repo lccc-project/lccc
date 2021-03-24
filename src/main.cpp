@@ -7,8 +7,11 @@
 #include <optional>
 #include <cstdio>
 #include <set>
+#include <list>
 
 #include <xlang++/Layout.h>
+#include <xlang++/Plugins.h>
+#include <xlang++/Visit.hpp>
 
 /*
     The file is part of the lccc project. 
@@ -33,6 +36,7 @@
 #include <Definitions.hpp>
 
 using namespace std::string_view_literals;
+using namespace std::string_literals;
 
 enum class OptimizationLevel : std::uint8_t
 {
@@ -139,6 +143,7 @@ int main(int argc, char **argv)
     std::map<std::string, WarningLevel> warnings{};
     WarningLevel global_warning_level{};
     std::string_view use_linker{};
+    lccc::string_view codegen{LCCC_DEFAULT_BACKEND};
     TargetStage target_stage{TargetStage::CompileAndLink};
     DependencyStyle dep_style{};
     OutputFormat output_format{};
@@ -265,8 +270,25 @@ int main(int argc, char **argv)
             }
         }
     }
-
-    for (auto &&a : source_file_map)
+    std::list<lccc::Plugin> plugins;
+    std::string frontend_name{"frontend-"s};
+    lccc::Target tgt{target};
+    frontend_name += lang_name;
+    auto& frontend = plugins.front();
+    plugins.emplace_back(frontend_name,lccc::span<lccc::string_view>{});
+    for (auto && [input,output] : source_file_map)
     {
+        lccc::xlang::FileVisitor* visitor{};
+        for(auto it = rbegin(plugins);it!=rend(plugins);it++)
+            visitor = it->load(visitor);
+        FILE* inf = fopen(std::string{input}.c_str(),"rb");
+        FILE* of  = fopen(output.c_str(),"wb");
+        visitor->visitInputFile(inf);
+        visitor->visitOutputFile(of);
+        visitor->visitSourceFile(input);
+        visitor->visitDiagnosticFile(stderr);
+        visitor->visitTarget(tgt);
+        visitor->visitEnd();
+        
     }
 }
