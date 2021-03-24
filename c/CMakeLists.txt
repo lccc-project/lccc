@@ -1,1 +1,2 @@
-add_xlang_plugin(frontend_c src/main.cpp)
+add_xlang_plugin(frontend-c src/main.cpp)
+install_xlang_plugin(frontend-c)
