@@ -13,12 +13,12 @@ message(STATUS "Building xlang API Version ${LCCC_XLANG_VERSION}")
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set(LCCC_XLANG_PLUGINS_IMPL src/LinuxPlugins.cpp)
-        link_libraries(dl)
 endif()
 
 add_library(xlang SHARED include/xlang++/Plugins.h include/xlang++/Visit.hpp src/Visit.cpp include/xlang++/Layout.h include/xlang++/Properties.h src/IRWriter.cpp src/Layout.cpp ${LCCC_XLANG_PLUGINS_IMPL})
 target_include_directories(xlang PUBLIC include ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_definitions(xlang PRIVATE BUILD_LIBXLANG)
+target_link_libraries(xlang ${CMAKE_DL_LIBS})
 
 install(TARGETS xlang EXPORT xlang)
 set_target_properties(xlang PROPERTIES
