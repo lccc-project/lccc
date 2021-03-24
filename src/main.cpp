@@ -135,7 +135,7 @@ int main(int argc, char **argv)
     std::vector<lccc::string_view> preprocessor_options{};
     std::vector<lccc::string_view> linker_options{};
     std::map<lccc::string_view, std::string> source_file_map{};
-    std::string_view output_file{};
+    std::optional<std::string_view> output_file{};
     OptimizationLevel opt_lvl{};
     DebugLevel dbg_level{};
     LTOLevel lto_level{};
@@ -176,13 +176,30 @@ int main(int argc, char **argv)
                 auto main = arg.substr(0, dot_pos);
                 if (known_extensions.count(suffix)==0)
                     linker_options.emplace_back(arg);
+                else if(target_stage<TargetStage::CompileAndLink){
+                    if(output_file)
+                        source_file_map[arg] = std::string{*output_file};
+                    else{
+                        auto pos = main.rfind("/"s);
+                        auto stem = pos!=std::string_view::npos?main.substr(pos+1):main;
+                        source_file_map[arg] = std::string{stem};
+                        if(target_stage==TargetStage::Compile)
+                            source_file_map[arg] += ".o";
+                        else if(target_stage==TargetStage::Assembly)
+                            source_file_map[arg] += ".s";
+                        else if(target_stage==TargetStage::XIR)
+                            source_file_map[arg] += ".xir";
+                        else
+                            source_file_map[arg] += std::string{suffix};
+                    }
+                }
                 else
                 {
                     FILE *f;
                     do
                     {
                         std::tmpnam((source_file_map[arg] = std::string(L_tmpnam, ' ')).data());
-                    } while ((f = std::fopen(source_file_map[arg].c_str(), "wx")));
+                    } while (!(f = std::fopen(source_file_map[arg].c_str(), "wx")));
                     linker_options.emplace_back(source_file_map[arg]);
                 }
             }
