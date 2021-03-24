@@ -13,7 +13,7 @@ message(STATUS "LCCC Version ${LCCC_VERSION}")
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-set(LCCC_ALL_LANGUAGES rust;c++)
+set(LCCC_ALL_LANGUAGES rust;c++;c)
 
 set(LCCC_ENABLE_LANGUAGES all CACHE STRING "List of language frontends to build")
 
