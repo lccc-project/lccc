@@ -123,8 +123,8 @@ foreach(target ${LCCC_LIBRARIES_TARGETS})
     endif()
 endforeach()
 
-set(LCCC_XLANG_PLUGIN_SEARCH_PATH ${CMAKE_INSTALL_LIBDIR}/lccc/xlang/plugins CACHE PATH "The Path to search for plugins")
-set(LCCC_XLANG_PLUGIN_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR}/lccc/xlang/plugins CACHE PATH "The path to install xlang plugins into")
+set(LCCC_XLANG_PLUGIN_SEARCH_PATH lccc/xlang/plugins CACHE PATH "The Path to search for plugins")
+set(LCCC_XLANG_PLUGIN_INSTALL_DIR lccc/xlang/plugins CACHE PATH "The path to install xlang plugins into")
 
 set(LCCC_DEFAULT_SYSROOT_INIT ${LCCC_${LCCC_DEFAULT_TARGET}_FULL_SYSROOT})
 
