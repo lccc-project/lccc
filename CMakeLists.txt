@@ -123,8 +123,8 @@ foreach(target ${LCCC_LIBRARIES_TARGETS})
     endif()
 endforeach()
 
-set(LCCC_XLANG_PLUGIN_SEARCH_PATH lccc/xlang/plugins CACHE PATH "The Path to search for plugins")
-set(LCCC_XLANG_PLUGIN_INSTALL_DIR lccc/xlang/plugins CACHE PATH "The path to install xlang plugins into")
+set(LCCC_XLANG_PLUGIN_SEARCH_PATH ${CMAKE_INSTALL_LIBDIR}/lccc/xlang/plugins CACHE PATH "The Path to search for plugins")
+set(LCCC_XLANG_PLUGIN_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR}/lccc/xlang/plugins CACHE PATH "The path to install xlang plugins into")
 
 set(LCCC_DEFAULT_SYSROOT_INIT ${LCCC_${LCCC_DEFAULT_TARGET}_FULL_SYSROOT})
 
@@ -137,7 +137,7 @@ set_property(CACHE LCCC_DEFAULT_CXXLIB PROPERTY STRINGS "" stdc++ libstdc++ c++ 
 
 set(LCCC_DEFAULT_INCLUDE_DIRS include usr/include usr/local/include CACHE PATH "Default include paths to search for headers, resolved within the sysroot")
 
-set(LCCC_DEFAULT_CXX_INCLUDE_DIRS ${CMAKE_FULL_INSTALL_INCLUDEDIR}/lccc/${LCCC_VERSION} CACHE PATH "Default include paths to search for c++ standard library headers (when using liblc++)")
+set(LCCC_DEFAULT_CXX_INCLUDE_DIRS lccc/${LCCC_VERSION} CACHE PATH "Default include paths to search for c++ standard library headers (when using liblc++)")
 
 message(STATUS "Using --sysroot=${LCCC_DEFAULT_SYSROOT} by default")
 
@@ -152,6 +152,7 @@ if(IS_ABSOLUTE ${LCCC_XLANG_PLUGIN_INSTALL_DIR})
     set(LCCC_FULL_XLANG_PLUGIN_INSTALL_DIR ${LCCC_XLANG_PLUGIN_INSTALL_DIR})
 else()
     set(LCCC_FULL_XLANG_PLUGIN_INSTALL_DIR ${CMAKE_INSTALL_FULL_LIBDIR}/${LCCC_XLANG_PLUGIN_INSTALL_DIR})
+    set(LCCC_XLANG_PLUGIN_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR}/${LCCC_XLANG_PLUGIN_INSTALL_DIR})
 endif()
 
 message(STATUS "Searching for xlang plugins in directory: ${LCCC_FULL_XLANG_PLUGIN_SEARCH_PATH}")
