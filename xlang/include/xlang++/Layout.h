@@ -633,7 +633,7 @@ namespace lccc
         unique_ptr(unique_ptr &&u) noexcept : _m_ptr{std::exchange(u._m_ptr, nullptr)}, _m_delete{u._m_delete} {}
 
         template <typename U, typename = std::enable_if_t<std::is_convertible_v<U *, T *>>>
-        unique_ptr(unique_ptr<U> &&ptr) : _m_ptr{std::exchange(ptr._m_ptr, nullptr)}, _m_delete(do_delete) {}
+        unique_ptr(unique_ptr<U> &&ptr) : _m_ptr{ptr.release()}, _m_delete(do_delete) {}
         unique_ptr(const unique_ptr &) = delete;
         ~unique_ptr()
         {
@@ -681,6 +681,18 @@ namespace lccc
         {
             if ((n = std::exchange(this->_m_ptr, n)))
                 this->_m_delete(n);
+        }
+
+        T* release(){
+            return std::exchange(this->_m_ptr,nullptr);
+        }
+        
+        T* get(){
+            return this->_m_ptr;
+        }
+
+        const T* get()const{
+            return this->_m_ptr;
         }
     };
 
