@@ -174,7 +174,7 @@ int main(int argc, char **argv)
                 auto dot_pos = arg.rfind("."sv);
                 auto suffix = dot_pos!=std::string::npos ? arg.substr(dot_pos):""sv;
                 auto main = arg.substr(0, dot_pos);
-                if (known_extensions.count(suffix)!=0)
+                if (known_extensions.count(suffix)==0)
                     linker_options.emplace_back(arg);
                 else
                 {
