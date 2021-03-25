@@ -42,6 +42,11 @@ namespace lccc
         std::string name;
         lccc::unique_ptr<xlang::FileVisitor> (*entry)(lccc::xlang::FileVisitor *parent, lccc::span<lccc::string_view> args);
         std::vector<std::string> args;
+
+        ~PluginImpl(){
+            if(this->hdl!=RTLD_DEFAULT)
+                dlclose(this->hdl);
+        }
     };
 
     Plugin::Plugin(lccc::string_view name, lccc::span<lccc::string_view> args) : impl{lccc::make_unique<PluginImpl>()}{
@@ -63,10 +68,7 @@ namespace lccc
         std::transform(begin(args),end(args),std::back_insert_iterator<std::vector<std::string>>{impl->args},[](auto&& a){return std::string{a};});
     }
 
-    Plugin::~Plugin(){
-        if(impl->hdl!=RTLD_DEFAULT)
-            dlclose(impl->hdl);
-    }
+    Plugin::~Plugin(){}
 
     void * Plugin::find_sym(lccc::string_view name){
         std::string s_name{name};
