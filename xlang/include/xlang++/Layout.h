@@ -35,7 +35,7 @@ namespace lccc
     /**
      * @brief Implementation of std::basic_string_view for layout purposes. 
      * 
-     * basic_stirng_view contains two members of type const CharT, though niether member is accessible.
+     * basic_stirng_view contains two members of type const CharT*, though niether member is accessible.
      * basic_string_view is a Trivially Copyable, Standard-Layout type. 
      * 
      * This implementation is safe to use accross module bounderies.
@@ -268,7 +268,7 @@ namespace lccc
 
     /// A type Erased invocable object.
     /// Compatible with the layout presented in Rust RFC 2955, and by MIA.
-    /// Contains one virtual member, call(Self*,Args&&...)->R
+    /// Contains one virtual member, auto call(Self*,Args&&...)->R
     template <typename R, typename... Args>
     struct function<R(Args...)>
     {
