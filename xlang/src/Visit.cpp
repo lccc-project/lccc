@@ -461,6 +461,11 @@ namespace lccc::xlang{
             return nullptr;
     }
 
+    void PointerTypeVisitor::visitDefinitionType(PointerDefinitionType type){
+        if(auto* id = this->get_parent<PointerTypeVisitor>();id)
+            id->visitDefinitionType(type);
+    }
+
     ScalarTypeVisitor::ScalarTypeVisitor(ScalarTypeVisitor *parent) : Visitor{parent} {}
 
     IntegerTypeVisitor *ScalarTypeVisitor::visitIntegerType() {

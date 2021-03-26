@@ -5,7 +5,8 @@ use core::{cmp::{PartialEq,Eq,PartialOrd,Ord,Ordering},hash::{Hash,Hasher}}
 
 impl PartialEq for TypeId{
     fn eq(&self,other: &TypeId) -> bool{
-        if core::ptr::eq(self,other) || core::ptr::eq(self.0,other.0){
+        if core::ptr::eq(self.0,other.0){
+            unsafe{::__lccc::builtins::C::__builtin_assume(self.1==other.1)}
             true
         }else if self.1 != other.1{
             false
@@ -128,7 +129,7 @@ impl dyn Any+Send{
             // Safety:
             // The type of self has been verified above
             // &self is valid for lifetime of returned reference
-            Some(unsafe{&*(self as *const dyn Any as *const T)})
+            Some(unsafe{&*(self as *const (dyn Any+Send) as *const T)})
         }else{
             None
         }
@@ -139,7 +140,7 @@ impl dyn Any+Send{
             // Safety:
             // The type of self has been verified above
             // &self is valid for lifetime of returned reference
-            Some(unsafe{&mut *(self as *mut dyn Any as *mut T)})
+            Some(unsafe{&mut *(self as *mut (dyn Any+Send) as *mut T)})
         }else{
             None
         }
@@ -156,7 +157,7 @@ impl dyn Any+Send+Sync{
             // Safety:
             // The type of self has been verified above
             // &self is valid for lifetime of returned reference
-            Some(unsafe{&*(self as *const dyn Any as *const T)})
+            Some(unsafe{&*(self as *const (dyn Any+Send+Sync) as *const T)})
         }else{
             None
         }
@@ -167,7 +168,7 @@ impl dyn Any+Send+Sync{
             // Safety:
             // The type of self has been verified above
             // &self is valid for lifetime of returned reference
-            Some(unsafe{&mut *(self as *mut dyn Any as *mut T)})
+            Some(unsafe{&mut *(self as *mut (dyn Any+Send+Sync) as *mut T)})
         }else{
             None
         }

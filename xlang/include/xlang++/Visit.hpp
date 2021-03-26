@@ -485,7 +485,8 @@ namespace lccc::xlang{
         Nonnull,
         Volatile,
         VolatileWrite,
-        NullOrInvalid
+        NullOrInvalid,
+        StrictAliasing
     };
 
     enum class ValidRangeType : std::uint8_t{
@@ -497,6 +498,11 @@ namespace lccc::xlang{
         NullOrWriteOnly
     };
 
+    enum class PointerDefinitionType : std::uint8_t {
+        Ref = 0,
+        Const = 1,
+    };
+
     struct PointerTypeVisitor : Visitor{
         explicit PointerTypeVisitor(PointerTypeVisitor* parent=nullptr);
         virtual TypeVisitor* visitPointeeType();
@@ -504,6 +510,7 @@ namespace lccc::xlang{
         virtual ValueVisitor* visitValidRange(ValidRangeType validRange);
         virtual ValueVisitor* visitAligned();
         virtual BoundVisitor* visitRequiredBounds();
+        virtual void visitDefinitionType(PointerDefinitionType type);
     };
 
     struct IntegerTypeVisitor;

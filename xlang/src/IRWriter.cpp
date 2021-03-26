@@ -19,11 +19,13 @@
 
 #include <xlang++/Layout.h>
 #include <xlang++/Visit.hpp>
+#include <vector>
+#include <memory>
 
 using namespace lccc::xlang;
 
 struct IRScopeWriter : ScopeVisitor{
-
+    std::vector<std::unique_ptr<struct IRScopeMember>> members;
 };
 
 enum class IROutputType{
