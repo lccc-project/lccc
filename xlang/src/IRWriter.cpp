@@ -26,7 +26,13 @@ using namespace lccc::xlang;
 
 struct IRScopeWriter : ScopeVisitor{
     std::vector<std::unique_ptr<struct IRScopeMember>> members;
+
+    ~IRScopeWriter();
 };
+
+struct IRScopeMember : ScopeMemberVisitor{};
+
+IRScopeWriter::~IRScopeWriter()=default;
 
 enum class IROutputType{
     Binary,
