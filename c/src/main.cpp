@@ -16,8 +16,8 @@ class CVisitor : public lccc::xlang::FileVisitor {
 
 void CVisitor::visitInputFile(FILE *file) {
     std::string processed = preprocess(file); // Phase 1-6
-    ast tree = std::move(parse(processed)); // Phase 7 part 1
-    program = analyze(tree); // Phase 7 part 2
+    ast tree = parse(processed); // Phase 7 part 1
+    program = analyze(std::move(tree)); // Phase 7 part 2
 }
 
 extern "C" {
@@ -27,3 +27,4 @@ extern "C" {
 }
 
 }
+
