@@ -434,6 +434,7 @@ namespace lccc::xlang{
         virtual TypeVisitor* visitSlice();
         virtual ArrayTypeVisitor* visitArray();
         virtual ExprVisitor* visitDecltype();
+        virtual void visitVoid();
     };
 
     struct ProductTypeVisitor : Visitor{
