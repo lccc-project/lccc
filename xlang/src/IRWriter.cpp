@@ -17,46 +17,15 @@
  *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
  */
 
-#include <xlang++/Layout.h>
-#include <xlang++/Visit.hpp>
-#include <vector>
-#include <memory>
+
+#include "IRWriter.hpp"
 
 using namespace lccc::xlang;
 
-struct IRScopeWriter : ScopeVisitor{
-    std::vector<std::unique_ptr<struct IRScopeMember>> members;
-
-    ~IRScopeWriter();
-};
-
-struct IRScopeMember : ScopeMemberVisitor{};
-
-IRScopeWriter::~IRScopeWriter()=default;
-
-enum class IROutputType{
-    Binary,
-    Text
-};
-
-
-struct IRFileWriter: FileVisitor{
-private:
-    FILE* output_file{};
-    FILE* diagnostic_file{};
-    std::string file_name;
-    IRScopeWriter inner;
-public:
-    IRFileWriter()=default;
-
-    void visitOutputFile(FILE *output)final;
-    void visitDiagnosticFile(FILE *diag)final;
-
-    void visitSourceFile(lccc::string_view)final;
-    void visitDiagnostic(lccc::string_view)final;
-    void visitEnd()override;
-
-};
+ScopeMemberVisitor* IRScopeWriter::visitScopeMember(){
+    this->members.push_back(std::make_unique<IRScopeMember>(this->ScopeVisitor::visitScopeMember()));
+    return &*this->members.back();
+}
 
 
 extern "C" {
