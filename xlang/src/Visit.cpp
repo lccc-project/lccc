@@ -389,6 +389,11 @@ namespace lccc::xlang{
             return nullptr;
     }
 
+    void TypeVisitor::visitVoid(){
+        if(auto* id = this->get_parent<TypeVisitor>();id)
+            id->visitVoid();
+    }
+
     GenericInstantiationVisitor::GenericInstantiationVisitor(GenericInstantiationVisitor *visitor) : Visitor(visitor) {}
 
     IdentifierVisitor *GenericInstantiationVisitor::visitGenericItem() {
