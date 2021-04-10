@@ -6,9 +6,7 @@
 
 namespace lccc::cc {
 
-program analyze(ast tree) {
-    return program();
-}
+program analyze(ast tree);
 
 }
 
