@@ -31,3 +31,8 @@ pub mod prelude;
 #[prelude_import]
 pub use std::prelude::v1::*;
 
+pub mod os;
+
+pub mod lazy;
+
+mod rt;
