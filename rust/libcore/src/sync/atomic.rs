@@ -5,18 +5,17 @@
  * it under the terms of the GNU Lesser General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Lesser General Public License for more details.
- * 
+ *
  * Like all libraries as part of the lccc project,
- *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license. 
+ *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license.
  * When dealing in this software, you may, at your option, do so under only those terms,
- *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
+ *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms.
  */
-
 use crate::prelude::v1::*;
 
 use crate::cell::UnsafeCell;
@@ -37,7 +36,7 @@ pub enum Ordering {
 #[inline]
 #[__lccc::xlang_opt_hint(contains_sequence)]
 pub fn compiler_fence(ord: Ordering) {
-    unsafe{
+    unsafe {
         match ord {
             Ordering::Release => {
                 __lccc::xir!("sequence atomic release")
@@ -59,7 +58,7 @@ pub fn compiler_fence(ord: Ordering) {
 #[inline]
 #[__lccc::xlang_opt_hint(contains_fence)]
 pub fn fence(ord: Ordering) {
-    unsafe{
+    unsafe {
         match ord {
             Ordering::Release => {
                 __lccc::xir!("fence atomic release")
@@ -234,7 +233,8 @@ impl AtomicBool {
     }
 }
 
-mod ops {
+#[unstable(feature = "lccc_atomic_impl")]
+pub mod ops {
     use crate::sync::atomic::Ordering::{self, *};
 
     pub unsafe fn atomic_load<T>(mem: *const T, ord: Ordering) {
@@ -314,7 +314,7 @@ mod ops {
     pub unsafe fn atomic_compare_exchange_fail_relaxed<T>(
         mem: *mut T,
         expected: *mut T,
-        value: T,
+        value: *const T,
         ord: Ordering,
     ) -> bool {
         if ::__lccc::atomic_not_lock_free::<T>() {
@@ -325,23 +325,23 @@ mod ops {
             Acquire => __lccc::xir!(r"
                 cmp_excg atomic acquire fail relaxed
                 convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            ":[lvalue *mem,lvalue *expected,core::ptr::read(val)]:[yield:bool]),
             Release => __lccc::xir!(r"
                 cmp_excg atomic release fail relaxed
                 convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            ":[lvalue *mem,lvalue *expected,core::ptr::read(val)]:[yield:bool]),
             AcqRel => __lccc::xir!(r"
                 cmp_excg atomic acqrel fail relaxed
                 convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            ":[lvalue *mem,lvalue *expected,core::ptr::read(val)]:[yield:bool]),
             Relaxed => __lccc::xir!(r"
                 cmp_excg atomic relaxed
                 convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
+            ":[lvalue *mem,lvalue *expected,core::ptr::read(val)]:[yield:bool]),
             SeqCst => __lccc::xir!(r"
                 cmp_excg atomic seq_cst fail relaxed
                 convert strong uint(1)
-            ":[lvalue unsafe{*mem},lvalue *expected,val]:[yield:bool]),
+            ":[lvalue unsafe{*mem},lvalue *expected,core::ptr::read(val)]:[yield:bool]),
         }
     }
 

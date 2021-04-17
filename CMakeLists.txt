@@ -48,7 +48,7 @@ include(GNUInstallDirs)
 
 option(LCCC_CROSS_COMPILING "Set if lccc is being cross compiled" ${CMAKE_CROSSCOMPILING})
 
-add_subdirectory(cmake/target)
+include(detect_target)
 
 set(LCCC_HOST_TARGET ${LCCC_DETECTED_HOST_TARGET} CACHE STRING "The host target name of lccc")
 set(LCCC_DEFAULT_TARGET ${LCCC_DETECTED_HOST_TARGET} CACHE STRING "The default target name for lccc")

@@ -6,5 +6,5 @@ build*/
 /.cache/
 /.vscode/
 target/
-!/cmake/target/
+!/target/
 /autom4te.cache
