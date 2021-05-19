@@ -147,7 +147,11 @@ int main(int argc, char **argv)
     TargetStage target_stage{TargetStage::CompileAndLink};
     DependencyStyle dep_style{};
     OutputFormat output_format{};
+    bool extra_opt_levels{};
+    std::set<OptimizationLevel> allowed_extended_levels{OptimizationLevel::Size,OptimizationLevel::Zize};
+    bool extended_codegen_opts{};
 
+    
     if (argc < 1)
         std::abort();
     std::string_view prg_name{argv[0]};
@@ -157,8 +161,7 @@ int main(int argc, char **argv)
     if (auto i = prg_name.rfind("rustc"sv);i!=std::string::npos && prg_name.substr(i) == "rustc"sv)
     {
         lang_name = "rust"sv;
-        std::cerr << "rustc CLI is not implemented yet\n";
-        return 0;
+        
     }
     else
     {
