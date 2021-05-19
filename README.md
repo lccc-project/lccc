@@ -75,7 +75,7 @@ Standard Options:
 - `LCCC_INSTALL_LIBSRC`: Installs the source code for the standard libraries.
 - `LCCC_INSTALL_SRCDIR`: Directory to install source code for the standard libraries into. Defaults to `${CMAKE_INSTALL_LIBDIR}/lccc/libraries/src`
 
-Cross Compiler Options:
+### Cross Compiler Options:
 - `LCCC_DEFAULT_TARGET`: If lccc is being built as a cross compiler, set this to the default target to build with when it's not detected from the program name and not set with the `--target` option. Defaults to the host target
 - `LCCC_LIBRARY_TARGETS`: If lccc is being built for use as a cross compiler, set this to each target you want to build standard libraries for. By default, this includes the default target. 
 - `LCCC_DEFAULT_SYSROOT_DIR`: The directory to use to store sysroots by default
@@ -105,3 +105,24 @@ Dependencies:
 * (optional) cargo (when building the rust frontend)
 
 
+Standard Options:
+* --prefix: The prefix to install lccc into, including headers, libraries, documentation, and the program itself. Defaults to `/usr/local`
+* --execprefix: Override the prefix for libraries and programs, but not headers or documentation. Defaults to prefix.
+* --bindir: Override the directory, relative to the execprefix, to install programs (including `lccc` itself, and the `xlang` program) into, on it's own. Defaults to `bin`.
+* --libdir: Override the directory, relative to execprefix, to install libraries into. Defaults to `lib`.
+* --datarootdir: Override the directory, relative to the prefix, to install data, including documentation, into. Defaults to `share`.
+* --mandir: Override the directory, relative to the datarootdir, to install manual pages into. Defaults to `man`.
+* --includedir: Override the directory, relative to the prefix, to install headers into. Defaults to `include`
+* --with-xlang-plugindir: Set the directory, relative to the libdir, to install xlang plugins into. Defaults to `lccc/xlang/plugins`
+* --with-xlang-plugin-paths: Sets the directory or directories (separated by a `:`), to search for xlang plugins in. Defaults to the directory specified by `--with-xlang-plugindir`
+* --with-libsrc-dir: Set the directory, relative to the prefix, to install standard library source code to. Defaults to `src/lccc`
+* --enable-languages: Sets the languages to build, or `all` to build all languages. Defaults to `all`
+* --enable-backends: Sets the codegenerator backends to build, or `all` to build all backends. Defaults to `all` except llvm is excluded, unless `--enable-llvm-config` is used.
+* --enable-llvm-config: Build the llvm backend using the `llvm-config` on the build system. If disabled, the llvm backend is not built.
+
+
+Cross-compiling options:
+* --target: The default target when invoking lccc. If the canonicalized target is different from the canonicalized host system, then lccc will be treated as a cross-compiler, and use a sysroot by default
+* --with-sysroot-dir: Set the directory, relative to the libdir, to be used to configure (and install) system roots for cross-compilation targets.
+* --with-library-targets: The list of targets to build standard libraries for
+* --with-hosted-targets: Sets the list of targets that are hosted. If not specified, then they can be detected (see )

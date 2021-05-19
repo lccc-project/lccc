@@ -30,7 +30,7 @@
 #if has_builtin(__builtin_unreachable)
 #define unreachable_unchecked() __builtin_unreachable()
 #else
-#define unreachable_unchecked() (void)(*((int*)0))
+#define unreachable_unchecked() (void)((int)(*((int*)0)))
 #endif
 
 #ifdef __lccc__
@@ -44,8 +44,13 @@
 #endif
 
 #ifdef _WIN32
+#ifdef __GNUC__
+#define XLANG_EXPORT __attribute__((dllexport))
+#define XLANG_IMPORT __attribute__((dllimport))
+#else
 #define XLANG_EXPORT __declspec(dllexport)
 #define XLANG_IMPORT __declspec(dllimport)
+#endif
 #else 
 #define XLANG_EXPORT __attribute__((visibility("default")))
 #define XLANG_IMPORT __attribute__((visibility("default")))
