@@ -5,18 +5,17 @@
  * it under the terms of the GNU Lesser General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Lesser General Public License for more details.
- * 
+ *
  * Like all libraries as part of the lccc project,
- *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license. 
+ *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license.
  * When dealing in this software, you may, at your option, do so under only those terms,
- *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
+ *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms.
  */
-
 use crate::clone::Clone;
 use crate::convert::From;
 use crate::marker::PhantomData;
@@ -104,9 +103,16 @@ impl<T: ?Sized> Copy for NonNull<T> {}
 
 impl<T> NonNull<T> {
     pub const fn dangling() -> Self {
-        NonNull {
-            ptr: unsafe { crate::intrinsics::align_of::<T>() } as *const T,
-        }
+        // If std is built with debug-assertions=1 (--debug & -Z build-std), or the randomize-dangling feature
+        // Then mess with code that relies on the unspecified implementation of NonNull::<T>::dangling()
+        let ptr = if cfg!(debug_assertions) || cfg!(feature = "randomize-dangling") {
+            (::__lccc::__random_bytes!() & !(::__lccc::builtins::Rust::align_of::<T>() - 1))
+                as *const T
+        } else {
+            ::__lccc::builtins::Rust::align_of::<T>() as *const T
+        };
+
+        NonNull { ptr }
     }
 }
 
@@ -146,12 +152,13 @@ impl<T: ?Sized> From<&T> for NonNull<T> {
     }
 }
 
-impl<T: ?Sized> From<&mut T> for NonNull<T>{
-    fn from(t: &mut T) -> Self{
-        NonNull {ptr: t as *mut T as *const T}
+impl<T: ?Sized> From<&mut T> for NonNull<T> {
+    fn from(t: &mut T) -> Self {
+        NonNull {
+            ptr: t as *mut T as *const T,
+        }
     }
 }
-
 
 #[repr(transparent)]
 #[unstable(feature = "lccc_unique_ptr")]
@@ -236,6 +243,6 @@ pub macro addr_of($e:expr){
 }
 
 #[allow_internal_unstable(raw_ref)]
-pub macro addr_of_mut($e:expr){
+pub macro addr_of_mut($e:expr) {
     (&raw mut e)
 }

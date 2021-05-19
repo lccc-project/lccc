@@ -5,20 +5,20 @@
  * it under the terms of the GNU Lesser General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Lesser General Public License for more details.
- * 
+ *
  * Like all libraries as part of the lccc project,
- *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license. 
+ *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license.
  * When dealing in this software, you may, at your option, do so under only those terms,
- *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
+ *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms.
  */
 use crate::alloc::{Allocator, Global, Layout};
 use core::mem::{forget, ManuallyDrop};
-use core::ops::{Deref, DerefMove, DerefMut,DerefPure};
+use core::ops::{Deref, DerefMove, DerefMut, DerefPure};
 
 pub struct Box<
     T: ?Sized,
@@ -37,7 +37,7 @@ pub struct Box<
     alloc: A,
 }
 
-impl<T: ?Sized, A: Allocator> Drop for Box<T, A> {
+unsafe impl<#[may_dangle] T: ?Sized, A: Allocator> Drop for Box<T, A> {
     fn drop(&mut self) {
         let layout = Layout::for_value(unsafe { &*self.ptr.as_ptr() });
         unsafe {
@@ -85,7 +85,7 @@ unsafe impl<T, A: Allocator> DerefPlace for Box<T, A: Allocator> {
     }
 }
 
-unsafe impl<T, A: Allocator> DerefPure for Box<T, A: Allocator>{}
+unsafe impl<T, A: Allocator> DerefPure for Box<T, A: Allocator> {}
 
 impl<T> Box<T, Global> {
     pub fn new(x: T) -> Self {
@@ -124,7 +124,7 @@ impl<T, A: Allocator> Box<T, A> {
                 .cast()
             }
         };
-        core::ptr::write(ptr, x);
+        unsafe { core::ptr::write(ptr, x) }
         Self { ptr, alloc }
     }
 
@@ -274,8 +274,8 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
     pub fn into_raw_with_alloc(this: Self) -> (*mut T, A) {
         let no_drop = ManuallDrop::new(this);
         (
-            core::ptr::read(&no_drop.ptr).as_mut_ptr(),
-            core::ptr::read(&no_drop.alloc),
+            unsafe { core::ptr::read(&no_drop.ptr).as_mut_ptr() },
+            unsafe { core::ptr::read(&no_drop.alloc) },
         )
     }
 
@@ -313,10 +313,10 @@ impl<Args, T: ?Sized + FnOnce<Args>, A: Allocator> FnOnce<Args> for Box<T, A> {
     type Output = <T as FnOnce<Args>>::Output;
 
     extern "rust-call" fn call_once(mut self, args: Args) -> Self::Output {
-        let (ptr,alloc) = Box::into_inner_with_alloc(self);
+        let (ptr, alloc) = Box::into_inner_with_alloc(self);
 
         <T as FnOnce<Args>>::call_once_unsized(ptr);
-        let layout = Layout::for_value_raw(ptr);
+        let layout = unsafe { Layout::for_value_raw(ptr) };
         unsafe {
             __lccc::xir!("destroy sequence atomic release":[self.ptr]);
         } // Only need a sequence, because &mut excludes multiple threads.
@@ -339,13 +339,12 @@ impl<Args, T: ?Sized + Fn<Args>, A: Allocator> Fn<Args> for Box<T, A> {
 }
 
 #[unstable(feature = "lccc_boxed_macro", issue = "none")]
-#[allow_internal_unstable(new_uninit, allocator_api, lccc_intrinsic_crate)]
+#[allow_internal_unstable(new_uninit, lccc_in_place_construct)]
 macro_rules! boxed {
     ($item: expr) => {{
         type _T = ::__lccc::decltype!($item);
         let b = Box::new_uninit();
-        let ptr: *mut T = ::__lccc::builtins::CXX::__builtin_new(size_of::<_T>(),b.as_mut_ptr());
-        ::__lccc::construct_in_place(ptr,$item);
+        k#__in_place_construct(b.as_ptr(),expr);
         Box::assume_init(b)
-    }}
+    }};
 }

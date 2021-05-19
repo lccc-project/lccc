@@ -7,4 +7,5 @@ build*/
 /.vscode/
 target/
 !/target/
-/autom4te.cache
+autom4te.cache
+*~

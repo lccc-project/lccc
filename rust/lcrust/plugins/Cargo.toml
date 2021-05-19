@@ -1,0 +1,2 @@
+[workspace]
+members = ["lccc-borrowck-polonius","polonius","lcrust-plugins"]

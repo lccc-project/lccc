@@ -18,7 +18,7 @@
  */
 
  #[lang="unit"]
- #[__lccc::mangle_as("std::unit::unit")]
+ #[__lccc::mangle_as("std::unit::__unit")]
  impl (){
 
  }

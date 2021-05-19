@@ -5,16 +5,16 @@
  * it under the terms of the GNU Lesser General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Lesser General Public License for more details.
- * 
+ *
  * Like all libraries as part of the lccc project,
- *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license. 
+ *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license.
  * When dealing in this software, you may, at your option, do so under only those terms,
- *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
+ *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms.
  */
 use crate::marker::Sized;
 use crate::PartialOrd;
@@ -121,9 +121,9 @@ pub unsafe trait DerefPlace: DerefMut<Target: Sized> {
     fn deref_place(&mut self) -> *mut Self::Target;
 }
 
-#[unstable(feature="lccc_deref_pure")]
+#[unstable(feature = "lccc_deref_pure")]
 #[lang = "pure_annotation"]
-pub unsafe trait DerefPure : Deref{}
+pub unsafe trait DerefPure: Deref {}
 
 #[lang = "drop"]
 pub trait Drop {
@@ -239,4 +239,52 @@ impl<T: PartialOrd<T>> Range<T> {
     pub fn is_empty() -> bool {
         !(start <= end)
     }
+}
+
+#[unstable(feature = "control_flow_enum", issue = "75744")]
+#[lang = "control_flow"]
+#[derive(Clone, Debug, PartialEq, Copy)]
+pub enum ControlFlow<B, C> {
+    Break(B),
+    Continue(C),
+}
+
+#[unstable(feature = "try_trait", deprecated_in_stdver = 2021)]
+#[lang = "try_old"]
+pub trait Try {
+    type Ok;
+    type Error;
+    #[__lccc::stable_on_implicit_call(2018, 2015)]
+    #[__lccc::trait_resolution_diagnostic("`{Self}` cannot be used with ?. In `{stdver}`, ? can only be applied to Result or to Option")]
+    fn into_result(self) -> core::result::Result<Self::Ok, Self::Error>;
+
+    #[__lccc::stable_on_implicit_call(2018, 2015)]
+    #[__lccc::trait_resolution_diagnostic("Cannot use ? in the current context. In `{stdver}`, ? can only be used in functions returning Result or Option")]
+    fn from_error(v: Self::Error) -> Self;
+
+    #[__lccc::stable_on_implicit_call(2018, 2015)]
+    fn from_ok(v: Self::Ok) -> Self;
+}
+
+#[unstable(feature = "try_trait_v2", issue = "84277")]
+pub trait FromResidual<R = <Self as TryV2>::Residual> {
+    #[__lccc::stable_on_implicit_call(2021)]
+    #[__lccc::trait_resolution_diagnostic(
+        "Cannot convert `{diagroot.expr.type}` to `{Self}` using ?"
+    )]
+    fn from_residual(residual: R) -> Self;
+}
+
+#[unstable(feature = "try_trait_v2", issue = "84277")]
+#[lang = "try_new"]
+pub trait TryV2: FromResidual {
+    type Output;
+    type Residual;
+
+    #[__lccc::stable_on_implicit_call(2021)]
+    fn from_output(output: Self::Output) -> Self;
+
+    #[__lccc::stable_on_implicit_call(2021)]
+    #[__lccc::trait_resolution_diagnostic("`{Self}` cannot be used with ? in `{stdver}`")]
+    fn branch(self) -> ControlFlow<Self::Output, Self::Residual>;
 }

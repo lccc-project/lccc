@@ -209,3 +209,22 @@ If the branch is not taken: [..,uint(N)] => [..]
 
 10. _Note 1 -  When performing type checking, expressions following the branch directly are typechecked against all items on the expression stack. Expressions following the target are typechecked against the expression stack specification at the target - End Note_
 
+### Comparisons
+
+
+
+1. Syntax:
+```
+expr /= cmp / cmp_lt / cmp_gt / cmp_le / cmp_ge / cmp_eq / cmp_ne / cmp_spaceship
+```
+
+2. Typechecking:
+```
+cmp: [..,T,U]=>[..,int(32)] // Form (1)
+cmp_lt, cmp_gt, cmp_le, cmp_ge, cmp_eq, cmp_ne: [..,T,U]=>[..,uint(1)] // Form (2)
+cmp_spaceship => [..,T,U] =>[..,/*see below*/] // Form (3)
+```
+
+3. Operands: `[..,a,b]=>[..,r]`
+
+4. Form (1): Performs primitive comparison of two scalar or pointer types. If both `T` and `U` are integer types, other than complex integer types, or both are pointer types with the same pointee type, then the values are compared *as-is*, and the result is `-1` if `a<b`, `0` if `a==b`, and `1` if `b<a`. For pointer types, the returned value shall be consistent with the ordering of pointer values.
