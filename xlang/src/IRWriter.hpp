@@ -2,6 +2,7 @@
 #include <xlang++/Visit.hpp>
 #include <vector>
 #include <memory>
+#include <variant>
 
 namespace lccc::xlang{
 
@@ -13,18 +14,9 @@ namespace lccc::xlang{
 
         ScopeMemberVisitor* visitScopeMember();
     };
-
-    struct IRValue{
-
-    };
-
-    struct StaticAssertion{
-        IRValue condition;
-        std::string diag;
-    };
-
     struct IRScopeMember : ScopeMemberVisitor{
         using ScopeMemberVisitor::ScopeMemberVisitor;
+        
     };
 
     IRScopeWriter::~IRScopeWriter()=default;

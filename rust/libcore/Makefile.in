@@ -25,5 +25,5 @@ $(OUTDIR)/libcore.a.d: $(SRCDIR)/lib.rs
 include (OUTDIR)/libcore.a.d
 
 $(OUTDIR)/libcore.a: $(SRCDIR)/lib.rs | $(OUTDIR)/libcore.a.d
-    +${RUSTC} --crate-type rlib --crate-name core $(ALL_RUSTFLAGS) --emit dep-info=$(OUTDIR)/libcore.a.d --emit link=$(OUTDIR)/libcore.a --out-dir=$(OUTDIR) $^
+    +$(RUSTC) --crate-type rlib --crate-name core $(ALL_RUSTFLAGS) --emit dep-info=$(OUTDIR)/libcore.a.d --emit link=$(OUTDIR)/libcore.a --out-dir=$(OUTDIR) $^
 

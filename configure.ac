@@ -12,9 +12,16 @@ AC_CANONICAL_BUILD
 AC_CANONICAL_HOST
 AC_CANONICAL_TARGET
 
-AC_ARG_ENABLE([libtargets],[
-    libtargets=${enableval}
+AC_ARG_ENABLE([library-targets],[
+    IFS=',' read -ra libtargets <<< "$enableval"
 ],[libtargets=${target}])
+
+
+AC_ARG_ENABLE([hosted-targets],[
+    IFS=',' read -ra hosttargs <<< "$enableval"
+],[
+    
+])
 
 AC_SUBST(libtargets)
 
