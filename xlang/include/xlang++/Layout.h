@@ -29,6 +29,7 @@
 #include <functional>
 #include <tuple>
 #include <utility>
+#include <variant>
 
 #include <xlang++/Properties.h>
 
@@ -811,62 +812,61 @@ namespace lccc
         T first;
         U second;
 
-        template<std::enable_if_t<std::is_default_constructible_v<T>&&std::is_default_constructible_v<U>>* =nullptr>
-            constexpr pair()=default;
+        constexpr pair()=default;
 
         template<typename T1,typename U1,
             std::enable_if_t<std::is_convertible_v<T1&&,T>&&std::is_convertible_v<U1&&,U>>* =nullptr>
-            constexpr pair(T1&& t1,T2&& t2) : first(std::forward<T1>(t1)), second(std::forward<U1>(t2)){}
+            constexpr pair(T1&& t1,U1&& t2) : first(std::forward<T1>(t1)), second(std::forward<U1>(t2)){}
         template<typename T1,typename U1,
             std::enable_if_t<!(std::is_convertible_v<T1&&,T>&&std::is_convertible_v<U1&&,U>)&&std::is_constructible_v<T,T1&&>&&std::is_constructible_v<U,U1&&>>* =nullptr>
-            constexpr explicit pair(T1&& t1,T2&& t2) : first(std::forward<T1>(t1)), second(std::forward<U1>(t2)){}
+            constexpr explicit pair(T1&& t1,U1&& t2) : first(std::forward<T1>(t1)), second(std::forward<U1>(t2)){}
         
         template<typename T1,typename U1,
             std::enable_if_t<std::is_convertible_v<T1&&,T>&&std::is_convertible_v<U1&&,U>>* =nullptr>
-            constexpr pair(std::pair<T1,T2>&& p) : first(std::forward<T1>(p.first)), second(std::forward<U1>(p.second)){}
+            constexpr pair(std::pair<T1,U1>&& p) : first(std::forward<T1>(p.first)), second(std::forward<U1>(p.second)){}
         template<typename T1,typename U1,
             std::enable_if_t<!(std::is_convertible_v<T1&&,T>&&std::is_convertible_v<U1&&,U>)&&std::is_constructible_v<T,T1&&>&&std::is_constructible_v<U,U1&&>>* =nullptr>
-            constexpr explicit pair(std::pair<T1,T2>&& p) : first(std::forward<T1>(p.first)), second(std::forward<U1>(p.second)){}
+            constexpr explicit pair(std::pair<T1,U1>&& p) : first(std::forward<T1>(p.first)), second(std::forward<U1>(p.second)){}
         template<typename T1,typename U1,
             std::enable_if_t<std::is_convertible_v<const T1&,T>&&std::is_convertible_v<const U1&,U>>* =nullptr>
-            constexpr pair(const std::pair<T1,T2>& p) : first(p.first), second(p.second){}
+            constexpr pair(const std::pair<T1,U1>& p) : first(p.first), second(p.second){}
         template<typename T1,typename U1,
             std::enable_if_t<!(std::is_convertible_v<const T1&,T>&&std::is_convertible_v<const U1&,U>)&&std::is_constructible_v<T,const T1&>&&std::is_constructible_v<U,const U1&>>* =nullptr>
-            constexpr explicit pair(const std::pair<T1,T2>& p) : first(p.first), second(p.second){}
+            constexpr explicit pair(const std::pair<T1,U1>& p) : first(p.first), second(p.second){}
 
         template<typename T1,typename U1,
             std::enable_if_t<std::is_convertible_v<T1&&,T>&&std::is_convertible_v<U1&&,U>>* =nullptr>
-            constexpr pair(std::tuple<T1,T2>&& p) : first(std::get<0>(std::move(p))), second(std::get<1>(std::move(p))){}
+            constexpr pair(std::tuple<T1,U1>&& p) : first(std::get<0>(std::move(p))), second(std::get<1>(std::move(p))){}
         template<typename T1,typename U1,
             std::enable_if_t<!(std::is_convertible_v<T1&&,T>&&std::is_convertible_v<U1&&,U>)&&std::is_constructible_v<T,T1&&>&&std::is_constructible_v<U,U1&&>>* =nullptr>
-            constexpr explicit pair(std::tuple<T1,T2>&& p) : first(std::get<0>(std::move(p))), second(std::get<1>(std::move(p))){}
+            constexpr explicit pair(std::tuple<T1,U1>&& p) : first(std::get<0>(std::move(p))), second(std::get<1>(std::move(p))){}
         template<typename T1,typename U1,
             std::enable_if_t<std::is_convertible_v<const T1&,T>&&std::is_convertible_v<const U1&,U>>* =nullptr>
-            constexpr pair(const std::tuple<T1,T2>& p) : first(std::get<0>(p)), second(std::get<1>(p)){}
+            constexpr pair(const std::tuple<T1,U1>& p) : first(std::get<0>(p)), second(std::get<1>(p)){}
         template<typename T1,typename U1,
             std::enable_if_t<!(std::is_convertible_v<const T1&,T>&&std::is_convertible_v<const U1&,U>)&&std::is_constructible_v<T,const T1&>&&std::is_constructible_v<U,const U1&>>* =nullptr>
-            constexpr explicit pair(const std::tuple<T1,T2>& p) : first(std::get<0>(p)), second(std::get<1>(p)){}
+            constexpr explicit pair(const std::tuple<T1,U1>& p) : first(std::get<0>(p)), second(std::get<1>(p)){}
         
         template<typename T1,typename U1,
             std::enable_if_t<std::is_convertible_v<T1&&,T>&&std::is_convertible_v<U1&&,U>>* =nullptr>
-            constexpr pair(lccc::pair<T1,T2>&& p) : first(std::forward<T1>(p.first)), second(std::forward<U1>(p.second)){}
+            constexpr pair(lccc::pair<T1,U1>&& p) : first(std::forward<T1>(p.first)), second(std::forward<U1>(p.second)){}
         template<typename T1,typename U1,
             std::enable_if_t<!(std::is_convertible_v<T1&&,T>&&std::is_convertible_v<U1&&,U>)&&std::is_constructible_v<T,T1&&>&&std::is_constructible_v<U,U1&&>>* =nullptr>
-            constexpr explicit pair(lccc::pair<T1,T2>&& p) : first(std::forward<T1>(p.first)), second(std::forward<U1>(p.second)){}
+            constexpr explicit pair(lccc::pair<T1,U1>&& p) : first(std::forward<T1>(p.first)), second(std::forward<U1>(p.second)){}
         template<typename T1,typename U1,
             std::enable_if_t<std::is_convertible_v<const T1&,T>&&std::is_convertible_v<const U1&,U>>* =nullptr>
-            constexpr pair(const lccc::pair<T1,T2>& p) : first(p.first), second(p.second){}
+            constexpr pair(const lccc::pair<T1,U1>& p) : first(p.first), second(p.second){}
         template<typename T1,typename U1,
             std::enable_if_t<!(std::is_convertible_v<const T1&,T>&&std::is_convertible_v<const U1&,U>)&&std::is_constructible_v<T,const T1&>&&std::is_constructible_v<U,const U1&>>* =nullptr>
-            constexpr explicit pair(const lccc::pair<T1,T2>& p) : first(p.first), second(p.second){}
+            constexpr explicit pair(const lccc::pair<T1,U1>& p) : first(p.first), second(p.second){}
 
-        template<typename T1,typename U1,std::enable_if_t<std::is_convertible_v<const T&,T1>&&std::is_convertible<const U&,U1>>* =nullptr>
-            constexpr std::pair<T1,U1>() const noexcept{
-                return std::pair<T1,U1>(p.first,p.second);
+        template<typename T1,typename U1,std::enable_if_t<std::is_convertible_v<const T&,T1>&&std::is_convertible_v<const U&,U1>>* =nullptr>
+            constexpr operator std::pair<T1,U1>() const noexcept{
+                return std::pair<T1,U1>(this->first,this->second);
             }
-        template<typename T1,typename U1,std::enable_if_t<!(std::is_convertible_v<const T&,T1>&&std::is_convertible<const U&,U1>)&&std::is_constructible_v<U1,const U&>&&std::is_constructible_v<T1,const T&>>* =nullptr>
-            constexpr explicit std::pair<T1,U1>() const noexcept{
-                return std::pair<T1,U1>(p.first,p.second);
+        template<typename T1,typename U1,std::enable_if_t<!(std::is_convertible_v<const T&,T1>&&std::is_convertible_v<const U&,U1>)&&std::is_constructible_v<U1,const U&>&&std::is_constructible_v<T1,const T&>>* =nullptr>
+            constexpr explicit operator std::pair<T1,U1>() const noexcept{
+                return std::pair<T1,U1>(this->first,this->second);
             }
     };
 
@@ -880,11 +880,11 @@ namespace lccc
             }
 
             template<typename T> T& get_element_unchecked() noexcept{
-                return std::launder(reinterpret_cast<lccc::pair<KeyType,T>*(&this->_m_storage))->second;
+                return std::launder(reinterpret_cast<lccc::pair<KeyType,T>*>(&this->_m_storage))->second;
             }
 
             template<typename T> const T& get_element_unchecked() const noexcept{
-                return std::launder(reinterpret_cast<const lccc::pair<KeyType,T>*(&this->_m_storage))->second;
+                return std::launder(reinterpret_cast<const lccc::pair<KeyType,T>*>(&this->_m_storage))->second;
             }
         };
         template<typename KeyType,typename T> void do_in_place_copy(void* to_storage,const void* from_storage){
@@ -895,7 +895,7 @@ namespace lccc
 
         template<typename KeyType,typename T1,typename... Ts,std::size_t I1,std::size_t... Is> void in_place_copy_sel(KeyType key,void* to_storage,const void* from_storage,std::index_sequence<I1,Is...> seq){
             if(static_cast<std::size_t>(key)==I1)
-                do_in_place_copy<KeyType,T1,to_storage,from_storage);
+                do_in_place_copy<KeyType,T1>(to_storage,from_storage);
             else{
                 if constexpr(sizeof...(Is)==0)
                     std::terminate();
@@ -916,7 +916,7 @@ namespace lccc
 
         template<typename KeyType,typename T1,typename... Ts,std::size_t I1,std::size_t... Is> void in_place_move_sel(KeyType key,void* to_storage,const void* from_storage,std::index_sequence<I1,Is...> seq){
             if(static_cast<std::size_t>(key)==I1)
-                do_in_place_move<KeyType,T1,to_storage,from_storage);
+                do_in_place_move<KeyType,T1>(to_storage,from_storage);
             else{
                 if constexpr(sizeof...(Is)==0)
                     std::terminate();
@@ -930,7 +930,7 @@ namespace lccc
         }
 
         template<typename KeyType,typename T> void do_in_place_destroy(void* storage){
-            std::launder(static_cast<lccc::pair<KeyType,T>*>(storage))->~lccc::pair<KeyType,T>();
+            std::launder(static_cast<lccc::pair<KeyType,T>*>(storage))->~pair<KeyType,T>();
         }
 
         template<typename KeyType,typename T1,typename... Ts,std::size_t I1,std::size_t... Is>
@@ -962,10 +962,10 @@ namespace lccc
         
 
         template<typename KeyType,bool has_default_ctor,typename... Ts>
-            struct variant_default_ctor : variant_destructor<KeyStorage,std::conjunction_v<std::is_trivially_destructible<Ts>...>,Ts...>{
+            struct variant_default_ctor : variant_destructor<KeyType,std::conjunction_v<std::is_trivially_destructible<Ts>...>,Ts...>{
                 variant_default_ctor() =delete;
             };
-        template<typename KeyType,typename T1,typename... Ts> struct variant_default_ctor<KeyType,true,T1,Ts...> : variant_destructor<KeyStorage,std::conjunction_v<std::is_trivially_destructible<T1>,std::is_trivially_destructible<Ts>...>,T1,Ts...>{
+        template<typename KeyType,typename T1,typename... Ts> struct variant_default_ctor<KeyType,true,T1,Ts...> : variant_destructor<KeyType,std::conjunction_v<std::is_trivially_destructible<T1>,std::is_trivially_destructible<Ts>...>,T1,Ts...>{
             variant_default_ctor() noexcept{
                 ::new(&this->_m_storage) lccc::pair<KeyType,T1>{}; // get zero-initialization
             }
@@ -979,7 +979,7 @@ namespace lccc
         template<typename KeyType,typename T1,typename... Ts>
             struct variant_copy_ctor<KeyType,true,true,T1,Ts...> : variant_default_ctor<KeyType,std::is_default_constructible_v<T1>,T1,Ts...>{
                 constexpr variant_copy_ctor(const variant_copy_ctor&)=default;
-                contexpr variant_copy_ctor& operator=(const variant_copy_ctor&)=default;
+                constexpr variant_copy_ctor& operator=(const variant_copy_ctor&)=default;
             };
         
         template<typename KeyType,typename T1,typename... Ts>
@@ -995,17 +995,17 @@ namespace lccc
             };
 
         template<typename KeyType,bool has_move_ctor,bool trivial_move_ctor,typename... Ts>
-            struct variant_move_ctor : variant_copy_ctor<KeyType,(std::copy_constructible_v<Ts> && ...),(std::is_trivially_copy_constructible_v<Ts> && ...),Ts...> {
+            struct variant_move_ctor : variant_copy_ctor<KeyType,(std::is_copy_constructible_v<Ts> && ...),(std::is_trivially_copy_constructible_v<Ts> && ...),Ts...> {
                 variant_move_ctor(variant_move_ctor&&)=delete;
                 variant_move_ctor& operator=(variant_move_ctor&&)=delete;
             };
         template<typename KeyType,typename... Ts>
-            struct variant_move_ctor<KeyType,true,true,Ts...> : variant_copy_ctor<KeyType,(std::copy_constructible_v<Ts> && ...),(std::is_trivially_copy_constructible_v<Ts> && ...),Ts...>  {
+            struct variant_move_ctor<KeyType,true,true,Ts...> : variant_copy_ctor<KeyType,(std::is_copy_constructible_v<Ts> && ...),(std::is_trivially_copy_constructible_v<Ts> && ...),Ts...>  {
                 constexpr variant_move_ctor(variant_move_ctor&&)=default;
                 constexpr variant_move_ctor& operator=(variant_move_ctor&&)=default;
             };
         template<typename KeyType,typename... Ts>
-            struct variant_move_ctor<KeyType,true,false,Ts...> : variant_copy_ctor<KeyType,(std::copy_constructible_v<Ts> && ...),(std::is_trivially_copy_constructible_v<Ts> && ...),Ts...>  {
+            struct variant_move_ctor<KeyType,true,false,Ts...> : variant_copy_ctor<KeyType,(std::is_copy_constructible_v<Ts> && ...),(std::is_trivially_copy_constructible_v<Ts> && ...),Ts...>  {
                 variant_move_ctor(variant_move_ctor&& m1) noexcept{
                     KeyType k = m1.discriminant();
                     in_place_move(k,this,&m1);
@@ -1036,7 +1036,7 @@ namespace lccc{
 
     template<typename KeyType,KeyType Key> struct in_place_key_t{};
 
-    template<typename KeyType,KeyType Key> constexpr inline in_place_key_t in_place_key{};
+    template<typename KeyType,KeyType Key> constexpr inline in_place_key_t<KeyType,Key> in_place_key{};
 
     template<typename KeyType,typename... Ts> struct variant : private _detail::variant_impl<KeyType,Ts...>{
         static_assert(std::is_enum_v<KeyType>||std::is_integral_v<KeyType>,"KeyType for lccc::variant must be an integral or enumeration type");
@@ -1071,7 +1071,6 @@ namespace lccc{
             return static_cast<T>(*this);
         }
     };
-+
 
 } // namespace lccc
 
@@ -1089,28 +1088,28 @@ namespace std{
 
 namespace lccc{
     template<std::size_t I,typename T,typename U> std::tuple_element<I,lccc::pair<T,U>>& get(lccc::pair<T,U>& p)noexcept{
-        static_assert(I<2,"I must be less than std::tuple_size<lccc::pair<T,U>>::value (=2)")
+        static_assert(I<2,"I must be less than std::tuple_size<lccc::pair<T,U>>::value (=2)");
         if constexpr(I==0)
             return p.first;
         else
             return p.second;
     }
     template<std::size_t I,typename T,typename U> const std::tuple_element<I,lccc::pair<T,U>>& get(const lccc::pair<T,U>& p)noexcept{
-        static_assert(I<2,"I must be less than std::tuple_size<lccc::pair<T,U>>::value (=2)")
+        static_assert(I<2,"I must be less than std::tuple_size<lccc::pair<T,U>>::value (=2)");
         if constexpr(I==0)
             return p.first;
         else
             return p.second;
     }
     template<std::size_t I,typename T,typename U> std::tuple_element<I,lccc::pair<T,U>>&& get(lccc::pair<T,U>&& p)noexcept{
-        static_assert(I<2,"I must be less than std::tuple_size<lccc::pair<T,U>>::value (=2)")
+        static_assert(I<2,"I must be less than std::tuple_size<lccc::pair<T,U>>::value (=2)");
         if constexpr(I==0)
             return std::forward<T>(p.first);
         else
             return std::forward<U>(p.second);
     }
     template<std::size_t I,typename T,typename U> const std::tuple_element<I,lccc::pair<T,U>>&& get(const lccc::pair<T,U>&& p)noexcept{
-        static_assert(I<2,"I must be less than std::tuple_size<lccc::pair<T,U>>::value (=2)")
+        static_assert(I<2,"I must be less than std::tuple_size<lccc::pair<T,U>>::value (=2)");
         if constexpr(I==0)
             return std::forward<const T>(p.first);
         else
