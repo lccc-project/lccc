@@ -1,0 +1,34 @@
+
+OUTDIR := @build_dir@/out
+
+SRCDIR := @src_dir@/src
+
+RUSTC := @RUSTC@
+
+RUSTSTD := 2018
+
+LIBCORE_OUTDIR := @build_dir@/../libcore/out
+
+LIBCORE := $(LIBCORE_OUTDIR)/libcore.a
+
+FEATURES := $(foreach feature,@stdlib_features@,--cfg feature=\"${feature}\")
+
+RUSTFLAGS := @RUSTFLAGS@
+ALL_RUSTFLAGS := ${RUSTFLAGS} -Z unstable-options -Z extra-codegen-opts -Z extra-opt-levels -Z build-abi=@stdlib_abi@ --cfg bootstrap --cfg stdlib-abi=@stdlib_abi@ \
+        -D lccc::unprefixed_features \
+        -A lccc::rustc_incomplete_features \
+        -F lccc::stdlib_no_abi_tag \
+        -Z build-outdated \
+        -Z parallel-compile \
+        --extern $(LIBCORE)
+        
+
+$(OUTDIR)/liballoc.a.d: $(SRCDIR)/lib.rs
+    $(RUSTC) --edition=$(RUSTSTD) --cfg bootstrap $(FEATURES) --emit dep-info -o$(OUTDIR)/liballoc.a.d $^
+
+
+include (OUTDIR)/liballoc.a.d
+
+$(OUTDIR)/liballoc.a: $(SRCDIR)/lib.rs | $(OUTDIR)/liballoc.a.d
+    +$(RUSTC) --crate-type rlib --crate-name core $(ALL_RUSTFLAGS) --emit dep-info=$(OUTDIR)/liballoc.a.d --emit link=$(OUTDIR)/liballoc.a --out-dir=$(OUTDIR) $^
+

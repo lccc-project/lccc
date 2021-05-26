@@ -39,16 +39,16 @@ pub fn compiler_fence(ord: Ordering) {
     unsafe {
         match ord {
             Ordering::Release => {
-                __lccc::xir!("sequence atomic release")
+                k#__xir("sequence atomic release")
             }
             Ordering::Acquire => {
-                __lccc::xir!("sequence atomic acquire")
+                k#__xir("sequence atomic acquire")
             }
             Ordering::AcqRel => {
-                __lccc::xir!("sequence atomic acqrel")
+                k#__xir("sequence atomic acqrel")
             }
             Ordering::SeqCst => {
-                __lccc::xir!("sequence atomic seq_cst")
+                k#__xir("sequence atomic seq_cst")
             }
             ord => panic!("Invalid ordering {}", ord),
         }
@@ -61,16 +61,16 @@ pub fn fence(ord: Ordering) {
     unsafe {
         match ord {
             Ordering::Release => {
-                __lccc::xir!("fence atomic release")
+                k#__xir("fence atomic release")
             }
             Ordering::Acquire => {
-                __lccc::xir!("fence atomic acquire")
+                k#__xir("fence atomic acquire")
             }
             Ordering::AcqRel => {
-                __lccc::xir!("fence atomic acqrel")
+                k#__xir("fence atomic acqrel")
             }
             Ordering::SeqCst => {
-                __lccc::xir!("fence atomic seq_cst")
+                k#__xir("fence atomic seq_cst")
             }
             _ => panic!("Invalid ordering {}"),
         }
@@ -242,15 +242,15 @@ pub mod ops {
             panic!("Cannot perform non-lock free atomic load")
         }
         match ord {
-            Acquire | AcqRel => __lccc::xir!(r"(
+            Acquire | AcqRel => k#__xir(r"(
                 indirect
                 as_rvalue atomic acquire
             )":[mem]:[yield: T]),
-            SeqCst => __lccc::xir!(r"(
+            SeqCst => k#__xir(r"(
                 indirect
                 as_rvalue atomic seqcst
             )":[mem]:[yield: T]),
-            Relaxed => __lccc::xir!(r"
+            Relaxed => k#__xir(r"
                 indirect
                 as_rvalue atomic
             ":[mem]:[yield:T]),
@@ -264,13 +264,13 @@ pub mod ops {
         }
 
         match ord {
-            Release | AcqRel => __lccc::xir!(r"
+            Release | AcqRel => k#__xir(r"
                 assign atomic release
             ":[lvalue *mem,val]),
-            Relaxed => __lccc::xir!(r"
+            Relaxed => k#__xir(r"
                 assign atomic
             ":[lvalue *mem,val]),
-            SeqCst => __lccc::xir!(r"
+            SeqCst => k#__xir(r"
                 assign atomic seq_cst
             ":[lvalue *mem,val]),
             _ => panic!("Bad ordering"),
@@ -288,23 +288,23 @@ pub mod ops {
         }
 
         match ord {
-            Acquire => __lccc::xir!(r"
+            Acquire => k#__xir(r"
                 cmp_excg atomic acquire
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Release => __lccc::xir!(r"
+            Release => k#__xir(r"
                 cmp_excg atomic release
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            AcqRel => __lccc::xir!(r"
+            AcqRel => k#__xir(r"
                 cmp_excg atomic acqrel
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Relaxed => __lccc::xir!(r"
+            Relaxed => k#__xir(r"
                 cmp_excg atomic relaxed
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            SeqCst => __lccc::xir!(r"
+            SeqCst => k#__xir(r"
                 cmp_excg atomic seq_cst
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
@@ -322,23 +322,23 @@ pub mod ops {
         }
 
         match ord {
-            Acquire => __lccc::xir!(r"
+            Acquire => k#__xir(r"
                 cmp_excg atomic acquire fail relaxed
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,core::ptr::read(val)]:[yield:bool]),
-            Release => __lccc::xir!(r"
+            Release => k#__xir(r"
                 cmp_excg atomic release fail relaxed
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,core::ptr::read(val)]:[yield:bool]),
-            AcqRel => __lccc::xir!(r"
+            AcqRel => k#__xir(r"
                 cmp_excg atomic acqrel fail relaxed
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,core::ptr::read(val)]:[yield:bool]),
-            Relaxed => __lccc::xir!(r"
+            Relaxed => k#__xir(r"
                 cmp_excg atomic relaxed
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,core::ptr::read(val)]:[yield:bool]),
-            SeqCst => __lccc::xir!(r"
+            SeqCst => k#__xir(r"
                 cmp_excg atomic seq_cst fail relaxed
                 convert strong uint(1)
             ":[lvalue unsafe{*mem},lvalue *expected,core::ptr::read(val)]:[yield:bool]),
@@ -356,23 +356,23 @@ pub mod ops {
         }
 
         match ord {
-            Acquire => __lccc::xir!(r"
+            Acquire => k#__xir(r"
                 cmp_excg_weak atomic acquire
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Release => __lccc::xir!(r"
+            Release => k#__xir(r"
                 cmp_excg_weak atomic release
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            AcqRel => __lccc::xir!(r"
+            AcqRel => k#__xir(r"
                 cmp_excg_weak atomic acqrel
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Relaxed => __lccc::xir!(r"
+            Relaxed => k#__xir(r"
                 cmp_excg_weak atomic relaxed
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            SeqCst => __lccc::xir!(r"
+            SeqCst => k#__xir(r"
                 cmp_excg_weak atomic seq_cst
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
@@ -390,23 +390,23 @@ pub mod ops {
         }
 
         match ord {
-            Acquire => __lccc::xir!(r"
+            Acquire => k#__xir(r"
                 cmp_excg_weak atomic acquire fail relaxed
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Release => __lccc::xir!(r"
+            Release => k#__xir(r"
                 cmp_excg_weak atomic release fail relaxed
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            AcqRel => __lccc::xir!(r"
+            AcqRel => k#__xir(r"
                 cmp_excg_weak atomic acqrel fail relaxed
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Relaxed => __lccc::xir!(r"
+            Relaxed => k#__xir(r"
                 cmp_excg_weak atomic relaxed
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            SeqCst => __lccc::xir!(r"
+            SeqCst => k#__xir(r"
                 cmp_excg_weak atomic seq_cst fail relaxed
                 convert strong uint(1)
             ":[lvalue unsafe{*mem},lvalue *expected,val]:[yield:bool]),
@@ -419,23 +419,23 @@ pub mod ops {
         }
 
         match ord {
-            Acquire => __lccc::xir!(r"
+            Acquire => k#__xir(r"
                 swap atomic acquire
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected]:[yield:bool]),
-            Release => __lccc::xir!(r"
+            Release => k#__xir(r"
                 swap atomic release
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected]:[yield:bool]),
-            AcqRel => __lccc::xir!(r"
+            AcqRel => k#__xir(r"
                 swap atomic acqrel
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Relaxed => __lccc::xir!(r"
+            Relaxed => k#__xir(r"
                 swap atomic 
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected]:[yield:bool]),
-            SeqCst => __lccc::xir!(r"
+            SeqCst => k#__xir(r"
                 swap atomic seq_cst
                 convert strong uint(1)
             ":[lvalue *mem,lvalue *expected]:[yield:bool]),
@@ -444,19 +444,19 @@ pub mod ops {
 
     pub unsafe fn fetch_and<T: And>(mem: *mut T, value: T, ord: Ordering) -> T {
         match ord {
-            Relaxed => __lccc::xir!(r"
+            Relaxed => k#__xir(r"
                 compound_assign fetch and atomic relaxed 
             ":[lvalue *mem,value]:[yield:T]),
-            Acquire => __lccc::xir!(r"
+            Acquire => k#__xir(r"
                 compound_assign fetch and atomic release 
             ":[lvalue *mem,value]:[yield:T]),
-            Release => __lccc::xir!(r"
+            Release => k#__xir(r"
                 compound_assign fetch and atomic release 
             ":[lvalue *mem,value]:[yield:T]),
-            AcqRel => __lccc::xir!(r"
+            AcqRel => k#__xir(r"
                 compound_assign fetch and atomic acqrel 
             ":[lvalue *mem,value]:[yield:T]),
-            SeqCst => __lccc::xir!(r"
+            SeqCst => k#__xir(r"
                 compound_assign fetch and atomic seqcst 
             ":[lvalue *mem,value]:[yield:T]),
         }

@@ -29,6 +29,8 @@
 
 #if has_builtin(__builtin_unreachable)
 #define unreachable_unchecked() __builtin_unreachable()
+#elif defined(_MSC_VER)
+#define unreachable_unchecked() __assume(0)
 #else
 #define unreachable_unchecked() (void)((int)(*((int*)0)))
 #endif
@@ -62,6 +64,19 @@
 #define XLANG_API XLANG_IMPORT
 #endif
 
+#if !defined(LCCC_DEBUG_ASSERTIONS)&&!defined(NDEBUG)
+#define LCCC_DEBUG_ASSERTIONS
+#endif
+
+#ifndef xlang_assert
+#ifdef LCCC_DEBUG_ASSERTIONS
+#include <cstdio>
+#include <exception>
+#define xlang_assert(value,message) do{if(!(value)){std::fprintf(stderr,"Assertion %s failed at %s(%s)",(message),__FILE__,__LINE__); std::terminate();}}while(0)
+#else
+#define xlang_assert(value,message) do{if(!(value)){unreachable_unchecked();}}while(0)
+#endif
+#endif
 
 
 #endif //LCCC_PROPERTIES_H

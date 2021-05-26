@@ -19,7 +19,7 @@
 
 #[inline(always)]
 pub unsafe fn unreachable_unchecked() -> ! {
-    ::__lccc::xir!("const undef invalid uint nonzero(0)"::[yield: !])
+    k#__xir("const undef invalid uint nonzero(0)"::[yield: !])
 }
 
 #[inline(always)]
@@ -29,9 +29,8 @@ pub fn black_box<T>(x: T) -> T {
 }
 
 #[inline(always)]
-#[unstable(feature = "renamed_spin_loop", issue = "55002")]
 pub fn spin_loop() {
-    crate::sync::atomic::spin_loop_hint()
+    
 }
 
 #[inline(always)]

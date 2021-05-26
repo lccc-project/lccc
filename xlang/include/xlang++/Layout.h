@@ -876,7 +876,9 @@ namespace lccc
             std::aligned_union_t<1,lccc::pair<KeyType,Ts>...> _m_storage;
 
             KeyType discriminant() const noexcept{
-                return *std::launder(reinterpret_cast<const KeyType*>(&this->_m_storage));
+                KeyType val = *std::launder(reinterpret_cast<const KeyType*>(&this->_m_storage));
+                xlang_assert(static_cast<std::size_t>(val)<sizeof...(Ts),"The discriminant of a variant must be in range for the type list");
+                return val;
             }
 
             template<typename T> T& get_element_unchecked() noexcept{
@@ -898,7 +900,7 @@ namespace lccc
                 do_in_place_copy<KeyType,T1>(to_storage,from_storage);
             else{
                 if constexpr(sizeof...(Is)==0)
-                    std::terminate();
+                    xlang_assert(false,"Reached end of type list for copy construction");
                 else
                     in_place_copy_sel<KeyType,Ts...>(key,to_storage,from_storage,std::index_sequence<Is...>{});
             }    
@@ -989,8 +991,10 @@ namespace lccc
                     in_place_copy(this,&c1);
                 }
                 variant_copy_ctor& operator=(const variant_copy_ctor& c1) noexcept{
-                    this->~variant_copy_ctor();
-                    return *::new(this) variant_copy_ctor(c1);
+                    if constexpr(!(std::is_trivially_destructible_v<Ts> && ...))
+                        in_place_destroy<KeyType,Ts...>(this->discriminant(),this);
+                    in_place_copy(this->discriminant(),this,&c1);
+                    return *this;
                 }
             };
 
@@ -1011,8 +1015,10 @@ namespace lccc
                     in_place_move(k,this,&m1);
                 }
                 variant_move_ctor& operator=(variant_move_ctor&& m1) noexcept{
-                    this->~variant_move_ctor();
-                    return *::new(this) variant_move_ctor(std::move(m1));
+                    if constexpr(!(std::is_trivially_destructible_v<Ts> && ...))
+                        in_place_destroy<KeyType,Ts...>(this->discriminant(),this);
+                    in_place_move(this->discriminant(),this,&m1);
+                    return *this;
                 }
             };
         
@@ -1034,15 +1040,68 @@ namespace std{
 
 namespace lccc{
 
-    template<typename KeyType,KeyType Key> struct in_place_key_t{};
 
-    template<typename KeyType,KeyType Key> constexpr inline in_place_key_t<KeyType,Key> in_place_key{};
+    struct monostate{};
 
+    template<typename KeyType,KeyType Key> struct in_place_key_t{
+        static_assert(std::is_enum_v<KeyType>||std::is_integral_v<KeyType>,"KeyType for lccc::in_place_key_t must be an integral or enumeration type");
+    };
+
+    template<auto Key> constexpr inline in_place_key_t<decltype(Key),Key> in_place_key{};
+
+    /// A partial implementation of std::variant, with custom key types and a guaranteed layout
+    /// 
+    /// The layout of each variant member V_i, where 0<=i<sizeof...(Ts) is the struct{KeyType discrim;T_i}, 
+    ///  where i is the ith corresponding type in Ts...
+    /// The layout of `variant<KeyType,Ts...>` is the layout of the union{Vs... vs;} where Vs is the list of types described above.
+    /// If KeyType is a fixed width integer type `std::uintN_t` or `std::intN_t`, or an enum type with an underlying type which is such a type,
+    ///  this layout is equivalent to the rust declaration `#[repr(uN)] enum Variant{ Cs(Ts)...}`, where `Cs` is an pack of anonymous constructors for each value of KeyType
+    ///  present for Ts... 
+    /// If `sizeof...(Ts)-1` does not fit in KeyType, or it's underlying type if it is an enum type, the behaviour is undefined.
+    /// The behaviour is undefined if a variant used with a value of KeyType that does not correspond with an element of Ts...
     template<typename KeyType,typename... Ts> struct variant : private _detail::variant_impl<KeyType,Ts...>{
         static_assert(std::is_enum_v<KeyType>||std::is_integral_v<KeyType>,"KeyType for lccc::variant must be an integral or enumeration type");
         static_assert((std::is_object_v<Ts>&&...),"Each type in Ts... shall be a complete object type");
 
+        using _detail::variant_impl<KeyType,Ts...>::variant_impl;
+
+        template<KeyType Key,typename... Us,typename Ty = std::variant_alternative_t<static_cast<std::size_t>(Key),variant>,
+            typename = std::enable_if_t<std::is_constructible_v<Ty,Us&&...>>>
+            explicit variant(in_place_key_t<KeyType,Key>,Us&&... args) noexcept {
+                ::new(&this->_m_storage) lccc::pair<KeyType,Ty>(Key,Ty(std::forward<Us>(args)...));
+            }
+
+        template<KeyType Key,typename... Us,typename Ty = std::variant_alternative_t<static_cast<std::size_t>(Key),variant>,
+            typename = std::enable_if_t<std::is_constructible_v<Ty,Us&&...>>>
+            void emplace(Us&&... args) noexcept {
+                if constexpr(!(std::is_trivially_destructible_v<Ts> && ...))
+                    _detail::in_place_destroy<KeyType,Ts...>(this->discriminant(),this);
+                ::new(this->_m_storage) lccc::pair<KeyType,Ty>(Key,Ty(std::forward<Us>(args)...));
+            }
+
+        template<KeyType Key,typename Ty = std::variant_alternative_t<static_cast<std::size_t>(Key),variant>> Ty& get_unchecked()noexcept{
+            xlang_assert(Key==this->discriminant(),"Failed get_unchecked, key!=discriminant");
+            return this->template get_element_unchecked<Ty>();
+        }
+
+        template<KeyType Key,typename Ty = std::variant_alternative_t<static_cast<std::size_t>(Key),variant>> const Ty& get_unchecked()const noexcept{
+            xlang_assert(Key==this->discriminant(),"Failed get_unchecked, key!=discriminant");
+            return this->template get_element_unchecked<Ty>();
+        }
         
+        template<KeyType Key,typename Ty = std::variant_alternative_t<static_cast<std::size_t>(Key),variant>> Ty* get_pointer()noexcept{
+            if(Key!=this->discriminant())
+                return nullptr;
+            else
+                return &this->template get_element_unchecked<Ty>();
+        }
+
+        template<KeyType Key,typename Ty = std::variant_alternative_t<static_cast<std::size_t>(Key),variant>> const Ty* get_pointer()const noexcept{
+            if(Key!=this->discriminant())
+                return nullptr;
+            else
+                return &this->template get_element_unchecked<Ty>();
+        } 
     };
     // Empty variant has no members
     template<typename KeyType> struct variant<KeyType>{
@@ -1071,6 +1130,8 @@ namespace lccc{
             return static_cast<T>(*this);
         }
     };
+
+    using empty = variant<std::size_t>;
 
 } // namespace lccc
 

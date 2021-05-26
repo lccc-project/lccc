@@ -33,9 +33,9 @@ static no_throw: NoThrowT = NoThrow {
 #[cfg(lccc_cxx_scheme="msvc")]
 compile_error!("MSVC mangling is not implemented");
 
-#[cfg_attr(lccc_cxx_library = "libstdc++"),link="stdc++"]
-#[cfg_attr(lccc_cxx_library = "libc++"),link="c++"]
-#[cfg_attr(lccc_cxx_library = "liblc++"),link="lc++"]
+#[cfg_attr(lccc_cxx_library = "libstdc++",link="stdc++")]
+#[cfg_attr(lccc_cxx_library = "libc++",link="c++")]
+#[cfg_attr(lccc_cxx_library = "liblc++",link="lc++")]
 extern "C" {
 
     #[cfg_attr(

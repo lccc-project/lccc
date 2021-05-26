@@ -21,7 +21,7 @@
 #![deny(__lccc::unprefixed_features)]
 #![allow(__lccc::rustc_incomplete_features)]
 #![feature(lang_items, intrinsics, no_core, auto_traits, negative_trait_bounds)]
-#![feature(const_fn, reciever_trait)]
+#![feature(const_fn, reciever_trait, never_type)]
 #![feature(
     lccc_const_transmute,
     lccc_slice_layout,
@@ -32,8 +32,9 @@
 #![feature(unsize, negative_impls, no_niche, untagged_unions, prelude_import)]
 #![feature(lccc_borrowck_helpers, lccc_trait_object, lccc_lang_items)]
 #![feature(fn_traits, cell_update, unboxed_closures)]
-#![feature(lccc_stability_attributes, lccc_same_trait)]
-#![feature(or_patterns, cfg_target_has_atomic)]
+#![feature(lccc_stability_attributes)]
+#![feature(or_patterns, cfg_target_has_atomic, xir_keyword)]
+#![feature(decl_macros)]
 #![no_core]
 #![__lccc::mangle_as("std")]
 #![__lccc::abi_tag("lccc_stdlib")]
@@ -44,6 +45,7 @@ extern crate self as core;
 pub use prelude::v1::*;
 
 mod bool;
+mod never;
 mod unit;
 
 pub mod alloc;
@@ -81,3 +83,14 @@ pub macro env($name:lit) {}
 
 #[__lccc::builtin_macro]
 pub macro option_env($name:lit) {}
+
+#[unstable(feature = "asm")]
+#[allow_internal_unstable(lccc_asm_keyword)]
+pub macro asm($($tt:tt)*){
+    k#__asm($($tt)*)
+}
+
+#[unstable(feature = "global_asm")]
+pub macro global_asm($($tt:tt)*){
+    k#__asm($($tt)*)
+}
