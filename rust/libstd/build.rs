@@ -77,5 +77,60 @@ int main(void){
             }
             _ => {}
         };
+
+        let c11thread_test_c = {
+            let mut path = tmpdir.clone();
+            path.push("c11thread-test.c");
+            path
+        };
+        let c11thread_test_bin = {
+            let mut path = tmpdir.clone();
+            path.push("c11thread-test");
+            path
+        };
+
+        std::fs::write(
+            &c11thread_test_c,
+            r"##
+#include <threads.h>
+
+int new_thread(void* v){}
+
+int main(void){
+    thrd_t thrd;
+    thrd_create(&thrd,new_thread,0);
+}
+  
+##",
+        )
+        .unwrap();
+
+    match std::process::Command::new(cc)
+        .arg("-o")
+        .arg(c11thread_test_bin)
+        .arg(c11thread_test_c)
+        .status()
+        {
+            Ok(s) if s.success() => {
+                println!("cargo:rustc-cfg=thread_impl=\"c11thread\"");
+                return;
+            }
+            _ => {}
+        };
+    match std::process::Command::new(cc)
+        .arg("-o")
+        .arg(c11thread_test_bin)
+        .arg(c11thread_test_c)
+        .arg("-pthread")
+        .status()
+        {
+            Ok(s) if s.success() => {
+                println!("cargo:rustc-cfg=thread_impl=\"c11thread\"");
+                println!("cargo:rustc-link-options=-pthread");
+                return;
+            }
+            _ => {}
+        };
+    println!("cargo:rustc-cfg=thread_impl=\"parking_lot\"");
     }
 }

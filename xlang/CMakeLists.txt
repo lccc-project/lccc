@@ -15,10 +15,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set(LCCC_XLANG_PLUGINS_IMPL src/LinuxPlugins.cpp)
 endif()
 
-add_library(xlang SHARED include/xlang++/Plugins.h include/xlang++/Visit.hpp src/Visit.cpp include/xlang++/Layout.h include/xlang++/Properties.h src/IRWriter.cpp src/Layout.cpp ${LCCC_XLANG_PLUGINS_IMPL})
+add_library(xlang-targets OBJECT src/Targets/X86.cpp src/Targets/X86.hpp)
+
+target_include_directories(xlang-targets PRIVATE include ${CMAKE_CURRENT_BINARY_DIR})
+
+add_library(xlang SHARED include/xlang++/Plugins.h include/xlang++/Visit.hpp include/xlang++/Target.hpp src/Visit.cpp include/xlang++/Layout.h include/xlang++/Properties.h src/IRWriter.cpp src/Layout.cpp ${LCCC_XLANG_PLUGINS_IMPL})
 target_include_directories(xlang PUBLIC include ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_definitions(xlang PRIVATE BUILD_LIBXLANG)
-target_link_libraries(xlang ${CMAKE_DL_LIBS})
+target_link_libraries(xlang ${CMAKE_DL_LIBS} xlang-targets)
 
 install(TARGETS xlang EXPORT xlang)
 set_target_properties(xlang PROPERTIES

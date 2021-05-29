@@ -556,7 +556,7 @@ namespace lccc::xlang{
 
     struct ConstantVisitor;
 
-    enum class UndefinedValueKind{
+    enum class UndefinedValueKind : std::uint16_t{
         Invalid,
         Uninitialized
     };

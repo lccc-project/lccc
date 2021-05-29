@@ -35,4 +35,6 @@ pub mod os;
 
 pub mod lazy;
 
+pub mod thread;
+
 mod rt;

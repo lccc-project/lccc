@@ -30,6 +30,7 @@
 #include <tuple>
 #include <utility>
 #include <variant>
+#include <exception>
 
 #include <xlang++/Properties.h>
 
@@ -735,6 +736,7 @@ namespace lccc
         PC = 0,
         APPLE = 1,
         SNES = 2,
+        WDC = 3,
 
         UNKNOWN = static_cast<std::uint32_t>(-1)
     };
@@ -749,6 +751,7 @@ namespace lccc
         IOS = 5,
         PHANTOM = 6,
 
+        NULLOS = static_cast<std::uint32_t>(-2),
         UNKNOWN = static_cast<std::uint32_t>(-1)
     };
 
@@ -806,7 +809,10 @@ namespace lccc
         lccc::string_view getEnvironmentName() const noexcept;
         lccc::string_view getCanonicalEnvironment() const noexcept;
         Environment getEnvironment()const noexcept;
+
     };
+
+
 
     template<typename T,typename U> struct pair{
         T first;
@@ -1176,6 +1182,124 @@ namespace lccc{
         else
             return std::forward<const U>(p.second);
     }
+
+    extern"C"{
+        void* xlang_allocate(std::size_t) noexcept;
+        void* xlang_allocate_aligned(std::size_t,std::size_t) noexcept;
+        void xlang_deallocate(void* v)noexcept;
+        void xlang_deallocate_aligned(void* v,std::size_t)noexcept;
+    }
+
+    struct bad_alloc{};
+
+    template<typename T> struct allocator{
+        using value_type = T; 
+        T* allocate(std::size_t n){
+            T* t;
+            if constexpr(alignof(T)<=alignof(std::max_align_t))
+                t = static_cast<T*>(xlang_allocate(sizeof(T)*n));
+            else
+                t = static_cast<T*>(xlang_allocate_aligned(sizeof(T)*n,alignof(T)));
+            if(t)
+                return t;
+            else
+                throw lccc::bad_alloc{};
+        }
+        void deallocate(T* t,std::size_t) noexcept{
+            if constexpr(alignof(T)<=alignof(std::max_align_t))
+                xlang_deallocate(t);
+            else
+                xlang_deallocate_aligned(t,alignof(T));
+        }
+    };
+
+    namespace _detail{
+        struct terminate_on_unwind{
+            int excepts;
+            terminate_on_unwind() : excepts{std::uncaught_exceptions()}{}
+            ~terminate_on_unwind(){
+                if(std::uncaught_exceptions()!=excepts)
+                    std::terminate();
+            }
+        }
+    }
+
+    template<typename T,typename Alloc=lccc::allocator<T>> struct vector{
+    public:
+        static_assert(std::is_same_v<T,typename Alloc::value_type>);
+        using element_type = T;
+        using value_type = T;
+        using pointer = typename std::allocator_traits<Alloc>::pointer;
+        using const_pointer = typename std::allocator_traits<Alloc>::const_pointer;
+        using reference = T&;
+        using const_reference = const T&;
+        using size_type = typename std::allocator_traits<Alloc>::size_type;
+        using difference_type = std::make_signed_t<size_type>;
+        using iterator = pointer;
+        using const_iterator = const_pointer;
+        using reverse_iterator = std::reverse_iterator<iterator>;
+        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
+        using _detail::alloc_base<Alloc>::get_allocator;
+    private:
+        pointer _m_begin;
+        size_type _m_len;
+        size_type _m_capacity;
+        Alloc _m_alloc;
+
+        void reallocate(size_type ncap){
+            pointer nbegin = std::allocator_traits<Alloc>::allocate(_m_allocate,ncap);
+            for(size_t n = 0;n<_m_len)
+                try{
+                    
+                    std::allocator_traits<Alloc>::construct(_m_alloc,nbegin+n,std::move_if_noexcept(_m_begin[n]));
+                }catch(...){
+                    {
+                        _detail::terminate_on_unwind _guard{};
+                        for(;n>0;n--)
+                            std::allocator_traits<Alloc>::destroy(_m_alloc,nbegin+n-1);
+                    }
+                    throw;
+                }
+        }
+
+    public:
+        vector(const Alloc& alloc=Alloc()) : _m_begin{}, _m_len{}, _m_capacity{16}, _m_alloc{alloc}{
+            _m_begin = std::allocator_traits<Alloc>::allocate(_m_alloc,16);
+        }
+
+        ~vector(){
+            if(_m_ptr){
+                for(;_m_len>0;_m_len--)
+                    std::allocator_traits<Alloc>::destroy(_m_alloc,_m_begin+_m_len-1);
+                std::allocator_traits<Alloc>::destroy
+            }
+        }
+
+        vector(const vector& v) : _m_alloc{std::allocator_traits<Alloc>::select_on_container_copy_construction(v.get_allocator())}, _m_begin{}, _m_len{0}, _m_capacity{v._m_capacity} {
+            _m_begin = std::allocator_traits<Alloc>::allocate(_m_alloc,_m_capacity);
+            for(_m_len=0;i<v._m_len;i++)
+                std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin+_m_len,v._m_begin[_m_len]);
+        }
+
+        vector(vector&& v) : _m_begin{std::exchange(v,nullptr)}, _m_len{v._m_len}, _m_capacity{v._m_capacity}, _m_alloc{std::move(v._m_alloc)}{}
+
+        template<typename Alloc2> vector(const vector<T,Alloc2>& v,const Alloc& alloc) : _m_begin{}, _m_len{0}, _m_capacity{v._m_capacity}, _m_alloc{alloc} {
+            _m_begin = std::allocator_traits<Alloc>::allocate(_m_alloc,_m_capacity);
+            for(_m_len=0;i<v._m_len;i++)
+                std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin+_m_len,v._m_begin[_m_len]);
+        }
+
+        template<typename Alloc2> vector(vector<T,Alloc2>&& v,const Alloc& alloc) : _m_begin{}, _m_len{0}, _m_capacity{v._m_capacity}, _m_alloc{alloc} {
+            _m_begin = std::allocator_traits<Alloc>::allocate(_m_alloc,_m_capacity);
+            for(_m_len=0;i<v._m_len;i++)
+                std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin+_m_len,std::move_if_noexcept(v._m_begin[_m_len]));
+        }
+
+        
+
+
+    };
 }
 
 #endif //LCCC_LAYOUT_H

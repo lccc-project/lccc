@@ -24,6 +24,25 @@ template struct lccc::basic_string_view<char>;
 using namespace lccc;
 using namespace std::string_view_literals;
 
+extern"C"{
+    void* xlang_allocate(std::size_t sz)noexcept{
+        return ::operator new(sz,std::nothrow);
+    }
+
+    void* xlang_allocate_aligned(std::size_t sz,std::size_t a)noexcept{
+        return ::operator new(a,std::align_val_t{a},std::nothrow);
+    }
+
+    void xlang_deallocate(void* v)noexcept{
+        ::operator delete(v);
+    }
+
+    void xlang_deallocate_aligned(void* v,std::size_t a)noexcept{
+        ::operator delete(v,std::align_val_t{a});
+    }
+
+}
+
 lccc::string_view Target::getName()const noexcept{
     return this->name;
 }
