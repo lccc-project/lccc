@@ -72,7 +72,7 @@ int main(void){
         {
             Ok(s) if s.success() => {
                 println!("cargo:rustc-cfg=thread_impl=\"pthread\"");
-                println!("cargo:rustc-link-lib=pthread");
+                println!("cargo:rustc-link-options=-pthread");
                 return;
             }
             _ => {}
