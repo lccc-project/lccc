@@ -1221,7 +1221,7 @@ namespace lccc{
                 if(std::uncaught_exceptions()!=excepts)
                     std::terminate();
             }
-        }
+        };
     }
 
     template<typename T,typename Alloc=lccc::allocator<T>> struct vector{
@@ -1239,8 +1239,6 @@ namespace lccc{
         using const_iterator = const_pointer;
         using reverse_iterator = std::reverse_iterator<iterator>;
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
-
-        using _detail::alloc_base<Alloc>::get_allocator;
     private:
         pointer _m_begin;
         size_type _m_len;
@@ -1248,8 +1246,8 @@ namespace lccc{
         Alloc _m_alloc;
 
         void reallocate(size_type ncap){
-            pointer nbegin = std::allocator_traits<Alloc>::allocate(_m_allocate,ncap);
-            for(size_t n = 0;n<_m_len)
+            pointer nbegin = std::allocator_traits<Alloc>::allocate(_m_alloc,ncap);
+            for(size_t n = 0;n<_m_len;n++){
                 try{
                     
                     std::allocator_traits<Alloc>::construct(_m_alloc,nbegin+n,std::move_if_noexcept(_m_begin[n]));
@@ -1261,6 +1259,12 @@ namespace lccc{
                     }
                     throw;
                 }
+            }
+            _m_capacity = ncap;
+            std::swap(nbegin,_m_begin);
+            for(size_t n = _m_len;n>0;n--)
+                std::allocator_traits<Alloc>::destroy(_m_alloc,nbegin[n-1]);
+            std::allocator_traits<Alloc>::deallocate(_m_alloc,nbegin);
         }
 
     public:
@@ -1269,16 +1273,16 @@ namespace lccc{
         }
 
         ~vector(){
-            if(_m_ptr){
+            if(_m_begin){
                 for(;_m_len>0;_m_len--)
                     std::allocator_traits<Alloc>::destroy(_m_alloc,_m_begin+_m_len-1);
-                std::allocator_traits<Alloc>::destroy
+                std::allocator_traits<Alloc>::deallocate(_m_alloc,_m_begin);
             }
         }
 
         vector(const vector& v) : _m_alloc{std::allocator_traits<Alloc>::select_on_container_copy_construction(v.get_allocator())}, _m_begin{}, _m_len{0}, _m_capacity{v._m_capacity} {
             _m_begin = std::allocator_traits<Alloc>::allocate(_m_alloc,_m_capacity);
-            for(_m_len=0;i<v._m_len;i++)
+            for(_m_len=0;_m_len<v._m_len;_m_len++)
                 std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin+_m_len,v._m_begin[_m_len]);
         }
 
@@ -1286,17 +1290,17 @@ namespace lccc{
 
         template<typename Alloc2> vector(const vector<T,Alloc2>& v,const Alloc& alloc) : _m_begin{}, _m_len{0}, _m_capacity{v._m_capacity}, _m_alloc{alloc} {
             _m_begin = std::allocator_traits<Alloc>::allocate(_m_alloc,_m_capacity);
-            for(_m_len=0;i<v._m_len;i++)
+            for(_m_len=0;_m_len<v._m_len;_m_len++)
                 std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin+_m_len,v._m_begin[_m_len]);
         }
 
         template<typename Alloc2> vector(vector<T,Alloc2>&& v,const Alloc& alloc) : _m_begin{}, _m_len{0}, _m_capacity{v._m_capacity}, _m_alloc{alloc} {
             _m_begin = std::allocator_traits<Alloc>::allocate(_m_alloc,_m_capacity);
-            for(_m_len=0;i<v._m_len;i++)
+            for(_m_len=0;_m_len<v._m_len;_m_len++)
                 std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin+_m_len,std::move_if_noexcept(v._m_begin[_m_len]));
         }
 
-        
+
 
 
     };
