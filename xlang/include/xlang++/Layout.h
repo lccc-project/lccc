@@ -1300,8 +1300,278 @@ namespace lccc{
                 std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin+_m_len,std::move_if_noexcept(v._m_begin[_m_len]));
         }
 
+        const Alloc& get_allocator() const noexcept{
+            return _m_alloc;
+        }
+
+        vector& operator=(const vector& v) {
+            using std::swap;
+            if constexpr(std::allocator_traits<Alloc>::propagate_on_container_copy_assignment::value)
+                _m_alloc = v._m_alloc;
+            vector nvec(v,_m_alloc);
+            swap(_m_begin,nvec._m_begin);
+            swap(_m_capacity,nvec._m_capacity);
+            swap(_m_len,nvec._m_len);
+            return *this;
+        }
+
+        vector& operator=(vector&& v){
+            if constexpr(std::allocator_traits<Alloc>::propagate_on_container_move_assignment::value){
+                if(_m_begin){
+                    pointer pbegin = std::exchange(_m_begin,nullptr);
+                    // If we throw, we would rather leak then double-destroy.
+                    for(;_m_len>0;_m_len--)
+                        std::allocator_traits<Alloc>::destroy(_m_alloc,pbegin+_m_len-1);
+                    std::allocator_traits<Alloc>::deallocate(_m_alloc,pbegin);
+                }
+                _m_alloc = std::move(v._m_alloc);
+                _m_begin = std::exchange(v._m_begin,nullptr);
+                _m_capacity = v._m_capacity;
+                _m_len = v._m_len;
+            }else{
+                using std::swap;
+                vector nvec(std::move(v),_m_alloc);
+                swap(_m_begin,nvec._m_begin);
+                swap(_m_capacity,nvec._m_capacity);
+                swap(_m_len,nvec._m_len);
+                return *this;
+            }
+        }
+
+        void swap(vector& rhs) noexcept{
+            using std::swap;
+            if constexpr(std::allocator_traits<Alloc>::propagate_on_container_swap::value)
+                swap(_m_alloc,rhs._m_alloc);
+            swap(_m_begin,rhs._m_begin);
+            swap(_m_capacity,rhs._m_capacity);
+            swap(_m_len,rhs._m_len);
+        }
+
+        friend void swap(vector& a,vector& b) noexcept{
+            a.swap(b);
+        }
+
+        template<typename=std::enable_if_t<std::is_copy_constructible_v<T>>>
+        void push_back(const T& t){
+            if(_m_len==_m_capacity)
+                reallocate(_m_capacity<<1);
+            std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin+_m_len,t);
+            _m_len++;
+        }
+        template<typename=std::enable_if_t<std::is_move_constructible_v<T>>>
+        void push_back(T&& t){
+            if(_m_len==_m_capacity)
+                reallocate(_m_capacity<<1);
+            std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin+_m_len,std::move(t));
+            _m_len++;
+        }
+
+        template<typename... Args,typename=std::enable_if_t<std::is_constructible_v<T,Args&&...>>>
+            void emplace_back(Args&&... args){
+                if(_m_len==_m_capacity)
+                    reallocate(_m_capacity<<1);
+                std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin+_m_len,std::forward<Args>(args)...);
+                _m_len++;
+            }
+
+        void pop_back() noexcept{
+            std::allocator_traits<Alloc>::destroy(_m_alloc,_m_begin+(_m_len--));
+        }
+
+        void clear() noexcept{
+            for(;_m_len>0;_m_len--)
+                std::allocator_traits<Alloc>::destroy(_m_alloc,_m_begin+_m_len-1);
+        }
+
+        iterator erase(const_iterator it){
+            difference_type pos = it-_m_begin;
+            _m_len--;
+            for(size_type n = pos;n<_m_len;n++)
+                _m_begin[n] = std::move(_m_begin[n+1]);
+            std::allocator_traits<Alloc>::destroy(_m_alloc,_m_begin+_m_len);
+            return _m_begin+pos;
+        }
+
+        iterator erase(const_iterator begin,const_iterator end) {
+            difference_type pos = begin-_m_begin;
+            difference_type len = end-begin;
+            _m_len-=len;
+            for(size_type n = pos;n<_m_len;n++)
+                _m_begin[n] = std::move(_m_begin[n+len]);
+            for(size_type t = _m_len;t<_m_len+len;t++)
+                return std::allocator_traits<Alloc>::destroy(_m_alloc,_m_begin+_m_len);
+            return _m_begin+pos;
+        }
+
+        bool empty() const noexcept{
+            return _m_len;
+        }
+
+        reference back() noexcept{
+            return _m_begin[_m_len-1];
+        }
+        reference front() noexcept{
+            return _m_begin[0];
+        }
+
+        const_reference back() const noexcept{
+            return _m_begin[_m_len-1];
+        }
+        const_reference front() const noexcept{
+            return _m_begin[0];
+        }
 
 
+        pointer data() noexcept{
+            return _m_begin;
+        }
+
+        friend vector<T,Alloc>::pointer data(vector<T,Alloc>& v) noexcept{
+            return v.data();
+        }
+
+        const_pointer data()const noexcept{
+            return _m_begin;
+        }
+
+        friend vector<T,Alloc>::pointer data(const vector<T,Alloc>& v) noexcept{
+            return v.data();
+        }
+
+        size_type size() const noexcept{
+            return _m_len;
+        }
+
+        friend vector<T,Alloc>::size_type size(const vector<T,Alloc>& v) noexcept{
+            return v.size();
+        }
+
+        size_type capacity()const noexcept{
+            return _m_capacity;
+        }
+
+        void reserve(size_type ncap) const noexcept{
+            if(_m_capacity<ncap){
+                if(ncap&(-ncap)==ncap)
+                    reallocate(ncap);
+                else{
+                    size_type n = 1;
+                    while(ncap&(-ncap)!=ncap)
+                        ncap/=2,n++;
+                    ncap<<=n;
+                    reallocate(ncap<<1);
+                }
+            }
+        }
+
+        void shrink_to_fit(){
+            size_type ncap = _m_len;
+            if(ncap&(-ncap)==ncap)
+                reallocate(ncap);
+            else{
+                size_type n = 1;
+                while(ncap&(-ncap)!=ncap)
+                    ncap/=2,n++;
+                ncap<<=n;
+                reallocate(ncap);
+            }
+        }
+
+        iterator begin()noexcept{
+            return _m_begin;
+        }
+
+        const_iterator begin()const noexcept{
+            return _m_begin;
+        }
+
+        iterator cbegin()const noexcept{
+            return _m_begin;
+        }
+
+        iterator end()noexcept{
+            return _m_begin+_m_len;
+        }
+
+        const_iterator end()const noexcept{
+            return _m_begin+_m_len;
+        }
+
+        const_iterator cend()const noexcept{
+            return _m_begin+_m_len;
+        }
+
+        friend typename vector<T,Alloc>::iterator begin(vector<T,Alloc>& v) noexcept{
+            return v.begin();
+        }
+
+        friend typename vector<T,Alloc>::const_iterator begin(const vector<T,Alloc>& v) noexcept{
+            return v.begin();
+        }
+
+        friend typename vector<T,Alloc>::const_iterator cbegin(const vector<T,Alloc>& v) noexcept{
+            return v.cbegin();
+        }
+
+        friend typename vector<T,Alloc>::iterator end(vector<T,Alloc>& v) noexcept{
+            return v.end();
+        }
+
+        friend typename vector<T,Alloc>::const_iterator end(const vector<T,Alloc>& v) noexcept{
+            return v.end();
+        }
+
+        friend typename vector<T,Alloc>::const_iterator cend(const vector<T,Alloc>& v) noexcept{
+            return v.cend();
+        }
+
+        reverse_iterator rbegin()noexcept{
+            return reverse_iterator{end()};
+        }
+
+        const_reverse_iterator rbegin()const noexcept{
+            return const_reverse_iterator{end()};
+        }
+
+        const_reverse_iterator crbegin()const noexcept{
+            return const_reverse_iterator{cend()};
+        }
+        
+        reverse_iterator rend()noexcept{
+            return reverse_iterator{begin()};
+        }
+
+        const_reverse_iterator rend()const noexcept{
+            return const_reverse_iterator{begin()};
+        }
+
+        const_reverse_iterator crend()const noexcept{
+            return const_reverse_iterator{cbegin()};
+        }
+
+        friend typename vector<T,Alloc>::reverse_iterator rbegin(vector<T,Alloc>& v) noexcept{
+            return v.rbegin();
+        }
+
+        friend typename vector<T,Alloc>::const_reverse_iterator rbegin(const vector<T,Alloc>& v) noexcept{
+            return v.rbegin();
+        }
+
+        friend typename vector<T,Alloc>::const_reverse_iterator crbegin(const vector<T,Alloc>& v) noexcept{
+            return v.crbegin();
+        }
+
+        friend typename vector<T,Alloc>::reverse_iterator rend(vector<T,Alloc>& v) noexcept{
+            return v.rend();
+        }
+
+        friend typename vector<T,Alloc>::const_reverse_iterator rend(const vector<T,Alloc>& v) noexcept{
+            return v.rend();
+        }
+
+        friend typename vector<T,Alloc>::const_reverse_iterator crend(const vector<T,Alloc>& v) noexcept{
+            return v.crend();
+        }
 
     };
 }
