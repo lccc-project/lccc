@@ -6,6 +6,28 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+
+set(LCCC_USE_CXXLIB "" CACHE STRING "The C++ Standard Library to build with, if the compiler supports the `-stdlib` option")
+set_property(CACHE LCCC_USE_CXXLIB PROPERTY STRINGS "" stdc++ libstdc++ c++ libc++ lc++ liblc++)
+
+if(LCCC_USE_CXXLIB)
+    if(NOT DEFINED _LCCC_HAS_STDLIB)
+        file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/stdlib-${LCCC_USE_CXXLIB})
+        try_compile(_LCCC_HAS_STDLIB ${CMAKE_CURRENT_BINARY_DIR}/stdlib-${LCCC_USE_CXXLIB} SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/try_compile.cpp 
+        CMAKE_FLAGS -DCMAKE_CXX_FLAGS="-stdlib=${LCCC_USE_CXXLIB}"
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED TRUE
+        CXX_EXTENSIONS FALSE
+        )
+    endif()
+    if(_LCCC_HAS_STDLIB)
+        add_compile_options(-stdlib=${LCCC_USE_CXXLIB})
+        add_link_options(-stdlib=${LCCC_USE_CXXLIB})
+    else()
+        message(FATAL_ERROR "Cannot enable cxxlib=${LCCC_USE_CXXLIB}: ${CMAKE_CXX_COMPILER} does support -stdlib=${LCCC_USE_CXXLIB}")
+    endif()
+endif()
+
 set(LCCC_VERSION 0.1)
 
 message(STATUS "LCCC Version ${LCCC_VERSION}")
