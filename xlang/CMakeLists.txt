@@ -32,7 +32,7 @@ install(TARGETS xlang EXPORT xlang)
 set_target_properties(xlang PROPERTIES
         SOVERSION ${LCCC_XLANG_VERSION})
 
-add_executable(xlang-prg src/Main.cpp ${CMAKE_CURRENT_BINARY_DIR}/Config.hpp)
+add_executable(xlang-prg src/Main.cpp ${CMAKE_CURRENT_BINARY_DIR}/include/Config.hpp)
 
 
 target_link_libraries(xlang-prg xlang dl)
