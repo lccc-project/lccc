@@ -664,10 +664,6 @@ namespace lccc::xlang{
             return nullptr;
     }
 
-    void ConstantVisitor::visitBooleanLiteral(bool value) {
-        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
-            parent->visitBooleanLiteral(value);
-    }
 
     PointerConstantVisitor *ConstantVisitor::visitPointerConstant() {
         if(auto* parent = this->get_parent<ConstantVisitor>();parent)
@@ -686,13 +682,6 @@ namespace lccc::xlang{
     ArrayConstantVisitor *ConstantVisitor::visitConstantArray() {
         if(auto* parent = this->get_parent<ConstantVisitor>();parent)
             return parent->visitConstantArray();
-        else
-            return nullptr;
-    }
-
-    TypeVisitor *ConstantVisitor::visitFloatingValue(long double val) {
-        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
-            return parent->visitFloatingValue(val);
         else
             return nullptr;
     }
@@ -1097,6 +1086,13 @@ namespace lccc::xlang{
     LambdaVisitor *ExprVisitor::visitLambdaExpression(uint16_t captures) {
         if(auto* parent = this->get_parent<ExprVisitor>();parent)
             return parent->visitLambdaExpression(captures);
+        else
+            return nullptr;
+    }
+
+    StackItemsVisitor *ExprVisitor::visitValidateStack(){
+        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+            return parent->visitValidateStack();
         else
             return nullptr;
     }

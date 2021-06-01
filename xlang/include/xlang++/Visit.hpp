@@ -576,10 +576,8 @@ namespace lccc::xlang{
         explicit ConstantVisitor(ConstantVisitor *vparent=nullptr);
         virtual TypeVisitor* visitInteger(std::intmax_t value);
         virtual StringLiteralVisitor* visitStringLiteral();
-        virtual void visitBooleanLiteral(bool value);
         virtual PointerConstantVisitor* visitPointerConstant();
         virtual TypeVisitor* visitExcessValueInteger(lccc::span<const uint8_t> bytes);
-        virtual TypeVisitor* visitFloatingValue(long double val);
         virtual ArrayConstantVisitor* visitConstantArray();
         virtual TypeVisitor* visitSizeOf();
         virtual TypeVisitor* visitAlignOf();
@@ -711,6 +709,13 @@ namespace lccc::xlang{
 
     struct LambdaVisitor;
 
+    struct StackItemsVisitor : Visitor{
+    public:
+        explicit StackItemsVisitor(StackItemsVisitor* visitor=nullptr);
+        virtual TypeVisitor* visitLvalue();
+        virtual TypeVisitor* visitRvalue();
+    };
+
     struct ExprVisitor : Visitor{
         explicit ExprVisitor(ExprVisitor *vparent=nullptr);
         virtual ValueVisitor* visitConst();
@@ -742,14 +747,10 @@ namespace lccc::xlang{
         virtual void visitTupleExpression(uint16_t values);
         virtual TypeVisitor* visitAggregateConstruction(uint16_t values);   
         virtual LambdaVisitor* visitLambdaExpression(uint16_t captures);
+        virtual StackItemsVisitor* visitValidateStack();
     };
 
-    struct StackItemsVisitor : Visitor{
-    public:
-        explicit StackItemsVisitor(StackItemsVisitor* visitor=nullptr);
-        virtual TypeVisitor* visitLvalue();
-        virtual TypeVisitor* visitRvalue();
-    };
+    
 
     struct CaseVisitor : Visitor{
     public:
