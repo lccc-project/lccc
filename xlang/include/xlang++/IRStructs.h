@@ -23,6 +23,7 @@ namespace lccc::xlang
         GlobalAddress = 13,
         LabelAddress = 14,
         Complex = 15,
+        Parameter = 16,
     };
 
     enum class BoundKind : std::uint8_t{
@@ -66,6 +67,54 @@ namespace lccc::xlang
         void visit (IdentifierVisitor *visitor);
     };
 
+    enum class ValueClass : std::uint8_t{
+        RValue,
+        LValue
+    }
+
+    struct StackItems{
+        lccc::vector<lccc::pair<ValueClass,lccc::unique_ptr<Type>>> items;
+
+        void visit(StackItemsVisitor *visitor);
+    };
+
+    enum class TypeKind : std::uint16_t {
+        None,
+        Integer,
+        FloatingPoint,
+        PointerType,
+        NamedType,
+        ElaboratedType,
+        GenericInstantiation,
+        GenericParameter,
+        AlignedAs,
+        ProductType,
+        SumType,
+        FunctionType,
+        ErasedConcept,
+        ReifiedConcept,
+        Slice,
+        Array,
+        Decltype,
+        Void,
+    };
+
+    struct ScalarType{
+        std::uint16_t bits;
+        std::uint16_t vector_size;
+        ScalarValidity validity;
+        bool complex;
+    };
+
+    struct IntegerType {
+        ScalarType header; // Would love for this to be a base class, but then it wouldn't be standard-layout
+        lccc::unique_ptr<Value> min_value;
+        
+        bool is_signed;
+
+    };
+
+
     enum class ExpressionKind : std::uint16_t {
         None,
         Const,
@@ -94,18 +143,6 @@ namespace lccc::xlang
         LambdaExpr,
         ValidateStack,
     }; 
-
-    enum class ValueClass : std::uint8_t{
-        RValue,
-        LValue
-    }
-
-    struct StackItems{
-        lccc::vector<lccc::pair<ValueClass,lccc::unique_ptr<Type>>> items;
-
-
-        void visit(StackItemsVisitor *visitor);
-    };
 
     struct Expression{
         lccc::variant<

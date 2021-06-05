@@ -517,10 +517,10 @@ namespace lccc::xlang{
     struct IntegerTypeVisitor;
     struct FloatTypeVisitor;
 
-    enum class ScalarValidity{
-        Nonzero,
-        Finite,
-        Nonnan
+    enum class ScalarValidity : std::uint8_t{
+        Nonzero = 0x01,
+        Finite = 0x02,
+        Nonnan = 0x04,
     };
 
     struct ScalarTypeVisitor : Visitor{
@@ -566,6 +566,7 @@ namespace lccc::xlang{
         virtual ConstantVisitor* visitConstantValue();
         virtual ExprVisitor* visitExpression();
         virtual TypeVisitor* visitUndefined(UndefinedValueKind kind);
+        virtual void visitParameter(std::uint32_t num);
     };
 
     struct StringLiteralVisitor;
@@ -646,11 +647,26 @@ namespace lccc::xlang{
         Checked = 0x400,
     };
 
+    constexpr BinaryOperation operator|(BinaryOperation a,BinaryOperation b){
+        return static_cast<BinaryOperation>(static_cast<std::uint16_t>(a)|static_cast<std::uint16_t>(b));
+    }
+
     enum class ConversionStrength : uint8_t {
         Weak = 0,
         Strong = 1,
-        Reinterpret = 2
+        Reinterpret = 2,
+
+        // for Weak or Strong
+        Unchecked = 0x10,
+        Trapping = 0x20,
+        Satuturating = 0x30,
+        Checked = 0x40,
     };
+
+    constexpr ConversionStrength operator|(ConversionStrength a,ConversionStrength b){
+        return static_cast<ConversionStrength>(static_cast<std::uint8_t>(a)|static_cast<std::uint8_t>(b));
+    }
+
     enum class MemberAccessType : uint8_t {
         // lvalue %0->lvalue %1
         Struct = 0,
@@ -683,7 +699,7 @@ namespace lccc::xlang{
     };
 
     constexpr AccessClass operator|(AccessClass a,AccessClass b){
-        return static_cast<AccessClass>(static_cast<uint8_t>(a)|static_cast<uint8_t>(b));
+        return static_cast<AccessClass>(static_cast<std::uint16_t>(a)|static_cast<std::uint16_t>(b));
     }
 
 
@@ -702,6 +718,10 @@ namespace lccc::xlang{
         Satuturating = 0x30,
         Checked = 0x40,
     };
+
+    constexpr LValueOperation operator|(LValueOperation a,LValueOperation b){
+        return static_cast<LValueOperation>(static_cast<std::uint8_t>(a)|static_cast<std::uint8_t>(b));
+    }
 
 
 

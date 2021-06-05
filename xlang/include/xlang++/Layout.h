@@ -1300,6 +1300,48 @@ namespace lccc{
                 std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin+_m_len,std::move_if_noexcept(v._m_begin[_m_len]));
         }
 
+        template<typename InputIt,typename=std::enable_if_t<!std::is_integral_v<InputIt>>,typename=typename std::iterator_traits<InputIt>::iterator_category>
+            explicit vector(InputIt i1,InputIt i2,const Alloc& alloc = Alloc()) : _m_begin{}, _m_len{}, _m_capacity{16}, _m_alloc{alloc} {
+                if constexpr(std::is_base_of_v<std::forward_iterator_tag,typename std::iterator_traits<InputIt>::iterator_category>){
+                    _m_capacity = std::distance(i1,i2);
+                    _m_capacity--;
+                    _m_capacity |= _m_capacity>>1;
+                    _m_capacity |= _m_capacity>>2;
+                    _m_capacity |= _m_capacity>>4;
+                    _m_capacity |= _m_capacity>>8;
+                    _m_capacity |= _m_capacity>>16;
+                    if constexpr(sizeof(size_type)>4)
+                        _m_capacity |= _m_capacity>>32;
+                    _m_capacity++;
+                    _m_capacity=std::max(_m_capacity,16);
+                    _m_begin = std::allocator_traits<Alloc>::allocate(_m_alloc,_m_capacity);
+                    for(;i1!=i2;i1++,_m_len++)
+                        std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin+_m_len,*i1);
+                }else{
+                    _m_begin = std::allocator_traits<Alloc>::allocate(_m_alloc,_m_capacity);
+                    for(;i1!=i2;i1++)
+                        push_back(*i1);
+                }
+            }
+
+        explicit vector(std::initializer_list<T> il,const Alloc& alloc=Alloc()) : vector(begin(il),end(il),alloc){}
+
+        explicit vector(size_type num,const T& t=T(),const Alloc& alloc=Alloc()) : _m_begin{}, _m_capacity{num}, _m_len{}, _m_alloc{alloc}{
+            _m_capacity--;
+            _m_capacity |= _m_capacity>>1;
+            _m_capacity |= _m_capacity>>2;
+            _m_capacity |= _m_capacity>>4;
+            _m_capacity |= _m_capacity>>8;
+            _m_capacity |= _m_capacity>>16;
+            if constexpr(sizeof(size_type)>4)
+                _m_capacity |= _m_capacity>>32;
+            _m_capacity++;
+            _m_capacity=std::max(_m_capacity,16);
+            _m_begin = std::allocator_traits<Alloc>::allocate(_m_alloc,_m_capacity);
+            for(;_m_len<num;_m_len++)
+                std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin+_m_len,t);
+        }
+
         const Alloc& get_allocator() const noexcept{
             return _m_alloc;
         }
@@ -1452,29 +1494,31 @@ namespace lccc{
 
         void reserve(size_type ncap) const noexcept{
             if(_m_capacity<ncap){
-                if(ncap&(-ncap)==ncap)
-                    reallocate(ncap);
-                else{
-                    size_type n = 1;
-                    while(ncap&(-ncap)!=ncap)
-                        ncap/=2,n++;
-                    ncap<<=n;
-                    reallocate(ncap<<1);
-                }
+                ncap--;
+                ncap |= ncap>>1;
+                ncap |= ncap>>2;
+                ncap |= ncap>>4;
+                ncap |= ncap>>8;
+                ncap |= ncap>>16;
+                if constexpr(sizeof(size_type)>4)
+                    ncap |= ncap>>32;
+                ncap++;
+                reallocate(ncap);
             }
         }
 
         void shrink_to_fit(){
             size_type ncap = _m_len;
-            if(ncap&(-ncap)==ncap)
-                reallocate(ncap);
-            else{
-                size_type n = 1;
-                while(ncap&(-ncap)!=ncap)
-                    ncap/=2,n++;
-                ncap<<=n;
-                reallocate(ncap);
-            }
+            ncap--;
+            ncap |= ncap>>1;
+            ncap |= ncap>>2;
+            ncap |= ncap>>4;
+            ncap |= ncap>>8;
+            ncap |= ncap>>16;
+            if constexpr(sizeof(size_type)>4)
+                ncap |= ncap>>32;
+            ncap++;
+            reallocate(std::max(ncap,16));
         }
 
         iterator begin()noexcept{
@@ -1892,6 +1936,74 @@ namespace lccc{
     using u16string = basic_string<char16_t>;
     using u32string = basic_string<char32_t>;
 
+    namespace _detail{
+        template<typename T,typename Void=void> struct _option_storage{
+            static_assert(std::is_void_v<Void>);
+            bool _engaged;
+            alignas(T) unsigned char _m_storage[sizeof(T)];
+
+            T* get_storage()noexcept{
+                return reinterpret_cast<T*>(_m_storage);
+            }
+
+            const T* get_storage()const noexcept{
+                return reinterpret_cast<const T*>(_m_storage);
+            }
+
+            bool engaged() const noexcept{
+                return _engaged;
+            }
+
+            T& get_unchecked() noexcept{
+                return *get_storage();
+            }
+
+            const T& get_unchecked() const noexcept{
+                return *get_storage();
+            }
+        };
+
+        template<typename T,bool=std::is_enum_v<T>> struct get_max_value : std::integral_constant<T,std::numeric_limits<T>::max()>{};
+        template<typename T> struct get_max_value<T,true> : get_max_value<std::underlying_type_t<T>>{};
+
+        template<typename KeyType,typename... Ts> struct _option_storage<lccc::variant<KeyType,Ts...>,std::enable_if_t<(static_cast<std::size_t>(get_max_value<KeyType>::value)<sizeof...(Ts))>>{
+            static_assert(static_cast<std::size_t>(get_max_value<KeyType>::value)<sizeof...(Ts));
+            union{
+                KeyType niche;
+                lccc::variant<KeyType,Ts...> value;
+            } _m_storage;
+        private:
+            constexpr static inline KeyType niche_value = static_cast<KeyType>(sizeof...(Ts));
+        public:
+            _option_storage() : _m_storage{niche_value}{}
+
+            bool engaged(){
+                return *std::launder(reinterpret_cast<KeyType*>(&_m_storage))!=niche_value;
+            }
+
+            lccc::variant<KeyType,Ts...>* get_storage()noexcept{
+                return &_m_storage.value;
+            }
+
+        };
+
+        template<typename T> struct _option_storage<T&,void>{
+            T* _m_storage;
+            
+            _option_storage() noexcept = default;
+
+            _option_storage(T& t) : _m_storage(&t){}
+            _option_storage(T&&)=delete;
+
+            bool engaged()const noexcept{
+                return _m_storage;
+            }
+
+            T& get_unchecked() const noexcept{
+                return *_m_storage;
+            }
+        };
+    }
 }
 
 #endif //LCCC_LAYOUT_H

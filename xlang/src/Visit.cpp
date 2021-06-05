@@ -645,6 +645,12 @@ namespace lccc::xlang{
             return nullptr;
     }
 
+    void ValueVisitor::visitParameter(std::uint32_t num){
+        if(auto* parent = this->get_parent<ValueVisitor>();parent)
+            return parent->visitParameter(num);
+
+    }
+
 
     ConstantVisitor::ConstantVisitor(ConstantVisitor *vparent) : Visitor{vparent} {
 
