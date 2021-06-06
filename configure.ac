@@ -8,17 +8,43 @@ AC_PROG_INSTALL
 
 # Get the canonical host and target
 # We don't need the build system
-AC_CANONICAL_BUILD
+
 AC_CANONICAL_HOST
 AC_CANONICAL_TARGET
 
+if [ x$target_alias != x ]
+then
+    LCCC_DEFAULT_TARGET="$target_alias"
+else
+    LCCC_DEFAULT_TARGET="$target"
+fi
+
+if [ x$host_alias != x]
+then
+    LCCC_HOST_TARGET="$host_alias"
+else
+    LCCC_HOST_TARGET="$host"
+fi
+
+
+
 AC_ARG_ENABLE([library-targets],[
-    IFS=',' read -ra libtargets <<< "$enableval"
+    IFS=',' read -ra noncanon-libtargs <<< "$enableval"
+    libtargets=""
+    for targ in ${noncanon-libtargs}
+    do
+        libtargets="libtargets `$ac_srcdir/config.sub $target`"
+    done
 ],[libtargets=${target}])
 
 
 AC_ARG_ENABLE([hosted-targets],[
-    IFS=',' read -ra hosttargs <<< "$enableval"
+    IFS=',' read -ra noncanon-hosttargs <<< "$enableval"
+    hosttargs=""
+    for targ in ${noncanon-hosttargs}
+    do
+        libtargets="libtargets `$ac_srcdir/config.sub $target`"
+    done
 ],[
     
 ])

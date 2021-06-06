@@ -28,6 +28,7 @@
 #include <functional>
 #include <type_traits>
 #include <xlang++/Layout.h>
+#include <xlang++/Target.hpp>
 
 namespace lccc::xlang{
     /**

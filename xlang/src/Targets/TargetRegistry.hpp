@@ -7,8 +7,10 @@
 
 namespace lccc::xlang{
 
-    struct hash_fields<typename Hash=std::hash<void>>{
-
+    struct hash_fields{
+        std::size_t operator()(const lccc::Target& target){
+            return std::hash<lccc::Architecture>(target.getArcg*())
+        }
     };
 
     std::

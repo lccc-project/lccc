@@ -8,8 +8,8 @@
 	path = rust/lcrust/plugins/polonius
 	url = https://github.com/chorman0773/polonius.git
 [submodule "rust/stdlib-deps/which-rs"]
-	path = rust/stdlib-deps/which-rs
+	path = rust/libraries/stdlib-deps/which-rs
 	url = https://github.com/LightningCreations/which-rs.git
 [submodule "rust/stdlib-deps/rust-target-tuples"]
-	path = rust/stdlib-deps/rust-target-tuples
+	path = rust/libraries/stdlib-deps/rust-target-tuples
 	url = https://github.com/chorman0773/rust-target-tuples.git

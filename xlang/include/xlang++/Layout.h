@@ -704,116 +704,6 @@ namespace lccc
         return {new T(std::forward<Args>(args)...)};
     }
 
-    enum class Architecture : std::uint32_t
-    {
-        X86_64 = 0,
-        IX86 = 1,
-        W65816 = 2,
-        ARM = 3,
-        AARCH64 = 4,
-        SUPERH = 5,
-        MIPS = 6,
-        POWERPC = 7,
-        POWERPC64 = 8,
-        AVR = 9,
-        M68000 = 10,
-
-        SPARC = 14,
-        RISCV32 = 15,
-        RISCV64 = 16,
-        WASM32 = 17,
-        WASM64 = 18,
-
-        WDC65C816 = 19,
-        M6502     = 20,
-        M65C02    = 21,
-
-        UNKNOWN = static_cast<std::uint32_t>(-1)
-    };
-
-    enum class Vendor : std::uint32_t
-    {
-        PC = 0,
-        APPLE = 1,
-        SNES = 2,
-        WDC = 3,
-
-        UNKNOWN = static_cast<std::uint32_t>(-1)
-    };
-
-    enum class OperatingSystem : std::uint32_t
-    {
-        NONE = 0,
-        LINUX = 1,
-        WINDOWS = 2,
-        MINGW32 = 3,
-        MACOS = 4,
-        IOS = 5,
-        PHANTOM = 6,
-
-        NULLOS = static_cast<std::uint32_t>(-2),
-        UNKNOWN = static_cast<std::uint32_t>(-1)
-    };
-
-    enum class Environment : std::uint32_t
-    {
-        NONE = 0,
-        GNU = 1,
-        EABI = 2,
-        MSVC = 4,
-        MUSL = 5,
-        LC = 6,
-        PHANTOM_STD = 7,
-        PHANTOM_KERNEL = 8,
-
-        UNKNOWN = static_cast<std::uint32_t>(-1)
-    };
-
-    enum class ObjectFormat : std::uint32_t {
-        AOUT = 0,
-        COFF = 1,
-        ELF  = 2,
-        PE   = 3,
-        XCOFF= 4,
-        XO65 = 5,
-
-        UNKNOWN = static_cast<std::uint32_t>(-1) 
-    };
-
-    struct XLANG_API Target
-    {
-    private:
-        lccc::string_view name;
-        Architecture arch;
-        Vendor vendor;
-        OperatingSystem os;
-        Environment env;
-
-    public:
-        explicit Target(lccc::string_view) noexcept;
-
-        lccc::string_view getName() const noexcept;
-
-        lccc::string_view getArchName() const noexcept;
-        lccc::string_view getCanonicalArch() const noexcept;
-        Architecture getArch() const noexcept;
-
-        lccc::string_view getVendorName() const noexcept;
-        lccc::string_view getCanonicalVendor() const noexcept;
-        Vendor getVendor()const noexcept;
-
-        lccc::string_view getOperatingSystemName() const noexcept;
-        lccc::string_view getCanonicalOperatingSystem() const noexcept;
-        OperatingSystem getOperatingSystem()const noexcept;
-
-        lccc::string_view getEnvironmentName() const noexcept;
-        lccc::string_view getCanonicalEnvironment() const noexcept;
-        Environment getEnvironment()const noexcept;
-
-    };
-
-
-
     template<typename T,typename U> struct pair{
         T first;
         U second;
@@ -1941,6 +1831,10 @@ namespace lccc{
             static_assert(std::is_void_v<Void>);
             bool _engaged;
             alignas(T) unsigned char _m_storage[sizeof(T)];
+            
+            template<typename... Ts> void construct_from(Ts&&... ts){
+                ::new(_m_storage) T(std::forward<Ts>(ts)...);
+            }
 
             T* get_storage()noexcept{
                 return reinterpret_cast<T*>(_m_storage);
@@ -1961,6 +1855,10 @@ namespace lccc{
             const T& get_unchecked() const noexcept{
                 return *get_storage();
             }
+            void clear(){
+                if(std::exchange(_engaged,false))
+                    reinterpret_cast<T*>()->~T();
+            }
         };
 
         template<typename T,bool=std::is_enum_v<T>> struct get_max_value : std::integral_constant<T,std::numeric_limits<T>::max()>{};
@@ -1977,6 +1875,7 @@ namespace lccc{
         public:
             _option_storage() : _m_storage{niche_value}{}
 
+
             bool engaged(){
                 return *std::launder(reinterpret_cast<KeyType*>(&_m_storage))!=niche_value;
             }
@@ -1985,24 +1884,30 @@ namespace lccc{
                 return &_m_storage.value;
             }
 
-        };
-
-        template<typename T> struct _option_storage<T&,void>{
-            T* _m_storage;
-            
-            _option_storage() noexcept = default;
-
-            _option_storage(T& t) : _m_storage(&t){}
-            _option_storage(T&&)=delete;
-
-            bool engaged()const noexcept{
-                return _m_storage;
-            }
-
-            T& get_unchecked() const noexcept{
-                return *_m_storage;
+            void clear(){
+                if(engaged()){
+                    std::destroy_at(&_m_stoarge_value);
+                    _m_storage.niche = niche_value;
+                }
             }
         };
+
+        template<typename T,bool=std::is_trivially_destructible_v<T>> struct _option_destructor : _option_storage<T>{
+            ~_option_destructor() noexcept(std::is_nothrow_destructible_v<T>){
+                this->clear();
+            }
+        };
+
+        template<typename T> struct _option_destructor<T,true> : _option_storage<T>{};
+
+
+        template<typename T,bool=std::is_trivially_move_constructible_v<T>,bool=std::is_trivially_move_assignable_v<T>>
+            struct _option_move : _option_destructor<T>{
+                _option_move(_option_move&& m) {
+                    if(m.engaged())
+                }
+            };
+
     }
 }
 
