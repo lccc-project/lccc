@@ -1857,38 +1857,7 @@ namespace lccc{
             }
             void clear(){
                 if(std::exchange(_engaged,false))
-                    reinterpret_cast<T*>()->~T();
-            }
-        };
-
-        template<typename T,bool=std::is_enum_v<T>> struct get_max_value : std::integral_constant<T,std::numeric_limits<T>::max()>{};
-        template<typename T> struct get_max_value<T,true> : get_max_value<std::underlying_type_t<T>>{};
-
-        template<typename KeyType,typename... Ts> struct _option_storage<lccc::variant<KeyType,Ts...>,std::enable_if_t<(static_cast<std::size_t>(get_max_value<KeyType>::value)<sizeof...(Ts))>>{
-            static_assert(static_cast<std::size_t>(get_max_value<KeyType>::value)<sizeof...(Ts));
-            union{
-                KeyType niche;
-                lccc::variant<KeyType,Ts...> value;
-            } _m_storage;
-        private:
-            constexpr static inline KeyType niche_value = static_cast<KeyType>(sizeof...(Ts));
-        public:
-            _option_storage() : _m_storage{niche_value}{}
-
-
-            bool engaged(){
-                return *std::launder(reinterpret_cast<KeyType*>(&_m_storage))!=niche_value;
-            }
-
-            lccc::variant<KeyType,Ts...>* get_storage()noexcept{
-                return &_m_storage.value;
-            }
-
-            void clear(){
-                if(engaged()){
-                    std::destroy_at(&_m_stoarge_value);
-                    _m_storage.niche = niche_value;
-                }
+                    reinterpret_cast<T*>(_m_storage)->~T();
             }
         };
 
@@ -1905,6 +1874,7 @@ namespace lccc{
             struct _option_move : _option_destructor<T>{
                 _option_move(_option_move&& m) {
                     if(m.engaged())
+                        ::new(this->get_storage()) T{std::move(m.get_unchecked())};
                 }
             };
 
