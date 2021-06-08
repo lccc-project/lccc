@@ -10,4 +10,5 @@ target/
 autom4te.cache
 *~
 /.idea/
-/.cproject/
+/.cproject
+/.project
