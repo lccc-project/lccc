@@ -4,11 +4,7 @@ AC_CONFIG_MACRO_DIRS([m4])
 
 AM_INIT_AUTOMAKE
 
-LT_INIT
 
-AC_PROG_CXX
-
-AC_PROG_INSTALL
 
 
 # Get the canonical host and target
@@ -16,6 +12,12 @@ AC_PROG_INSTALL
 
 AC_CANONICAL_HOST
 AC_CANONICAL_TARGET
+
+LT_INIT
+
+AC_PROG_CXX
+
+AC_PROG_INSTALL
 
 if [ x$target_alias != x ]
 then
