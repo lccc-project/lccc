@@ -9,3 +9,6 @@ target/
 !/target/
 autom4te.cache
 *~
+aclocal.m4
+configure
+*/configure
