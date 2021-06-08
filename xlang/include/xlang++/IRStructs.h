@@ -109,9 +109,13 @@ namespace lccc::xlang
     struct IntegerType {
         ScalarType header; // Would love for this to be a base class, but then it wouldn't be standard-layout
         lccc::unique_ptr<Value> min_value;
-        
+        lccc::unique_ptr<Value> max_value;
         bool is_signed;
+    };
 
+    struct FloatType{
+        ScalarType header;
+        bool is_decimal;
     };
 
 

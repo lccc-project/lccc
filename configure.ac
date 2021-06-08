@@ -1,5 +1,10 @@
-AC_INIT([lccc]:[0.1])
+AC_INIT([lccc],[0.1])
 AC_CONFIG_SRCDIR([.lccc])
+AC_CONFIG_MACRO_DIRS([m4])
+
+AM_INIT_AUTOMAKE
+
+LT_INIT
 
 AC_PROG_CXX
 

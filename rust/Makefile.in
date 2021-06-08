@@ -1,2 +1,40 @@
 
+bindir := @bindir@
+srcdir := @srcdir@
+abs_bindir := @abs_bindir@
+
+default_codgen := 
+
+libtargets=@libtargets@
+hostedtargs=@hostedtargs@
+
+CC := @CC@
+CXX := @CXX@
+
+
+prefix := @prefix@
+exec_prefix := @exec_prefix@
+libdir := @libdir@
+xlang_plugindir := @xlang_plugindir@
+rustlibdir := @rustlibdir@
+
+LIBXLANG := $(bindir)/../xlang/libxlang.so
+
+LCCC := $(bindir)/../lccc 
+
+XLANG_TARGET:=xlangfrontend-rust.so
+
+
+OUTPUT := $(bindir)/${XLANG_TARGET}
+
+PLUGINDIRS := $(abs_bindir)/../
+
+libraries: $(foreach targ,$(libtargs),$(targ)-libraries)
+
+install-libraries: $(foreach targ,$(libtargs),install-$(targ)-libraries)
+
+*-libraries: *-libraries/.stamp 
+
+*-libraries/.stamp: *-libraries/Makefile
+    make -C $@ install_dir=
 

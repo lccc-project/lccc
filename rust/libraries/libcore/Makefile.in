@@ -3,27 +3,56 @@ OUTDIR := @build_dir@/out
 
 SRCDIR := @src_dir@/src
 
+target := @target@
+
+prefix := @prefix@
+exec_prefix := @exec_prefix@
+libdir := @libdir@
+rustlibdir := @rustlibdir@
+
+EXTERN := 
+
 RUSTC := @RUSTC@
+
+INSTALL := @INSTALL@
 
 RUSTSTD := 2018
 
 FEATURES := $(foreach feature,@stdlib_features@,--cfg feature=\"${feature}\")
 
+OUTPUT := libcore.rlib
+
 RUSTFLAGS := @RUSTFLAGS@
 ALL_RUSTFLAGS := ${RUSTFLAGS} -Z unstable-options -Z extra-codegen-opts -Z extra-opt-levels -Z build-abi=@stdlib_abi@ --cfg bootstrap --cfg stdlib-abi=@stdlib_abi@ \
-        -D lccc::unprefixed_features \
-        -A lccc::rustc_incomplete_features \
-        -F lccc::stdlib_no_abi_tag \
-        -Z build-outdated \
-        -Z parallel-compile
-        
+		-D lccc::unprefixed_features \
+		-A lccc::rustc_incomplete_features \
+		-F lccc::stdlib_no_abi_tag \
+		-Z build-outdated \
+		-Z parallel-compile \
+		$(foreach lib,$(EXTERN),--extern $(lib))
 
-$(OUTDIR)/libcore.a.d: $(SRCDIR)/lib.rs
-    $(RUSTC) --edition=$(RUSTSTD) --cfg bootstrap $(FEATURES) --emit dep-info -o$(OUTDIR)/libcore.a.d $^
+all: stamp 
+
+.PHONY: all install install-strip install-$(OUTPUT) install-strip-$(OUTPUT)
+
+stamp: $(OUTDIR)/$(OUTPUT)
 
 
-include (OUTDIR)/libcore.a.d
+$(OUTDIR)/$(OUTPUT).d: $(SRCDIR)/lib.rs | $(EXTERN)
+	$(RUSTC) --edition=$(RUSTSTD) --cfg bootstrap $(FEATURES) --emit dep-info -o$(OUTDIR)/$(OUTPUT).d $^
 
-$(OUTDIR)/libcore.a: $(SRCDIR)/lib.rs | $(OUTDIR)/libcore.a.d
-    +$(RUSTC) --crate-type rlib --crate-name core $(ALL_RUSTFLAGS) --emit dep-info=$(OUTDIR)/libcore.a.d --emit link=$(OUTDIR)/libcore.a --out-dir=$(OUTDIR) $^
 
+include (OUTDIR)/$(OUTPUT).d
+
+$(OUTDIR)/$(OUTPUT): $(SRCDIR)/lib.rs | $(OUTDIR)/$(OUTPUT).d
+	+$(RUSTC) --crate-type rlib --crate-name core $(ALL_RUSTFLAGS) --emit dep-info=$(OUTDIR)/$(OUTPUT).d --emit link=$(OUTDIR)/$(OUTPUT) --out-dir=$(OUTDIR) $^
+
+install: install-$(OUTPUT)
+
+install-strip: install-strip-$(OUTPUT)
+
+install-$(OUTPUT): $(OUTDIR)/$(OUTPUT)
+	$(INSTALL) -m644 -t $(rustlibdir)/$(target) $(OUTDIR)/$(OUTPUT)
+
+install-strip-$(OUTPUT): $(OUTDIR)/$(OUTPUT)
+	$(INSTALL) -m644 -s -t $(rustlibdir)/$(target) $(OUTDIR)/$(OUTPUT)
