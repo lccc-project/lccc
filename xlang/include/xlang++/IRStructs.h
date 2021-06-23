@@ -2,29 +2,10 @@
 #define XLANG_IRSTRUCTS_H_2021_05_26_08_12_53
 
 #include <xlang++/Layout.h>
-#Include <xlang++/Visit.hpp>
+#include <xlang++/Visit.hpp>
 
 namespace lccc::xlang
 {
-    enum class XLangValueClass : std::uint16_t{
-        None = 0,
-        Undefined = 1,
-        Scalar = 2,
-        WideScalar = 3,
-        String = 4,
-        UTF8String = 5,
-        UTF16String = 6,
-        UTF32String = 7,
-        WideString = 8,
-        Array = 9,
-        SizeOf = 10,
-        AlignOf = 11,
-        Nullptr = 12,
-        GlobalAddress = 13,
-        LabelAddress = 14,
-        Complex = 15,
-        Parameter = 16,
-    };
 
     enum class BoundKind : std::uint8_t{
         Static,
@@ -99,11 +80,15 @@ namespace lccc::xlang
         Void,
     };
 
+    struct Type;
+
     struct ScalarType{
         std::uint16_t bits;
         std::uint16_t vector_size;
         ScalarValidity validity;
         bool complex;
+
+        void visit(ScalarTypeVisitor* visitor);
     };
 
     struct IntegerType {
@@ -111,12 +96,35 @@ namespace lccc::xlang
         lccc::unique_ptr<Value> min_value;
         lccc::unique_ptr<Value> max_value;
         bool is_signed;
+
+        void visit(ScalarTypeVisitor* visitor);
     };
 
     struct FloatType{
         ScalarType header;
         bool is_decimal;
+
+        void visit(ScalarTypeVisitor* visitor);
     };
+
+    struct PointerType{
+        lccc::unique_ptr<Type> pointee;
+        PointerAliasingRule alias_rule;
+        ValidRangeType valid_range;
+        lccc::unique_ptr<Value> valid_range_value;
+        PointerDeclarationType decl_type;
+        lccc::unique_ptr<Value> aligned;
+        Bound bound;
+    };
+
+    struct FunctionType{
+        lccc::unique_ptr<Type> ret_type;
+        lccc::vector<Type> param_types;
+        lccc::optional<lccc::string> linkage;
+
+
+        ~FunctionType();
+    }
 
 
     enum class ExpressionKind : std::uint16_t {
@@ -155,7 +163,27 @@ namespace lccc::xlang
             lccc::unique_ptr<Value>,
             
         > expr;
-    }
+    };
+
+    enum class ValueKind : std::uint16_t{
+        None = 0,
+        Undefined = 1,
+        Scalar = 2,
+        WideScalar = 3,
+        String = 4,
+        UTF8String = 5,
+        UTF16String = 6,
+        UTF32String = 7,
+        WideString = 8,
+        Array = 9,
+        SizeOf = 10,
+        AlignOf = 11,
+        Nullptr = 12,
+        GlobalAddress = 13,
+        LabelAddress = 14,
+        Complex = 15,
+        Parameter = 16,
+    };
 }
 
 #endif /* XLANG_IRSTRUCTS_H_2021_05_26_08_12_53 */

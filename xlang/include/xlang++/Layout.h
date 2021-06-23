@@ -1827,8 +1827,7 @@ namespace lccc{
     using u32string = basic_string<char32_t>;
 
     namespace _detail{
-        template<typename T,typename Void=void> struct _option_storage{
-            static_assert(std::is_void_v<Void>);
+        template<typename T> struct _option_storage{
             bool _engaged;
             alignas(T) unsigned char _m_storage[sizeof(T)];
             
@@ -1842,6 +1841,11 @@ namespace lccc{
 
             const T* get_storage()const noexcept{
                 return reinterpret_cast<const T*>(_m_storage);
+            }
+            // SAFETY: this->_m_storage shall provide storage for an object of type T for which the lifetime has begun, and not ended.
+            void set() noexcept{
+                
+                this->_engaged = true;
             }
 
             bool engaged() const noexcept{
@@ -1862,6 +1866,7 @@ namespace lccc{
         };
 
         template<typename T,bool=std::is_trivially_destructible_v<T>> struct _option_destructor : _option_storage<T>{
+            _option_move()noexcept=default;
             ~_option_destructor() noexcept(std::is_nothrow_destructible_v<T>){
                 this->clear();
             }
@@ -1872,13 +1877,136 @@ namespace lccc{
 
         template<typename T,bool=std::is_trivially_move_constructible_v<T>,bool=std::is_trivially_move_assignable_v<T>>
             struct _option_move : _option_destructor<T>{
+                _option_move()noexcept=default;
                 _option_move(_option_move&& m) {
-                    if(m.engaged())
+                    if(m.engaged()){
                         ::new(this->get_storage()) T{std::move(m.get_unchecked())};
+                        this->set();
+                    }
+                }
+
+                _option_move& operator=(_option_move&& m) noexcept{
+                    if(engaged()&&m.engaged())
+                        this->get_unchecked() = std::move(m.get_unchecked());
+                    else if(m.engaged()){
+                        ::new(this->get_storage()) T{std::move(m.get_unchecked())};
+                        this->set();
+                    }else{
+                        this->clear();
+                    }
+                    return *this;
+
                 }
             };
 
+        template<typename T> struct _option_move<T,true,false>{
+            _option_move()noexcept=default;
+            _option_move(_option_move&&) noexcept=default;
+
+            _option_move& operator=(_option_move&& m) noexcept{
+                    if(engaged()&&m.engaged())
+                        this->get_unchecked() = std::move(m.get_unchecked());
+                    else if(m.engaged()){
+                        ::new(this->get_storage()) T{std::move(m.get_unchecked())};
+                        this->set();
+                    }else{
+                        this->clear();
+                    }
+                    return *this;
+
+                }
+        };
+
+        template<typename T> struct _option_move<T,true,true>{};
+
+        template<typename T,bool has_copy_ctor=std::is_copy_constructible_v<T>,bool trivial_copy_ctor=std::is_trivially_copy_constructible_v<T>,bool is_copy_assignable=std::is_copy_assignable_v<T>,bool is_trivial_copy_assignment=std::is_trivially_copy_assignable_v<T>>
+        struct _option_copy : _option_move<T>{
+            _option_copy()=default;
+            _option_copy(const _option_copy&)=delete;
+            _option_copy& operator=(const _option_copy&)=delete;
+        };
+
+
+        template<typename T> struct _option_copy<T,true,false,false,false> : _option_move<T>{
+            _option_copy()=default;
+            _option_copy(const _option_copy& o){
+                if(o.engaged()){
+                    ::new(this->get_storage()) T{o.get_unchecked()};
+                    this->set();
+                }
+            }
+            _option_copy& operator=(const _option_copy&)=delete;
+        };
+
+        template<typename T> struct _option_copy<T,true,true,false,false> : _option_move<T>{
+            _option_copy()=default;
+            _option_copy(const _option_copy&)=default;
+            _option_copy& operator=(const _option_copy&)=delete;
+        };
+
+        template<typename T,bool trivially_copy_assignable> struct _option_copy<T,true,false,true,trivially_copy_assignable> : _option_move<T>{
+            _option_copy()=default;
+            _option_copy(const _option_copy& o){
+                if(o.engaged()){
+                    ::new(this->get_storage()) T{o.get_unchecked()};
+                    this->set();
+                }
+            }
+
+            _option_copy& operator=(_option_copy&& m) noexcept{
+                if(engaged()&&m.engaged())
+                    this->get_unchecked() = m.get_unchecked();
+                else if(m.engaged()){
+                    ::new(this->get_storage()) T{m.get_unchecked()};
+                    this->set();
+                    
+                }else{
+                    this->clear();
+                }
+                return *this;
+
+            }
+        };
+
+        template<typename T> struct _option_copy<T,true,true,true,true> : _option_move<T>{};
     }
+
+    struct nullopt_t{
+        constexpr explicit nullopt_t()noexcept=default;
+    };
+
+    constexpr inline nullopt_t nullopt{};
+
+    template<typename T> struct option: private _detail::_option_copy<T>{
+    public:
+        option()noexcept=default;
+        option(const option&)=default;
+        option(option&&)noexcept=default;
+        option& operator=(const option&)=default;
+        option& operator=(option&&)noexcept=default;
+        ~option()noexcept=default;
+        
+        template<typename=std::enable_if_t<std::is_copy_constructible_v<T>>>
+            option(const T& t) {
+                ::new(this->get_storage()) T{t};
+                this->set();
+            }
+        
+        template<typename=std::enable_if_t<std::is_move_constructible_v<T>>>
+            option(T&& t) {
+                ::new(this->get_storage()) T{std::move(t)};
+                this->set();
+            }
+
+
+        template<typename F,std::enable_if_t<std::is_invocable_v<F&&,const T&>* =nullptr>
+            void if_present(F&& f){
+                if(this->engaged())
+                    std::invoke(std::forward<F>(f),this->get_unchecked());
+            }
+
+        template<typename F> std::option<
+    };
 }
 
 #endif //LCCC_LAYOUT_H

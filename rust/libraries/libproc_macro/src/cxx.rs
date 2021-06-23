@@ -95,3 +95,6 @@ impl Allocator for CXXAllocator {
         }
     }
 }
+
+#[cfg(target_exceptions = "itanium")]
+mod itanium;

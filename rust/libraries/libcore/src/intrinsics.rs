@@ -31,8 +31,12 @@ pub use __lccc::builtins::rust::transmute_copy;
 pub use __lccc::builtins::C::__builtin_trap;
 pub use __lccc::builtins::C::__builtin_trap as abort;
 
+use __lccc::builtins::Rust::*;
+
 #[track_caller]
 #[inline]
-pub fn caller_location() -> &'static std::panicking::Location<'static> {
-    ::__lccc::builtins::rust::__builtin_caller_location()
+#[__lccc::mangle_as = "std::instrinics::caller_location"]
+#[__lccc::abi_tag = ""] // Disable the abi tag
+pub fn caller_location() -> &'static core::panic::Location<'static> {
+    core::panic::Location::caller()
 }

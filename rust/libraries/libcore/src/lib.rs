@@ -37,12 +37,9 @@
 #![feature(decl_macros)]
 #![no_core]
 #![__lccc::mangle_as("std")]
-#![__lccc::abi_tag("lccc_stdlib")]
+#![cfg_attr(abi_version = "0", __lccc::abi_tag("lccc_stdlib_v1"))]
 
 extern crate self as core;
-
-#[prelude_import]
-pub use prelude::v1::*;
 
 mod bool;
 mod never;
@@ -65,6 +62,7 @@ pub mod marker;
 pub mod mem;
 pub mod ops;
 pub mod option;
+pub mod panic;
 pub mod pin;
 pub mod prelude;
 pub mod primitive;
@@ -75,7 +73,7 @@ pub mod slice;
 pub mod sync;
 
 #[__lccc::builtin_macro]
-#[allow_internal_unstable(core_intrinsics)]
+#[allow_internal_unstable(core_intrinsics, core_panicking)]
 pub macro panic($($input:tt),*) {}
 
 #[__lccc::builtin_macro]
@@ -84,13 +82,14 @@ pub macro env($name:lit) {}
 #[__lccc::builtin_macro]
 pub macro option_env($name:lit) {}
 
-#[unstable(feature = "asm")]
+#[unstable(feature = "asm", issue = "72016")]
 #[allow_internal_unstable(lccc_asm_keyword)]
 pub macro asm($($tt:tt)*){
     k#__asm($($tt)*)
 }
 
-#[unstable(feature = "global_asm")]
+#[unstable(feature = "global_asm", issue = "35119")]
+#[allow_internal_unstable(lccc_asm_keyword)]
 pub macro global_asm($($tt:tt)*){
     k#__asm($($tt)*)
 }

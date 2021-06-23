@@ -17,7 +17,7 @@
  *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
  */
 
-// This library is garbage, and needs to chat with xlangrust.so
+// This library is garbage, and needs to chat with xlangfrontend-rust.so
 // Which is, of course, written in C++. 
 #![feature(lccc_intrinsic_crate,extern_types)]
 #![__lccc::mangle_as("10proc_macro")]

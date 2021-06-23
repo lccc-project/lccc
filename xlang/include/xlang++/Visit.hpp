@@ -453,8 +453,7 @@ namespace lccc::xlang{
         virtual TypeVisitor* visitReturnType();
         virtual TypeVisitor* visitParameterType();
         virtual void visitVarargs();
-        virtual IdentifierVisitor* visitLinkage();
-        virtual IdentifierVisitor* visitTag();
+        virtual void visitLinkage(lccc::string_view lit);
     };
 
     struct ArrayTypeVisitor : Visitor{
@@ -480,6 +479,7 @@ namespace lccc::xlang{
     };
 
     enum class PointerAliasingRule : std::uint8_t{
+        None,
         Unique,
         ReadOnly,
         ReadShallow,
@@ -488,10 +488,11 @@ namespace lccc::xlang{
         Volatile,
         VolatileWrite,
         NullOrInvalid,
-        StrictAliasing
+        StrictAliasing = 0x10
     };
 
     enum class ValidRangeType : std::uint8_t{
+        None,
         Dereference,
         DereferenceWrite,
         WriteOnly,
@@ -501,8 +502,10 @@ namespace lccc::xlang{
     };
 
     enum class PointerDefinitionType : std::uint8_t {
-        Ref = 0,
-        Const = 1,
+        None = 0,
+        Ref = 1,
+        Const = 2,
+        RValueRef = 4,
     };
 
     struct PointerTypeVisitor : Visitor{

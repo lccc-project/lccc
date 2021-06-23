@@ -575,19 +575,12 @@ namespace lccc::xlang{
             visitor->visitVarargs();
     }
 
-    IdentifierVisitor *FunctionTypeVisitor::visitLinkage() {
+    void FunctionTypeVisitor::visitLinkage(lccc::string_view lit) {
         if(auto* visitor=this->get_parent<FunctionTypeVisitor>();visitor)
-            return visitor->visitLinkage();
-        else
-            return nullptr;
+            visitor->visitLinkage(lit);
+
     }
 
-    IdentifierVisitor *FunctionTypeVisitor::visitTag() {
-        if(auto* visitor=this->get_parent<FunctionTypeVisitor>();visitor)
-            return visitor->visitTag();
-        else
-            return nullptr;
-    }
 
     BoundVisitor::BoundVisitor(BoundVisitor *vparent) : Visitor{vparent} {
 
