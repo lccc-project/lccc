@@ -31,6 +31,7 @@
 #include <utility>
 #include <variant>
 #include <exception>
+#include <optional>
 
 #include <xlang++/Properties.h>
 
@@ -1866,7 +1867,7 @@ namespace lccc{
         };
 
         template<typename T,bool=std::is_trivially_destructible_v<T>> struct _option_destructor : _option_storage<T>{
-            _option_move()noexcept=default;
+            _option_destructor()noexcept=default;
             ~_option_destructor() noexcept(std::is_nothrow_destructible_v<T>){
                 this->clear();
             }
@@ -1899,7 +1900,7 @@ namespace lccc{
                 }
             };
 
-        template<typename T> struct _option_move<T,true,false>{
+        template<typename T> struct _option_move<T,true,false> : _option_destructor<T>{
             _option_move()noexcept=default;
             _option_move(_option_move&&) noexcept=default;
 
@@ -1917,7 +1918,7 @@ namespace lccc{
                 }
         };
 
-        template<typename T> struct _option_move<T,true,true>{};
+        template<typename T> struct _option_move<T,true,true>: _option_destructor<T>{};
 
         template<typename T,bool has_copy_ctor=std::is_copy_constructible_v<T>,bool trivial_copy_ctor=std::is_trivially_copy_constructible_v<T>,bool is_copy_assignable=std::is_copy_assignable_v<T>,bool is_trivial_copy_assignment=std::is_trivially_copy_assignable_v<T>>
         struct _option_copy : _option_move<T>{
@@ -1977,6 +1978,18 @@ namespace lccc{
 
     constexpr inline nullopt_t nullopt{};
 
+    template<typename T> struct option;
+
+    template<typename T> struct _flatten_option {};
+    template<typename T> struct _flatten_option<lccc::option<T>> {
+        using type = T;
+    };
+
+    template<typename T> struct _flatten_option<std::optional<T>> {
+        using type = T;
+    };
+
+
     template<typename T> struct option: private _detail::_option_copy<T>{
     public:
         option()noexcept=default;
@@ -1985,6 +1998,8 @@ namespace lccc{
         option& operator=(const option&)=default;
         option& operator=(option&&)noexcept=default;
         ~option()noexcept=default;
+
+        option(const nullopt_t&) noexcept : option{}{} 
         
         template<typename=std::enable_if_t<std::is_copy_constructible_v<T>>>
             option(const T& t) {
@@ -1998,14 +2013,123 @@ namespace lccc{
                 this->set();
             }
 
+        template<typename=std::enable_if_t<std::is_copy_constructible_v<T>>>
+            option(const std::optional<T>& t) {
+                if(t){
+                    ::new(this->get_storage()) T{*t};
+                    this->set();
+                }
+            }
 
-        template<typename F,std::enable_if_t<std::is_invocable_v<F&&,const T&>* =nullptr>
+        template<typename=std::enable_if_t<std::is_move_constructible_v<T>>>
+            option(std::optional<T>&& t) {
+                if(t){
+                    ::new(this->get_storage()) T{*t};
+                    this->set();
+                }
+            }
+
+
+
+        template<typename F,std::enable_if_t<std::is_invocable_v<F&&,const T&>>* =nullptr>
             void if_present(F&& f){
                 if(this->engaged())
                     std::invoke(std::forward<F>(f),this->get_unchecked());
             }
 
-        template<typename F> std::option<
+        using _detail::_option_storage<T>::get_unchecked;
+
+
+
+        explicit operator bool()const{
+            return this->engaged();
+        }
+
+        T& operator*(){
+            return this->get_unchecked();
+        }
+
+        const T& operator*()const{
+            return this->get_unchecked();
+        }
+
+        template<typename F> lccc::option<std::invoke_result_t<F&&,const T&>>
+            map(F&& f)  const{
+                if(*this)
+                    return {std::invoke(f,**this)};
+                else
+                    return nullopt;
+            }
+
+        template<typename F> lccc::option<std::invoke_result_t<F&&,T&&>>
+            map(F&& f) &&{
+                if(*this)
+                    return {std::invoke(f,std::move(**this))};
+                else
+                    return nullopt;
+            }
+
+        template<typename _T = typename _flatten_option<T>::type,std::enable_if_t<std::is_copy_constructible_v<_T>>* =nullptr>
+            lccc::option<_T> flatten() const{
+                if(*this)
+                    return **this;
+                else
+                    return nullopt;
+            }
+
+        template<typename _T = typename _flatten_option<T>::type,std::enable_if_t<std::is_move_constructible_v<_T>>* =nullptr>
+            lccc::option<_T> flatten() &&{
+                if(*this)
+                    return std::move(**this);
+                else
+                    return nullopt;
+            }
+
+        template<typename F,std::enable_if_t<std::is_invocable_r_v<lccc::option<T>,F&&,const T&>>* =nullptr>
+            lccc::option<T> and_then(F&& f) const{
+                if(*this)
+                    return std::invoke(f,this->get_unchecked());
+                else
+                    return nullopt;
+            }
+
+        template<typename F,std::enable_if_t<std::is_invocable_r_v<lccc::option<T>,F&&,T&&>>* =nullptr>
+            lccc::option<T> and_then(F&& f) &&{
+                if(*this)
+                    return std::invoke(f,std::move(this->get_unchecked()));
+                else
+                    return nullopt;
+            }
+
+       template<typename F,std::enable_if_t<std::is_invocable_r_v<lccc::option<T>,F&&>>* =nullptr,std::enable_if_t<std::is_copy_constructible_v<T>>* =nullptr>>*
+             lccc::option<T> or_else(F&& f) const{
+                 if(*this)
+                    return *this;
+                else
+                    return {std::invoke(f)};
+             }
+
+        template<typename F,std::enable_if_t<std::is_invocable_r_v<lccc::option<T>,F&&>>* =nullptr,std::enable_if_t<std::is_move_constructible_v<_T>>* =nullptr>
+             lccc::option<T> or_else(F&& f) &&{
+                 if(*this)
+                    return std::move(**this);
+                else
+                    return {std::invoke(f)};
+             }
+
+
+        template<std::enable_if_t<std::is_move_constructible_v<T>>* =nullptr>
+            lccc::option<T> take(){
+                if(*this){
+                    lccc::option<T> opt{**this};
+                    this->clear();
+                    return opt;
+                }else{
+                    return nullopt;
+                }
+            }
+
+        
     };
 }
 
