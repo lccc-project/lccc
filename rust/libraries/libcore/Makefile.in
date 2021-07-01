@@ -25,6 +25,7 @@ RUSTC = @RUSTC@
 RUSTFLAGS := @RUSTFLAGS@
 
 INSTALL := @INSTALL@
+LN_S := @LN_S@
 
 RUSTC_IS_LCCC = @rustc_is_lccc@
 
@@ -47,7 +48,7 @@ sysconfdir = @sysconfdir@
 localstatedir = @localstatedir@
 runstatedir = @runstatedir@
 sharedstatedir = @sharedstatedir@
-
+rustlibdir = @rustlibdir@
 
 # Other Configuration
 
@@ -59,13 +60,13 @@ tests =
 EXTRA_RUSTFLAGS = 
 
 # The package version
-version =
+version = 0.1.0
 
 # The output file of the library
-OUTPUT = 
+OUTPUT = libcore-0.1.0.rlib
 
 # The crate name of the library
-CRATE_NAME =
+CRATE_NAME = core
 
 # Any dependencies of the library
 DEPENDENCIES = 
@@ -134,15 +135,28 @@ clean: $(foreach subdir,$(SUBDIRS),$(subdir)/clean)
 distclean: clean $(foreach subdir,$(SUBDIRS),$(subdir)/distclean)
 	rm -f config.status config.log $(OUTPUT).d test-$(OUTPUT:%.rlib=%@EXEEXT@).d $(foreach out,$(binary_outputs),$(out).d) Makefile
 
+install-$(OUTPUT): $(OUTPUT)
+	$(INSTALL) -m644 $< ${rustlibdir}/
+
+install-libcore.rlib: install-$(OUTPUT)
+	$(LN_S) $(OUTPUT) ${rustlibdir}/libcore.rlib
+
+install-strip-$(OUTPUT): $(OUTPUT)
+	$(INSTALL) -m644 $< ${rustlibdir}/
+
+install-strip-libcore.rlib: install-strip-$(OUTPUT)
+	$(LN_S) $(OUTPUT) ${rustlibdir}/libcore.rlib
+
+
 $(binary_outputs:%=install-%): install-%: %
 	$(INSTALL) -m755 $< ${bindir}/
 
 $(binary_outputs:%=install-strip-%): install-strip-%: %
 	$(INSTALL) -s -m755 $< ${bindir}/
 
-install: $(binary_outputs:%=install-%) $(foreach subdir,$(SUBDIRS),$(subdir)/install)
+install: $(binary_outputs:%=install-%) $(foreach subdir,$(SUBDIRS),$(subdir)/install) install-libcore.rlib 
 
-install-strip: $(binary_outputs:%=install-strip-%) $(foreach subdir,$(SUBDIRS),$(subdir)/install-strip)
+install-strip: $(binary_outputs:%=install-strip-%) $(foreach subdir,$(SUBDIRS),$(subdir)/install-strip) install-strip-libcore.rlib
 
 include test-$(OUTPUT:%.rlib=%@EXEEXT@).d
 

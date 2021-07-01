@@ -3,7 +3,7 @@ RUSTC := @RUSTC@
 CC := @CC@
 CXX := @CXX@
 
-hostedtargs:=@hostedtargs
+hostedtargs:=@hostedtargs@
 
 target:= @target@
 

@@ -16,25 +16,31 @@ prefix := @prefix@
 exec_prefix := @exec_prefix@
 libdir := @libdir@
 xlang_plugindir := @xlang_plugindir@
-rustlibdir := @rustlibdir@
 
-LIBXLANG := $(bindir)/../xlang/libxlang.so
+sysrootdir := @sysrootdir@
 
-LCCC := $(bindir)/../lccc 
+LIBXLANG := $(builddir)/../xlang/libxlang.so
+
+LCCC := $(builddir)/../lccc 
 
 XLANG_TARGET:=xlangfrontend-rust.so
 
 
-OUTPUT := $(bindir)/${XLANG_TARGET}
+OUTPUT := $(builddir)/${XLANG_TARGET}
 
-PLUGINDIRS := $(abs_bindir)/../
+PLUGINDIRS := $(abs_builddir)/../
 
 libraries: $(foreach targ,$(libtargs),$(targ)-libraries)
 
 install-libraries: $(foreach targ,$(libtargs),install-$(targ)-libraries)
 
-*-libraries: *-libraries/.stamp 
 
-*-libraries/.stamp: *-libraries/Makefile
-    make -C $@ install_dir=
+%-libraries/config.status: $(srcdir)/libraries/configure $(OUTPUT) ../lcrustc 
+    mkdir -p ${builddir}/$*-libraries && cd ${builddir}/$*-libraries && ../$(srcdir)/libraries/configure RUSTC=$(abs_builddir)/../lcrustc RUSTFLAGS="-Z xlang-arg=xlang_plugin_path -Z xlang-arg='$(PLUGINDIRS)'" --build=${noncanonical_host} --host=$* --prefix=${sysrootdir}/${prefix}/  --no-create
+
+%-libraries/Makefile: $-libraries/config.status
+    cd ${builddir}/$*-libraries && ./config.status Makefile
+
+%-libraries/stamp: %-libraries/Makefile
+    make -C $*-libraries stamp
 

@@ -4,6 +4,9 @@ AC_CONFIG_MACRO_DIRS([m4/])
 
 AC_PROG_CC
 
+AC_PROG_INSTALL
+AC_PROG_LN_S
+
 AC_CANONICAL_HOST
 
 LCRUST_PROG_RUSTC
@@ -52,6 +55,23 @@ AC_ARG_ENABLE([randomize-layout],[Randomize struct layout by passing -Z repr-rus
       RUSTFLAGS="$RUSTFLAGS -Z repr-rust-layout=randomize"
    fi
 ])
+
+AC_ARG_WITH([rustlibdir],[Sets the directory to install rust binaries into],[
+   case "$enableval" in
+      [\\/]* )
+      rustlibdir="$enableval"
+      ;;
+      yes | no )
+         AC_MSG_ERROR([--with-rustlibdir must specify an argument])
+      ;;
+      * )
+      rustlibdir="$${libdir}/$enableval"
+      ;;
+],[
+   rustlibdir='${libdir}/rust/lcrust-v0'
+])
+
+AC_SUBST([rustlibdir])
 
 AC_CONFIG_FILES(Makefile)
 
