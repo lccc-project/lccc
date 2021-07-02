@@ -53,7 +53,93 @@ namespace lccc{
         case Architecture::UNKNOWN:
             return "unknown"_sv;
         }
+        std::abort(); // TODO get better exception handling
+    }
+
+    lccc::string_view Target::getCanonicalVendor() const noexcept{
+        switch(this->getVendor()){
+        case Vendor::PC:
+            return "pc"_sv;
+        case Vendor::NULLVND: // Should never happen, but just in case, omitted=unknown
+        case Vendor::UNKNOWN:
+            return "unknown"_sv;
+        case Vendor::APPLE:
+            return "apple"_sv;
+        case Vendor::WDC:
+            return "wdc"_sv;
+        }
+        std::abort(); // TODO get better exception handling
+    }
+
+    lccc::string_view Target::getCanonicalOperatingSystem() const noexcept{
+        switch(this->os){
+        case OperatingSystem::NONE:
+            return "none"_sv;
+        case OperatingSystem::LINUX:
+            return "linux"_sv;
+        case OperatingSystem::WINDOWS:
+            return "windows"_sv;
+        case OperatingSystem::MINGW32:
+            return "mingw32"_sv;
+        case OperatingSystem::MACOS:
+            return "macos"_sv;
+        case OperatingSystem::IOS:
+            return "ios"_sv;
+        case OperatingSystem::PHANTOM:
+            return "phantom"_sv;
+        case OperatingSystem::SNES:
+            return "snes"_sv;
+        case OperatingSystem::UNKNOWN:
+            return "unknown"_sv;
+        }
+        std::abort(); // TODO get better exception handling
+    }
+
+    lccc::string_view Target::getCanonicalEnvironment() const noexcept{
+        switch(this->env){
+        case Environment::NONE:
+            return ""_sv;
+        case Environment::GNU:
+            return "gnu"_sv;
+        case Environment::EABI:
+            return "eabi"_sv;
+        case Environment::MSVC:
+            return "msvc"_sv;
+        case Environment::LC:
+            return "lc"_sv;
+        case Environment::PHANTOM_KERNEL:
+            return "kernel"_sv;
+        case Environment::PHANTOM_STD:
+            return "user"_sv;
+        case Environment::UNKNOWN:
+            return "unknown"_sv;
+        case Environment::MUSL:
+            return "musl"_sv;
+        }
         std::abort();
     }
+
+    lccc::string_view Target::getCanonicalObjectFormat() const noexcept{
+        switch(this->of){
+        case ObjectFormat::NONE: // Note: Impossible
+            return "none"_sv;
+        case ObjectFormat::AOUT:
+            return "aout"_sv;
+        case ObjectFormat::COFF:
+            return "coff"_sv;
+        case ObjectFormat::XCOFF:
+            return "xcoff"_sv;
+        case ObjectFormat::PE:
+            return "pe"_sv;
+        case ObjectFormat::ELF:
+            return "elf"_sv;
+        case ObjectFormat::XO65:
+            return "xo65"_sv;
+        case ObjectFormat::UNKNOWN:
+            return "unknown"_sv;
+        }
+        std::abort();
+    }
+
 
 }

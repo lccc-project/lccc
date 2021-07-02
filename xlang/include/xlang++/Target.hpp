@@ -36,9 +36,9 @@ namespace lccc{
     {
         PC = 0,
         APPLE = 1,
-        SNES = 2,
         WDC = 3,
 
+        NULLVND = static_cast<std::uint32_t>(-2),
         UNKNOWN = static_cast<std::uint32_t>(-1)
     };
 
@@ -51,8 +51,8 @@ namespace lccc{
         MACOS = 4,
         IOS = 5,
         PHANTOM = 6,
+        SNES = 7,
 
-        NULLOS = static_cast<std::uint32_t>(-2),
         UNKNOWN = static_cast<std::uint32_t>(-1)
     };
 
