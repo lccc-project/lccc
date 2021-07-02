@@ -68,10 +68,10 @@ AC_ARG_WITH([rustlibdir],[Sets the directory to install rust binaries into],[
       rustlibdir="$${libdir}/$enableval"
       ;;
 ],[
-   rustlibdir='${libdir}/rust/lcrust-v0'
+   rustlibdir='${libdir}/rust/lcrust'
 ])
 
-AC_SUBST([rustlibdir])
+AC_SUBST([rustlibdir abi_version])
 
 AC_CONFIG_FILES(Makefile)
 

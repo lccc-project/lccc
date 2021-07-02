@@ -33,7 +33,8 @@ namespace lccc::xlang
         "clwb"_sv,
         "fsgsbase"_sv,
         "ptwrite"_sv,
-        "rdrnd"_sv,
+        "rdrand"_sv,
+        "rdseed"_sv,
         "f16c"_sv,
         "fma"_sv,
         "pconfig"_sv,
@@ -42,13 +43,24 @@ namespace lccc::xlang
         "prfchw"_sv,
         "bmi"_sv,
         "bmi2"_sv,
+        "cx16"_sv,
     };
 
-    const struct ArchProperties x86_architecture{
-        0xf,
+    const lccc::string_view i386_target_features[]{
+        "80387"_sv,
+        "softfp"_sv,
+    };
+
+    const MachineProperties i386_machine{
+        i386_target_features
+    };
+
+    const ArchProperties x86_architecture{
+        0x1f,
         {},
         x86_target_features,
         {},
-        nullptr
+        &i386_machine,
     };
+     
 }

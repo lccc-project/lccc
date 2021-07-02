@@ -47,6 +47,7 @@ mod unit;
 
 pub mod alloc;
 pub mod any;
+pub mod arch;
 pub mod borrow;
 pub mod cell;
 pub mod clone;

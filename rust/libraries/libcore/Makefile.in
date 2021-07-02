@@ -29,6 +29,7 @@ LN_S := @LN_S@
 
 RUSTC_IS_LCCC = @rustc_is_lccc@
 
+
 ## Install directories
 
 prefix = @prefix@
@@ -48,7 +49,7 @@ sysconfdir = @sysconfdir@
 localstatedir = @localstatedir@
 runstatedir = @runstatedir@
 sharedstatedir = @sharedstatedir@
-rustlibdir = @rustlibdir@
+rustlibdir = @rustlibdir@/v@abi_version@
 
 # Other Configuration
 

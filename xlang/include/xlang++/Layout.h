@@ -1568,9 +1568,9 @@ namespace lccc{
             std::memset(lccc::to_address(nbegin),0,ncap);
             for(size_t n = 0;n<_m_len;n++)
                 std::allocator_traits<Alloc>::construct(_m_alloc,nbegin+n,std::move(_m_begin[n]));
-            _m_capacity = ncap;
+            std::swap(ncap,_m_capacity);
             std::swap(nbegin,_m_begin);
-            std::allocator_traits<Alloc>::deallocate(_m_alloc,nbegin);
+            std::allocator_traits<Alloc>::deallocate(_m_alloc,nbegin,ncap);
         }
     public:
         basic_string(const Alloc& alloc = Alloc()) : _m_begin{}, _m_len{}, _m_capacity{16}, _m_alloc(alloc){
@@ -1580,16 +1580,24 @@ namespace lccc{
 
         ~basic_string(){
             if(_m_begin)
-                std::allocator_traits<Alloc>::deallocate(_m_alloc,_m_begin);
+                std::allocator_traits<Alloc>::deallocate(_m_alloc,_m_begin,_m_capacity);
         }
 
         basic_string(const basic_string& s) : _m_begin{}, _m_len{}, _m_capacity{s._m_capacity}, _m_alloc(std::allocator_traits<Alloc>::select_on_container_copy_construction(s._m_alloc)){
             _m_begin = std::allocator_traits<Alloc>::allocate(_m_alloc,_m_capacity);
             for(_m_len=0;_m_len<s._m_len;_m_len++)
-                std::allocator_traits<Alloc>::construct(_m_alloc,s._m_begin[_m_len]);
+                std::allocator_traits<Alloc>::construct(_m_alloc,&s._m_begin[_m_len]);
         }
 
         basic_string(basic_string&& s) noexcept : _m_begin(std::exchange(s._m_begin,nullptr)), _m_len{s._m_len}, _m_capacity{s._m_capacity}, _m_alloc{std::move(s._m_alloc)}{}
+
+        template<typename BasicStringView,typename=std::enable_if_t<std::is_convertible_v<BasicStringView,lccc::basic_string_view<CharT>>>> 
+            basic_string(BasicStringView&& s) : basic_string{} {
+                lccc::basic_string_view<CharT> sv = std::forward<BasicStringView>(s);
+                this->reserve(sv.size());
+                for(_m_len=0;_m_len<sv.size();_m_len++)
+                    std::allocator_traits<Alloc>::construct(_m_alloc,&s[_m_len]);
+            }
 
         template<typename Alloc2> basic_string(const basic_string<CharT,Alloc>& s,const Alloc& alloc) : _m_begin{}, _m_len{}, _m_capacity{s._m_capacity}, _m_alloc(alloc){
             _m_begin = std::allocator_traits<Alloc>::allocate(_m_alloc,_m_capacity);
@@ -1609,12 +1617,12 @@ namespace lccc{
                 _m_capacity = s._m_capacity;
                 std::memset(lccc::to_address(_m_begin),0,s._m_capacity);
                 for(_m_len=0;_m_len<s._m_len;_m_len++)
-                    std::allocator_traits<Alloc>::construct(_m_alloc,s._m_begin[_m_len]);
+                    std::allocator_traits<Alloc>::construct(_m_alloc,&s._m_begin[_m_len]);
             }
             return *this;
         }
 
-        void reserve(size_type ncap) const noexcept{
+        void reserve(size_type ncap) noexcept{
             if(_m_capacity<ncap){
                 if(ncap&(-ncap)==ncap)
                     reallocate(ncap);
@@ -1644,7 +1652,7 @@ namespace lccc{
         basic_string& operator+=(CharT c){
             if((_m_len+2)>_m_capacity)
                 reserve(_m_len+2);
-            std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin[_m_len++],c);         
+            std::allocator_traits<Alloc>::construct(_m_alloc,&_m_begin[_m_len++],c);         
             return *this;   
         }
 
@@ -1652,7 +1660,7 @@ namespace lccc{
             if((_m_len+c.length()+1)>_m_capacity)
                 reserve(_m_len+c.length()+1);
             for(size_type i = 0;i<c.length();i++,_m_len++)
-                std::allocator_traits<Alloc>::construct(_m_alloc,_m_begin[_m_len],c[i]);
+                std::allocator_traits<Alloc>::construct(_m_alloc,&_m_begin[_m_len],c[i]);
 
             return *this;
         }
@@ -1813,12 +1821,12 @@ namespace lccc{
         }
 
         operator basic_string_view<CharT>()const noexcept{
-            return basic_string_view<CharT>{begin(*this),end(*this)};
+            return basic_string_view<CharT>{this->begin(),this->end()};
         }
 
         template<typename CharTraits>
             operator std::basic_string_view<CharT,CharTraits>()const noexcept{
-                return std::basic_string_view<CharT,CharTraits>{begin(*this),end(*this)};
+                return std::basic_string_view<CharT,CharTraits>{this->begin(),this->end()};
             }
     };
 

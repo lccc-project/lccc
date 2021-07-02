@@ -2,6 +2,7 @@
 #define LCCC_XLANG_TARGET_HPP_2021_05_27_19_27_11
 
 #include <xlang++/Layout.h>
+#include <functional> // grab definition of std::hash and also partial specs for enums.
 
 namespace lccc{
     enum class Architecture : std::uint32_t
@@ -24,9 +25,9 @@ namespace lccc{
         WASM32 = 17,
         WASM64 = 18,
 
-        WDC65C816 = 19,
         M6502     = 20,
         M65C02    = 21,
+        CLEVER    = 22,
 
         UNKNOWN = static_cast<std::uint32_t>(-1)
     };
@@ -70,12 +71,13 @@ namespace lccc{
     };
 
     enum class ObjectFormat : std::uint32_t {
-        AOUT = 0,
-        COFF = 1,
-        ELF  = 2,
-        PE   = 3,
-        XCOFF= 4,
-        XO65 = 5,
+        NONE = 0,
+        AOUT = 1,
+        COFF = 2,
+        ELF  = 3,
+        PE   = 4,
+        XCOFF= 5,
+        XO65 = 6,
 
         UNKNOWN = static_cast<std::uint32_t>(-1) 
     };
@@ -83,16 +85,29 @@ namespace lccc{
     struct XLANG_API Target
     {
     private:
-        lccc::string_view name;
+        lccc::string name;
         Architecture arch;
         Vendor vendor;
         OperatingSystem os;
         Environment env;
-
+        ObjectFormat of;
     public:
         explicit Target(lccc::string_view) noexcept;
 
+        // Canonical Target Constructor
+        Target(Architecture arch,Vendor vendor,OperatingSystem os = OperatingSystem::NONE,
+            Environment env=Environment::NONE,ObjectFormat of=ObjectFormat::NONE)
+            : arch{arch}, vendor{vendor}, os{os}, env{env}, of{of}{
+                name = this->toCanonicalName();
+            }
+
+        Target(Architecture arch,Vendor vendor,Environment env,ObjectFormat of=ObjectFormat::NONE) : Target{arch,vendor,OperatingSystem::NONE,env,of}{}
+        Target(Architecture arch,Vendor vendor,ObjectFormat of) : Target{arch,vendor,OperatingSystem::NONE,Environment::NONE,of}{}
+        
+
         lccc::string_view getName() const noexcept;
+
+        lccc::string toCanonicalName() const noexcept;
 
         lccc::string_view getArchName() const noexcept;
         lccc::string_view getCanonicalArch() const noexcept;
@@ -118,13 +133,48 @@ namespace lccc{
             return env;
         }
 
+        lccc::string_view getObjectFormatName() const noexcept;
+        lccc::string_view getCanonicalObjectFormat() const noexcept;
+        ObjectFormat getObjectFormat() const noexcept{
+            return of;
+        }
+
+        bool operator==(const Target& other) const noexcept{
+            return this->arch==other.arch&&this->vendor==other.vendor&&this->os==other.os&&this->env==other.env&&this->of==other.of;
+        }
+
+        bool operator!=(const Target& other) const noexcept{
+            return !(*this==other);
+        }
+    };
+}
+
+namespace std{
+    template<> struct hash<lccc::Target>{
+    public:
+        constexpr hash() noexcept=default;
+
+        std::size_t operator()(const lccc::Target& targ) const noexcept{
+            constexpr std::size_t prime = 65537;
+            std::size_t h = prime;
+            h += std::hash<lccc::Architecture>{}(targ.getArch());
+            h *= prime;
+            h += std::hash<lccc::Vendor>{}(targ.getVendor());
+            h *= prime;
+            h += std::hash<lccc::OperatingSystem>{}(targ.getOperatingSystem());
+            h *= prime;
+            h += std::hash<lccc::Environment>{}(targ.getEnvironment());
+            h *= prime;
+            h += std::hash<lccc::ObjectFormat>{}(targ.getObjectFormat());
+            return h;
+        }
     };
 }
 
 namespace lccc::xlang{
 
     struct MachineProperties{
-        lccc::span<lccc::string_view> default_features;
+        lccc::span<const lccc::string_view> default_features;
 
     };
     struct ArchProperties{
@@ -137,6 +187,12 @@ namespace lccc::xlang{
         const MachineProperties* default_machine;
     };
 
+    struct OperatingSystemProperties{
+        bool is_unix_like;
+        bool is_windows_like;
+        lccc::span<const lccc::string_view> os_family;
+    }; 
+
     struct TargetProperties{
         std::uint16_t intbits;
         std::uint16_t longbits;
@@ -148,6 +204,7 @@ namespace lccc::xlang{
         std::uint16_t lock_free_atomic_masks;
         bool is_rust_supported;
         const ArchProperties* arch;
+        const OperatingSystemProperties* os;
         lccc::span<const lccc::string_view> libdirs;
         lccc::span<const lccc::string_view> default_libs;
         lccc::span<const lccc::string_view> startfiles;
@@ -155,7 +212,7 @@ namespace lccc::xlang{
         lccc::span<const lccc::ObjectFormat> available_formats;
     };
 
-    const TargetProperties* get_properties(lccc::Target target);
+    const TargetProperties* get_properties(const lccc::Target& target);
 }
 
 #endif

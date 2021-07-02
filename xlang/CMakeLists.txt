@@ -15,7 +15,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set(LCCC_XLANG_PLUGINS_IMPL src/LinuxPlugins.cpp)
 endif()
 
-add_library(xlang-targets OBJECT src/Targets/X86.cpp src/Targets/X86.hpp)
+add_library(xlang-targets OBJECT src/Targets/X86.cpp src/Targets/X86.hpp src/Targets/TargetRegistry.cpp src/Targets/TargetRegistry.hpp)
 
 set_target_properties(xlang-targets PROPERTIES
         POSITION_INDEPENDENT_CODE ON
