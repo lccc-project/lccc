@@ -19,7 +19,24 @@
 
 #include <xlang++/Layout.h>
 
+#include <random>
+
 template struct lccc::basic_string_view<char>;
+template struct lccc::basic_string_view<char16_t>;
+template struct lccc::basic_string_view<char32_t>;
+
+template struct lccc::hash<char>;
+template struct lccc::hash<unsigned char>;
+template struct lccc::hash<signed char>;
+template struct lccc::hash<short>;
+template struct lccc::hash<unsigned short>;
+template struct lccc::hash<int>;
+template struct lccc::hash<unsigned>;
+template struct lccc::hash<long>;
+template struct lccc::hash<unsigned long>;
+template struct lccc::hash<long long>;
+template struct lccc::hash<unsigned long long>;
+template struct lccc::hash<void*>;
 
 using namespace lccc;
 using namespace std::string_view_literals;
@@ -39,6 +56,19 @@ extern"C"{
 
     void xlang_deallocate_aligned(void* v,std::size_t a)noexcept{
         ::operator delete(v,std::align_val_t{a});
+    }
+
+    const char xlang_hash_seed = 0xff;
+
+    std::size_t xlang_hash_scalar(const void* v,std::size_t sz){
+        constexpr std::size_t hash_init = sizeof(std::size_t)==4?2166136261:sizeof(std::size_t)==8?14695981039346656037ll:0;
+        static const std::size_t seed{(hash_init^std::random_device{}())*xlang_hash_prime};
+        std::size_t hash{seed};
+        for(const unsigned char* c = static_cast<const unsigned char*>(v);c!=static_cast<const unsigned char*>(v)+sz;c){
+            hash ^= *c;
+            hash *= xlang_hash_prime;
+        }
+        return hash;
     }
 
 }

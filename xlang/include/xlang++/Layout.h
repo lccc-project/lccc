@@ -2136,9 +2136,57 @@ namespace lccc{
                     return nullopt;
                 }
             }
-
-        
     };
+
+    template<typename T> struct optional<T&>{
+    private:
+        T* inner;
+    public:
+        constexpr optional(const lccc::nullopt_t& =lccc::nullopt) noexcept : inner{}{}
+    };
+
+    /// Hashes a scalar value
+    /// Preconditions: v must point to an object which is at least z bytes
+    extern"C" std::size_t xlang_hash_scalar(const void* v,std::size_t z);
+
+    static_assert(sizeof(std::size_t)==4||sizeof(std::size_t)==8);
+    constexpr std::size_t xlang_hash_prime = sizeof(std::size_t)==4?16777619:sizeof(std::size_t)==8?1099511628211:0;
+
+    /// An external value that can be hashed with `xlang_hash_scalar` to obtain an initial hash value when necessary
+    extern const char xlang_hash_seed;
+
+    template<typename T,typename=void>
+         struct hash{
+    public:
+        hash()=delete;
+        hash(const hash&)=delete;
+        hash(hash&&)=delete;
+        hash& operator=(const hash&)=delete;
+        hash& operator=(hash&&)=delete;
+    };
+
+    template<typename T> struct hash<T,std::enable_if_t<std::is_integral_v<T>||std::is_floating_point_v<T>||std::is_member_pointer_v<T>||std::is_pointer_v<T>||std::is_enum_v<T>>>{
+        std::size_t operator()(const T& t){
+            return xlang_hash_scalar(&t,sizeof(T));
+        }
+    };
+
+    template<typename T,std::size_t N> struct hash<T[N]>{
+    private:
+        hash<T> _inner;
+    public:
+        std::size_t operator()(const T (&arr)[N]){
+            std::size_t hash = xlang_hash_scalar(&xlang_hash_seed,1);
+            for(const T& t : arr){
+                hash^=_inner(t);
+                hash*=xlang_hash_prime;
+            }
+        }
+    };
+
+    
+
+    
 }
 
 #endif //LCCC_LAYOUT_H
