@@ -2185,7 +2185,33 @@ namespace lccc{
     };
 
     
+    template<typename T> struct equal_to{
+    public:
+        constexpr auto operator()(const T& a,const T& b) -> decltype(a==b){
+            return a==b;
+        }
+    };
 
+    template<typename K,typename V,typename Allocator=lccc::allocator<lccc::pair<const K,V>>, typename Hash=lccc::hash<K>,typename Pred=lccc::equal_to<K>> struct unordered_map{
+    public:
+        using key_type = K;
+        using value_type = V;
+        using element_type = lccc::pair<const K,V>;
+        using allocator = Allocator;
+        using pointer = typename std::allocator_traits<Allocator>::pointer;
+        using const_pointer = typename std::allocator_traits<Allocator>::const_pointer;
+        using size_type = typename std::allocator_traits<Allocator>::size_type;
+        using difference_type = typename std::make_signed_t<size_type>;
+    private:
+        
+        struct _hash_bucket{
+            size_type in_use;
+            lccc::optional<lccc::pair<const K,V>> entries[16];
+        };
+        using _bucket_allocator = typename std::allocator_traits<Allocator>::template rebind_alloc<_hash_bucket>;
+        using _bucket_pointer = typename std::allocator_traits<Allocator>::pointer;
+
+    };
     
 }
 

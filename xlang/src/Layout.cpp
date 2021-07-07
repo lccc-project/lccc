@@ -61,15 +61,14 @@ extern"C"{
     const char xlang_hash_seed = 0xff;
 
     std::size_t xlang_hash_scalar(const void* v,std::size_t sz){
-        constexpr std::size_t hash_init = sizeof(std::size_t)==4?2166136261:sizeof(std::size_t)==8?14695981039346656037ll:0;
+        constexpr std::size_t hash_init = sizeof(std::size_t)==4?2166136261:sizeof(std::size_t)==8?14695981039346656037ull:0;
         static const std::size_t seed{(hash_init^std::random_device{}())*xlang_hash_prime};
         std::size_t hash{seed};
-        for(const unsigned char* c = static_cast<const unsigned char*>(v);c!=static_cast<const unsigned char*>(v)+sz;c){
+        for(const unsigned char* c = static_cast<const unsigned char*>(v);c!=static_cast<const unsigned char*>(v)+sz;c++){
             hash ^= *c;
             hash *= xlang_hash_prime;
         }
         return hash;
     }
-
 }
 
