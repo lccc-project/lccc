@@ -18,6 +18,7 @@
  */
 
 #[lang = "token_stream"]
+#[repr(C)] // 
 pub struct TokenStream {
     // Note:
     // This relies on private implementation details of lccc,

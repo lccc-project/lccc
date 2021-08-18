@@ -28,15 +28,15 @@ pub struct Vec<T, #[unstable(feature = "allocator_api", issue = "32838")] A: All
 
 impl<T> Vec<T, Global> {
     pub const fn new() -> Self {
-        new_in(Global)
+        Self::new_in(Global)
     }
 
     pub fn with_capacity(cap: usize) -> Self {
-        with_capacity_in(cap, Global)
+        Self::with_capacity_in(cap, Global)
     }
 
     pub fn from_raw_parts(ptr: *mut T, len: usize, cap: usize) -> Self {
-        from_raw_parts_in(ptr, len, cap, Global)
+        Self::from_raw_parts_in(ptr, len, cap, Global)
     }
 }
 

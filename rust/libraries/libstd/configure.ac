@@ -46,7 +46,7 @@ AC_ARG_ENABLE([randomize-danging],[Randomize the output of NonNull::dangling()],
    fi
 ])
 
-AC_ARG_ENABLE([randomize-layout],[Randomize struct layout by passing -Z repr-rust-layout=randomize to rustc],[
+AC_ARG_ENABLE([randomize-layout],[Randomize struct layout by passing -Z repr-rust-layout=randomize to lccc],[
    if x$enableval \= xyes
    then
       RUSTFLAGS="$RUSTFLAGS -Z repr-rust-layout=randomize"

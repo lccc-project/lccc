@@ -19,7 +19,9 @@
 use alloc::alloc::Allocator;
 
 #[derive(Copy, Clone)]
-pub struct CXXAllocator;
+pub struct CXXAllocator{
+    _padding: ::core::mem::MaybeUninit<u8>
+}
 
 #[repr(C)]
 struct NoThrowT {
@@ -32,7 +34,6 @@ static no_throw: NoThrowT = NoThrow {
 
 #[link = "xlang"]
 extern "C" {
-
     pub fn xlang_allocate(sz: usize) -> *mut ::core::ffi::c_void;
     pub fn xlang_allocate_aligned(sz: usize, align: usize) -> *mut ::core::ffi::c_void;
     pub fn xlang_deallocate(ptr: *mut ::core::ffi::c_void);
@@ -98,3 +99,4 @@ impl Allocator for CXXAllocator {
 
 #[cfg(target_exceptions = "itanium")]
 mod itanium;
+

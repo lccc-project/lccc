@@ -315,7 +315,7 @@ impl<Args, T: ?Sized + FnOnce<Args>, A: Allocator> FnOnce<Args> for Box<T, A> {
     extern "rust-call" fn call_once(mut self, args: Args) -> Self::Output {
         let (ptr, alloc) = Box::into_inner_with_alloc(self);
 
-        <T as FnOnce<Args>>::call_once_unsized(ptr);
+        unsafe{<T as FnOnce<Args>>::call_once_unsized(ptr)};
         let layout = unsafe { Layout::for_value_raw(ptr) };
         unsafe {
             k#__xir("destroy sequence atomic release":[self.ptr]);

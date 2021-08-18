@@ -1988,7 +1988,15 @@ namespace lccc{
 
     template<typename T> struct optional;
 
-    template<typename T> struct _flatten_option {};
+    struct _nonesuch{
+        _nonesuch(const _nonesuch&)=delete;
+        _nonesuch()=delete;
+        ~_nonesuch()=delete;
+    };
+
+    template<typename T> struct _flatten_option {
+        using type = _nonesuch;
+    };
     template<typename T> struct _flatten_option<lccc::optional<T>> {
         using type = T;
     };
@@ -2110,7 +2118,7 @@ namespace lccc{
             }
 
        template<typename F,std::enable_if_t<std::is_invocable_r_v<lccc::optional<T>,F&&>>* =nullptr,std::enable_if_t<std::is_copy_constructible_v<T>>* =nullptr>
-             lccc::optional<T> or_else(F&& f) const{
+             lccc::optional<T> or_else(F&& f) const&{
                  if(*this)
                     return *this;
                 else
@@ -2136,13 +2144,107 @@ namespace lccc{
                     return nullopt;
                 }
             }
+
+        lccc::optional<T&> as_ref() noexcept{
+            if(*this)
+                return {**this};
+            else
+                return nullopt;
+        }
+
+        lccc::optional<const T&> as_ref() const noexcept {
+            if(*this)
+                return {**this};
+            else
+                return nullopt;
+        }
     };
 
     template<typename T> struct optional<T&>{
     private:
-        T* inner;
+        T* _m_inner;
     public:
-        constexpr optional(const lccc::nullopt_t& =lccc::nullopt) noexcept : inner{}{}
+        constexpr optional(const lccc::nullopt_t& =lccc::nullopt) noexcept : _m_inner{}{}
+
+        constexpr optional(const optional&)=default;
+        constexpr optional(optional&&)noexcept=default;
+        constexpr optional& operator=(const optional&)=default;
+        constexpr optional& operator=(optional&&)noexcept=default;
+        ~optional()noexcept=default;
+
+        // rvalue overload is deleted
+        constexpr optional(const T&&)=delete; 
+        constexpr optional(T& _t) : _m_inner{&_t}{}
+
+        template<typename U,std::enable_if_t<std::is_convertible_v<T&,U&>&&(std::is_convertible_v<U(&)[],T(&)[]>||std::is_base_of_v<T,U>)>* =nullptr>
+            constexpr optional(lccc::optional<U&> opt) : _m_inner(opt->_m_inner){}
+
+        template<typename U,std::enable_if_t<std::is_convertible_v<T&,U&>&&(std::is_convertible_v<U(&)[],T(&)[]>||std::is_base_of_v<T,U>)>* =nullptr>
+            constexpr optional(U& val) : _m_inner(&val){}
+        
+        // Copy/Move Constructor/Assignment are trivial
+
+        T& operator*(){
+            return *_m_inner;
+        }
+        const T& operator*() const{
+            return *_m_inner;
+        }
+
+        explicit operator bool()const{
+            return _m_inner;
+        }
+
+        lccc::optional<const T&> as_const() const{
+            if(*this)
+                return {**this};
+            else
+                return nullopt;
+        }
+
+        template<typename F, std::invoke_result_t<F&&,T&>* =nullptr>
+            void if_present(F&& f){
+                if(*this)
+                    std::invoke(std::forward<F>(f),**this);
+            }
+
+        template<typename F, std::invoke_result_t<F&&,const T&>* =nullptr>
+            void if_present(F&& f) const{
+                if(*this)
+                    std::invoke(std::forward<F>(f),const_cast<const T&>(**this));
+            }
+
+        template<typename F> lccc::optional<std::invoke_result_t<F&&,T&>> map(F&& f){
+            if(*this)
+                return {std::invoke(std::forward<F>(f),**this)};
+            else
+                return nullopt;
+        }
+
+        template<typename F,std::enable_if_t<std::is_invocable_r_v<lccc::optional<T&>,F&&>>* =nullptr>
+            lccc::optional<T&> or_else(F&& f){
+                if(*this)
+                    return *this;
+                else
+                    return std::invoke(std::forward<F>(f));
+            }
+
+        template<typename F,std::enable_if_t<std::is_invocable_r_v<lccc::optional<T&>,F&&,T&>>* =nullptr>
+            lccc::optional<T&> and_then(F&& f){
+                if(*this)
+                    return std::invoke(std::forward<F>(**this));
+                else
+                    return nullopt;
+            }
+
+        lccc::optional<T&> take(){
+            if(*this){
+                auto ptr = std::exchange(_m_inner,nullptr);
+                return {*ptr};
+            }else{
+                return nullopt;
+            }
+        }
     };
 
     /// Hashes a scalar value
@@ -2166,7 +2268,7 @@ namespace lccc{
     };
 
     template<typename T> struct hash<T,std::enable_if_t<std::is_integral_v<T>||std::is_floating_point_v<T>||std::is_member_pointer_v<T>||std::is_pointer_v<T>||std::is_enum_v<T>>>{
-        std::size_t operator()(const T& t){
+        std::size_t operator()(const T& t) const{
             return xlang_hash_scalar(&t,sizeof(T));
         }
     };
@@ -2175,12 +2277,24 @@ namespace lccc{
     private:
         hash<T> _inner;
     public:
-        std::size_t operator()(const T (&arr)[N]){
+        template<std::invoke_result_t<const hash<T>&,const T&>* =nullptr> std::size_t operator()(const T (&arr)[N]) const{
             std::size_t hash = xlang_hash_scalar(&xlang_hash_seed,1);
             for(const T& t : arr){
-                hash^=_inner(t);
+                hash^=std::invoke(_inner,t);
                 hash*=xlang_hash_prime;
             }
+        }
+    };
+
+    template<typename T> struct hash<lccc::optional<T>>{
+    private:
+        hash<T> _inner;
+    public:
+        template<std::invoke_result_t<hash<const T>&,const T&>* =nullptr> std::size_t operator()(const lccc::optional<T>& opt) const{
+            if(opt)
+                return std::invoke(_inner,opt);
+            else
+                return xlang_hash_scalar(&xlang_hash_seed,1);
         }
     };
 
@@ -2192,12 +2306,16 @@ namespace lccc{
         }
     };
 
+    std::size_t _next_hashtable_capacity(std::size_t s);
+
     template<typename K,typename V,typename Allocator=lccc::allocator<lccc::pair<const K,V>>, typename Hash=lccc::hash<K>,typename Pred=lccc::equal_to<K>> struct unordered_map{
     public:
         using key_type = K;
         using value_type = V;
         using element_type = lccc::pair<const K,V>;
-        using allocator = Allocator;
+        using allocator_type = Allocator;
+        using reference = value_type&;
+        using const_reference = const value_type&;
         using pointer = typename std::allocator_traits<Allocator>::pointer;
         using const_pointer = typename std::allocator_traits<Allocator>::const_pointer;
         using size_type = typename std::allocator_traits<Allocator>::size_type;
@@ -2205,12 +2323,121 @@ namespace lccc{
     private:
         
         struct _hash_bucket{
-            size_type in_use;
-            lccc::optional<lccc::pair<const K,V>> entries[16];
+            size_type _m_count;
+            std::aligned_union_t<1,lccc::pair<const K,V>> _m_entries[16];
         };
         using _bucket_allocator = typename std::allocator_traits<Allocator>::template rebind_alloc<_hash_bucket>;
-        using _bucket_pointer = typename std::allocator_traits<Allocator>::pointer;
+        using _bucket_pointer = typename std::allocator_traits<_bucket_allocator>::pointer;
 
+
+        _bucket_pointer _m_array;
+        size_type _m_buckets;
+        _bucket_allocator _m_alloc;
+        Hash _m_hash;
+        Pred _m_pred;
+
+        
+
+        template<typename ElementT_> struct _iterator{
+        private:
+            _bucket_pointer _m_bucket;
+            size_type _m_idx;
+
+            _iterator(_bucket_pointer _ptr,size_type _idx=0) : _m_bucket{ptr}, _m_idx{_idx}{}
+        public:
+            using value_type = ElementT_;
+            using reference = value_type&;
+            using const_reference = const value_type&;
+            using pointer = ElementT_*;
+            using const_pointer =  const ElementT_*;
+            using iterator_category = std::bidirectional_iterator_tag;
+
+            _iterator()noexcept=default;
+
+            _iterator& operator++()noexcept{
+                _m_idx++;
+                while(_m_bucket->_m_count==_m_idx){
+                    _m_bucket++;
+                    _m_idx=0;
+                }
+                return *this;
+            }
+
+            _iterator operator++(int) noexcept{
+                auto ret{*this};
+                (++*this);
+                return ret;
+            }
+
+            _iterator& operator--() noexcept{
+                while(_m_idx==0){
+                    _m_bucket--;
+                    _m_idx = _m_bucket->_m_count;
+                }
+                _m_idx--;
+                return *this;
+            }
+
+            _iterator operator--(int)noexcept{
+                auto ret{*this};
+                (--*this);
+                return ret;
+            }
+            pointer operator->()const noexcept{
+                return reinterpret_cast<pointer>(_m_bucket->_m_entries+_m_size);
+            }
+            reference operator*()const noexcept{
+                return *this->operator->();
+            }
+        };
+
+        void _rehash(){
+            size_type _cap = _next_hashtable_capacity(_m_buckets);
+            
+        }
+    public:
+        using iterator = _iterator<element_type>;
+        using const_iterator = _iterator<const element_type>;
+        using reverse_iterator = std::reverse_iterator<iterator>;
+        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
+
+        unordered_map(const Allocator& _alloc=Allocator(),const Hash& _hash=Hash(),const Pred& _pred=Pred()) : _m_array{}, _m_buckets{17}, _m_alloc{_alloc}, _m_hash{_hash}, _m_pred{_pred}{
+            _m_array = std::allocator_traits<_bucket_allocator>::allocate(_m_alloc,_m_buckets);
+            for(size_type n = 0;n<_m_buckets;n++)
+            {
+                std::allocator_traits<_bucket_allocator>::construct(_m_alloc,_m_buckets+n);
+                _m_array[n]._m_count = 0;
+            }
+        }
+
+        template<typename U,std::invoke_result_t<const Hash&,const U&>* =nullptr, std::invoke_result_t<const Pred&,const K&,const U&>* =nullptr>
+            lccc::optional<reference> get(const U& key){
+                auto hash = const_cast<const Hash&>(_m_hash)(key)%_m_buckets; // non-const operator() may be different or deleted, force use of const overload
+                for(size_type n =0;n<_m_array[hash]._m_count;n++)
+                    if(const_cast<const Pred&>(_m_pred)(*reinterpret_cast<element_type*>(&_m_array[hash]._m_entries[n]),key))
+                        return *reinterpret_cast<element_type*>(&_m_array[hash]._m_entries[n]);
+                
+                return nullopt;
+            }
+
+        template<typename U,std::invoke_result_t<const Hash&,const U&>* =nullptr, std::invoke_result_t<const Pred&,const K&,const U&>* =nullptr>
+            lccc::optional<const_reference> get(const U& key) const {
+                auto hash = const_cast<const Hash&>(_m_hash)(key)%_m_buckets; // non-const operator() may be different or deleted, force use of const overload
+                for(size_type n =0;n<_m_array[hash]._m_count;n++)
+                    if(const_cast<const Pred&>(_m_pred)(*reinterpret_cast<element_type*>(&_m_array[hash]._m_entries[n]),key))
+                        return *reinterpret_cast<element_type*>(&_m_array[hash]._m_entries[n]);
+                
+                return nullopt;
+            }
+
+
+        const allocator_type& get_allocator()const{
+            return this->_m_alloc;
+        }
+
+        lccc::pair<lccc::optional<value_type>,iterator> insert(element_type )
+        
     };
     
 }

@@ -58,13 +58,13 @@ binaries =
 tests = 
 # Package specific Configuration
 
-EXTRA_RUSTFLAGS = 
+EXTRA_RUSTFLAGS = -Z extra-codegen-opts -Z manifest-version-number=$(version) 
 
 # The package version
 version = 0.1.0
 
 # The output file of the library
-OUTPUT = libcore-0.1.0.rlib
+OUTPUT = libcore.rlib.$(version)
 
 # The crate name of the library
 CRATE_NAME = core

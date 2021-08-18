@@ -1,6 +1,18 @@
 #ifndef __LIBLCXX_BITS_INFO_HPP_2020_11_12_06_57_57
 #define __LIBLCXX_BITS_INFO_HPP_2020_11_12_06_57_57
 
+#ifndef __has_builtin
+#define __has_builtin(x) (0)
+#endif
+
+#ifndef __has_include_next
+#define __has_include_next(x) (0)
+#endif
+
+#ifndef __has_extension
+#define __has_extension(x) (0)
+#endif
+
 
 #ifdef __cplusplus>=201103L
 #define __LCCC_CXX11_CONSTEXPR constexpr
