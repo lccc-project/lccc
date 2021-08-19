@@ -2343,7 +2343,7 @@ namespace lccc{
             _bucket_pointer _m_bucket;
             size_type _m_idx;
 
-            _iterator(_bucket_pointer _ptr,size_type _idx=0) : _m_bucket{ptr}, _m_idx{_idx}{}
+            _iterator(_bucket_pointer _ptr,size_type _idx=0) : _m_bucket{_ptr}, _m_idx{_idx}{}
         public:
             using value_type = ElementT_;
             using reference = value_type&;
@@ -2384,7 +2384,7 @@ namespace lccc{
                 return ret;
             }
             pointer operator->()const noexcept{
-                return reinterpret_cast<pointer>(_m_bucket->_m_entries+_m_size);
+                return reinterpret_cast<pointer>(_m_bucket->_m_entries+_m_idx);
             }
             reference operator*()const noexcept{
                 return *this->operator->();
@@ -2425,7 +2425,7 @@ namespace lccc{
             lccc::optional<const_reference> get(const U& key) const {
                 auto hash = const_cast<const Hash&>(_m_hash)(key)%_m_buckets; // non-const operator() may be different or deleted, force use of const overload
                 for(size_type n =0;n<_m_array[hash]._m_count;n++)
-                    if(const_cast<const Pred&>(_m_pred)(*reinterpret_cast<element_type*>(&_m_array[hash]._m_entries[n]),key))
+                    if(const_cast<const Pred&>(_m_pred)(reinterpret_cast<element_type*>(&_m_array[hash]._m_entries[n])->first,key))
                         return *reinterpret_cast<element_type*>(&_m_array[hash]._m_entries[n]);
                 
                 return nullopt;
@@ -2436,8 +2436,22 @@ namespace lccc{
             return this->_m_alloc;
         }
 
-        lccc::pair<lccc::optional<value_type>,iterator> insert(element_type )
-        
+        lccc::pair<lccc::optional<value_type>,iterator> insert(element_type e){
+            for(;;){
+                auto hash = const_cast<const Hash&>(_m_hash)(e.first)%_m_buckets;
+                size_type n = 0;
+                for(;n<_m_array[hash]._m_count;n++){
+                    if(const_cast<const Pred&>(_m_pred)(reinterpret_cast<element_type*>(&_m_array[hash]._m_entries[n])->first,e.first))
+                        return {lccc::optional{std::exchange(reinterpret_cast<element_type*>(&_m_array[hash]._m_entries[n])->first,e.second)},iterator{&_m_array[hash],n}};
+                }
+                if(n!=16){
+                    ::new(&_m_array[hash]._m_entries[n]) element_type{std::move(e)};
+                    _m_array[hash]->_m_count++;
+                    return {lccc::optional<value_type>{},iterator{&_m_array[hash],n}};
+                }
+                this->rehash();
+            }
+        }
     };
     
 }

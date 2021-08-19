@@ -72,3 +72,9 @@ extern"C"{
     }
 }
 
+
+namespace lccc{
+    std::size_t _next_hashtable_capacity(std::size_t s){
+        return s+6;
+    }
+}
