@@ -2,7 +2,8 @@
 // Created by chorm on 2020-11-18.
 //
 
-#include <xlang++/Layout.h>
+#include <xlang++/layout/UniquePointer.hpp>
+#include <xlang++/layout/Span.hpp>
 #include <xlang++/Visit.hpp>
 
 #include "XIRFile.hpp"
