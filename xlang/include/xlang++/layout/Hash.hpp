@@ -36,6 +36,7 @@ namespace lccc {
                 hash^=std::invoke(_inner,t);
                 hash*=xlang_hash_prime;
             }
+            return hash;
         }
     };
 
