@@ -20,5 +20,14 @@ namespace lccc{
 
     template <typename T>
     using remove_cvref_t = typename remove_cvref<T>::type;
+
+    template<typename T,typename U>
+    struct copy_cv : type_identity<T>{};
+
+    template<typename T,typename U> struct copy_cv<T,const U> : type_identity<const T>{};
+    template<typename T,typename U> struct copy_cv<T,volatile U> : type_identity<volatile T>{};
+    template<typename T,typename U> struct copy_cv<T,const volatile U> : type_identity<const volatile T>{};
+
+    template<typename T,typename U> using copy_cv_t = typename copy_cv<T,U>::type;
 }
 #endif

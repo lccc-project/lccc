@@ -12,7 +12,7 @@ private:
    FILE* diagnostic;
    std::optional<lccc::Target> target;
 public:
-    X86AssemblyOutputVisitor(FileVisitor* parent) : FileVisitor{parent}, output{},diagnostic{}{}
+    X86AssemblyOutputVisitor(lccc::optional<FileVisitor&> parent) : FileVisitor{parent}, output{},diagnostic{}{}
     virtual void visitOutputFile(FILE* file) override{
         output = file;
     }
@@ -23,7 +23,7 @@ public:
 
 extern"C"{
     XLANG_EXPORT
-    lccc::unique_ptr<lccc::xlang::FileVisitor> xlang_plugin_main(lccc::xlang::FileVisitor* parent,lccc::span<lccc::string_view> args){
+    lccc::unique_ptr<lccc::xlang::FileVisitor> xlang_plugin_main(lccc::optional<lccc::xlang::FileVisitor&> parent,lccc::span<lccc::string_view> args){
         lccc::unique_ptr<lccc::xlang::FileVisitor> ptr{new X86AssemblyOutputVisitor{parent}};
 
         return ptr;

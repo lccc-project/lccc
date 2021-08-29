@@ -20,7 +20,7 @@
 #include <xlang++/Visit.hpp>
 
 namespace lccc::xlang{
-    Visitor::Visitor(Visitor* other):other{other}{}
+    Visitor::Visitor(lccc::optional<Visitor&> other):other{other}{}
 
     void Visitor::visitEnd() {
         if(other)
@@ -41,1243 +41,1260 @@ namespace lccc::xlang{
             other->visitSourceFile(name);
     }
 
-    IdentifierVisitor::IdentifierVisitor(IdentifierVisitor *other) : Visitor{other} {
+    PathVisitor::PathVisitor(lccc::optional<PathVisitor&> other) : Visitor{other} {
 
     }
 
-    void IdentifierVisitor::visitRoot() {
-        if(auto* id = this->get_parent<IdentifierVisitor>();id)
+    void PathVisitor::visitRoot() {
+        if(auto id = this->get_parent<PathVisitor>();id)
             id->visitRoot();
     }
 
-    void IdentifierVisitor::visitComponent(lccc::string_view name) {
-        if(auto* id = this->get_parent<IdentifierVisitor>();id)
+    void PathVisitor::visitComponent(lccc::string_view name) {
+        if(auto id = this->get_parent<PathVisitor>();id)
             id->visitComponent(name);
     }
 
-    void IdentifierVisitor::visitSpecialComponent(lccc::string_view name) {
-        if(auto* id = this->get_parent<IdentifierVisitor>();id)
+    void PathVisitor::visitSpecialComponent(lccc::string_view name) {
+        if(auto id = this->get_parent<PathVisitor>();id)
             id->visitSpecialComponent(name);
     }
 
-    TypeVisitor *IdentifierVisitor::visitDependentName() {
-        if(auto* parent = this->get_parent<IdentifierVisitor>();parent)
+    lccc::optional<TypeVisitor&> PathVisitor::visitDependentName() {
+        if(auto parent = this->get_parent<PathVisitor>();parent)
             return parent->visitDependentName();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    GenericInstantiationVisitor *IdentifierVisitor::visitGenericArgs() {
-        if(auto* parent = this->get_parent<IdentifierVisitor>();parent)
+    lccc::optional<GenericInstantiationVisitor&> PathVisitor::visitGenericArgs() {
+        if(auto parent = this->get_parent<PathVisitor>();parent)
             return parent->visitGenericArgs();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    AnnotationVisitor::AnnotationVisitor(AnnotationVisitor *other) : Visitor{other} {
+    AnnotationVisitor::AnnotationVisitor(lccc::optional<AnnotationVisitor&> other) : Visitor{other} {
 
     }
 
-    IdentifierVisitor *AnnotationVisitor::visitIdentifier() {
-        if(auto* id = this->get_parent<AnnotationVisitor>();id)
+    lccc::optional<PathVisitor&> AnnotationVisitor::visitIdentifier() {
+        if(auto id = this->get_parent<AnnotationVisitor>();id)
             return id->visitIdentifier();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    AnnotationVisitor *AnnotationVisitor::visitMeta() {
-        if(auto* id = this->get_parent<AnnotationVisitor>();id)
+    lccc::optional<AnnotationVisitor&> AnnotationVisitor::visitMeta() {
+        if(auto id = this->get_parent<AnnotationVisitor>();id)
             return id->visitMeta();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ValueVisitor *AnnotationVisitor::visitItem() {
-        if(auto* parent = this->get_parent<AnnotationVisitor>();parent)
+    lccc::optional<ValueVisitor&> AnnotationVisitor::visitItem() {
+        if(auto parent = this->get_parent<AnnotationVisitor>();parent)
             return parent->visitItem();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
 
-    AnnotatedElementVisitor::AnnotatedElementVisitor(AnnotatedElementVisitor *other) : Visitor{other} {}
+    AnnotatedElementVisitor::AnnotatedElementVisitor(lccc::optional<AnnotatedElementVisitor&> other) : Visitor{other} {}
 
-    AnnotationVisitor *AnnotatedElementVisitor::visitAnnotation() {
-        if(auto* id = this->get_parent<AnnotatedElementVisitor>();id)
+    lccc::optional<AnnotationVisitor&> AnnotatedElementVisitor::visitAnnotation() {
+        if(auto id = this->get_parent<AnnotatedElementVisitor>();id)
             return id->visitAnnotation();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ScopeVisitor::ScopeVisitor(ScopeVisitor *other) : AnnotatedElementVisitor{other} {
+    ScopeVisitor::ScopeVisitor(lccc::optional<ScopeVisitor&> other) : AnnotatedElementVisitor{other} {
 
     }
 
-    ScopeMemberVisitor *ScopeVisitor::visitScopeMember() {
-        if(auto* id = this->get_parent<ScopeVisitor>();id)
+    lccc::optional<ScopeMemberVisitor&> ScopeVisitor::visitScopeMember() {
+        if(auto id = this->get_parent<ScopeVisitor>();id)
             return id->visitScopeMember();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    GenericInstantiationVisitor *ScopeVisitor::visitExplicitInstantiation() {
-        if(auto* parent = this->get_parent<ScopeVisitor>();parent)
+    lccc::optional<GenericInstantiationVisitor&> ScopeVisitor::visitExplicitInstantiation() {
+        if(auto parent = this->get_parent<ScopeVisitor>();parent)
             return parent->visitExplicitInstantiation();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ScopeMemberVisitor::ScopeMemberVisitor(ScopeMemberVisitor *other) : AnnotatedElementVisitor{other} {}
+    ScopeMemberVisitor::ScopeMemberVisitor(lccc::optional<ScopeMemberVisitor&> other) : AnnotatedElementVisitor{other} {}
 
     void ScopeMemberVisitor::visitVisibility(Visibility visibility) {
-        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
+        if(auto id = this->get_parent<ScopeMemberVisitor>();id)
             id->visitVisibility(visibility);
     }
 
-    IdentifierVisitor *ScopeMemberVisitor::visitName() {
-        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
+    lccc::optional<PathVisitor&> ScopeMemberVisitor::visitName() {
+        if(auto id = this->get_parent<ScopeMemberVisitor>();id)
             return id->visitName();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    void ScopeMemberVisitor::visitStaticAssertion(const lccc::function<void(ValueVisitor &)>& fn, lccc::string_view diagnostic) {
-        if(auto* member = this->get_parent<ScopeMemberVisitor>();member)
-            member->visitStaticAssertion(fn,diagnostic);
+    lccc::optional<ValueVisitor &> ScopeMemberVisitor::visitStaticAssertion(lccc::string_view diagnostic) {
+        if(auto member = this->get_parent<ScopeMemberVisitor>();member)
+            return member->visitStaticAssertion(diagnostic);
+        else
+            return lccc::nullopt;
     }
 
-    TypeVisitor *ScopeMemberVisitor::visitTypeAlias() {
-        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
+    lccc::optional<TypeVisitor&> ScopeMemberVisitor::visitTypeAlias() {
+        if(auto id = this->get_parent<ScopeMemberVisitor>();id)
             return id->visitTypeAlias();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    GenericMemberVisitor *ScopeMemberVisitor::visitGenericDeclaration() {
-        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
+    lccc::optional<GenericMemberVisitor&> ScopeMemberVisitor::visitGenericDeclaration() {
+        if(auto id = this->get_parent<ScopeMemberVisitor>();id)
             return id->visitGenericDeclaration();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeDefinitionVisitor *ScopeMemberVisitor::visitTypeDefinition() {
-        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
+    lccc::optional<TypeDefinitionVisitor&> ScopeMemberVisitor::visitTypeDefinition() {
+        if(auto id = this->get_parent<ScopeMemberVisitor>();id)
             return id->visitTypeDefinition();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    GlobalVariableVisitor *ScopeMemberVisitor::visitGlobalVariable() {
-        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
+    lccc::optional<GlobalVariableVisitor&> ScopeMemberVisitor::visitGlobalVariable() {
+        if(auto id = this->get_parent<ScopeMemberVisitor>();id)
             return id->visitGlobalVariable();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    FunctionVisitor *ScopeMemberVisitor::visitFunction() {
-        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
+    lccc::optional<FunctionVisitor&> ScopeMemberVisitor::visitFunction() {
+        if(auto id = this->get_parent<ScopeMemberVisitor>();id)
             return id->visitFunction();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ScopeVisitor *ScopeMemberVisitor::visitScope() {
-        if(auto* id = this->get_parent<ScopeMemberVisitor>();id)
+    lccc::optional<ScopeVisitor&> ScopeMemberVisitor::visitScope() {
+        if(auto id = this->get_parent<ScopeMemberVisitor>();id)
             return id->visitScope();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
 
     void ScopeMemberVisitor::visitExternalScope() {
-        if(auto* parent = this->get_parent<ScopeMemberVisitor>();parent)
+        if(auto parent = this->get_parent<ScopeMemberVisitor>();parent)
             this->visitExternalScope();
     }
 
 
-    GenericDeclarationVisitor::GenericDeclarationVisitor(GenericDeclarationVisitor *parent) : Visitor{parent} {}
+    GenericDeclarationVisitor::GenericDeclarationVisitor(lccc::optional<GenericDeclarationVisitor&> parent) : Visitor{parent} {}
 
-    GenericParameterVisitor *GenericDeclarationVisitor::visitGenericParameter() {
-        if(auto* id = this->get_parent<GenericDeclarationVisitor>();id)
+    lccc::optional<GenericParameterVisitor&> GenericDeclarationVisitor::visitGenericParameter() {
+        if(auto id = this->get_parent<GenericDeclarationVisitor>();id)
             return id->visitGenericParameter();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ValueVisitor *GenericDeclarationVisitor::visitRequiresClause() {
-        if(auto* id = this->get_parent<GenericDeclarationVisitor>();id)
+    lccc::optional<ValueVisitor&> GenericDeclarationVisitor::visitRequiresClause() {
+        if(auto id = this->get_parent<GenericDeclarationVisitor>();id)
             return id->visitRequiresClause();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    GenericMemberVisitor::GenericMemberVisitor(GenericMemberVisitor *parent) : GenericDeclarationVisitor(parent) {}
+    GenericMemberVisitor::GenericMemberVisitor(lccc::optional<GenericMemberVisitor&> parent) : GenericDeclarationVisitor(parent) {}
 
-    ScopeMemberVisitor *GenericMemberVisitor::visit() {
-        if(auto* id = this->get_parent<GenericMemberVisitor>();id)
+    lccc::optional<ScopeMemberVisitor&> GenericMemberVisitor::visit() {
+        if(auto id = this->get_parent<GenericMemberVisitor>();id)
             return id->visit();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    GenericParameterVisitor::GenericParameterVisitor(GenericParameterVisitor *parent) : AnnotatedElementVisitor(parent) {}
+    GenericParameterVisitor::GenericParameterVisitor(lccc::optional<GenericParameterVisitor&> parent) : AnnotatedElementVisitor(parent) {}
 
-    TypeGenericParameterVisitor *GenericParameterVisitor::visitTypeParameter() {
-        if(auto* id = this->get_parent<GenericParameterVisitor>();id)
+    lccc::optional<TypeGenericParameterVisitor&> GenericParameterVisitor::visitTypeParameter() {
+        if(auto id = this->get_parent<GenericParameterVisitor>();id)
             return id->visitTypeParameter();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ConstGenericParameterVisitor *GenericParameterVisitor::visitConstParameter() {
-        if(auto* id = this->get_parent<GenericParameterVisitor>();id)
+    lccc::optional<ConstGenericParameterVisitor&> GenericParameterVisitor::visitConstParameter() {
+        if(auto id = this->get_parent<GenericParameterVisitor>();id)
             return id->visitConstParameter();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    BoundGenericParameterVisitor *GenericParameterVisitor::visitBoundParameter() {
-        if(auto* id = this->get_parent<GenericParameterVisitor>();id)
+    lccc::optional<BoundGenericParameterVisitor&> GenericParameterVisitor::visitBoundParameter() {
+        if(auto id = this->get_parent<GenericParameterVisitor>();id)
             return id->visitBoundParameter();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    GenericDeclarationVisitor *GenericParameterVisitor::visitGenericType() {
-        if(auto* id = this->get_parent<GenericParameterVisitor>();id)
+    lccc::optional<GenericDeclarationVisitor&> GenericParameterVisitor::visitGenericType() {
+        if(auto id = this->get_parent<GenericParameterVisitor>();id)
             return id->visitGenericType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void GenericParameterVisitor::visitParameterPack() {
-        if(auto* id = this->get_parent<GenericParameterVisitor>();id)
+        if(auto id = this->get_parent<GenericParameterVisitor>();id)
             id->visitParameterPack();
     }
 
-    TypeVisitor *GenericParameterVisitor::visitDefaultType() {
-        if(auto* id = this->get_parent<GenericParameterVisitor>();id)
+    lccc::optional<TypeVisitor&> GenericParameterVisitor::visitDefaultType() {
+        if(auto id = this->get_parent<GenericParameterVisitor>();id)
             return id->visitDefaultType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ExprVisitor *GenericParameterVisitor::visitDefaultValue() {
-        if(auto* id = this->get_parent<GenericParameterVisitor>();id)
+    // Why is this an ExprVisitor?
+    lccc::optional<ExprVisitor&> GenericParameterVisitor::visitDefaultValue() {
+        if(auto id = this->get_parent<GenericParameterVisitor>();id)
             return id->visitDefaultValue();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    IdentifierVisitor *GenericParameterVisitor::visitDefaultGenericType() {
-        if(auto* id = this->get_parent<GenericParameterVisitor>();id)
+    lccc::optional<PathVisitor&> GenericParameterVisitor::visitDefaultGenericType() {
+        if(auto id = this->get_parent<GenericParameterVisitor>();id)
             return id->visitDefaultGenericType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    BoundVisitor *GenericParameterVisitor::visitDefaultBound() {
-        if(auto* id = this->get_parent<GenericParameterVisitor>();id)
+    lccc::optional<BoundVisitor&> GenericParameterVisitor::visitDefaultBound() {
+        if(auto id = this->get_parent<GenericParameterVisitor>();id)
             return id->visitDefaultBound();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
 
-    TypeVisitor::TypeVisitor(TypeVisitor *parent) : AnnotatedElementVisitor{parent} {}
+    TypeVisitor::TypeVisitor(lccc::optional<TypeVisitor&> parent) : AnnotatedElementVisitor{parent} {}
 
-    ScalarTypeVisitor *TypeVisitor::visitScalarType() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<ScalarTypeVisitor&> TypeVisitor::visitScalarType() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitScalarType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    PointerTypeVisitor *TypeVisitor::visitPointerType() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<PointerTypeVisitor&> TypeVisitor::visitPointerType() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitPointerType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    IdentifierVisitor *TypeVisitor::visitNamedType() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<PathVisitor&> TypeVisitor::visitNamedType() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitNamedType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    GenericInstantiationVisitor *TypeVisitor::visitGenericType() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<GenericInstantiationVisitor&> TypeVisitor::visitGenericType() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitGenericType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void TypeVisitor::visitGenericParameter(uint32_t pnum) {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+        if(auto id = this->get_parent<TypeVisitor>();id)
             id->visitGenericParameter(pnum);
     }
 
-    ValueVisitor *TypeVisitor::visitAlignedAs() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<ValueVisitor&> TypeVisitor::visitAlignedAs() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitAlignedAs();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ProductTypeVisitor *TypeVisitor::visitProductType() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<ProductTypeVisitor&> TypeVisitor::visitProductType() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitProductType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    SumTypeVisitor *TypeVisitor::visitSumType() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<SumTypeVisitor&> TypeVisitor::visitSumType() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitSumType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    FunctionTypeVisitor *TypeVisitor::visitFunctionType() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<FunctionTypeVisitor&> TypeVisitor::visitFunctionType() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitFunctionType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeDefinitionVisitor *TypeVisitor::visitElaboratedType() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<TypeDefinitionVisitor&> TypeVisitor::visitElaboratedType() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitElaboratedType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ConceptVisitor *TypeVisitor::visitErasedConceptType() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<ConceptVisitor&> TypeVisitor::visitErasedConceptType() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitErasedConceptType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ConceptVisitor *TypeVisitor::visitReifiedConceptType() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<ConceptVisitor&> TypeVisitor::visitReifiedConceptType() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitReifiedConceptType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeVisitor *TypeVisitor::visitSlice() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<TypeVisitor&> TypeVisitor::visitSlice() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitSlice();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ArrayTypeVisitor *TypeVisitor::visitArray() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<ArrayTypeVisitor&> TypeVisitor::visitArray() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitArray();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ExprVisitor *TypeVisitor::visitDecltype() {
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+    lccc::optional<ExprVisitor&> TypeVisitor::visitDecltype() {
+        if(auto id = this->get_parent<TypeVisitor>();id)
             return id->visitDecltype();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void TypeVisitor::visitVoid(){
-        if(auto* id = this->get_parent<TypeVisitor>();id)
+        if(auto id = this->get_parent<TypeVisitor>();id)
             id->visitVoid();
     }
 
-    GenericInstantiationVisitor::GenericInstantiationVisitor(GenericInstantiationVisitor *visitor) : Visitor(visitor) {}
+    GenericInstantiationVisitor::GenericInstantiationVisitor(lccc::optional<GenericInstantiationVisitor&> visitor) : Visitor(visitor) {}
 
-    IdentifierVisitor *GenericInstantiationVisitor::visitGenericItem() {
-        if(auto* id = this->get_parent<GenericInstantiationVisitor>();id)
+    lccc::optional<PathVisitor&> GenericInstantiationVisitor::visitGenericItem() {
+        if(auto id = this->get_parent<GenericInstantiationVisitor>();id)
             return id->visitGenericItem();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeVisitor *GenericInstantiationVisitor::visitTypeParameter() {
-        if(auto* id = this->get_parent<GenericInstantiationVisitor>();id)
+    lccc::optional<TypeVisitor&> GenericInstantiationVisitor::visitTypeParameter() {
+        if(auto id = this->get_parent<GenericInstantiationVisitor>();id)
             return id->visitTypeParameter();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    IdentifierVisitor *GenericInstantiationVisitor::visitGenericParameter() {
-        if(auto* id = this->get_parent<GenericInstantiationVisitor>();id)
+    lccc::optional<PathVisitor&> GenericInstantiationVisitor::visitGenericParameter() {
+        if(auto id = this->get_parent<GenericInstantiationVisitor>();id)
             return id->visitGenericParameter();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ValueVisitor *GenericInstantiationVisitor::visitConstParameter() {
-        if(auto* id = this->get_parent<GenericInstantiationVisitor>();id)
+    lccc::optional<ValueVisitor&> GenericInstantiationVisitor::visitConstParameter() {
+        if(auto id = this->get_parent<GenericInstantiationVisitor>();id)
             return id->visitConstParameter();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    BoundVisitor *GenericInstantiationVisitor::visitBoundParameter() {
-        if(auto* id = this->get_parent<GenericInstantiationVisitor>();id)
+    lccc::optional<BoundVisitor&> GenericInstantiationVisitor::visitBoundParameter() {
+        if(auto id = this->get_parent<GenericInstantiationVisitor>();id)
             return id->visitBoundParameter();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    PointerTypeVisitor::PointerTypeVisitor(PointerTypeVisitor *parent) : Visitor{parent} {}
+    PointerTypeVisitor::PointerTypeVisitor(lccc::optional<PointerTypeVisitor&> parent) : Visitor{parent} {}
 
-    TypeVisitor *PointerTypeVisitor::visitPointeeType() {
-        if(auto* id = this->get_parent<PointerTypeVisitor>();id)
+    lccc::optional<TypeVisitor&> PointerTypeVisitor::visitPointeeType() {
+        if(auto id = this->get_parent<PointerTypeVisitor>();id)
             return id->visitPointeeType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void PointerTypeVisitor::visitAliasingRule(PointerAliasingRule aliasingRule) {
-        if(auto* id = this->get_parent<PointerTypeVisitor>();id)
+        if(auto id = this->get_parent<PointerTypeVisitor>();id)
             visitAliasingRule(aliasingRule);
     }
 
-    ValueVisitor *PointerTypeVisitor::visitValidRange(ValidRangeType validRange) {
-        if(auto* id = this->get_parent<PointerTypeVisitor>();id)
+    lccc::optional<ValueVisitor&> PointerTypeVisitor::visitValidRange(ValidRangeType validRange) {
+        if(auto id = this->get_parent<PointerTypeVisitor>();id)
             return id->visitValidRange(validRange);
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ValueVisitor *PointerTypeVisitor::visitAligned() {
-        if(auto* id = this->get_parent<PointerTypeVisitor>();id)
+    lccc::optional<ValueVisitor&> PointerTypeVisitor::visitAligned() {
+        if(auto id = this->get_parent<PointerTypeVisitor>();id)
             return id->visitAligned();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    BoundVisitor *PointerTypeVisitor::visitRequiredBounds() {
-        if(auto* id = this->get_parent<PointerTypeVisitor>();id)
+    lccc::optional<BoundVisitor&> PointerTypeVisitor::visitRequiredBounds() {
+        if(auto id = this->get_parent<PointerTypeVisitor>();id)
             return id->visitRequiredBounds();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void PointerTypeVisitor::visitDefinitionType(PointerDefinitionType type){
-        if(auto* id = this->get_parent<PointerTypeVisitor>();id)
+        if(auto id = this->get_parent<PointerTypeVisitor>();id)
             id->visitDefinitionType(type);
     }
 
-    ScalarTypeVisitor::ScalarTypeVisitor(ScalarTypeVisitor *parent) : Visitor{parent} {}
+    ScalarTypeVisitor::ScalarTypeVisitor(lccc::optional<ScalarTypeVisitor&> parent) : Visitor{parent} {}
 
-    IntegerTypeVisitor *ScalarTypeVisitor::visitIntegerType() {
-        if(auto* id = this->get_parent<ScalarTypeVisitor>();id)
+    lccc::optional<IntegerTypeVisitor&> ScalarTypeVisitor::visitIntegerType() {
+        if(auto id = this->get_parent<ScalarTypeVisitor>();id)
             return id->visitIntegerType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    FloatTypeVisitor *ScalarTypeVisitor::visitFloatingPointType() {
-        if(auto* id = this->get_parent<ScalarTypeVisitor>();id)
+    lccc::optional<FloatTypeVisitor&> ScalarTypeVisitor::visitFloatingPointType() {
+        if(auto id = this->get_parent<ScalarTypeVisitor>();id)
             return id->visitFloatingPointType();
         else
-            return nullptr;
+            return lccc::nullopt;
+    }
+
+    lccc::optional<FixedTypeVisitor&> ScalarTypeVisitor::visitFixedPointType() {
+        if(auto id = this->get_parent<ScalarTypeVisitor>();id)
+            return id->visitFixedPointType();
+        else
+            return lccc::nullopt;
     }
 
     void ScalarTypeVisitor::visitBitSize(uint16_t bits) {
-        if(auto* id = this->get_parent<ScalarTypeVisitor>();id)
+        if(auto id = this->get_parent<ScalarTypeVisitor>();id)
             id->visitBitSize(bits);
     }
 
     void ScalarTypeVisitor::visitVectorSize(uint16_t vector) {
-        if(auto* id = this->get_parent<ScalarTypeVisitor>();id)
+        if(auto id = this->get_parent<ScalarTypeVisitor>();id)
             id->visitVectorSize(vector);
     }
 
-    IntegerTypeVisitor::IntegerTypeVisitor(IntegerTypeVisitor *parent) : Visitor{parent} {}
+    IntegerTypeVisitor::IntegerTypeVisitor(lccc::optional<IntegerTypeVisitor&> parent) : Visitor{parent} {}
 
     void IntegerTypeVisitor::visitSigned() {
-        if(auto* id = this->get_parent<IntegerTypeVisitor>();id)
+        if(auto id = this->get_parent<IntegerTypeVisitor>();id)
             id->visitSigned();
     }
 
-    ValueVisitor* IntegerTypeVisitor::visitMinimumValue() {
-        if(auto* id = this->get_parent<IntegerTypeVisitor>();id)
+    lccc::optional<ValueVisitor&> IntegerTypeVisitor::visitMinimumValue() {
+        if(auto id = this->get_parent<IntegerTypeVisitor>();id)
             return id->visitMinimumValue();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
-    ValueVisitor* IntegerTypeVisitor::visitMaximumValue() {
-        if(auto* id = this->get_parent<IntegerTypeVisitor>();id)
+    lccc::optional<ValueVisitor&> IntegerTypeVisitor::visitMaximumValue() {
+        if(auto id = this->get_parent<IntegerTypeVisitor>();id)
             return id->visitMaximumValue();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ProductTypeVisitor::ProductTypeVisitor(ProductTypeVisitor *parent) : Visitor{parent} {}
+    ProductTypeVisitor::ProductTypeVisitor(lccc::optional<ProductTypeVisitor&> parent) : Visitor{parent} {}
 
-    TypeVisitor *ProductTypeVisitor::visitType() {
-        if(auto* id = this->get_parent<ProductTypeVisitor>();id)
+    lccc::optional<TypeVisitor&> ProductTypeVisitor::visitType() {
+        if(auto id = this->get_parent<ProductTypeVisitor>();id)
             return id->visitType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    SumTypeVisitor::SumTypeVisitor(SumTypeVisitor *parent) : Visitor{parent} {}
+    SumTypeVisitor::SumTypeVisitor(lccc::optional<SumTypeVisitor&> parent) : Visitor{parent} {}
 
-    TypeVisitor *SumTypeVisitor::visitType() {
-        if(auto* id = this->get_parent<SumTypeVisitor>();id)
+    lccc::optional<TypeVisitor&> SumTypeVisitor::visitType() {
+        if(auto id = this->get_parent<SumTypeVisitor>();id)
             return id->visitType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    FloatTypeVisitor::FloatTypeVisitor(FloatTypeVisitor *vparent) : Visitor{vparent} {}
+    FloatTypeVisitor::FloatTypeVisitor(lccc::optional<FloatTypeVisitor&> vparent) : Visitor{vparent} {}
 
     void FloatTypeVisitor::visitDecimalFloat() {
-        if(auto* id = this->get_parent<FloatTypeVisitor>();id)
+        if(auto id = this->get_parent<FloatTypeVisitor>();id)
             id->visitDecimalFloat();
     }
 
+    FixedTypeVisitor::FixedTypeVisitor(lccc::optional<FixedTypeVisitor&> vparent) : Visitor{vparent}{}
+
+    void FixedTypeVisitor::visitFractBits(std::uint16_t fbits) {
+        if(auto id = this->get_parent<FixedTypeVisitor>(); id)
+            id->visitFractBits(fbits);
+    }
+
     void ScalarTypeVisitor::visitComplex() {
-        if(auto* id = this->get_parent<ScalarTypeVisitor>();id)
+        if(auto id = this->get_parent<ScalarTypeVisitor>();id)
             id->visitComplex();
     }
 
     void ScalarTypeVisitor::visitValueValidity(ScalarValidity validity) {
-        if(auto* id = this->get_parent<ScalarTypeVisitor>();id)
+        if(auto id = this->get_parent<ScalarTypeVisitor>();id)
             id->visitValueValidity(validity);
     }
 
-    FunctionTypeVisitor::FunctionTypeVisitor(FunctionTypeVisitor *parent) : Visitor{parent} {
+    FunctionTypeVisitor::FunctionTypeVisitor(lccc::optional<FunctionTypeVisitor&> parent) : Visitor{parent} {
 
     }
 
-    TypeVisitor *FunctionTypeVisitor::visitReturnType() {
-        if(auto* visitor=this->get_parent<FunctionTypeVisitor>();visitor)
+    lccc::optional<TypeVisitor&> FunctionTypeVisitor::visitReturnType() {
+        if(auto visitor=this->get_parent<FunctionTypeVisitor>();visitor)
             return visitor->visitReturnType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeVisitor *FunctionTypeVisitor::visitParameterType() {
-        if(auto* visitor=this->get_parent<FunctionTypeVisitor>();visitor)
+    lccc::optional<TypeVisitor&> FunctionTypeVisitor::visitParameterType() {
+        if(auto visitor=this->get_parent<FunctionTypeVisitor>();visitor)
             return visitor->visitParameterType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void FunctionTypeVisitor::visitVarargs() {
-        if(auto* visitor=this->get_parent<FunctionTypeVisitor>();visitor)
+        if(auto visitor=this->get_parent<FunctionTypeVisitor>();visitor)
             visitor->visitVarargs();
     }
 
     void FunctionTypeVisitor::visitLinkage(lccc::string_view lit) {
-        if(auto* visitor=this->get_parent<FunctionTypeVisitor>();visitor)
+        if(auto visitor=this->get_parent<FunctionTypeVisitor>();visitor)
             visitor->visitLinkage(lit);
 
     }
 
 
-    BoundVisitor::BoundVisitor(BoundVisitor *vparent) : Visitor{vparent} {
+    BoundVisitor::BoundVisitor(lccc::optional<BoundVisitor&> vparent) : Visitor{vparent} {
 
     }
 
     void BoundVisitor::visitGenericBound(std::uint32_t param) {
-        if(auto* visitor=this->get_parent<BoundVisitor>();visitor)
+        if(auto visitor=this->get_parent<BoundVisitor>();visitor)
             visitor->visitGenericBound(param);
 
     }
 
     void BoundVisitor::visitStatic() {
-        if(auto* visitor=this->get_parent<BoundVisitor>();visitor)
+        if(auto visitor=this->get_parent<BoundVisitor>();visitor)
             visitor->visitStatic();
     }
 
     void BoundVisitor::visitToken(std::uint64_t token) {
-        if(auto* visitor=this->get_parent<BoundVisitor>();visitor)
+        if(auto visitor=this->get_parent<BoundVisitor>();visitor)
             visitor->visitToken(token);
     }
 
-    BoundGenericParameterVisitor::BoundGenericParameterVisitor(BoundGenericParameterVisitor *visitor) : Visitor{visitor} {
+    BoundGenericParameterVisitor::BoundGenericParameterVisitor(lccc::optional<BoundGenericParameterVisitor&> visitor) : Visitor{visitor} {
 
     }
 
-    BoundVisitor *BoundGenericParameterVisitor::visitEnclosedBy() {
-        if(auto* visitor=this->get_parent<BoundGenericParameterVisitor>();visitor)
+    lccc::optional<BoundVisitor&> BoundGenericParameterVisitor::visitEnclosedBy() {
+        if(auto visitor=this->get_parent<BoundGenericParameterVisitor>();visitor)
             return visitor->visitEnclosedBy();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ValueVisitor::ValueVisitor(ValueVisitor *vparent) : Visitor{vparent} {
+    ValueVisitor::ValueVisitor(lccc::optional<ValueVisitor&> vparent) : Visitor{vparent} {
 
     }
 
-    ConstantVisitor *ValueVisitor::visitConstantValue() {
-        if(auto* parent =this->get_parent<ValueVisitor>();parent)
+    lccc::optional<ConstantVisitor&> ValueVisitor::visitConstantValue() {
+        if(auto parent =this->get_parent<ValueVisitor>();parent)
             return parent->visitConstantValue();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ExprVisitor *ValueVisitor::visitExpression() {
-        if(auto* parent =this->get_parent<ValueVisitor>();parent)
+    lccc::optional<ExprVisitor&> ValueVisitor::visitExpression() {
+        if(auto parent =this->get_parent<ValueVisitor>();parent)
             return parent->visitExpression();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeVisitor* ValueVisitor::visitUndefined(UndefinedValueKind kind) {
-        if(auto* parent = this->get_parent<ValueVisitor>();parent)
+    lccc::optional<TypeVisitor&> ValueVisitor::visitUndefined(UndefinedValueKind kind) {
+        if(auto parent = this->get_parent<ValueVisitor>();parent)
             return parent->visitUndefined(kind);
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void ValueVisitor::visitParameter(std::uint32_t num){
-        if(auto* parent = this->get_parent<ValueVisitor>();parent)
+        if(auto parent = this->get_parent<ValueVisitor>();parent)
             return parent->visitParameter(num);
 
     }
 
 
-    ConstantVisitor::ConstantVisitor(ConstantVisitor *vparent) : Visitor{vparent} {
+    ConstantVisitor::ConstantVisitor(lccc::optional<ConstantVisitor&> vparent) : Visitor{vparent} {
 
     }
 
-    TypeVisitor *ConstantVisitor::visitInteger(std::intmax_t value) {
-        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+    lccc::optional<TypeVisitor&> ConstantVisitor::visitInteger(std::intmax_t value) {
+        if(auto parent = this->get_parent<ConstantVisitor>();parent)
             return parent->visitInteger(value);
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    StringLiteralVisitor *ConstantVisitor::visitStringLiteral() {
-        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+    lccc::optional<StringLiteralVisitor&> ConstantVisitor::visitStringLiteral() {
+        if(auto parent = this->get_parent<ConstantVisitor>();parent)
             return parent->visitStringLiteral();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
 
-    PointerConstantVisitor *ConstantVisitor::visitPointerConstant() {
-        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+    lccc::optional<PointerConstantVisitor&> ConstantVisitor::visitPointerConstant() {
+        if(auto parent = this->get_parent<ConstantVisitor>();parent)
             return parent->visitPointerConstant();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeVisitor *ConstantVisitor::visitExcessValueInteger(lccc::span<const uint8_t> bytes) {
-        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+    lccc::optional<TypeVisitor&> ConstantVisitor::visitExcessValueInteger(lccc::span<const uint8_t> bytes) {
+        if(auto parent = this->get_parent<ConstantVisitor>();parent)
             return parent->visitExcessValueInteger(bytes);
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ArrayConstantVisitor *ConstantVisitor::visitConstantArray() {
-        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+    lccc::optional<ArrayConstantVisitor&> ConstantVisitor::visitConstantArray() {
+        if(auto parent = this->get_parent<ConstantVisitor>();parent)
             return parent->visitConstantArray();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeVisitor *ConstantVisitor::visitSizeOf(){
-        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+    lccc::optional<TypeVisitor&> ConstantVisitor::visitSizeOf(){
+        if(auto parent = this->get_parent<ConstantVisitor>();parent)
             return parent->visitSizeOf();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeVisitor *ConstantVisitor::visitAlignOf(){
-        if(auto* parent = this->get_parent<ConstantVisitor>();parent)
+    lccc::optional<TypeVisitor&> ConstantVisitor::visitAlignOf(){
+        if(auto parent = this->get_parent<ConstantVisitor>();parent)
             return parent->visitAlignOf();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    PointerConstantVisitor::PointerConstantVisitor(PointerConstantVisitor *vparent) : Visitor{vparent} {
+    PointerConstantVisitor::PointerConstantVisitor(lccc::optional<PointerConstantVisitor&> vparent) : Visitor{vparent} {
 
     }
 
-    PointerTypeVisitor *PointerConstantVisitor::visitType() {
-        if(auto* parent = this->get_parent<PointerConstantVisitor>();parent)
+    lccc::optional<PointerTypeVisitor&> PointerConstantVisitor::visitType() {
+        if(auto parent = this->get_parent<PointerConstantVisitor>();parent)
             return parent->visitType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void PointerConstantVisitor::visitNullPointer() {
-        if(auto* parent = this->get_parent<PointerConstantVisitor>();parent)
+        if(auto parent = this->get_parent<PointerConstantVisitor>();parent)
             parent->visitNullPointer();
     }
 
-    IdentifierVisitor *PointerConstantVisitor::visitGlobalAddress() {
-        if(auto* parent = this->get_parent<PointerConstantVisitor>();parent)
+    lccc::optional<PathVisitor&> PointerConstantVisitor::visitGlobalAddress() {
+        if(auto parent = this->get_parent<PointerConstantVisitor>();parent)
             return parent->visitGlobalAddress();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void PointerConstantVisitor::visitLabelAddress(std::uint32_t label) {
-        if(auto* parent = this->get_parent<PointerConstantVisitor>();parent)
+        if(auto parent = this->get_parent<PointerConstantVisitor>();parent)
             parent->visitLabelAddress(label);
     }
 
-    StringLiteralVisitor::StringLiteralVisitor(StringLiteralVisitor *vparent) : Visitor{vparent} {
+    StringLiteralVisitor::StringLiteralVisitor(lccc::optional<StringLiteralVisitor&> vparent) : Visitor{vparent} {
 
     }
 
-    TypeVisitor *StringLiteralVisitor::visitType() {
-        if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
+    lccc::optional<TypeVisitor&> StringLiteralVisitor::visitType() {
+        if(auto parent = this->get_parent<StringLiteralVisitor>();parent)
             return parent->visitType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void StringLiteralVisitor::visitByteString(lccc::string_view value) {
-        if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
+        if(auto parent = this->get_parent<StringLiteralVisitor>();parent)
             parent->visitByteString(value);
     }
     void StringLiteralVisitor::visitUTF8String(lccc::string_view value) {
-        if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
+        if(auto parent = this->get_parent<StringLiteralVisitor>();parent)
             parent->visitUTF8String(value);
     }
     void StringLiteralVisitor::visitUTF16String(lccc::u16string_view value) {
-        if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
+        if(auto parent = this->get_parent<StringLiteralVisitor>();parent)
             parent->visitUTF16String(value);
     }
     void StringLiteralVisitor::visitUTF32String(lccc::u32string_view value) {
-        if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
+        if(auto parent = this->get_parent<StringLiteralVisitor>();parent)
             parent->visitUTF32String(value);
     }
     void StringLiteralVisitor::visitWideString(lccc::wstring_view value) {
-        if(auto* parent = this->get_parent<StringLiteralVisitor>();parent)
+        if(auto parent = this->get_parent<StringLiteralVisitor>();parent)
             parent->visitWideString(value);
     }
 
-    TypeDefinitionVisitor::TypeDefinitionVisitor(TypeDefinitionVisitor *visitor) : AnnotatedElementVisitor{visitor} {
+    TypeDefinitionVisitor::TypeDefinitionVisitor(lccc::optional<TypeDefinitionVisitor&> visitor) : AnnotatedElementVisitor{visitor} {
 
     }
 
-    StructTypeVisitor *TypeDefinitionVisitor::visitStruct() {
-        if(auto* parent = this->get_parent<TypeDefinitionVisitor>();parent)
+    lccc::optional<StructTypeVisitor&> TypeDefinitionVisitor::visitStruct() {
+        if(auto parent = this->get_parent<TypeDefinitionVisitor>();parent)
             return parent->visitStruct();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    EnumTypeVisitor *TypeDefinitionVisitor::visitEnum() {
-        if(auto* parent = this->get_parent<TypeDefinitionVisitor>();parent)
+    lccc::optional<EnumTypeVisitor&> TypeDefinitionVisitor::visitEnum() {
+        if(auto parent = this->get_parent<TypeDefinitionVisitor>();parent)
             return parent->visitEnum();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    StructTypeVisitor *TypeDefinitionVisitor::visitUnion() {
-        if(auto* parent = this->get_parent<TypeDefinitionVisitor>();parent)
+    lccc::optional<StructTypeVisitor&> TypeDefinitionVisitor::visitUnion() {
+        if(auto parent = this->get_parent<TypeDefinitionVisitor>();parent)
             return parent->visitUnion();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
 
-    StructTypeVisitor::StructTypeVisitor(StructTypeVisitor *vparent) : AnnotatedElementVisitor{vparent} {
+    StructTypeVisitor::StructTypeVisitor(lccc::optional<StructTypeVisitor&> vparent) : AnnotatedElementVisitor{vparent} {
 
     }
 
-    StructFieldVisitor *StructTypeVisitor::visitStructField(Visibility vis) {
-        if(auto* parent = this->get_parent<StructTypeVisitor>();parent)
+    lccc::optional<StructFieldVisitor&> StructTypeVisitor::visitStructField(Visibility vis) {
+        if(auto parent = this->get_parent<StructTypeVisitor>();parent)
             return parent->visitStructField(vis);
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeVisitor *StructTypeVisitor::visitBaseClass(Visibility vis) {
-        if(auto* parent = this->get_parent<StructTypeVisitor>();parent)
+    lccc::optional<TypeVisitor&> StructTypeVisitor::visitBaseClass(Visibility vis) {
+        if(auto parent = this->get_parent<StructTypeVisitor>();parent)
             return parent->visitBaseClass(vis);
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeVisitor *StructTypeVisitor::visitVirtualBaseClass(Visibility vis) {
-        if(auto* parent = this->get_parent<StructTypeVisitor>();parent)
+    lccc::optional<TypeVisitor&> StructTypeVisitor::visitVirtualBaseClass(Visibility vis) {
+        if(auto parent = this->get_parent<StructTypeVisitor>();parent)
             return parent->visitVirtualBaseClass(vis);
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    EnumTypeVisitor::EnumTypeVisitor(EnumTypeVisitor *vparent) : AnnotatedElementVisitor{vparent} {
+    EnumTypeVisitor::EnumTypeVisitor(lccc::optional<EnumTypeVisitor&> vparent) : AnnotatedElementVisitor{vparent} {
 
     }
 
     void EnumTypeVisitor::visitStrong() {
-        if(auto* parent = this->get_parent<EnumTypeVisitor>();parent)
+        if(auto parent = this->get_parent<EnumTypeVisitor>();parent)
             parent->visitStrong();
     }
 
-    TypeVisitor *EnumTypeVisitor::visitUnderlyingType() {
-        if(auto* parent = this->get_parent<EnumTypeVisitor>();parent)
+    lccc::optional<TypeVisitor&> EnumTypeVisitor::visitUnderlyingType() {
+        if(auto parent = this->get_parent<EnumTypeVisitor>();parent)
             return parent->visitUnderlyingType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    EnumeratorVisitor *EnumTypeVisitor::visitEnumerator() {
-        if(auto* parent = this->get_parent<EnumTypeVisitor>();parent)
+    lccc::optional<EnumeratorVisitor&> EnumTypeVisitor::visitEnumerator() {
+        if(auto parent = this->get_parent<EnumTypeVisitor>();parent)
             return parent->visitEnumerator();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    StructFieldVisitor::StructFieldVisitor(StructFieldVisitor *vparent) : AnnotatedElementVisitor{vparent} {
+    StructFieldVisitor::StructFieldVisitor(lccc::optional<StructFieldVisitor&> vparent) : AnnotatedElementVisitor{vparent} {
 
     }
 
-    IdentifierVisitor *StructFieldVisitor::visitName() {
-        if(auto* parent = this->get_parent<StructFieldVisitor>();parent)
+    lccc::optional<PathVisitor&> StructFieldVisitor::visitName() {
+        if(auto parent = this->get_parent<StructFieldVisitor>();parent)
             return parent->visitName();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeVisitor *StructFieldVisitor::visitType() {
-        if(auto* parent = this->get_parent<StructFieldVisitor>();parent)
+    lccc::optional<TypeVisitor&> StructFieldVisitor::visitType() {
+        if(auto parent = this->get_parent<StructFieldVisitor>();parent)
             return parent->visitType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ValueVisitor *StructFieldVisitor::visitBitFieldLength() {
-        if(auto* parent = this->get_parent<StructFieldVisitor>();parent)
+    lccc::optional<ValueVisitor&> StructFieldVisitor::visitBitFieldLength() {
+        if(auto parent = this->get_parent<StructFieldVisitor>();parent)
             return parent->visitBitFieldLength();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    EnumeratorVisitor::EnumeratorVisitor(EnumeratorVisitor *vparent) : AnnotatedElementVisitor(vparent) {
+    EnumeratorVisitor::EnumeratorVisitor(lccc::optional<EnumeratorVisitor&> vparent) : AnnotatedElementVisitor(vparent) {
 
     }
 
-    IdentifierVisitor *EnumeratorVisitor::visitName() {
-        if(auto* parent = this->get_parent<EnumeratorVisitor>();parent)
+    lccc::optional<PathVisitor&> EnumeratorVisitor::visitName() {
+        if(auto parent = this->get_parent<EnumeratorVisitor>();parent)
             return parent->visitName();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ValueVisitor *EnumeratorVisitor::visitValue() {
-        if(auto* parent = this->get_parent<EnumeratorVisitor>();parent)
+    lccc::optional<ValueVisitor&> EnumeratorVisitor::visitValue() {
+        if(auto parent = this->get_parent<EnumeratorVisitor>();parent)
             return parent->visitValue();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
 
-    TypeGenericParameterVisitor::TypeGenericParameterVisitor(TypeGenericParameterVisitor *vparent) : AnnotatedElementVisitor{vparent} {
+    TypeGenericParameterVisitor::TypeGenericParameterVisitor(lccc::optional<TypeGenericParameterVisitor&> vparent) : AnnotatedElementVisitor{vparent} {
 
     }
 
-    ConceptVisitor *TypeGenericParameterVisitor::visitConcept() {
-        if(auto* parent = this->get_parent<TypeGenericParameterVisitor>();parent)
+    lccc::optional<ConceptVisitor&> TypeGenericParameterVisitor::visitConcept() {
+        if(auto parent = this->get_parent<TypeGenericParameterVisitor>();parent)
             return parent->visitConcept();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ConstGenericParameterVisitor::ConstGenericParameterVisitor(ConstGenericParameterVisitor *vparent) : AnnotatedElementVisitor{vparent} {
+    ConstGenericParameterVisitor::ConstGenericParameterVisitor(lccc::optional<ConstGenericParameterVisitor&> vparent) : AnnotatedElementVisitor{vparent} {
 
     }
 
-    TypeVisitor *ConstGenericParameterVisitor::visitType() {
-        if(auto* parent = this->get_parent<ConstGenericParameterVisitor>();parent)
+    lccc::optional<TypeVisitor&> ConstGenericParameterVisitor::visitType() {
+        if(auto parent = this->get_parent<ConstGenericParameterVisitor>();parent)
             return parent->visitType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ArrayTypeVisitor::ArrayTypeVisitor(ArrayTypeVisitor *parent) : Visitor{parent} {
+    ArrayTypeVisitor::ArrayTypeVisitor(lccc::optional<ArrayTypeVisitor&> parent) : Visitor{parent} {
 
     }
 
-    TypeVisitor *ArrayTypeVisitor::visitComponentType() {
-        if(auto* parent = this->get_parent<ArrayTypeVisitor>();parent)
+    lccc::optional<TypeVisitor&> ArrayTypeVisitor::visitComponentType() {
+        if(auto parent = this->get_parent<ArrayTypeVisitor>();parent)
             return parent->visitComponentType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ValueVisitor *ArrayTypeVisitor::visitExtent() {
-        if(auto* parent = this->get_parent<ArrayTypeVisitor>();parent)
+    lccc::optional<ValueVisitor&> ArrayTypeVisitor::visitExtent() {
+        if(auto parent = this->get_parent<ArrayTypeVisitor>();parent)
             return parent->visitExtent();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ArrayConstantVisitor::ArrayConstantVisitor(ArrayConstantVisitor *vparent) : Visitor{vparent} {
+    ArrayConstantVisitor::ArrayConstantVisitor(lccc::optional<ArrayConstantVisitor&> vparent) : Visitor{vparent} {
 
     }
 
-    TypeVisitor *ArrayConstantVisitor::visitType() {
-        if(auto* parent = this->get_parent<ArrayConstantVisitor>();parent)
+    lccc::optional<TypeVisitor&> ArrayConstantVisitor::visitType() {
+        if(auto parent = this->get_parent<ArrayConstantVisitor>();parent)
             return parent->visitType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ValueVisitor *ArrayConstantVisitor::visitRepeatLength() {
-        if(auto* parent = this->get_parent<ArrayConstantVisitor>();parent)
+    lccc::optional<ValueVisitor&> ArrayConstantVisitor::visitRepeatLength() {
+        if(auto parent = this->get_parent<ArrayConstantVisitor>();parent)
             return parent->visitRepeatLength();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ValueVisitor *ArrayConstantVisitor::visitValue() {
-        if(auto* parent = this->get_parent<ArrayConstantVisitor>();parent)
+    lccc::optional<ValueVisitor&> ArrayConstantVisitor::visitValue() {
+        if(auto parent = this->get_parent<ArrayConstantVisitor>();parent)
             return parent->visitValue();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    ExprVisitor::ExprVisitor(ExprVisitor *vparent) : Visitor{vparent} {
+    ExprVisitor::ExprVisitor(lccc::optional<ExprVisitor&> vparent) : Visitor{vparent} {
 
     }
 
-    ValueVisitor *ExprVisitor::visitConst() {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+    lccc::optional<ValueVisitor&> ExprVisitor::visitConst() {
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             return parent->visitConst();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    FunctionTypeVisitor *ExprVisitor::visitFunctionCall() {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+    lccc::optional<FunctionTypeVisitor&> ExprVisitor::visitFunctionCall() {
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             return parent->visitFunctionCall();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    IdentifierVisitor *ExprVisitor::visitMember(MemberAccessType type) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+    lccc::optional<PathVisitor&> ExprVisitor::visitMember(MemberAccessType type) {
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             return parent->visitMember(type);
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void ExprVisitor::visitLocal(uint32_t var) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitLocal(var);
     }
 
     void ExprVisitor::visitAsRvalue(AccessClass cl) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitAsRvalue(cl);
     }
 
-    TypeVisitor *ExprVisitor::visitConversion(ConversionStrength st) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+    lccc::optional<TypeVisitor&> ExprVisitor::visitConversion(ConversionStrength st) {
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             return parent->visitConversion(st);
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void ExprVisitor::visitUnaryOperator(UnaryOperation op) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitUnaryOperator(op);
     }
 
     void ExprVisitor::visitBinaryOperator(BinaryOperation op) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitBinaryOperator(op);
     }
 
     void ExprVisitor::visitIndirection() {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitIndirection();
     }
 
-    BoundVisitor *ExprVisitor::visitLock(PointerSharing type) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+    lccc::optional<BoundVisitor&> ExprVisitor::visitLock(PointerSharing type) {
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             return parent->visitLock(type);
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void ExprVisitor::visitPointerTo() {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitPointerTo();
     }
 
-    PointerTypeVisitor *ExprVisitor::visitDerive() {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+    lccc::optional<PointerTypeVisitor&> ExprVisitor::visitDerive() {
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             return parent->visitDerive();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void ExprVisitor::visitSequence(AccessClass cl) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitSequence(cl);
     }
 
     void ExprVisitor::visitFence(AccessClass cl) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitFence(cl);
     }
 
     void ExprVisitor::visitAssignment(AccessClass cl) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitAssignment(cl);
     }
 
     void ExprVisitor::visitCompoundAssignment(BinaryOperation op, AccessClass cl) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitCompoundAssignment(op,cl);
     }
 
     void ExprVisitor::visitLValue(LValueOperation op, AccessClass cl) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitLValue(op,cl);
     }
 
     void ExprVisitor::visitDestroy() {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitDestroy();
     }
 
     void ExprVisitor::pop(uint8_t cnt) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->pop(cnt);
     }
 
     void ExprVisitor::dup(uint8_t cnt) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->dup(cnt);
     }
 
-    BlockVisitor *ExprVisitor::visitBlock() {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+    lccc::optional<BlockVisitor&> ExprVisitor::visitBlock() {
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             return parent->visitBlock();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void ExprVisitor::visitTupleExpression(uint16_t values) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitTupleExpression(values);
     }
 
-    TypeVisitor *ExprVisitor::visitAggregateConstruction(uint16_t values) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+    lccc::optional<TypeVisitor&> ExprVisitor::visitAggregateConstruction(uint16_t values) {
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             return parent->visitAggregateConstruction(values);
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void ExprVisitor::visitBlockExit(uint32_t blk, uint8_t values) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             parent->visitBlockExit(blk,values);
     }
 
-    LambdaVisitor *ExprVisitor::visitLambdaExpression(uint16_t captures) {
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+    lccc::optional<LambdaVisitor&> ExprVisitor::visitLambdaExpression(uint16_t captures) {
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             return parent->visitLambdaExpression(captures);
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    StackItemsVisitor *ExprVisitor::visitValidateStack(){
-        if(auto* parent = this->get_parent<ExprVisitor>();parent)
+    lccc::optional<StackItemsVisitor&> ExprVisitor::visitValidateStack(){
+        if(auto parent = this->get_parent<ExprVisitor>();parent)
             return parent->visitValidateStack();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    StackItemsVisitor::StackItemsVisitor(StackItemsVisitor *visitor) : Visitor{visitor} {
+    StackItemsVisitor::StackItemsVisitor(lccc::optional<StackItemsVisitor&> visitor) : Visitor{visitor} {
 
     }
 
-    TypeVisitor *StackItemsVisitor::visitLvalue() {
-        if(auto* parent = this->get_parent<StackItemsVisitor>();parent)
+    lccc::optional<TypeVisitor&> StackItemsVisitor::visitLvalue() {
+        if(auto parent = this->get_parent<StackItemsVisitor>();parent)
             return parent->visitLvalue();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeVisitor *StackItemsVisitor::visitRvalue() {
-        if(auto* parent = this->get_parent<StackItemsVisitor>();parent)
+    lccc::optional<TypeVisitor&> StackItemsVisitor::visitRvalue() {
+        if(auto parent = this->get_parent<StackItemsVisitor>();parent)
             return parent->visitRvalue();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
 
-    CaseVisitor::CaseVisitor(CaseVisitor *vparent) : Visitor{vparent} {
+    CaseVisitor::CaseVisitor(lccc::optional<CaseVisitor&> vparent) : Visitor{vparent} {
 
     }
 
-    ValueVisitor *CaseVisitor::visitValue() {
-        if(auto* parent = this->get_parent<CaseVisitor>();parent)
+    lccc::optional<ValueVisitor&> CaseVisitor::visitValue() {
+        if(auto parent = this->get_parent<CaseVisitor>();parent)
             return parent->visitValue();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void CaseVisitor::visitTarget(std::uint32_t item) {
-        if(auto* parent = this->get_parent<CaseVisitor>();parent)
+        if(auto parent = this->get_parent<CaseVisitor>();parent)
             parent->visitTarget(item);
     }
 
     void SwitchVisitor::visitDefault(std::uint32_t item) {
-        if(auto* parent = this->get_parent<SwitchVisitor>();parent)
+        if(auto parent = this->get_parent<SwitchVisitor>();parent)
             parent->visitDefault(item);
     }
 
-    CaseVisitor *SwitchVisitor::visitCase() {
-        if(auto* parent = this->get_parent<SwitchVisitor>();parent)
+    lccc::optional<CaseVisitor&> SwitchVisitor::visitCase() {
+        if(auto parent = this->get_parent<SwitchVisitor>();parent)
             return parent->visitCase();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    SwitchVisitor::SwitchVisitor(SwitchVisitor *vparent) : Visitor{vparent} {
-
-    }
-
-    BlockVisitor::BlockVisitor(BlockVisitor *parent) : ScopeVisitor{parent} {
+    SwitchVisitor::SwitchVisitor(lccc::optional<SwitchVisitor&> vparent) : Visitor{vparent} {
 
     }
 
-    ExprVisitor *BlockVisitor::visitExpression() {
-        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+    BlockVisitor::BlockVisitor(lccc::optional<BlockVisitor&> parent) : ScopeVisitor{parent} {
+
+    }
+
+    lccc::optional<ExprVisitor&> BlockVisitor::visitExpression() {
+        if(auto parent = this->get_parent<BlockVisitor>();parent)
             return parent->visitExpression();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    StackItemsVisitor *BlockVisitor::visitTarget(std::uint32_t item) {
-        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+    lccc::optional<StackItemsVisitor&> BlockVisitor::visitTarget(std::uint32_t item) {
+        if(auto parent = this->get_parent<BlockVisitor>();parent)
             return parent->visitTarget(item);
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void BlockVisitor::visitBeginTag(std::uint32_t item) {
-        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+        if(auto parent = this->get_parent<BlockVisitor>();parent)
             parent->visitBeginTag(item);
     }
 
     void BlockVisitor::visitEndTag(std::uint32_t item) {
-        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+        if(auto parent = this->get_parent<BlockVisitor>();parent)
             parent->visitEndTag(item);
     }
 
     void BlockVisitor::visitBranch(std::uint32_t item, Condition condition) {
-        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+        if(auto parent = this->get_parent<BlockVisitor>();parent)
             parent->visitBranch(item,condition);
     }
 
-    SwitchVisitor *BlockVisitor::visitSwitch() {
-        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+    lccc::optional<SwitchVisitor&> BlockVisitor::visitSwitch() {
+        if(auto parent = this->get_parent<BlockVisitor>();parent)
             return parent->visitSwitch();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void BlockVisitor::visitBeginStorage(std::uint32_t local) {
-        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+        if(auto parent = this->get_parent<BlockVisitor>();parent)
             parent->visitBeginStorage(local);
     }
 
     void BlockVisitor::visitEndStorage(std::uint32_t local) {
-        if(auto* parent = this->get_parent<BlockVisitor>();parent)
+        if(auto parent = this->get_parent<BlockVisitor>();parent)
             parent->visitEndStorage(local);
     }
 
-    FunctionVisitor::FunctionVisitor(FunctionVisitor *fnVisitor) : AnnotatedElementVisitor{fnVisitor} {
+    FunctionVisitor::FunctionVisitor(lccc::optional<FunctionVisitor&> fnVisitor) : AnnotatedElementVisitor{fnVisitor} {
 
     }
 
-    FunctionTypeVisitor *FunctionVisitor::visitType() {
-        if(auto* parent = this->get_parent<FunctionVisitor>();parent)
+    lccc::optional<FunctionTypeVisitor&> FunctionVisitor::visitType() {
+        if(auto parent = this->get_parent<FunctionVisitor>();parent)
             return parent->visitType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    BlockVisitor *FunctionVisitor::visitInitialBlock() {
-        if(auto* parent = this->get_parent<FunctionVisitor>();parent)
+    lccc::optional<BlockVisitor&> FunctionVisitor::visitInitialBlock() {
+        if(auto parent = this->get_parent<FunctionVisitor>();parent)
             return parent->visitInitialBlock();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    TypeVisitor *FunctionVisitor::visitLocalVariable() {
-        if(auto* parent = this->get_parent<FunctionVisitor>();parent)
+    lccc::optional<TypeVisitor&> FunctionVisitor::visitLocalVariable() {
+        if(auto parent = this->get_parent<FunctionVisitor>();parent)
             return parent->visitLocalVariable();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    FileVisitor::FileVisitor(FileVisitor *vparent) : ScopeVisitor{vparent} {
+    FileVisitor::FileVisitor(lccc::optional<FileVisitor&> vparent) : ScopeVisitor{vparent} {
 
     }
 
     void FileVisitor::visitInputFile(FILE *file) {
-        if(auto* parent = this->get_parent<FileVisitor>();parent)
+        if(auto parent = this->get_parent<FileVisitor>();parent)
             parent->visitInputFile(file);
     }
 
     void FileVisitor::visitOutputFile(FILE *file) {
-        if(auto* parent = this->get_parent<FileVisitor>();parent)
+        if(auto parent = this->get_parent<FileVisitor>();parent)
             parent->visitOutputFile(file);
     }
 
     void FileVisitor::visitDiagnosticFile(FILE *file) {
-        if(auto* parent = this->get_parent<FileVisitor>();parent)
+        if(auto parent = this->get_parent<FileVisitor>();parent)
             parent->visitDiagnosticFile(file);
     }
 
     void FileVisitor::visitTarget(lccc::Target tgt){
-        if(auto* parent = this->get_parent<FileVisitor>();parent)
+        if(auto parent = this->get_parent<FileVisitor>();parent)
             parent->visitTarget(tgt);
     }
 
-    GlobalVariableVisitor::GlobalVariableVisitor(GlobalVariableVisitor *parent) : AnnotatedElementVisitor{parent} {
+    GlobalVariableVisitor::GlobalVariableVisitor(lccc::optional<GlobalVariableVisitor&> parent) : AnnotatedElementVisitor{parent} {
 
     }
 
-    TypeVisitor *GlobalVariableVisitor::visitVariableType() {
-        if(auto* parent = this->get_parent<GlobalVariableVisitor>();parent)
+    lccc::optional<TypeVisitor&> GlobalVariableVisitor::visitVariableType() {
+        if(auto parent = this->get_parent<GlobalVariableVisitor>();parent)
             return parent->visitVariableType();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
     void GlobalVariableVisitor::visitStorageClass(StorageClass cl) {
-        if(auto* parent = this->get_parent<GlobalVariableVisitor>();parent)
+        if(auto parent = this->get_parent<GlobalVariableVisitor>();parent)
             parent->visitStorageClass(cl);
     }
 
-    LambdaVisitor::LambdaVisitor(LambdaVisitor *vparent) : Visitor{vparent} {
+    LambdaVisitor::LambdaVisitor(lccc::optional<LambdaVisitor&> vparent) : Visitor{vparent} {
 
     }
 
-    GenericParameterVisitor *LambdaVisitor::visitGenericParameter() {
-        if(auto* parent = this->get_parent<LambdaVisitor>();parent)
+    lccc::optional<GenericParameterVisitor&> LambdaVisitor::visitGenericParameter() {
+        if(auto parent = this->get_parent<LambdaVisitor>();parent)
             return parent->visitGenericParameter();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 
-    FunctionVisitor *LambdaVisitor::visitLambdaBody() {
-        if(auto* parent = this->get_parent<LambdaVisitor>();parent)
+    lccc::optional<FunctionVisitor&> LambdaVisitor::visitLambdaBody() {
+        if(auto parent = this->get_parent<LambdaVisitor>();parent)
             return parent->visitLambdaBody();
         else
-            return nullptr;
+            return lccc::nullopt;
     }
 }
 

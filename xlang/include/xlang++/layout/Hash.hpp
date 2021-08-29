@@ -26,6 +26,9 @@ namespace lccc {
             return xlang_hash_scalar(&t,sizeof(T));
         }
     };
+
+    template<typename T> struct hash<T&> : public lccc::hash<std::remove_const_t<T>>{}; // allows hashing optional<T&>
+
     template<typename T,std::size_t N> struct hash<T[N]>{
     private:
         hash<T> _inner;

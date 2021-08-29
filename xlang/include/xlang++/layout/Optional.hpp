@@ -3,6 +3,8 @@
 #include <optional>
 #include <xlang++/layout/TypeTraits.hpp>
 #include <functional>
+#include <iterator>
+#include <type_traits>
 
 namespace lccc {
     namespace _detail{
@@ -160,6 +162,7 @@ namespace lccc {
 
     struct _nonesuch{
         _nonesuch(const _nonesuch&)=delete;
+        _nonesuch(_nonesuch&&)=delete;
         _nonesuch()=delete;
         ~_nonesuch()=delete;
     };
@@ -175,9 +178,19 @@ namespace lccc {
         using type = T;
     };
 
+    template<typename T> struct _flatten_option<const T>{
+        using type = std::add_const_t<typename _flatten_option<T>::type>;
+    };
 
+    template<typename T> struct _flatten_option<T&>{
+        using type = std::add_const_t<typename _flatten_option<T>::type>;
+    };
+
+
+    
     template<typename T> struct optional: private _detail::_option_copy<T>{
     public:
+        static_assert(!std::is_same_v<lccc::remove_cvref_t<T>,nullopt_t>);
         optional()noexcept=default;
         optional(const optional&)=default;
         optional(optional&&)noexcept=default;
@@ -237,6 +250,14 @@ namespace lccc {
 
         const T& operator*()const{
             return this->get_unchecked();
+        }
+
+        T* operator->()noexcept{
+            return &this->get_unchecked();
+        }
+
+        const T* operator->() const noexcept{
+            return &this->get_unchecked();
         }
 
         template<typename F> lccc::optional<std::invoke_result_t<F&&,const T&>>
@@ -328,13 +349,28 @@ namespace lccc {
             else
                 return nullopt;
         }
+
     };
 
+    struct _private_token{
+        explicit constexpr _private_token()=default;
+    };
+
+    ///
+    /// Specialization of optional on reference types
+    /// optional<T&> is trivially-copyable and a standard layout type
+    /// 
     template<typename T> struct optional<T&>{
     private:
+        static_assert(!std::is_same_v<lccc::remove_cvref_t<T>,nullopt_t>);
         T* _m_inner;
+
+        
+
     public:
+        constexpr optional(T* _ptr, _private_token) noexcept : _m_inner{_ptr}{}
         constexpr optional(const lccc::nullopt_t& =lccc::nullopt) noexcept : _m_inner{}{}
+
 
         constexpr optional(const optional&)=default;
         constexpr optional(optional&&)noexcept=default;
@@ -346,10 +382,10 @@ namespace lccc {
         constexpr optional(const T&&)=delete; 
         constexpr optional(T& _t) : _m_inner{&_t}{}
 
-        template<typename U,std::enable_if_t<std::is_convertible_v<T&,U&>&&(std::is_convertible_v<U(&)[],T(&)[]>||std::is_base_of_v<T,U>)>* =nullptr>
-            constexpr optional(lccc::optional<U&> opt) : _m_inner(opt->_m_inner){}
+        template<typename U,typename=std::enable_if_t<std::is_convertible_v<U*,T*>>>
+            constexpr optional(lccc::optional<U&> opt) : _m_inner(opt.as_ptr()){}
 
-        template<typename U,std::enable_if_t<std::is_convertible_v<T&,U&>&&(std::is_convertible_v<U(&)[],T(&)[]>||std::is_base_of_v<T,U>)>* =nullptr>
+        template<typename U,typename=std::enable_if_t<std::is_convertible_v<U*,T*>>>
             constexpr optional(U& val) : _m_inner(&val){}
         
         // Copy/Move Constructor/Assignment are trivial
@@ -361,7 +397,23 @@ namespace lccc {
             return *_m_inner;
         }
 
-        explicit operator bool()const{
+        T* operator->() noexcept{
+            return _m_inner;
+        }
+
+        const T* operator->()const noexcept{
+            return _m_inner;
+        }
+
+        T* as_ptr() noexcept{
+            return _m_inner;
+        }
+
+        const T* as_ptr() const noexcept {
+            return _m_inner;
+        }
+
+        explicit operator bool()const noexcept{
             return _m_inner;
         }
 
@@ -415,7 +467,34 @@ namespace lccc {
                 return nullopt;
             }
         }
+        template<typename U,std::enable_if_t<std::is_base_of_v<T,U>&&std::is_convertible_v<U*,lccc::copy_cv_t<U,T>*>>* = nullptr>
+            lccc::optional<U&> downcast() const noexcept{
+            return {dynamic_cast<U*>(_m_inner),_private_token{}};
+        }
     };
+
+    
+
+    template<typename T,typename U> auto operator==(const lccc::optional<T>& a,const lccc::optional<U>& b) noexcept(noexcept(*a==*b)) -> std::common_type_t<bool,decltype(*a==*b)>{
+        if(a&&b)
+            return *a==*b;
+        else 
+            return !a&&!b;
+    }
+
+    template<typename T,typename U> auto operator==(const std::optional<T>& a,const lccc::optional<U>& b) noexcept(noexcept(*a==*b)) -> std::common_type_t<bool,decltype(*a==*b)>{
+        if(a&&b)
+            return *a==*b;
+        else 
+            return !a&&!b;
+    }
+
+    template<typename T,typename U> auto operator==(const lccc::optional<T>& a,const std::optional<U>& b) noexcept(noexcept(*a==*b)) -> std::common_type_t<bool,decltype(*a==*b)>{
+        if(a&&b)
+            return *a==*b;
+        else 
+            return !a&&!b;
+    }
 }
 
 #endif 

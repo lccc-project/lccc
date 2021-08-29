@@ -33,18 +33,18 @@ void CVisitor::visitDiagnosticFile(FILE *file) {
 void CVisitor::visitEnd() {
     for(auto &&item : m_program->items()) {
         p_function &function = *dynamic_cast<p_function*>(&*item);
-        lccc::xlang::ScopeMemberVisitor *sm = visitScopeMember();
-        lccc::xlang::FunctionVisitor *fn = sm->visitFunction();
-        lccc::xlang::FunctionTypeVisitor *types = fn->visitType();
-        lccc::xlang::TypeVisitor *rt = types->visitReturnType();
-        lccc::xlang::ScalarTypeVisitor *st = rt->visitScalarType();
-        lccc::xlang::IntegerTypeVisitor *it = st->visitIntegerType();
+        auto sm = visitScopeMember();
+        auto fn = sm->visitFunction();
+        auto types = fn->visitType();
+        auto rt = types->visitReturnType();
+        auto st = rt->visitScalarType();
+        auto it = st->visitIntegerType();
         it->visitSigned(); it->visitEnd();
         st->visitBitSize(32); st->visitEnd();
         rt->visitEnd();
         types->visitEnd();
         fn->visitEnd(); // TODO: Actually have a body
-        lccc::xlang::IdentifierVisitor *nm = sm->visitName();
+        auto nm = sm->visitName();
         nm->visitComponent("main"sv); nm->visitEnd();
         sm->visitEnd();
     }
