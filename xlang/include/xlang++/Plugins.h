@@ -19,7 +19,9 @@
 #ifndef LCCC_PLUGINS_H
 #define LCCC_PLUGINS_H
 
-#include <xlang++/Layout.h>
+#include <xlang++/layout/StringView.hpp>
+#include <xlang++/layout/Span.hpp>
+#include <xlang++/layout/UniquePtr.hpp>
 #include <xlang++/Visit.hpp>
 #include <vector>
 #include <string>

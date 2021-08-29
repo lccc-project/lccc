@@ -1,5 +1,6 @@
 
 #include <xlang++/Visit.hpp>
+#include <xlang++/layout/UniquePtr.hpp>
 
 #include <stdio.h>
 #include <optional>

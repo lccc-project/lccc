@@ -1,7 +1,10 @@
 #ifndef LCCC_XLANG_TARGET_HPP_2021_05_27_19_27_11
 #define LCCC_XLANG_TARGET_HPP_2021_05_27_19_27_11
 
-#include <xlang++/Layout.h>
+#include <xlang++/layout/String.hpp>
+#include <xlang++/layout/Hash.hpp>
+#include <xlang++/layout/Pair.hpp>
+#include <xlang++/layout/Span.hpp>
 #include <functional> // grab definition of std::hash and also partial specs for enums.
 
 namespace lccc{
@@ -9,7 +12,7 @@ namespace lccc{
     {
         X86_64 = 0,
         IX86 = 1,
-        W65816 = 2,
+        W65 = 2,
         ARM = 3,
         AARCH64 = 4,
         SUPERH = 5,

@@ -1,7 +1,11 @@
 #ifndef XLANG_IRSTRUCTS_H_2021_05_26_08_12_53
 #define XLANG_IRSTRUCTS_H_2021_05_26_08_12_53
 
-#include <xlang++/Layout.h>
+#include <xlang++/layout/UniquePtr.hpp>
+#include <xlang++/layout/Variant.hpp>
+#include <xlang++/layout/Vector.hpp>
+#include <xlang++/layout/Pair.hpp>
+#include <xlang++/layout/UnorderedMap.hpp>
 #include <xlang++/Visit.hpp>
 
 namespace lccc::xlang
@@ -78,6 +82,12 @@ namespace lccc::xlang
         Array,
         Decltype,
         Void,
+    };
+
+    struct ScopeMember;
+
+    struct Scope{
+        lccc::unordered_map<Identifier,lccc::unique_ptr<ScopeMember>> members;
     };
 
     struct Type;

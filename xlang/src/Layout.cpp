@@ -17,7 +17,11 @@
  *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
  */
 
-#include <xlang++/Layout.h>
+#include <xlang++/layout/Hash.hpp>
+#include <xlang++/layout/StringView.hpp>
+#include <xlang++/layout/Allocator.hpp>
+#include <xlang++/layout/UnorderedMap.hpp>
+
 
 #include <random>
 
@@ -41,34 +45,37 @@ template struct lccc::hash<void*>;
 using namespace lccc;
 using namespace std::string_view_literals;
 
-extern"C"{
-    void* xlang_allocate(std::size_t sz)noexcept{
-        return ::operator new(sz,std::nothrow);
-    }
 
-    void* xlang_allocate_aligned(std::size_t sz,std::size_t a)noexcept{
-        return ::operator new(a,std::align_val_t{a},std::nothrow);
-    }
-
-    void xlang_deallocate(void* v)noexcept{
-        ::operator delete(v);
-    }
-
-    void xlang_deallocate_aligned(void* v,std::size_t a)noexcept{
-        ::operator delete(v,std::align_val_t{a});
-    }
-
-    const char xlang_hash_seed = 0xff;
-
-    std::size_t xlang_hash_scalar(const void* v,std::size_t sz){
-        constexpr std::size_t hash_init = sizeof(std::size_t)==4?2166136261:sizeof(std::size_t)==8?14695981039346656037ull:0;
-        static const std::size_t seed{(hash_init^std::random_device{}())*xlang_hash_prime};
-        std::size_t hash{seed};
-        for(const unsigned char* c = static_cast<const unsigned char*>(v);c!=static_cast<const unsigned char*>(v)+sz;c++){
-            hash ^= *c;
-            hash *= xlang_hash_prime;
+namespace lccc{
+    extern"C"{
+        void* xlang_allocate(std::size_t sz)noexcept{
+            return ::operator new(sz,std::nothrow);
         }
-        return hash;
+
+        void* xlang_allocate_aligned(std::size_t sz,std::size_t a)noexcept{
+            return ::operator new(a,std::align_val_t{a},std::nothrow);
+        }
+
+        void xlang_deallocate(void* v)noexcept{
+            ::operator delete(v);
+        }
+
+        void xlang_deallocate_aligned(void* v,std::size_t a)noexcept{
+            ::operator delete(v,std::align_val_t{a});
+        }
+
+        const char xlang_hash_seed = 0xff;
+
+        std::size_t xlang_hash_scalar(const void* v,std::size_t sz){
+            constexpr std::size_t hash_init = sizeof(std::size_t)==4?2166136261:sizeof(std::size_t)==8?14695981039346656037ull:0;
+            static const std::size_t seed{(hash_init^std::random_device{}())*xlang_hash_prime};
+            std::size_t hash{seed};
+            for(const unsigned char* c = static_cast<const unsigned char*>(v);c!=static_cast<const unsigned char*>(v)+sz;c++){
+                hash ^= *c;
+                hash *= xlang_hash_prime;
+            }
+            return hash;
+        }
     }
 }
 

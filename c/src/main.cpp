@@ -1,5 +1,6 @@
 #include <string>
 #include <xlang++/Visit.hpp>
+#include <xlang++/layout/UniquePtr.hpp>
 
 #include "parse.hpp"
 #include "preprocess.hpp"

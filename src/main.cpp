@@ -9,7 +9,7 @@
 #include <set>
 #include <list>
 
-#include <xlang++/Layout.h>
+#include <xlang++/layout/StringView.hpp>
 #include <xlang++/Plugins.h>
 #include <xlang++/Visit.hpp>
 

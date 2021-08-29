@@ -18,6 +18,7 @@
 
 #include <Config.hpp>
 #include <xlang++/Plugins.h>
+#include <xlang++/layout/UniquePtr.hpp>
 #include <dlfcn.h>
 #include <system_error>
 #include <stdexcept>

@@ -23,7 +23,7 @@ set_target_properties(xlang-targets PROPERTIES
 
 target_include_directories(xlang-targets PRIVATE include ${CMAKE_CURRENT_BINARY_DIR}/include)
 
-add_library(xlang SHARED include/xlang++/Plugins.h include/xlang++/Visit.hpp include/xlang++/Target.hpp src/Visit.cpp include/xlang++/Layout.h include/xlang++/Properties.h
+add_library(xlang SHARED include/xlang++/Plugins.h include/xlang++/Visit.hpp include/xlang++/Target.hpp src/Visit.cpp include/xlang++/Properties.h
          src/IRWriter.cpp src/Layout.cpp ${LCCC_XLANG_PLUGINS_IMPL}
          src/Target.cpp)
 target_include_directories(xlang PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/include)

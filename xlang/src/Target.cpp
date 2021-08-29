@@ -16,7 +16,7 @@ namespace lccc{
             return "x86_64"_sv;
         case Architecture::IX86:
             return "i386"_sv;
-        case Architecture::W65816:
+        case Architecture::W65:
             return "w65"_sv;
         case Architecture::AARCH64:
             return "aarch64"_sv;

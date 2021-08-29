@@ -27,8 +27,9 @@
 #include <cstdint>
 #include <functional>
 #include <type_traits>
-#include <xlang++/Layout.h>
+#include <xlang++/layout/StringView.hpp>
 #include <xlang++/Target.hpp>
+#include <xlang++/layout/Function.hpp>
 
 namespace lccc::xlang{
     /**
