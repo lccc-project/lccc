@@ -2,7 +2,7 @@
 // Created by chorm on 2020-11-18.
 //
 
-#include <xlang++/layout/UniquePointer.hpp>
+#include <xlang++/layout/UniquePtr.hpp>
 #include <xlang++/layout/Span.hpp>
 #include <xlang++/Visit.hpp>
 
