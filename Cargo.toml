@@ -1,0 +1,2 @@
+[workspace]
+members = ["xlang","xlang_abi","xlang_struct","lccc"]
