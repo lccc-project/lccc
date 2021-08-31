@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 target-tuples = "0.4.1"
+xlang_abi = {path="../xlang_abi"}

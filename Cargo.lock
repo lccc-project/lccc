@@ -5,8 +5,39 @@ name = "lccc"
 version = "0.1.0"
 
 [[package]]
+name = "proc-macro2"
+version = "1.0.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "unicode-xid 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "quote"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "proc-macro2 1.0.29 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "syn"
+version = "1.0.75"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "proc-macro2 1.0.29 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 1.0.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "unicode-xid 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "target-tuples"
 version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "unicode-xid"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -14,15 +45,30 @@ name = "xlang"
 version = "0.1.0"
 dependencies = [
  "target-tuples 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "xlang_abi 0.1.0",
 ]
 
 [[package]]
 name = "xlang_abi"
 version = "0.1.0"
+dependencies = [
+ "xlang_abi_macro 0.1.0",
+]
+
+[[package]]
+name = "xlang_abi_macro"
+version = "0.1.0"
+dependencies = [
+ "syn 1.0.75 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "xlang_struct"
 version = "0.1.0"
 
 [metadata]
+"checksum proc-macro2 1.0.29 (registry+https://github.com/rust-lang/crates.io-index)" = "b9f5105d4fdaab20335ca9565e106a5d9b82b6219b5ba735731124ac6711d23d"
+"checksum quote 1.0.9 (registry+https://github.com/rust-lang/crates.io-index)" = "c3d0b9745dc2debf507c8422de05d7226cc1f0644216dfdfead988f9b1ab32a7"
+"checksum syn 1.0.75 (registry+https://github.com/rust-lang/crates.io-index)" = "b7f58f7e8eaa0009c5fec437aabf511bd9933e4b2d7407bd05273c01a8906ea7"
 "checksum target-tuples 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "a50e80f6ada7860f52175c48679e22005d0d6df8a4ff87b66aeef976ea1481fe"
+"checksum unicode-xid 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
