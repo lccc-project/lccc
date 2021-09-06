@@ -1,0 +1,24 @@
+
+RUSTC := @RUSTC@
+CC := @CC@
+CXX := @CXX@
+
+hostedtargs:=@hostedtargs@
+
+target:= @target@
+
+LIBRARIES = core alloc
+
+ifneq (,$(findstring $(target),$(hostedtargs))) 
+    LIBRARIES += std proc_macro
+endif
+
+all: 
+
+
+stamp: $(foreach lib,$(LIBRARIES),lib$(lib))
+    touch stamp
+
+lib$(lib): lib$(lib)/stamp
+
+

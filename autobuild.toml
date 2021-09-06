@@ -1,0 +1,12 @@
+[dirs]
+lcccdir = "$libdir/lccc"
+xlangdir = "$lcccdir/xlang"
+sysrootdir = "$lcccdir/sysroot"
+
+[programs.RUSTC]
+type = "rustc"
+target = "$host"
+
+[programs.RUSTC_FOR_BUILD]
+type = "rustc"
+target = "$build"

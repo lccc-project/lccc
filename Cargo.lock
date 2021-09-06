@@ -3,6 +3,9 @@
 [[package]]
 name = "lccc"
 version = "0.1.0"
+dependencies = [
+ "xlang 0.1.0",
+]
 
 [[package]]
 name = "proc-macro2"
@@ -65,6 +68,10 @@ dependencies = [
 [[package]]
 name = "xlang_struct"
 version = "0.1.0"
+dependencies = [
+ "xlang 0.1.0",
+ "xlang_abi 0.1.0",
+]
 
 [metadata]
 "checksum proc-macro2 1.0.29 (registry+https://github.com/rust-lang/crates.io-index)" = "b9f5105d4fdaab20335ca9565e106a5d9b82b6219b5ba735731124ac6711d23d"

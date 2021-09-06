@@ -8,4 +8,10 @@ edition = "2018"
 
 [dependencies]
 target-tuples = "0.4.1"
-xlang_abi = {path="../xlang_abi"}
+xlang_abi = {path="xlang_abi"}
+
+[profiles.release]
+debug=false
+
+[lib]
+crate-type=["dylib"]

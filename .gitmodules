@@ -1,0 +1,3 @@
+[submodule "lc-binutils"]
+	path = lc-binutils
+	url = https://github.com/LightningCreations/lc-binutils
