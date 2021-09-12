@@ -16,9 +16,6 @@ unsafe impl AbiSafeVTable<dyn Visitor> for VisitorVTable {}
 unsafe impl AbiSafeVTable<dyn Visitor + Send> for VisitorVTable {}
 unsafe impl AbiSafeVTable<dyn Visitor + Sync> for VisitorVTable {}
 unsafe impl AbiSafeVTable<dyn Visitor + Send + Sync> for VisitorVTable {}
-unsafe impl AbiSafeVTable<dyn Visitor + Send + Unpin> for VisitorVTable {}
-unsafe impl AbiSafeVTable<dyn Visitor + Sync + Unpin> for VisitorVTable {}
-unsafe impl AbiSafeVTable<dyn Visitor + Send + Sync + Unpin> for VisitorVTable {}
 
 unsafe impl AbiSafeTrait for dyn Visitor {
     type VTable = VisitorVTable;
@@ -92,30 +89,30 @@ unsafe impl<T: Visitor + Send> AbiSafeUnsize<T> for dyn Visitor + Send + Sync {
     }
 }
 
-impl<'lt> Visitor for DynPtrSafe<'lt, dyn Visitor> {
+impl<'lt> Visitor for dyn DynPtrSafe<dyn Visitor> + 'lt {
     extern "C" fn visit_end(&mut self) {
         let vtbl = self.vtable();
-        unsafe { (vtbl.visit_end)(self.as_mut_ptr()) }
+        unsafe { (vtbl.visit_end)(self.as_raw_mut()) }
     }
 }
 
-impl<'lt> Visitor for DynPtrSafe<'lt, dyn Visitor + Send> {
+impl<'lt> Visitor for dyn DynPtrSafe<dyn Visitor + Send> + 'lt {
     extern "C" fn visit_end(&mut self) {
         let vtbl = self.vtable();
-        unsafe { (vtbl.visit_end)(self.as_mut_ptr()) }
+        unsafe { (vtbl.visit_end)(self.as_raw_mut()) }
     }
 }
 
-impl<'lt> Visitor for DynPtrSafe<'lt, dyn Visitor + Sync> {
+impl<'lt> Visitor for dyn DynPtrSafe<dyn Visitor + Sync> + 'lt {
     extern "C" fn visit_end(&mut self) {
         let vtbl = self.vtable();
-        unsafe { (vtbl.visit_end)(self.as_mut_ptr()) }
+        unsafe { (vtbl.visit_end)(self.as_raw_mut()) }
     }
 }
 
-impl<'lt> Visitor for DynPtrSafe<'lt, dyn Visitor + Send + Sync> {
+impl<'lt> Visitor for dyn DynPtrSafe<dyn Visitor + Send + Sync> + 'lt {
     extern "C" fn visit_end(&mut self) {
         let vtbl = self.vtable();
-        unsafe { (vtbl.visit_end)(self.as_mut_ptr()) }
+        unsafe { (vtbl.visit_end)(self.as_raw_mut()) }
     }
 }

@@ -65,12 +65,73 @@ pub unsafe trait AbiSafeUnsize<T>: AbiSafeTrait {
     fn construct_vtable_for() -> &'static Self::VTable;
 }
 
-pub trait AbiSafeReciever<T: ?Sized + AbiSafeTrait> {}
+///
+/// A type that can be created from a raw pointer erased by this library
+/// SAFETY:
+/// Implementors of the trait shall ensure that:
+/// 1. The parameter of [`FromReciever::from_raw_ptr`] is not modified by that function
+/// 2. Given the preconditions of [`FromReciever::from_raw_ptr`] are satisfied, the returned value shall refer to the same storage as x, and shall have a subset of the provenance of x (and shall have provenance to it's entire storage)
+/// 3. It is valid to access a value of type T from the return value according to the rules of [`Self`]
+pub unsafe trait FromReciever {
+    type Target;
+    ///
+    /// Produces a pointer with the type of [`Self`] to the memory region pointed to by x
+    /// ## SAFETY
+    /// The preconditions of this function depends on [`Self`]
+    unsafe fn from_raw_ptr(x: *mut ()) -> Self;
+}
 
-impl<T: ?Sized + AbiSafeTrait> AbiSafeReciever<T> for &mut T {}
-impl<T: ?Sized + AbiSafeTrait> AbiSafeReciever<T> for &T {}
-impl<T: ?Sized + AbiSafeTrait, P: Deref + AbiSafeReciever<T>> AbiSafeReciever<T> for Pin<P> {}
-impl<T: ?Sized + AbiSafeTrait> AbiSafeReciever<T> for Box<T> {}
+unsafe impl<'lt, T> FromReciever for &'lt mut T {
+    type Target = T;
+    /// SAFETY:
+    /// All requirements of a &mut T must be satisfied for 'lt
+    /// In particular:
+    /// - x must be non-null and well-aligned to T
+    /// - x must be valid for reads and writes for the size of T
+    /// - No other references may exist to the same memory region as x
+    /// - Neither x nor any pointer derived from x or to the same memory region may be used to access that memory region for the duration of 'lt
+    /// - x must point to a valid, initialized, value of type T
+    unsafe fn from_raw_ptr(x: *mut ()) -> &'lt mut T {
+        &mut *(x as *mut T)
+    }
+}
+
+unsafe impl<'lt, T> FromReciever for &'lt T {
+    type Target = T;
+    /// SAFETY:
+    /// All requirements of a &T must be satisfied for 'lt
+    /// In particular:
+    /// - x must be non-null and well-aligned to T
+    /// - x must be valid for reads for the size of T
+    /// - No mutable references may exist to the same memory region as x
+    /// - Neither x nor any pointer derived from x or to the same memory region may be used to modify that memory region for the duration of 'lt, unless T is or contains an UnsafeCell.
+    /// - x must point to a valid, initialized, value of type T
+    unsafe fn from_raw_ptr(x: *mut ()) -> &'lt T {
+        &*(x as *mut T)
+    }
+}
+
+unsafe impl<P: FromReciever> FromReciever for Pin<P>
+where
+    P: Deref<Target = <P as FromReciever>::Target>,
+{
+    type Target = <P as FromReciever>::Target;
+    /// SAFETY:
+    /// The preconditions of [`FromReciever::from_raw_ptr`] for P must be upheld.
+    /// In addition, this method Pins the pointed to T.
+    /// Unless T implements the Unpin, then the T pointed to by x must not be moved after this method call.
+    /// Additionaly, unless T implements the Unpin triyat, it's destructor must be called on the memory region before the storage is deallocated or reused for any other type
+    /// These restriictions apply whether or not the pointee of x was previously pinned.
+    unsafe fn from_raw_ptr(x: *mut ()) -> Self {
+        Pin::new_unchecked(P::from_raw_ptr(x))
+    }
+}
+
+pub unsafe trait AbiSafeReciever<T: ?Sized + AbiSafeTrait> {}
+
+unsafe impl<T: ?Sized + AbiSafeTrait> AbiSafeReciever<T> for &mut T {}
+unsafe impl<T: ?Sized + AbiSafeTrait> AbiSafeReciever<T> for &T {}
+unsafe impl<T: ?Sized + AbiSafeTrait, P: Deref + AbiSafeReciever<T>> AbiSafeReciever<T> for Pin<P> {}
 
 ///
 /// ## SAFETY:
@@ -173,8 +234,8 @@ pub struct DynRef<'lt, T: ?Sized + AbiSafeTrait> {
 }
 
 impl<'lt, T: ?Sized + AbiSafeTrait> DynRef<'lt, T> {
-    pub fn as_pinned(x: &Pin<Self>) -> Pin<&DynPtrSafe<T>> {
-        unsafe { x.as_ref().map_unchecked(|f| &*f) }
+    pub fn as_pinned(x: &Pin<Self>) -> Pin<&(dyn DynPtrSafe<T> + 'lt)> {
+        x.as_ref()
     }
 
     pub fn unsize_ref<U>(x: &'lt U) -> Self
@@ -200,89 +261,44 @@ unsafe impl<'lt, T: ?Sized + AbiSafeTrait + Sync> Send for DynRef<'lt, T> {}
 unsafe impl<'lt, T: ?Sized + AbiSafeTrait + Sync> Sync for DynRef<'lt, T> {}
 
 impl<'lt, T: ?Sized + AbiSafeTrait> Deref for DynRef<'lt, T> {
-    type Target = DynPtrSafe<'lt, T>;
-    fn deref(&self) -> &DynPtrSafe<'lt, T> {
-        unsafe { &*(&self.inner as *const DynPtr<T> as *const DynPtrSafe<T>) }
+    type Target = dyn DynPtrSafe<T> + 'lt;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*(&self.inner as *const DynPtr<T> as *const DynPtrSafeWrap<T>) }
+    }
+}
+
+pub unsafe trait DynPtrSafe<T: ?Sized + AbiSafeTrait> {
+    fn as_raw(&self) -> *const ();
+    fn as_raw_mut(&mut self) -> *mut ();
+    fn vtable(&self) -> &'static T::VTable;
+}
+
+#[repr(transparent)]
+struct DynPtrSafeWrap<T: ?Sized + AbiSafeTrait> {
+    inner: DynPtr<T>,
+    _pin: PhantomPinned,
+    phantom: PhantomData<T>,
+}
+
+impl<T: ?Sized + AbiSafeTrait + Unpin> Unpin for DynPtrSafeWrap<T> {}
+unsafe impl<T: ?Sized + AbiSafeTrait + Send> Send for DynPtrSafeWrap<T> {}
+unsafe impl<T: ?Sized + AbiSafeTrait + Sync> Sync for DynPtrSafeWrap<T> {}
+
+unsafe impl<T: ?Sized + AbiSafeTrait> DynPtrSafe<T> for DynPtrSafeWrap<T> {
+    fn as_raw(&self) -> *const () {
+        self.inner.ptr
+    }
+
+    fn as_raw_mut(&mut self) -> *mut () {
+        self.inner.ptr
+    }
+
+    fn vtable(&self) -> &'static T::VTable {
+        self.inner.vtable
     }
 }
 
 #[repr(transparent)]
-pub struct DynPtrSafe<'lt, T: ?Sized + AbiSafeTrait>(
-    DynPtr<T>,
-    PhantomPinned,
-    PhantomData<&'lt mut &'lt mut ()>,
-);
-
-// !Unpin is needed for as_pinned_ptr to be safe
-impl<'lt, T: ?Sized + AbiSafeTrait + Unpin> Unpin for DynPtrSafe<'lt, T> {}
-
-unsafe impl<'lt, T: ?Sized + AbiSafeTrait + Send> Send for DynPtrSafe<'lt, T> {}
-
-unsafe impl<'lt, T: ?Sized + AbiSafeTrait + Sync> Sync for DynPtrSafe<'lt, T> {}
-
-impl<'lt, T: ?Sized + AbiSafeTrait> DynPtrSafe<'lt, T> {
-    ///
-    /// The resulting pointer is valid for the dynamic lifetime of self, as follows:
-    /// * It is NonNull
-    /// * It is dereferenceable and valid for reads for self.vtable().size() bytes
-    /// * It is aligned to self.vtable().align()
-    /// * The pointed to value is valid to be used to call functions with &self recievers on the vtable
-    /// * The pointer is immutable and Shall not be written to
-    pub fn as_ptr(&self) -> *const () {
-        self.0.ptr
-    }
-
-    ///
-    /// The resulting pointer is valid for the dynamic lifetime of self, as follows:
-    /// * It is NonNull
-    /// * It is dereferenceable and valid for writes for self.vtable().size() bytes
-    /// * It is aligned to self.vtable().align()
-    /// * The pointed to value is valid to be used to call functions with &mut self recievers on the vtable
-    pub fn as_mut_ptr(&mut self) -> *mut () {
-        self.0.ptr
-    }
-
-    ///
-    /// The resulting pointer is valid for the dynamic lifetime of self, as follows:
-    /// * It is NonNull
-    /// * It is dereferenceable and valid for reads for self.vtable().size() bytes
-    /// * It is aligned to self.vtable().align()
-    /// * The pointed to value is valid to be used to call functions with Pin<&Self> recievers on the vtable
-    /// * The pointer is immutable and Shall not be written to
-    ///
-    /// Safety:
-    /// The Resulting pointer is to pinned memory. You are responsible for ensuring any usage of the pointer does not violate the pinning invariant,
-    /// unless the underlying (erased) type of the pointee is Unpin
-    pub fn as_pinned_ptr(self: Pin<&'lt Self>) -> *const () {
-        self.0.ptr
-    }
-
-    ///
-    /// The resulting pointer is valid for the dynamic lifetime of self, as follows:
-    /// * It is NonNull
-    /// * It is dereferenceable and valid for writes for self.vtable().size() bytes
-    /// * It is aligned to self.vtable().align()
-    /// * The pointed to value is valid to be used to call functions with &mut self recievers on the ///
-    /// The resulting pointer is valid for the dynamic lifetime of self, as follows:
-    /// * It is NonNull
-    /// * It is dereferenceable and valid for reads for self.vtable().size() bytes
-    /// * It is aligned to self.vtable().align()
-    /// * The pointed to value is valid to be used to call functions with Pin<&Self> recievers on the vtable
-    /// * The pointer is immutable and Shall not be written to
-    ///
-    /// Safety:
-    /// The Resulting pointer is to pinned memory. You are responsible for ensuring any usage of the pointer does not violate the pinning invariant,
-    /// unless the underlying (erased) type of the pointee is Unpin
-    pub fn as_ptr_mut_ptr(self: Pin<&'lt mut Self>) -> *mut () {
-        unsafe { self.get_unchecked_mut().0.ptr }
-    }
-
-    pub fn vtable(&self) -> &'static T::VTable {
-        self.0.vtable
-    }
-}
-
-#[repr(C)]
 pub struct DynMut<'lt, T: ?Sized + AbiSafeTrait> {
     inner: DynPtr<T>,
     phantom: PhantomData<&'lt mut T>,
@@ -313,12 +329,12 @@ impl<'lt, T: ?Sized + AbiSafeTrait> DynMut<'lt, T> {
         }
     }
 
-    pub fn as_pinned_mut(x: &'lt mut Pin<Self>) -> Pin<&mut DynPtrSafe<T>> {
-        unsafe { x.as_mut().map_unchecked_mut(|f| f) }
+    pub fn as_pinned_mut(x: &mut Pin<Self>) -> Pin<&mut (dyn DynPtrSafe<T> + 'lt)> {
+        x.as_mut()
     }
 
-    pub fn as_pinned(x: &Pin<Self>) -> Pin<&DynPtrSafe<T>> {
-        unsafe { x.as_ref().map_unchecked(|f| f) }
+    pub fn as_pinned(x: &Pin<Self>) -> Pin<&dyn DynPtrSafe<T>> {
+        x.as_ref()
     }
 
     /// Forces a reborrow coercion to shrink 'lt
@@ -334,14 +350,14 @@ unsafe impl<'lt, T: ?Sized + AbiSafeTrait + Send> Send for DynMut<'lt, T> {}
 unsafe impl<'lt, T: ?Sized + AbiSafeTrait + Sync> Sync for DynMut<'lt, T> {}
 
 impl<'lt, T: ?Sized + AbiSafeTrait> Deref for DynMut<'lt, T> {
-    type Target = DynPtrSafe<'lt, T>;
+    type Target = dyn DynPtrSafe<T> + 'lt;
     fn deref(&self) -> &Self::Target {
-        unsafe { &*(&self.inner as *const DynPtr<T> as *const DynPtrSafe<T>) }
+        unsafe { &*(&self.inner as *const DynPtr<T> as *const DynPtrSafeWrap<T>) }
     }
 }
 
 impl<'lt, T: ?Sized + AbiSafeTrait> DerefMut for DynMut<'lt, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *(&mut self.inner as *mut DynPtr<T> as *mut DynPtrSafe<T>) }
+        unsafe { &mut *(&mut self.inner as *mut DynPtr<T> as *mut DynPtrSafeWrap<T>) }
     }
 }

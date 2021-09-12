@@ -10,3 +10,4 @@ target = "$host"
 [programs.RUSTC_FOR_BUILD]
 type = "rustc"
 target = "$build"
+

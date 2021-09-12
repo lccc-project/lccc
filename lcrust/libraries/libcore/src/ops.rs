@@ -121,7 +121,7 @@ pub unsafe trait DerefPlace: DerefMut<Target: Sized> {
     fn deref_place(&mut self) -> *mut Self::Target;
 }
 
-#[unstable(feature = "lccc_deref_pure")]
+#[unstable(feature = "lccc_deref_patterns_internal")]
 #[lang = "pure_annotation"]
 pub unsafe trait DerefPure: Deref {}
 
@@ -249,42 +249,24 @@ pub enum ControlFlow<B, C> {
     Continue(C),
 }
 
-#[unstable(feature = "try_trait", deprecated_in_stdver = 2021)]
-#[lang = "try_old"]
-pub trait Try {
-    type Ok;
-    type Error;
-    #[__lccc::stable_on_implicit_call(2018, 2015)]
-    #[__lccc::trait_resolution_diagnostic("`{Self}` cannot be used with ?. In `{stdver}`, ? can only be applied to Result or to Option")]
-    fn into_result(self) -> core::result::Result<Self::Ok, Self::Error>;
-
-    #[__lccc::stable_on_implicit_call(2018, 2015)]
-    #[__lccc::trait_resolution_diagnostic("Cannot use ? in the current context. In `{stdver}`, ? can only be used in functions returning Result or Option")]
-    fn from_error(v: Self::Error) -> Self;
-
-    #[__lccc::stable_on_implicit_call(2018, 2015)]
-    fn from_ok(v: Self::Ok) -> Self;
-}
-
 #[unstable(feature = "try_trait_v2", issue = "84277")]
 pub trait FromResidual<R = <Self as TryV2>::Residual> {
-    #[__lccc::stable_on_implicit_call(2021)]
-    #[__lccc::trait_resolution_diagnostic(
-        "Cannot convert `{diagroot.expr.type}` to `{Self}` using ?"
-    )]
+    #[__lccc::stable_on_implicit_call]
+    #[__lccc::trait_resolution_diagnostic("Cannot convert `{resolve.Type}` to `{Self}` using ?")]
     fn from_residual(residual: R) -> Self;
 }
 
 #[unstable(feature = "try_trait_v2", issue = "84277")]
 #[lang = "try_new"]
-pub trait TryV2: FromResidual {
+pub trait Try: FromResidual {
     type Output;
     type Residual;
 
-    #[__lccc::stable_on_implicit_call(2021)]
+    #[__lccc::stable_on_implicit_call]
+    #[__lccc::trait_resolution_diagnostc("`{Self}` cannot be used as the type for a try block")]
     fn from_output(output: Self::Output) -> Self;
 
-    #[__lccc::stable_on_implicit_call(2021)]
+    #[__lccc::stable_on_implicit_call]
     #[__lccc::trait_resolution_diagnostic("`{Self}` cannot be used with ? in `{stdver}`")]
     fn branch(self) -> ControlFlow<Self::Output, Self::Residual>;
 }

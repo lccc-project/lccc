@@ -10,8 +10,6 @@ edition = "2018"
 target-tuples = "0.4.1"
 xlang_abi = {path="xlang_abi"}
 
-[profiles.release]
-debug=false
 
 [lib]
 crate-type=["dylib"]

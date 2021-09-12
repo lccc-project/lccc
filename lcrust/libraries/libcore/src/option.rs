@@ -19,16 +19,14 @@
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum Option<T> {
-    #[lang = "none"]
     None,
-    #[lang = "some"]
     Some(T),
 }
 use crate::clone::Clone;
 use crate::convert::From;
 use crate::default::Default;
 use crate::iter::{IntoIterator, Iterator};
-use crate::ops::{Deref, DerefMut, FnOnce};
+use crate::ops::{ControlFlow, Deref, DerefMut, FnOnce, FromResidual, Try};
 use crate::result::Result;
 use crate::result::Result::Ok;
 use crate::{Copy, PartialEq};
@@ -439,5 +437,28 @@ impl<'a, T: 'a> IntoIterator for &'a mut Option<T> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter_mut()
+    }
+}
+
+impl<T> FromResidual<Option<!>> for Option<T> {
+    fn from_residual(x: Option<!>) -> Option<T> {
+        None //
+    }
+}
+
+impl<T> Try for Option<T> {
+    type Output = T;
+    type Residual = Option<!>;
+
+    fn from_output(x: Self::Output) -> Self {
+        Self::Some(x)
+    }
+
+    fn branch(self) -> ControlFlow<T, Option<!>> {
+        match self{
+            Self::Some(x) => ControlFlow::Continue(x),
+            Self::None => ControlFlow::Break(Self::None)
+        }
+    }
     }
 }
