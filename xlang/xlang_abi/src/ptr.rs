@@ -34,13 +34,6 @@ impl<T: ?Sized> Unique<T> {
         }
     }
 
-    pub unsafe fn new_nullable_unchecked(ptr: *mut T) -> Option<Self> {
-        NonNull::new(ptr).map(|ptr| Self {
-            ptr,
-            phantom: PhantomData,
-        })
-    }
-
     pub unsafe fn as_ref(&self) -> &T {
         self.ptr.as_ref()
     }

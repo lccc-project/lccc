@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 xlang = {path="../xlang"}
+xlang_abi = {path="../xlang/xlang_abi"}

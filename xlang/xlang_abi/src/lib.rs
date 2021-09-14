@@ -10,5 +10,4 @@ pub mod ptr;
 pub mod string;
 pub mod vec;
 
-#[macro_use]
-extern crate xlang_abi_macro;
+pub use xlang_abi_macro::xlang_trait;

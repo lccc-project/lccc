@@ -11,6 +11,3 @@ target-tuples = "0.4.1"
 xlang_abi = {path="xlang_abi"}
 xlang_interface = {path="xlang_interface"}
 
-
-[lib]
-crate-type=["dylib"]

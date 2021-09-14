@@ -271,7 +271,7 @@ impl<T, A: Allocator> DerefMut for Vec<T, A> {
 impl<T: Clone, A: Allocator + Clone> Clone for Vec<T, A> {
     fn clone(&self) -> Self {
         let nalloc = self.alloc.clone();
-        let mut nvec = Self::with_capacity_in(self.len, nalloc);
+        let nvec = Self::with_capacity_in(self.len, nalloc);
         let ptr = nvec.ptr.as_ptr();
         for i in 0..self.len {
             unsafe {

@@ -5,6 +5,7 @@ name = "lccc"
 version = "0.1.0"
 dependencies = [
  "xlang 0.1.0",
+ "xlang_abi 0.1.0",
 ]
 
 [[package]]

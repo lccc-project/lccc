@@ -62,3 +62,12 @@ pub unsafe extern "C" fn xlang_deallocate_aligned(
     let layout = Layout::from_size_align_unchecked(size, align);
     std::alloc::dealloc(ptr as *mut _, layout);
 }
+
+#[no_mangle]
+pub extern "C" fn xlang_on_allocation_failure(size: usize, align: usize) -> ! {
+    eprintln!(
+        "Failed to allocate with size: {}, and alignment: {}",
+        size, align
+    );
+    std::process::abort()
+}

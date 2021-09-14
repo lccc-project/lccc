@@ -75,7 +75,7 @@ impl Layout {
             core::mem::align_of::<T>(),
         ) {
             (Some(size), align) => Ok(Layout { size, align }),
-            (None, align) => Err(LayoutError(())),
+            (None, _) => Err(LayoutError(())),
         }
     }
 
@@ -120,7 +120,7 @@ impl Layout {
     }
 
     pub fn extend(&self, next: Self) -> Result<(Self, usize), LayoutError> {
-        let Layout { mut size, align } = self.align_to(next.align())?;
+        let Layout { size, align } = self.align_to(next.align())?;
         match size
             .checked_add(size % next.align())
             .map(|v| v.checked_add(next.size()))

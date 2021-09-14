@@ -1,3 +1,7 @@
+use xlang::prelude::v1::*;
+
 fn main() {
-    println!("Hello, world!");
+    let s = String::from("Hello World");
+
+    println!("{}", s);
 }
