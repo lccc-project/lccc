@@ -1,13 +1,14 @@
 use std::{
-    alloc::Layout,
     fmt::Debug,
     hash::Hash,
+    io::Write,
+    iter::FromIterator,
     mem::ManuallyDrop,
-    ops::{Deref, DerefMut, Index},
+    ops::{Deref, DerefMut},
 };
 
 use crate::{
-    alloc::{Allocator, XLangAlloc},
+    alloc::{Allocator, Layout, XLangAlloc},
     ptr::Unique,
 };
 
@@ -80,8 +81,8 @@ impl<T, A: Allocator> Vec<T, A> {
                 .allocate(unsafe {
                     Layout::from_size_align_unchecked(raw_cap, core::mem::align_of::<T>())
                 })
-                .unwrap_or_else(|_| {
-                    std::alloc::handle_alloc_error(unsafe {
+                .unwrap_or_else(|| {
+                    crate::alloc::handle_alloc_error(unsafe {
                         Layout::from_size_align_unchecked(raw_cap, core::mem::align_of::<T>())
                     })
                 })
@@ -142,8 +143,8 @@ impl<T, A: Allocator> Vec<T, A> {
                     Layout::from_size_align_unchecked(raw_cap, core::mem::align_of::<T>()),
                 )
             }
-            .unwrap_or_else(|_| {
-                std::alloc::handle_alloc_error(unsafe {
+            .unwrap_or_else(|| {
+                crate::alloc::handle_alloc_error(unsafe {
                     Layout::from_size_align_unchecked(
                         self.cap * core::mem::size_of::<T>(),
                         core::mem::align_of::<T>(),
@@ -214,6 +215,40 @@ impl<T, A: Allocator> Vec<T, A> {
             }
         }
         self.len = 0;
+    }
+
+    pub fn extend_from_slice(&mut self, x: &[T])
+    where
+        T: Clone,
+    {
+        self.reserve(x.len());
+        for v in x {
+            self.push(v.clone());
+        }
+    }
+}
+
+impl<T, A: Allocator + Default> FromIterator<T> for Vec<T, A> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let iter = iter.into_iter();
+        let (size, _) = iter.size_hint();
+        let mut ret = Vec::with_capacity_in(size, Default::default());
+        for v in iter {
+            ret.push(v)
+        }
+        ret
+    }
+}
+
+impl<T, A: Allocator> Extend<T> for Vec<T, A> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        let iter = iter.into_iter();
+        let (size, _) = iter.size_hint();
+
+        self.reserve(size);
+        for v in iter {
+            self.push(v)
+        }
     }
 }
 
@@ -289,5 +324,19 @@ impl<T, A: Allocator + Default> Default for Vec<T, A> {
 impl<T: Debug, A: Allocator> Debug for Vec<T, A> {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
         <[T]>::fmt(self, fmt)
+    }
+}
+
+impl<A: Allocator> Write for Vec<u8, A> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.reserve(buf.len());
+        unsafe {
+            core::ptr::copy_nonoverlapping(buf.as_ptr(), self.ptr.as_ptr().add(self.len), buf.len())
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }

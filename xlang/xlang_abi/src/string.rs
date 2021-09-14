@@ -3,8 +3,9 @@ use core::{
     str::Utf8Error,
 };
 use std::{
-    fmt::Formatter,
+    fmt::{Formatter, Write},
     hash::{Hash, Hasher},
+    marker::PhantomData,
 };
 
 use crate::alloc::{Allocator, XLangAlloc};
@@ -85,3 +86,85 @@ impl<A: Allocator, A1: Allocator> PartialEq<String<A1>> for String<A> {
 }
 
 impl<A: Allocator> Eq for String<A> {}
+
+impl From<&str> for String {
+    fn from(s: &str) -> Self {
+        if s.len() == 0 {
+            Self::new()
+        } else {
+            let mut bytes = crate::vec::Vec::with_capacity(s.len());
+            bytes.extend_from_slice(s.as_bytes());
+            Self(bytes)
+        }
+    }
+}
+
+impl<A: Allocator> Write for String<A> {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        self.0.extend_from_slice(s.as_bytes());
+        Ok(())
+    }
+}
+
+///
+/// An abi safe &str
+#[repr(C)]
+pub struct StringView<'a> {
+    begin: *const u8,
+    end: *const u8,
+    inner: PhantomData<&'a str>,
+}
+
+unsafe impl<'a> Send for StringView<'a> {}
+unsafe impl<'a> Sync for StringView<'a> {}
+
+impl<'a> From<&'a str> for StringView<'a> {
+    fn from(v: &'a str) -> Self {
+        let begin = v.as_ptr();
+        let end = unsafe { begin.add(v.len()) };
+        Self {
+            begin,
+            end,
+            inner: PhantomData,
+        }
+    }
+}
+
+impl Deref for StringView<'_> {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        unsafe {
+            core::str::from_utf8_unchecked(core::slice::from_raw_parts(
+                self.begin,
+                (self.end as usize) - (self.begin as usize), // This is really annoying t have to do
+            ))
+        }
+    }
+}
+
+impl core::fmt::Debug for StringView<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        <str as core::fmt::Debug>::fmt(self, f)
+    }
+}
+
+impl core::fmt::Display for StringView<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        <str as core::fmt::Display>::fmt(self, f)
+    }
+}
+
+impl core::hash::Hash for StringView<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        <str as core::hash::Hash>::hash(self, state)
+    }
+}
+
+impl PartialEq for StringView<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        <str as PartialEq>::eq(self, other)
+    }
+}
+
+impl Eq for StringView<'_> {}

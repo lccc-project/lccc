@@ -1,7 +1,7 @@
 extern crate proc_macro;
 
-use proc_macro::{Span, TokenStream};
-use syn::{Path, TraitBound, TypeParamBound, punctuated::Punctuated};
+use proc_macro::TokenStream;
+use syn::{punctuated::Punctuated, Type};
 
 #[proc_macro_attribute]
 pub fn xlang_trait(_attrs: TokenStream, ts: TokenStream) -> TokenStream {
@@ -9,19 +9,45 @@ pub fn xlang_trait(_attrs: TokenStream, ts: TokenStream) -> TokenStream {
     let mut assoc_types = Vec::new();
     let mut methods = Vec::new();
     let generics = input.generics.clone();
-    let mut dyn_name = syn::TypeTraitObject{
-        dyn_token: Some(syn::Token![dyn](proc_macro2::Span::call_site())),
-        bounds: {
-            let mut bounds = Punctuated::new();
-            bounds.push(TypeParamBound::Trait(TraitBound{ path: Path{ leading_colon: None, segments: {
-                let mut seg = Punctuated::new();
-                seg.push(PathSegment::PathSegment { ident: (), arguments: None });
-                seg
-            } }}));
-            bounds
+    let mut recievers = Vec::<Type>::new();
+
+    let trait_name = input.ident.clone();
+    let trait_name_span = trait_name.span();
+
+    let trait_type = {
+        let tok = syn::Token![dyn](trait_name_span);
+        let mut generic_args = syn::AngleBracketedGenericArguments {
+            colon2_token: Some(syn::Token![::](trait_name_span)),
+            lt_token: syn::Token![<](trait_name_span),
+            args: Punctuated::new(),
+            gt_token: syn::Token![>](trait_name_span),
+        };
+
+        for g in &generics.params {
+            match g {
+                syn::GenericParam::Type(t) => {
+                    let arg = syn::GenericArgument::Type(Type::Path(syn::TypePath {
+                        qself: None,
+                        path: syn::Path {
+                            leading_colon: None,
+                            segments: {
+                                let mut seg = Punctuated::new();
+                                seg.push(syn::PathSegment {
+                                    ident: t.ident.clone(),
+                                    arguments: syn::PathArguments::None,
+                                });
+
+                                seg
+                            },
+                        },
+                    }));
+                    generic_args.args.push(arg);
+                }
+                syn::GenericParam::Lifetime(lt) => todo!(),
+                syn::GenericParam::Const(c) => todo!(),
+            }
         }
     };
-    let mut recievers = 
 
     for item in &input.items {
         match item {
@@ -37,11 +63,24 @@ pub fn xlang_trait(_attrs: TokenStream, ts: TokenStream) -> TokenStream {
             _ => unreachable!(),
         }
     }
+
+    for m in &methods {
+        if let Some(arg) = m.sig.inputs.first() {
+            match arg {
+                syn::FnArg::Receiver(r) => {}
+                syn::FnArg::Typed(_) => todo!(),
+            }
+        }
+    }
+
     Into::into(quote::quote! {
         #input
 
         const _: () = {
-            fn __check_reciever<T: ::xlang_abi::traits::AbiSafeTrait + ?Sized,R: ::xlang_abi::traits::AbiSafeReciever<T>>(){}
+            fn __check_reciever<__T: ::xlang_abi::traits::AbiSafeTrait + ?Sized,__R: ::xlang_abi::traits::AbiSafeReciever<__T>>(){}
+            fn __validate #generics (){
+
+            }
         };
     })
 }

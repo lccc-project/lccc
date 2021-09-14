@@ -51,9 +51,8 @@ use std::{
     marker::PhantomPinned,
     ops::{Deref, DerefMut},
     pin::Pin,
+    ptr::NonNull,
 };
-
-pub struct AbiSafeToken<T: ?Sized + AbiSafeTrait, U>(PhantomData<T>, PhantomData<U>);
 
 ///
 ///##  SAFETY
@@ -177,6 +176,8 @@ pub unsafe trait AbiSafeVTable<T: ?Sized>: Sized {
 
 pub use xlang_abi_macro::*;
 
+use crate::alloc::{Allocator, XLangAlloc};
+
 #[repr(C)]
 pub struct DynPtr<T: ?Sized + AbiSafeTrait> {
     pub ptr: *mut (),
@@ -271,6 +272,14 @@ pub unsafe trait DynPtrSafe<T: ?Sized + AbiSafeTrait> {
     fn as_raw(&self) -> *const ();
     fn as_raw_mut(&mut self) -> *mut ();
     fn vtable(&self) -> &'static T::VTable;
+
+    fn size_of_val(&self) -> usize {
+        self.vtable().size_of()
+    }
+
+    fn align_of_val(&self) -> usize {
+        self.vtable().align_of()
+    }
 }
 
 #[repr(transparent)]
@@ -359,5 +368,59 @@ impl<'lt, T: ?Sized + AbiSafeTrait> Deref for DynMut<'lt, T> {
 impl<'lt, T: ?Sized + AbiSafeTrait> DerefMut for DynMut<'lt, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *(&mut self.inner as *mut DynPtr<T> as *mut DynPtrSafeWrap<T>) }
+    }
+}
+
+pub struct DynBox<T: ?Sized + AbiSafeTrait, A: Allocator = XLangAlloc> {
+    ptr: DynPtr<T>,
+    phantom: PhantomData<T>,
+    alloc: A,
+}
+
+unsafe impl<T: ?Sized + AbiSafeTrait + Send, A: Allocator + Send> Send for DynBox<T, A> {}
+unsafe impl<T: ?Sized + AbiSafeTrait + Sync, A: Allocator + Sync> Sync for DynBox<T, A> {}
+
+impl<T: ?Sized + AbiSafeTrait, A: Allocator> DynBox<T, A> {
+    pub fn unsize_box<U>(x: crate::boxed::Box<U, A>) -> Self
+    where
+        T: AbiSafeUnsize<U>,
+    {
+        let (ptr, alloc) = crate::boxed::Box::into_raw_with_alloc(x);
+        let ptr = DynPtr::unsize_raw(ptr);
+        Self {
+            ptr,
+            phantom: PhantomData,
+            alloc,
+        }
+    }
+}
+
+impl<T: ?Sized + AbiSafeTrait, A: Allocator> Drop for DynBox<T, A> {
+    fn drop(&mut self) {
+        let layout = unsafe {
+            crate::alloc::Layout::from_size_align_unchecked(
+                self.ptr.vtable.size_of(),
+                self.ptr.vtable.align_of(),
+            )
+        };
+        let ptr = self.ptr.ptr;
+        unsafe {
+            self.alloc
+                .deallocate(NonNull::new_unchecked(ptr.cast()), layout)
+        }
+    }
+}
+
+impl<T: ?Sized + AbiSafeTrait + 'static, A: Allocator> Deref for DynBox<T, A> {
+    type Target = dyn DynPtrSafe<T>;
+
+    fn deref(&self) -> &(dyn DynPtrSafe<T> + 'static) {
+        unsafe { &*(&self.ptr as *const DynPtr<T> as *const DynPtrSafeWrap<T>) }
+    }
+}
+
+impl<T: ?Sized + AbiSafeTrait + 'static, A: Allocator> DerefMut for DynBox<T, A> {
+    fn deref_mut(&mut self) -> &mut (dyn DynPtrSafe<T> + 'static) {
+        unsafe { &mut *(&mut self.ptr as *mut DynPtr<T> as *mut DynPtrSafeWrap<T>) }
     }
 }

@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, ptr::NonNull};
 
 #[repr(transparent)]
-pub struct Unique<T: ?Sized> {
+pub(crate) struct Unique<T: ?Sized> {
     ptr: NonNull<T>,
     phantom: PhantomData<T>,
 }

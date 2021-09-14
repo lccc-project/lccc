@@ -3,9 +3,10 @@ pub mod traits;
 
 pub mod alloc;
 pub mod boxed;
+pub mod hash;
 mod internal;
 pub mod prelude;
-mod ptr;
+pub mod ptr;
 pub mod string;
 pub mod vec;
 

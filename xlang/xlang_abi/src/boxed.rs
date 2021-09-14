@@ -1,5 +1,4 @@
 use std::{
-    alloc::Layout,
     any::{Any, TypeId},
     borrow::{Borrow, BorrowMut},
     future::Future,
@@ -10,7 +9,7 @@ use std::{
 };
 
 use crate::{
-    alloc::{Allocator, XLangAlloc},
+    alloc::{Allocator, Layout, XLangAlloc},
     ptr::Unique,
 };
 
@@ -22,13 +21,8 @@ pub struct Box<T: ?Sized, A: Allocator = XLangAlloc> {
 
 impl<T: ?Sized, A: Allocator> Drop for Box<T, A> {
     fn drop(&mut self) {
+        let layout = Layout::from_val(&**self);
         let ptr = self.ptr.as_nonnull();
-        let layout = unsafe {
-            Layout::from_size_align_unchecked(
-                core::mem::size_of_val(ptr.as_ref()),
-                core::mem::align_of_val(ptr.as_ref()),
-            )
-        };
         unsafe {
             core::ptr::drop_in_place(ptr.as_ptr());
         }
@@ -66,7 +60,7 @@ impl<T, A: Allocator> Box<MaybeUninit<T>, A> {
     pub fn new_uninit_in(alloc: A) -> Self {
         let ptr = alloc
             .allocate(Layout::new::<T>())
-            .unwrap_or_else(|_| std::alloc::handle_alloc_error(Layout::new::<T>()))
+            .unwrap_or_else(|| crate::alloc::handle_alloc_error(Layout::new::<T>()))
             .cast::<MaybeUninit<T>>();
         Box {
             ptr: unsafe { Unique::new_nonnull_unchecked(ptr) },
@@ -77,7 +71,7 @@ impl<T, A: Allocator> Box<MaybeUninit<T>, A> {
     pub fn new_zeroed_in(alloc: A) -> Self {
         let ptr = alloc
             .allocate_zeroed(Layout::new::<T>())
-            .unwrap_or_else(|_| std::alloc::handle_alloc_error(Layout::new::<T>()))
+            .unwrap_or_else(|| crate::alloc::handle_alloc_error(Layout::new::<T>()))
             .cast::<MaybeUninit<T>>();
         Box {
             ptr: unsafe { Unique::new_nonnull_unchecked(ptr) },
@@ -96,7 +90,7 @@ impl<T, A: Allocator> Box<T, A> {
     pub fn new_in(x: T, alloc: A) -> Self {
         let ptr = alloc
             .allocate(Layout::new::<T>())
-            .unwrap_or_else(|_| std::alloc::handle_alloc_error(Layout::new::<T>()))
+            .unwrap_or_else(|| crate::alloc::handle_alloc_error(Layout::new::<T>()))
             .cast::<T>();
         unsafe { core::ptr::write(ptr.as_ptr(), x) }
         Self {
@@ -263,10 +257,7 @@ impl<T: Clone, A: Allocator + Clone> Clone for Box<T, A> {
 }
 
 unsafe impl<T: Allocator + ?Sized, A: Allocator> Allocator for Box<T, A> {
-    fn allocate_zeroed(
-        &self,
-        layout: Layout,
-    ) -> Result<std::ptr::NonNull<u8>, crate::alloc::AllocError> {
+    fn allocate_zeroed(&self, layout: Layout) -> Option<std::ptr::NonNull<u8>> {
         T::allocate_zeroed(self, layout)
     }
 
@@ -275,7 +266,7 @@ unsafe impl<T: Allocator + ?Sized, A: Allocator> Allocator for Box<T, A> {
         ptr: std::ptr::NonNull<u8>,
         old_layout: Layout,
         new_layout: Layout,
-    ) -> Result<std::ptr::NonNull<u8>, crate::alloc::AllocError> {
+    ) -> Option<std::ptr::NonNull<u8>> {
         T::grow(self, ptr, old_layout, new_layout)
     }
 
@@ -284,7 +275,7 @@ unsafe impl<T: Allocator + ?Sized, A: Allocator> Allocator for Box<T, A> {
         ptr: std::ptr::NonNull<u8>,
         old_layout: Layout,
         new_layout: Layout,
-    ) -> Result<std::ptr::NonNull<u8>, crate::alloc::AllocError> {
+    ) -> Option<std::ptr::NonNull<u8>> {
         T::grow_zeroed(self, ptr, old_layout, new_layout)
     }
 
@@ -293,11 +284,11 @@ unsafe impl<T: Allocator + ?Sized, A: Allocator> Allocator for Box<T, A> {
         ptr: std::ptr::NonNull<u8>,
         old_layout: Layout,
         new_layout: Layout,
-    ) -> Result<std::ptr::NonNull<u8>, crate::alloc::AllocError> {
+    ) -> Option<std::ptr::NonNull<u8>> {
         T::shrink(self, ptr, old_layout, new_layout)
     }
 
-    fn allocate(&self, layout: Layout) -> Result<std::ptr::NonNull<u8>, crate::alloc::AllocError> {
+    fn allocate(&self, layout: Layout) -> Option<std::ptr::NonNull<u8>> {
         T::allocate(self, layout)
     }
 
