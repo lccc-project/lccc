@@ -1,1 +1,3 @@
-pub struct MachProperties {}
+pub struct MachProperties {
+    
+}

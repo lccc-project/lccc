@@ -1,5 +1,5 @@
 [package]
-name = "xlang_interface"
+name = "rlib"
 version = "0.1.0"
 authors = ["Connor Horman <chorman64@gmail.com>"]
 edition = "2018"
@@ -7,9 +7,5 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-xlang_abi = {path="../xlang_abi"}
-xlang_targets = {path="../xlang_targets"}
-xlang-host = {path="../xlang-host"}
-
-[lib]
-crate-type=["cdylib"]
+bytemuck = {version="1.7", features=["derive"]}
+bitflags = "1.3"

@@ -6,6 +6,7 @@ use std::{
     fmt::{Formatter, Write},
     hash::{Hash, Hasher},
     marker::PhantomData,
+    ptr::NonNull,
 };
 
 use crate::alloc::{Allocator, XLangAlloc};
@@ -110,9 +111,9 @@ impl<A: Allocator> Write for String<A> {
 /// An abi safe &str
 #[repr(C)]
 pub struct StringView<'a> {
-    begin: *const u8,
-    end: *const u8,
-    inner: PhantomData<&'a str>,
+    begin: NonNull<u8>,
+    end: NonNull<u8>,
+    phantom: PhantomData<&'a str>,
 }
 
 unsafe impl<'a> Send for StringView<'a> {}
@@ -123,9 +124,9 @@ impl<'a> From<&'a str> for StringView<'a> {
         let begin = v.as_ptr();
         let end = unsafe { begin.add(v.len()) };
         Self {
-            begin,
-            end,
-            inner: PhantomData,
+            begin: unsafe { NonNull::new_unchecked(begin as *mut u8) },
+            end: unsafe { NonNull::new_unchecked(end as *mut u8) },
+            phantom: PhantomData,
         }
     }
 }
@@ -136,8 +137,8 @@ impl Deref for StringView<'_> {
     fn deref(&self) -> &str {
         unsafe {
             core::str::from_utf8_unchecked(core::slice::from_raw_parts(
-                self.begin,
-                (self.end as usize) - (self.begin as usize), // This is really annoying t have to do
+                self.begin.as_ptr(),
+                (self.end.as_ptr() as usize) - (self.begin.as_ptr() as usize), // This is really annoying that have to do this
             ))
         }
     }
@@ -168,3 +169,23 @@ impl PartialEq for StringView<'_> {
 }
 
 impl Eq for StringView<'_> {}
+
+impl<'a> StringView<'a> {
+    pub const fn empty() -> Self {
+        StringView {
+            begin: NonNull::dangling(),
+            end: NonNull::dangling(),
+            phantom: PhantomData,
+        }
+    }
+
+    pub fn new(v: &'a str) -> Self {
+        let begin = v.as_ptr();
+        let end = unsafe { begin.add(v.len()) };
+        Self {
+            begin: unsafe { NonNull::new_unchecked(begin as *mut u8) },
+            end: unsafe { NonNull::new_unchecked(end as *mut u8) },
+            phantom: PhantomData,
+        }
+    }
+}

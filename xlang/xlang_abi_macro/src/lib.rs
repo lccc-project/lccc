@@ -43,8 +43,8 @@ pub fn xlang_trait(_attrs: TokenStream, ts: TokenStream) -> TokenStream {
                     }));
                     generic_args.args.push(arg);
                 }
-                syn::GenericParam::Lifetime(lt) => todo!(),
-                syn::GenericParam::Const(c) => todo!(),
+                syn::GenericParam::Lifetime(lt) => unimplemented!(),
+                syn::GenericParam::Const(c) => unimplemented!(),
             }
         }
     };
@@ -68,7 +68,7 @@ pub fn xlang_trait(_attrs: TokenStream, ts: TokenStream) -> TokenStream {
         if let Some(arg) = m.sig.inputs.first() {
             match arg {
                 syn::FnArg::Receiver(r) => {}
-                syn::FnArg::Typed(_) => todo!(),
+                syn::FnArg::Typed(_) => unimplemented!(),
             }
         }
     }

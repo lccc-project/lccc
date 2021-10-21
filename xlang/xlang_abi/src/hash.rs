@@ -1,6 +1,33 @@
-use std::{hash::Hasher, num::Wrapping};
+use std::{
+    hash::{BuildHasher, Hasher},
+    marker::PhantomData,
+    num::Wrapping,
+};
 
+#[repr(C)]
 pub struct XLangHasher(Wrapping<u64>);
+
+#[repr(C)]
+pub struct BuildHasherDefault<H>(PhantomData<H>);
+
+impl<H: Default + Hasher> BuildHasher for BuildHasherDefault<H> {
+    type Hasher = H;
+    fn build_hasher(&self) -> H {
+        Default::default()
+    }
+}
+
+impl<H> Clone for BuildHasherDefault<H> {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl<H> Default for BuildHasherDefault<H> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
 
 const PRIME: u64 = 1099511628211;
 

@@ -5,7 +5,6 @@ name = "lccc"
 version = "0.1.0"
 dependencies = [
  "xlang 0.1.0",
- "xlang_abi 0.1.0",
 ]
 
 [[package]]
@@ -59,6 +58,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "xlang-host"
+version = "0.1.0"
+
+[[package]]
 name = "xlang_abi"
 version = "0.1.0"
 dependencies = [
@@ -77,6 +80,11 @@ dependencies = [
 [[package]]
 name = "xlang_interface"
 version = "0.1.0"
+dependencies = [
+ "xlang-host 0.1.0",
+ "xlang_abi 0.1.0",
+ "xlang_targets 0.1.0",
+]
 
 [[package]]
 name = "xlang_struct"

@@ -94,7 +94,11 @@ pub struct StringTableHeader{
 }
 ```
 
-The extent field is the length (in bytes) of the string table, the next field is the offset of the header for the next string table in the file from the *beginning* of the last byte of the string table, or 0 if there is no next string table [Note: using the beginning here instead of the end of the last byte in the string table, causes a string table that occurs immediately after the end of the current header to have an offset of 1. This allows such cases while designating `0` the sentinel for no remaining string tables]
+The extent field is the length (in bytes) of the string table, the next field is the offset of the header for the next string table in the file from the *beginning* of the last byte of the string table, or 0 if there is no next string table [Note: using the beginning here instead of the end of the last byte in the string table, causes a string table that occurs immediately after the end of the current header to have an offset of 1. This allows such cases while designating `0` the sentinel for no remaining string tables].
+
+If a string contained within the file is not terminated prior to the end of a particular string table, the behavior of the file parser is not specified. Implementations MUST produce files that do not violate this requirement.
+[Note: This allows programs to parse the string table as sparse entities rather than contiguous entities. Programs are expected to behave in a reasonable manner if files are encountered that violate this requirement - for example, by rejecting them, terminating the string early, or continuing the string from subsequent files]
+
 
 ### Crate Information
 
@@ -151,15 +155,19 @@ pub enum Stability{
     ImplicitCallStable{edition: u32} = 2,
     StableInEdition{edition: u32} = 3,
     RemovedInEdition{edition: u32} = 4,
-    ConstUnstable{feature: u32, issue: 32} = 5,
-    ConstStableInEdition{edition: u32} = 6,
-    ConstRemovedInEdition{edition: u32} = 7,
+    ConstStable{since: u32} = 5,
+    ConstUnstable{feature: u32, issue: u32} = 6,
+    ConstStableInEdition{edition: u32} = 7,
+    ConstRemovedInEdition{edition: u32} = 8,
 }
 ```
 
 Other variants are reserved and may be given meaning in future versions, implementations should not produce these variants and shall ignore them if present in the file. The value of the trailing 4 bytes of any variant except for `Unstable` is undefined and shall be ignored when reading the file.
 
 Only the `Stable`, `Unstable`, and `StableInEdition` variants are meaningful for the `stability` field of a crate header.
+
+`since` for the `Stable` and `ConstStable` variants shall be an indecies in the string table for the file which is either an empty string or a version string which contains a rust language version, *major*.*minor*, which the version of the rust language the item was stabilized or was stabilized for use in `const` fns. 
+`feature` for the `Unstable` and `ConstUnstable` variants shall be indecies in the string table for the file which is the feature 
 
 ### Extra Information
 
@@ -177,20 +185,25 @@ pub struct ExtraHeader{
 The `entries` field shall be the number of entries in the Extra Information Table. 
 The `extent` field shall be the total number of bytes in the Extra Information Table, including the header.
 
-Following the header is `extent` bytes which collectively makes up `entries` entries. Each entry has an 8-byte header, which shall be at an offset in the file which is aligned to 8 bytes, which is then followed by a number of bytes given by the header. Between each entry shall be the minimum number of additional padding bytes necessary such that the next header is at an offset aligned to 8 bytes within the file, and after the last entry, there shall be a minimum number of additional trailing padding bytes such that the total number of bytes in the Extra Information Table is a multiple of 8. The content of the padding bytes is undefined and shall be ignored. 
+Following the header is `extent` bytes which collectively makes up `entries` entries. Each entry has an 16-byte header, which shall be at an offset in the file which is aligned to 8 bytes, which is then followed by a number of bytes given by the header. Between each entry shall be the minimum number of additional padding bytes necessary such that the next header is at an offset aligned to 8 bytes within the file, and after the last entry, there shall be a minimum number of additional trailing padding bytes such that the total number of bytes in the Extra Information Table is a multiple of 8. The content of the padding bytes is undefined and shall be ignored. 
 
 The header for each extra entry is defined as follows:
 ```rust
 #[repr(C,align(8))]
 pub struct ExtraEntryHeader{
     id: u32,
-    len: u32
+    len: u32,
+    flags: u64
 }
 ```
 
-The `id` field shall be an offset in the file's string table, which refers to a null-terminated UTF-8 string that is the identifier for the type of the extra entry. The format of these strings is not specified, but should be unique between implementations. The interpretation for any particular entry is not specified, except as defined below.
+The `id` field shall be an offset in the file's string table, which refers to a null-terminated UTF-8 string that is the identifier for the type of the extra entry. The format of these strings is not specified, but should be unique between implementations. The interpretation for any particular entry is not specified, except as defined below. Any id that is a valid rust identifier may be assigned meaning in a future revision and is reserved for that purpose.
 
 The `len` field shall be the total number of bytes of the entry, not including trailing padding, if any, but including the header. The remaining bytes of the entry, followed by any padding, trails the header.
+
+The `flags` field specifies flags of the entry. The flags are as follows:
+* required (0x0000000000000001): The extra entry is mandatory to correctly interpreting the manifest file, and an implementation that does not understand the entry with this flag set must issue an error when parsing the file.
+* 
 
 Special types are defined by this specification, and have the meaning given below, including the content of the trailing bytes.
 
@@ -201,6 +214,7 @@ Special types are defined by this specification, and have the meaning given belo
 pub struct ExtraEntryStability{
     id: u32,
     len: u32,
+    flags: u64,
     stability: Stability,
 }
 ```
@@ -208,7 +222,8 @@ pub struct ExtraEntryStability{
 The `Stability` extra information entry provides additional stability information from the `stability` field in the crate header. 
 
 The `id` field shall be an offset into the file's string table, which refers to a null-terminated UTF-8 String that is exactly equal to the string "Stability". 
-The `len` field shall be the value 20. 
+The `len` field shall be the value 28. 
+The `flags` field shall set the `REQUIRED` flag
 
 The `stability` field shall be a value of the `Stability` enum defined above. It is used in combination with the `stability` field in the crate header to define the stability of the crate.
 
