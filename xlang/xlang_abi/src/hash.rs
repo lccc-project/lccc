@@ -5,9 +5,11 @@ use std::{
 };
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct XLangHasher(Wrapping<u64>);
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct BuildHasherDefault<H>(PhantomData<H>);
 
 impl<H: Default + Hasher> BuildHasher for BuildHasherDefault<H> {

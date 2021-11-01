@@ -15,6 +15,7 @@ struct HashMapSlot<K, V> {
     entries: [MaybeUninit<Pair<K, V>>;16],
 }
 
+#[derive(Debug)]
 pub struct HashMap<K, V, H: BuildHasher = BuildHasherDefault<XLangHasher>, A: Allocator = XLangAlloc>{
     htab: Unique<HashMapSlot<K,V>>,
     buckets: usize,
@@ -46,7 +47,12 @@ impl<K,V, H: BuildHasher + Default, A: Allocator + Default> HashMap<K,V,H,A>{
             alloc: Default::default()
         }
     }
+}
 
+impl<K, V, H: BuildHasher + Default, A: Allocator + Default> Default for HashMap<K,V,H,A>{
+    fn default() -> Self{
+        Self::new()
+    }
 }
 
 impl<K, V, H: BuildHasher + Default, A: Allocator> HashMap<K,V,H,A>{
@@ -86,7 +92,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A>{
     fn rehash(&mut self){
         let ocount = self.buckets;
         let ncount = self.buckets*2;
-        if ncount>(isize::MAX as usize){
+        if ncount>(std::isize::MAX as usize){
             panic!(
                 "We have too many buckets, bail before we maybe cause UB"
             )
@@ -210,5 +216,29 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A>{
             }
 
             None
+    }
+}
+
+
+impl<K: Clone, V: Clone, H: BuildHasher + Clone, A: Allocator + Clone> Clone for HashMap<K,V,H,A>{
+    fn clone(&self) -> Self {
+        let buckets = self.buckets;
+        let hash = self.hash.clone();
+        let alloc = self.alloc.clone();
+        let htab = alloc.allocate_zeroed(Layout::array::<HashMapSlot<K,V>>(buckets).unwrap()).unwrap().cast::<HashMapSlot<K,V>>();
+        let ptr = htab.as_ptr();
+        for i in 0..buckets{
+            let bucket = unsafe{&mut *ptr.offset(i as isize)};
+            let obucket = unsafe{&*self.htab.as_ptr().offset(i as isize)};
+            for j in 0..obucket.ecount{
+                unsafe{bucket.entries[j].as_mut_ptr().write((&*obucket.entries[j].as_ptr()).clone())}
+            }
+        }
+        Self{
+            htab: unsafe{Unique::new_nonnull_unchecked(htab)},
+            buckets,
+            hash,
+            alloc
+        }
     }
 }

@@ -6,6 +6,27 @@ pub(crate) struct Unique<T: ?Sized> {
     phantom: PhantomData<T>,
 }
 
+impl<T: ?Sized> core::fmt::Debug for Unique<T>{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Unique").field("ptr", &self.ptr).finish()
+    }
+}
+
+impl<T: ?Sized> core::hash::Hash for Unique<T>{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.ptr.hash(state);
+    }
+}
+
+impl<T: ?Sized> core::cmp::PartialEq for Unique<T>{
+    fn eq(&self, other: &Self) -> bool {
+        self.ptr == other.ptr 
+    }
+}
+
+impl<T: ?Sized> core::cmp::Eq for Unique<T>{}
+
+
 unsafe impl<T: Send> Send for Unique<T> {}
 unsafe impl<T: Sync> Sync for Unique<T> {}
 impl<T> Unpin for Unique<T> {}

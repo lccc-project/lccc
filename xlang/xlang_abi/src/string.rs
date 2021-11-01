@@ -112,7 +112,7 @@ impl<A: Allocator> Write for String<A> {
 #[repr(C)]
 pub struct StringView<'a> {
     begin: NonNull<u8>,
-    end: NonNull<u8>,
+    len: usize,
     phantom: PhantomData<&'a str>,
 }
 
@@ -121,13 +121,7 @@ unsafe impl<'a> Sync for StringView<'a> {}
 
 impl<'a> From<&'a str> for StringView<'a> {
     fn from(v: &'a str) -> Self {
-        let begin = v.as_ptr();
-        let end = unsafe { begin.add(v.len()) };
-        Self {
-            begin: unsafe { NonNull::new_unchecked(begin as *mut u8) },
-            end: unsafe { NonNull::new_unchecked(end as *mut u8) },
-            phantom: PhantomData,
-        }
+        Self::new(v)
     }
 }
 
@@ -137,8 +131,8 @@ impl Deref for StringView<'_> {
     fn deref(&self) -> &str {
         unsafe {
             core::str::from_utf8_unchecked(core::slice::from_raw_parts(
-                self.begin.as_ptr(),
-                (self.end.as_ptr() as usize) - (self.begin.as_ptr() as usize), // This is really annoying that have to do this
+           self.begin.as_ptr(),
+                self.len, // This is really annoying that have to do this
             ))
         }
     }
@@ -174,17 +168,16 @@ impl<'a> StringView<'a> {
     pub const fn empty() -> Self {
         StringView {
             begin: NonNull::dangling(),
-            end: NonNull::dangling(),
+            len: 0,
             phantom: PhantomData,
         }
     }
 
-    pub fn new(v: &'a str) -> Self {
-        let begin = v.as_ptr();
-        let end = unsafe { begin.add(v.len()) };
+    pub const fn new(v: &'a str) -> Self {
+        let ptr = v.as_bytes().as_ptr();
         Self {
-            begin: unsafe { NonNull::new_unchecked(begin as *mut u8) },
-            end: unsafe { NonNull::new_unchecked(end as *mut u8) },
+            begin: unsafe { NonNull::new_unchecked(ptr as *mut u8) },
+            len: v.len(),
             phantom: PhantomData,
         }
     }

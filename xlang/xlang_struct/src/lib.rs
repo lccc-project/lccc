@@ -32,3 +32,48 @@ pub struct Annotation {
 pub struct AnnotatedElement {
     pub annotations: Vec<Annotation>,
 }
+
+#[repr(u16)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Visibility{
+    Public = 0,
+    Origin = 1,
+    Module = 2,
+    Private = 3,
+    None = 4,
+}
+
+impl Default for Visibility{
+    fn default() -> Self{
+        Self::Public
+    }
+}
+
+
+#[repr(C)]
+#[derive(Clone, Debug, Default)]
+pub struct ScopeMember{
+    pub annotations: AnnotatedElement,
+    pub vis: Visibility,
+    pub member_decl: MemberDeclaration
+}
+
+#[repr(C)]
+#[derive(Clone, Debug, Default)]
+pub struct Scope{
+    pub annotations: AnnotatedElement,
+    pub members: HashMap<Path,ScopeMember>
+}
+
+#[repr(u32)]
+#[derive(Clone, Debug, )]
+pub enum MemberDeclaration{
+    Empty,
+    Scope(Scope),
+}
+
+impl Default for MemberDeclaration{
+    fn default() -> Self{
+        Self::Empty
+    }
+}
