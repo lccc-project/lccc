@@ -14,7 +14,7 @@
 //!
 //! Every trait that satisfies the above requirements can use the `#[abi_safe]` attribute macro to be used with ABI-Safe Trait Object types defined by this library
 //! ### Example
-//! ```rust
+//! ```ignore
 //! # #[macro_use]
 //! # extern crate xlang_abi_macro;
 //!

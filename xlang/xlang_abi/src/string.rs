@@ -112,7 +112,7 @@ impl<A: Allocator> Write for String<A> {
 #[repr(C)]
 pub struct StringView<'a> {
     begin: NonNull<u8>,
-    len: usize,
+    end: NonNull<u8>,
     phantom: PhantomData<&'a str>,
 }
 
@@ -132,7 +132,7 @@ impl Deref for StringView<'_> {
         unsafe {
             core::str::from_utf8_unchecked(core::slice::from_raw_parts(
            self.begin.as_ptr(),
-                self.len, // This is really annoying that have to do this
+                (self.end.as_ptr() as usize)-(self.begin.as_ptr() as usize), // This is really annoying that have to do this
             ))
         }
     }
@@ -168,17 +168,144 @@ impl<'a> StringView<'a> {
     pub const fn empty() -> Self {
         StringView {
             begin: NonNull::dangling(),
-            len: 0,
+            end: NonNull::dangling(),
             phantom: PhantomData,
         }
     }
 
-    pub const fn new(v: &'a str) -> Self {
+    pub fn new(v: &'a str) -> Self {
         let ptr = v.as_bytes().as_ptr();
         Self {
             begin: unsafe { NonNull::new_unchecked(ptr as *mut u8) },
-            len: v.len(),
+            end: unsafe { NonNull::new_unchecked(ptr.offset(v.len() as isize) as *mut u8) } ,
             phantom: PhantomData,
         }
+    }
+
+    /// 
+    /// ## SAFETY
+    /// The behaviour is undefined if any of the following constraints are violated:
+    /// * Neither begin nor end may be null pointers or deallocated pointers
+    /// * For 'a, the range [begin,end) must be a valid range
+    /// * The text in the range [begin,end) must be valid UTF-8
+    pub const unsafe fn from_raw_parts(begin: *const u8, end: *const u8) -> Self{
+        Self{
+            begin: NonNull::new_unchecked(begin as *mut u8),
+            end: NonNull::new_unchecked(end as *mut u8),
+            phantom: PhantomData
+        }
+    }
+}
+
+#[doc(hidden)]
+pub use str as __rust_str;
+
+///
+/// Constructs a StringView in a constant context.
+/// This is equivalent to `StringView::new(str)`, except it is valid in a const initializer
+/// ## Examples
+/// ```
+///# use xlang_abi::string::StringView;
+///# use xlang_abi::const_sv;
+/// const HELLO_WORLD: StringView = const_sv!("Hello World");
+/// assert_eq!(HELLO_WORLD,StringView::new("Hello World"));
+/// ```
+/// 
+#[macro_export]
+macro_rules! const_sv{
+    ($str:expr) => {
+        {
+            const __RET: $crate::string::StringView = {
+                // Thanks to matt1992 on the Rust Community Discord Server for this Rust 1.39 Friendly Hack 
+                // Why is 
+                const __STR: &$crate::string::__rust_str = $str;
+                /// # Safety
+                ///
+                /// `Self::Arr`'s type must be `[Self::Elem; Self::SLICE.len()]`
+                ///
+                unsafe trait GetSlice {
+                    type Elem: 'static;
+                    type Arr;
+                    const SLICE: &'static [Self::Elem];
+                }
+
+                #[repr(C)]
+                struct ArrayAndEmpty<Arr> {
+                    array: Arr,
+                    empty: [u8; 0],
+                }
+
+                #[repr(C)]
+                union AsPacked<'a, Arr, T> {
+                    start: *const T,
+                    packed: &'a ArrayAndEmpty<Arr>,
+                }
+
+                struct GetEnd<T>(::core::marker::PhantomData<T>);
+
+                // Non-Empty slice case
+                impl<T: GetSlice> GetEnd<T> {
+                    pub const AS_END: *const T::Elem = unsafe {
+                        use ::std::mem::size_of;
+                        let same_size = size_of::<ArrayAndEmpty<T::Arr>>() != size_of::<T::Arr>();
+                        [(/* no padding allowed */)][same_size as usize];
+                        [(/* slice must be non-empty */)][T::SLICE.is_empty() as usize];
+
+                        AsPacked::<T::Arr, T::Elem> {
+                            start: T::SLICE.as_ptr(),
+                        }
+                        .packed
+                        .empty
+                        .as_ptr() as *const T::Elem
+                    };
+                }
+
+                const __SLICE: &[u8] = (__STR).as_bytes();
+                
+
+                struct __Dummy;
+
+                unsafe impl GetSlice for __Dummy {
+                    type Elem = u8;
+                    type Arr = [u8; __SLICE.len()];
+                    const SLICE: &'static [u8] = __SLICE;
+                }
+
+                let (begin, end) = (__SLICE.as_ptr(), GetEnd::<__Dummy>::AS_END);
+                // SAFETY:
+                // 
+                unsafe{$crate::string::StringView::from_raw_parts(begin,end)}
+            };
+            __RET
+        }
+    }
+}
+
+#[cfg(test)]
+mod test{
+    use crate::string::StringView;
+
+    #[test]
+    pub fn test_new(){
+        let x = StringView::new("Foo");
+        assert_eq!(&*x,"Foo");
+    }
+
+    #[test]
+    pub fn test_new_empty(){
+        let y = StringView::new("");
+        assert_eq!(&*y,"");
+    }
+
+    #[test]
+    pub fn test_eq(){
+        let y = StringView::new("");
+        assert_eq!(y,y);
+    }
+
+    #[test]
+    pub fn test_display(){
+        let x = StringView::new("Hello World");
+        assert_eq!(&*x,&*format!("{}",x))
     }
 }
