@@ -9,4 +9,3 @@ edition = "2018"
 [dependencies]
 
 [build-dependencies]
-cc="1"
