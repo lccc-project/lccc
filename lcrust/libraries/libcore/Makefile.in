@@ -30,6 +30,8 @@ LN_S := @LN_S@
 RUSTC_IS_LCCC = @rustc_is_lccc@
 
 
+abi_version := @abi_version@
+
 ## Install directories
 
 prefix = @prefix@
@@ -49,7 +51,7 @@ sysconfdir = @sysconfdir@
 localstatedir = @localstatedir@
 runstatedir = @runstatedir@
 sharedstatedir = @sharedstatedir@
-rustlibdir = @rustlibdir@/v@abi_version@
+rustlibdir = @rustlibdir@/v${abi_version}
 
 # Other Configuration
 
@@ -61,7 +63,7 @@ tests =
 EXTRA_RUSTFLAGS = -Z extra-codegen-opts -Z manifest-version-number=$(version) 
 
 # The package version
-version = 0.1.0
+version = $(abi_version).1.0
 
 # The output file of the library
 OUTPUT = libcore.rlib.$(version)
