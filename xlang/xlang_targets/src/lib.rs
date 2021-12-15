@@ -5,7 +5,7 @@ use target_tuples::{Architecture, Environment, ObjectFormat, Vendor, OS};
 use core::hash::Hash;
 
 #[repr(C)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Target {
     name: String,
     arch: Architecture,

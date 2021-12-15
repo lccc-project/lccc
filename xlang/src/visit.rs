@@ -1,7 +1,7 @@
 use xlang_abi::traits::*;
 
 pub trait Visitor {
-    extern "C" fn visit_end(&mut self);
+    fn visit_end(&mut self);
 }
 
 pub struct VisitorVTable {
@@ -90,28 +90,28 @@ unsafe impl<T: Visitor + Send> AbiSafeUnsize<T> for dyn Visitor + Send + Sync {
 }
 
 impl<'lt> Visitor for dyn DynPtrSafe<dyn Visitor> + 'lt {
-    extern "C" fn visit_end(&mut self) {
+    fn visit_end(&mut self) {
         let vtbl = self.vtable();
         unsafe { (vtbl.visit_end)(self.as_raw_mut()) }
     }
 }
 
 impl<'lt> Visitor for dyn DynPtrSafe<dyn Visitor + Send> + 'lt {
-    extern "C" fn visit_end(&mut self) {
+    fn visit_end(&mut self) {
         let vtbl = self.vtable();
         unsafe { (vtbl.visit_end)(self.as_raw_mut()) }
     }
 }
 
 impl<'lt> Visitor for dyn DynPtrSafe<dyn Visitor + Sync> + 'lt {
-    extern "C" fn visit_end(&mut self) {
+    fn visit_end(&mut self) {
         let vtbl = self.vtable();
         unsafe { (vtbl.visit_end)(self.as_raw_mut()) }
     }
 }
 
 impl<'lt> Visitor for dyn DynPtrSafe<dyn Visitor + Send + Sync> + 'lt {
-    extern "C" fn visit_end(&mut self) {
+    fn visit_end(&mut self) {
         let vtbl = self.vtable();
         unsafe { (vtbl.visit_end)(self.as_raw_mut()) }
     }

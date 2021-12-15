@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 xlang = {path=".."}
 xlang_abi = {path="../xlang_abi"}
+xlang_targets = {path="../xlang_targets"}
+bitflags = "1.3"

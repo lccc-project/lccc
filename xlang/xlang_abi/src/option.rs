@@ -1,7 +1,8 @@
 #[repr(u8)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Option<T> {
-    Some(T),
     None,
+    Some(T),
 }
 
 pub use self::Option::{None, Some};
