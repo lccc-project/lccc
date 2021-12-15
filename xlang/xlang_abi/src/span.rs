@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     marker::PhantomData,
     ops::{Deref, DerefMut, RangeBounds},
     ptr::NonNull,
@@ -89,6 +90,15 @@ impl<'a, T> From<&'a [T]> for Span<'a, T> {
             len: x.len(),
             phantom: PhantomData,
         }
+    }
+}
+
+impl<'a, T> Debug for Span<'a, T>
+where
+    [T]: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <[T] as Debug>::fmt(self, f)
     }
 }
 
@@ -230,5 +240,24 @@ impl<'a, T> SpanMut<'a, T> {
                 phantom: PhantomData,
             })
         }
+    }
+}
+
+impl<'a, T> Debug for SpanMut<'a, T>
+where
+    [T]: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <[T] as Debug>::fmt(self, f)
+    }
+}
+
+#[macro_export]
+macro_rules! span{
+    [$($expr:expr),* $(,)?] => {
+        $crate::span::Span::new(&[$($expr),*])
+    };
+    [$expr:expr ; $repeat:expr] => {
+        $crate::span::Span::new(&[$expr;$repeat])
     }
 }

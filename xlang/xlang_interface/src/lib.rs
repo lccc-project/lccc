@@ -1,5 +1,7 @@
 use std::alloc::Layout;
 
+use xlang_targets::{properties::TargetProperties, Target};
+
 #[no_mangle]
 pub extern "C" fn xlang_allocate(size: usize) -> *mut core::ffi::c_void {
     if size == 0 {
@@ -70,4 +72,10 @@ pub extern "C" fn xlang_on_allocation_failure(size: usize, align: usize) -> ! {
         size, align
     );
     std::process::abort()
+}
+
+#[no_mangle]
+pub extern "C" fn xlang_get_target_properties(targ: Target) -> &'static TargetProperties {
+    #[allow(deprecated)]
+    xlang_targets::properties::__get_properties(targ)
 }

@@ -318,6 +318,7 @@ unsafe impl<A: ?Sized + Allocator> Allocator for &mut A {
 }
 
 #[derive(Copy, Clone)]
+#[repr(C)]
 pub struct XLangAlloc(MaybeUninit<u8>);
 
 impl XLangAlloc {
