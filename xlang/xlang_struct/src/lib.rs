@@ -124,6 +124,54 @@ pub struct ScalarType {
 pub enum Type {
     Scalar(ScalarType),
     Void,
+    FnType(Box<FnType>),
+    Pointer(PointerType),
+}
+
+fake_enum::fake_enum! {
+    #[repr(u8)]
+    #[derive(Default,Hash)]
+    pub enum struct PointerAliasingRule{
+        None = 0,
+        Unique = 1,
+        ReadOnly = 2,
+        ReadShallow = 3,
+        Invalid = 4,
+        Nonnull = 5,
+        Volatile = 6,
+        VolatileWrite = 7,
+        NullOrInvalid = 8,
+    }
+}
+
+fake_enum::fake_enum! {
+    #[repr(u8)]
+    #[derive(Default,Hash)]
+    pub enum struct ValidRangeType{
+        None = 0,
+        Dereference = 1,
+        DereferenceWrite = 2,
+        WriteOnly = 3,
+        NullOrDereference = 4,
+        NullOrDereferenceWrite = 5,
+        NullOrWriteOnly = 6,
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct PointerType {
+    pub alias: PointerAliasingRule,
+    pub valid_range: Pair<ValidRangeType, u64>,
+    pub inner: Box<Type>,
+}
+
+#[repr(C)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct FnType {
+    pub ret: Type,
+    pub params: Vec<Type>,
+    pub tag: Abi,
 }
 
 #[repr(u16)]
@@ -133,6 +181,38 @@ pub enum Value {
     Uninitialized,
     GenericParameter(u32),
     Integer { ty: ScalarType, val: u32 },
+    GlobalAddress { ty: Type, item: Path },
+}
+
+#[repr(u16)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Rsh,
+    Lsh,
+
+    CmpInt,
+    CmpLt,
+    CmpGt,
+    CmpEq,
+    CmpNe,
+    CmpGe,
+    GmpLe,
+}
+
+#[repr(u16)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum UnaryOp {
+    Minus,
+    BitNot,
+    LogicNot,
 }
 
 #[repr(u16)]
@@ -141,6 +221,9 @@ pub enum Expr {
     Null,
     Const(Value),
     ExitBlock { blk: u32, values: u16 },
+    BinaryOp(BinaryOp),
+    UnaryOp(UnaryOp),
+    CallFunction(FnType),
 }
 
 #[repr(u8)]
@@ -185,9 +268,7 @@ pub enum Abi {
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct FunctionDeclaration {
-    pub tag: Abi,
-    pub ret: Type,
-    pub params: Vec<Type>,
+    pub ty: FnType,
     pub body: Option<Block>,
 }
 
