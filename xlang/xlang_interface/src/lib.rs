@@ -7,7 +7,7 @@ use xlang_targets::{properties::TargetProperties, Target};
 #[no_mangle]
 pub extern "C" fn xlang_allocate(size: usize) -> *mut core::ffi::c_void {
     if size == 0 {
-        return 1usize as *mut core::ffi::c_void;
+        return 32usize as *mut core::ffi::c_void;
     }
     unsafe {
         xlang_allocate_aligned(
