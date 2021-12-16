@@ -392,7 +392,7 @@ impl<T, A: Allocator + Default> From<std::vec::Vec<T>> for Vec<T, A> {
 macro_rules! vec{
     [$($elems:expr),* $(,)?] => {
         {
-            let s = ManuallyDrop::new([$($elems),*]);
+            let s = ::core::mem::ManuallyDrop::new([$($elems),*]);
             let mut vec = $crate::vec::Vec::with_capacity(s.len());
             let ptr = vec.as_mut_ptr();
             unsafe{core::ptr::copy_nonoverlapping(s.as_ptr(),ptr,s.len());}
@@ -402,7 +402,7 @@ macro_rules! vec{
     };
     [$elem:expr ; $repeat:expr] => {
         {
-            let __repeat: usize = $repeat
+            let __repeat: ::core::primitive::usize = $repeat
             fn __check<T: ::core::clone::Clone>(x: &T){}
             let val = $elem;
             __check(&val);
