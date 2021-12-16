@@ -1,0 +1,22 @@
+name: rustfmt
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install stable
+      run: |
+        rustup update
+    - name: Build
+      run: cargo +stable fmt -- --check
+    

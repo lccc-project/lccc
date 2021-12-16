@@ -1,5 +1,6 @@
 use xlang::prelude::v1::*;
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TakesArg {
     Always,
@@ -40,27 +41,27 @@ pub struct Arg {
     pub value: Option<String>,
 }
 
-pub fn parse_args(argspecs: Vec<ArgSpec>) -> (Vec<Arg>, Vec<String>) {
+pub fn parse_args(argspecs: &Vec<ArgSpec>) -> (Vec<Arg>, Vec<String>) {
     let mut result = Vec::new();
     let mut files = Vec::new();
     let mut args = std::env::args();
-    let _ = args.next();
+    let _program_name = args.next();
     while let std::option::Option::Some(arg) = args.next() {
         if arg.starts_with('-') && arg != "-" {
             // "-" is a special argument
             if let std::option::Option::Some(arg) = arg.strip_prefix("--") {
                 let mut found = false;
-                for spec in &argspecs {
+                for spec in argspecs {
                     for long in &spec.long {
                         if long.starts_with(&arg) {
                             found = true;
-                            if spec.takes_arg != TakesArg::Never {
-                                todo!();
-                            } else {
+                            if spec.takes_arg == TakesArg::Never {
                                 result.push(Arg {
                                     name: spec.name,
                                     value: None,
                                 });
+                            } else {
+                                todo!();
                             }
                             break;
                         }
@@ -74,7 +75,7 @@ pub fn parse_args(argspecs: Vec<ArgSpec>) -> (Vec<Arg>, Vec<String>) {
                 let mut arg = arg.chars().skip(1); // Skip the dash
                 let mut found = false;
                 'outer: while let std::option::Option::Some(opt) = arg.next() {
-                    for spec in &argspecs {
+                    for spec in argspecs {
                         if spec.short.contains(&opt) {
                             found = true;
                             if spec.takes_arg == TakesArg::Always {
@@ -92,12 +93,12 @@ pub fn parse_args(argspecs: Vec<ArgSpec>) -> (Vec<Arg>, Vec<String>) {
                                     value: Some(String::from(&remainder)),
                                 });
                                 break 'outer;
-                            } else {
-                                result.push(Arg {
-                                    name: spec.name,
-                                    value: None,
-                                });
                             }
+                            result.push(Arg {
+                                name: spec.name,
+                                value: None,
+                            });
+
                             break;
                         }
                     }

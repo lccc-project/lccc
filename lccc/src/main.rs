@@ -1,3 +1,4 @@
+#![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
 mod argparse;
 
 use crate::argparse::{parse_args, ArgSpec, TakesArg};
@@ -24,5 +25,5 @@ fn main() {
         )
     ];
 
-    println!("{:?}", parse_args(argspecs))
+    println!("{:?}", parse_args(&argspecs));
 }
