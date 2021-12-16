@@ -82,6 +82,7 @@ dependencies = [
  "target-tuples 0.4.1",
  "xlang_abi",
  "xlang_interface",
+ "xlang_struct",
 ]
 
 [[package]]
@@ -119,7 +120,6 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "fake-enum",
- "xlang",
  "xlang_abi",
  "xlang_targets",
 ]

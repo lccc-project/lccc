@@ -9,9 +9,9 @@ mod internal;
 pub mod pair;
 pub mod prelude;
 pub mod ptr;
+pub mod result;
 pub mod span;
 pub mod string;
 pub mod vec;
-
 
 pub use xlang_abi_macro::xlang_trait;

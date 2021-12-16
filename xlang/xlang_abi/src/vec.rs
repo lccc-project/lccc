@@ -226,6 +226,14 @@ impl<T, A: Allocator> Vec<T, A> {
             self.push(v.clone());
         }
     }
+
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.ptr.as_ptr()
+    }
+
+    pub fn as_ptr(&self) -> *const T {
+        self.ptr.as_ptr()
+    }
 }
 
 impl<T, A: Allocator + Default> FromIterator<T> for Vec<T, A> {
@@ -269,6 +277,7 @@ impl<T, A: Allocator> DerefMut for Vec<T, A> {
 }
 
 impl<T: Clone, A: Allocator + Clone> Clone for Vec<T, A> {
+    // Specialization would be nice here
     fn clone(&self) -> Self {
         let nalloc = self.alloc.clone();
         let nvec = Self::with_capacity_in(self.len, nalloc);
@@ -338,5 +347,71 @@ impl<A: Allocator> Write for Vec<u8, A> {
 
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
+    }
+}
+
+impl<T: Clone, A: Allocator + Default, S: AsRef<[T]> + ?Sized> From<&S> for Vec<T, A> {
+    fn from(s: &S) -> Self {
+        let s = s.as_ref();
+        if s.len() == 0 {
+            Self::new_in(Default::default())
+        } else {
+            let mut v = Self::with_capacity_in(s.len(), Default::default());
+            v.extend_from_slice(s);
+            v
+        }
+    }
+}
+
+impl<T, A: Allocator + Default> From<std::vec::Vec<T>> for Vec<T, A> {
+    fn from(s: std::vec::Vec<T>) -> Self {
+        if s.len() == 0 {
+            Self::new_in(Default::default())
+        } else {
+            let mut s = ManuallyDrop::new(s);
+            let mut v = Self::with_capacity_in(s.len(), Default::default());
+            let len = s.len();
+            let dst = v.as_mut_ptr();
+            let src = s.as_ptr();
+            unsafe {
+                core::ptr::copy_nonoverlapping(src, dst, len);
+            }
+            unsafe {
+                v.set_len(len);
+            }
+            unsafe {
+                s.set_len(0);
+            }
+            drop(ManuallyDrop::into_inner(s));
+            v
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! vec{
+    [$($elems:expr),* $(,)?] => {
+        {
+            let s = ManuallyDrop::new([$($expr),*]);
+            let mut vec = $crate::vec::Vec::with_capacity(s.len());
+            let ptr = vec.as_mut_ptr();
+            unsafe{core::ptr::copy_nonoverlapping(s.as_ptr(),ptr,s.len());}
+            unsafe{vec.set_len(s.len())}
+            vec
+        }
+    };
+    [$elem:expr ; $repeat:expr] => {
+        {
+            let __repeat: usize = $repeat
+            fn __check<T: ::core::clone::Clone>(x: &T){}
+            let val = $elem;
+            __check(&val);
+            let mut vec = $crate::vec::Vec::with_capacity(__repeat);
+            for i in 0..($repeat){
+                vec.push_back(val.clone())
+            }
+            vec
+        }
+
     }
 }

@@ -7,7 +7,6 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-xlang = {path=".."}
 xlang_abi = {path="../xlang_abi"}
 xlang_targets = {path="../xlang_targets"}
 bitflags = "1.3"

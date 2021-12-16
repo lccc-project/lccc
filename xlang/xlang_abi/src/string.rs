@@ -88,8 +88,9 @@ impl<A: Allocator, A1: Allocator> PartialEq<String<A1>> for String<A> {
 
 impl<A: Allocator> Eq for String<A> {}
 
-impl From<&str> for String {
-    fn from(s: &str) -> Self {
+impl<S: AsRef<str> + ?Sized> From<&S> for String {
+    fn from(s: &S) -> Self {
+        let s = s.as_ref();
         if s.len() == 0 {
             Self::new()
         } else {
@@ -131,8 +132,8 @@ impl Deref for StringView<'_> {
     fn deref(&self) -> &str {
         unsafe {
             core::str::from_utf8_unchecked(core::slice::from_raw_parts(
-           self.begin.as_ptr(),
-                (self.end.as_ptr() as usize)-(self.begin.as_ptr() as usize), // This is really annoying that have to do this
+                self.begin.as_ptr(),
+                (self.end.as_ptr() as usize) - (self.begin.as_ptr() as usize), // This is really annoying that have to do this
             ))
         }
     }
@@ -177,22 +178,22 @@ impl<'a> StringView<'a> {
         let ptr = v.as_bytes().as_ptr();
         Self {
             begin: unsafe { NonNull::new_unchecked(ptr as *mut u8) },
-            end: unsafe { NonNull::new_unchecked(ptr.offset(v.len() as isize) as *mut u8) } ,
+            end: unsafe { NonNull::new_unchecked(ptr.offset(v.len() as isize) as *mut u8) },
             phantom: PhantomData,
         }
     }
 
-    /// 
+    ///
     /// ## SAFETY
     /// The behaviour is undefined if any of the following constraints are violated:
     /// * Neither begin nor end may be null pointers or deallocated pointers
     /// * For 'a, the range [begin,end) must be a valid range
     /// * The text in the range [begin,end) must be valid UTF-8
-    pub const unsafe fn from_raw_parts(begin: *const u8, end: *const u8) -> Self{
-        Self{
+    pub const unsafe fn from_raw_parts(begin: *const u8, end: *const u8) -> Self {
+        Self {
             begin: NonNull::new_unchecked(begin as *mut u8),
             end: NonNull::new_unchecked(end as *mut u8),
-            phantom: PhantomData
+            phantom: PhantomData,
         }
     }
 }
@@ -210,14 +211,14 @@ pub use str as __rust_str;
 /// const HELLO_WORLD: StringView = const_sv!("Hello World");
 /// assert_eq!(HELLO_WORLD,StringView::new("Hello World"));
 /// ```
-/// 
+///
 #[macro_export]
 macro_rules! const_sv{
     ($str:expr) => {
         {
             const __RET: $crate::string::StringView = {
-                // Thanks to matt1992 on the Rust Community Discord Server for this Rust 1.39 Friendly Hack 
-                // Why is 
+                // Thanks to matt1992 on the Rust Community Discord Server for this Rust 1.39 Friendly Hack
+                // Why is
                 const __STR: &$crate::string::__rust_str = $str;
                 /// # Safety
                 ///
@@ -261,7 +262,7 @@ macro_rules! const_sv{
                 }
 
                 const __SLICE: &[u8] = (__STR).as_bytes();
-                
+
 
                 struct __Dummy;
 
@@ -273,7 +274,7 @@ macro_rules! const_sv{
 
                 let (begin, end) = (__SLICE.as_ptr(), GetEnd::<__Dummy>::AS_END);
                 // SAFETY:
-                // 
+                //
                 unsafe{$crate::string::StringView::from_raw_parts(begin,end)}
             };
             __RET
@@ -282,30 +283,30 @@ macro_rules! const_sv{
 }
 
 #[cfg(test)]
-mod test{
+mod test {
     use crate::string::StringView;
 
     #[test]
-    pub fn test_new(){
+    pub fn test_new() {
         let x = StringView::new("Foo");
-        assert_eq!(&*x,"Foo");
+        assert_eq!(&*x, "Foo");
     }
 
     #[test]
-    pub fn test_new_empty(){
+    pub fn test_new_empty() {
         let y = StringView::new("");
-        assert_eq!(&*y,"");
+        assert_eq!(&*y, "");
     }
 
     #[test]
-    pub fn test_eq(){
+    pub fn test_eq() {
         let y = StringView::new("");
-        assert_eq!(y,y);
+        assert_eq!(y, y);
     }
 
     #[test]
-    pub fn test_display(){
+    pub fn test_display() {
         let x = StringView::new("Hello World");
-        assert_eq!(&*x,&*format!("{}",x))
+        assert_eq!(&*x, &*format!("{}", x))
     }
 }

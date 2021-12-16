@@ -1,4 +1,5 @@
 mod exports;
+pub mod plugin;
 pub mod prelude;
 pub mod visit;
 
