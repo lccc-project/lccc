@@ -37,58 +37,63 @@ impl core::fmt::Display for LayoutError {
 impl std::error::Error for LayoutError {}
 
 impl Layout {
-    pub const fn new<T>() -> Layout {
-        Layout {
+    #[must_use]
+    pub const fn new<T>() -> Self {
+        Self {
             size: core::mem::size_of::<T>(),
             align: core::mem::align_of::<T>(),
         }
     }
 
-    pub fn from_size_align(size: usize, align: usize) -> Result<Layout, LayoutError> {
+    pub const fn from_size_align(size: usize, align: usize) -> Result<Self, LayoutError> {
         match (size.overflowing_add(size % align), align) {
-            ((_, true), align) if align.is_power_of_two() => Ok(Layout { size, align }),
+            ((_, true), align) if align.is_power_of_two() => Ok(Self { size, align }),
             _ => Err(LayoutError(())),
         }
     }
 
-    pub const unsafe fn from_size_align_unchecked(size: usize, align: usize) -> Layout {
-        Layout { size, align }
+    #[must_use]
+    pub const unsafe fn from_size_align_unchecked(size: usize, align: usize) -> Self {
+        Self { size, align }
     }
 
-    pub fn from_val<T: ?Sized>(x: &T) -> Layout {
-        Layout {
+    pub fn from_val<T: ?Sized>(x: &T) -> Self {
+        Self {
             size: core::mem::size_of_val(x),
             align: core::mem::align_of_val(x),
         }
     }
 
-    pub fn from_dyn<T: ?Sized + AbiSafeTrait>(a: &dyn DynPtrSafe<T>) -> Layout {
-        Layout {
+    pub fn from_dyn<T: ?Sized + AbiSafeTrait>(a: &dyn DynPtrSafe<T>) -> Self {
+        Self {
             size: a.size_of_val(),
             align: a.align_of_val(),
         }
     }
 
-    pub fn array<T>(x: usize) -> Result<Layout, LayoutError> {
+    pub const fn array<T>(x: usize) -> Result<Self, LayoutError> {
         match (
             core::mem::size_of::<T>().checked_mul(x),
             core::mem::align_of::<T>(),
         ) {
-            (Some(size), align) => Ok(Layout { size, align }),
+            (Some(size), align) => Ok(Self { size, align }),
             (None, _) => Err(LayoutError(())),
         }
     }
 
+    #[must_use]
     pub const fn size(&self) -> usize {
         self.size
     }
 
+    #[must_use]
     pub const fn align(&self) -> usize {
         self.align
     }
 
-    pub fn pad_to_align(&self) -> Layout {
-        Layout {
+    #[must_use]
+    pub const fn pad_to_align(&self) -> Self {
+        Self {
             size: self.size + (self.size % self.align),
             align: self.align,
         }
@@ -99,7 +104,7 @@ impl Layout {
             self.size.overflowing_add(self.size % align),
             align.max(self.align()),
         ) {
-            ((_, true), align) if align.is_power_of_two() => Ok(Layout {
+            ((_, true), align) if align.is_power_of_two() => Ok(Self {
                 size: self.size,
                 align,
             }),
@@ -107,14 +112,15 @@ impl Layout {
         }
     }
 
-    pub fn padding_needed_for(&self, align: usize) -> usize {
+    #[must_use]
+    pub const fn padding_needed_for(&self, align: usize) -> usize {
         self.size % align
     }
 
-    pub fn repeat(&self, n: usize) -> Result<(Self, usize), LayoutError> {
+    pub const fn repeat(&self, n: usize) -> Result<(Self, usize), LayoutError> {
         let Layout { size, align } = self.pad_to_align();
         match (size.checked_mul(n), align) {
-            (Some(asize), align) => Ok((Layout { size: asize, align }, size - self.size)),
+            (Some(asize), align) => Ok((Self { size: asize, align }, size - self.size)),
             _ => Err(LayoutError(())),
         }
     }
@@ -123,17 +129,16 @@ impl Layout {
         let Layout { size, align } = self.align_to(next.align())?;
         match size
             .checked_add(size % next.align())
-            .map(|v| v.checked_add(next.size()))
-            .unwrap_or(None)
+            .and_then(|v| v.checked_add(next.size()))
         {
-            Some(rsize) => Ok((Layout { size: rsize, align }, size - self.size())),
+            Some(rsize) => Ok((Self { size: rsize, align }, size - self.size())),
             None => Err(LayoutError(())),
         }
     }
 
-    pub fn repeat_packed(&self, n: usize) -> Result<Self, LayoutError> {
+    pub const fn repeat_packed(&self, n: usize) -> Result<Self, LayoutError> {
         match self.size().checked_mul(n) {
-            Some(size) => Ok(Layout {
+            Some(size) => Ok(Self {
                 size,
                 align: self.align(),
             }),
@@ -141,9 +146,9 @@ impl Layout {
         }
     }
 
-    pub fn extend_packed(&self, next: Self) -> Result<Self, LayoutError> {
+    pub const fn extend_packed(&self, next: Self) -> Result<Self, LayoutError> {
         match self.size.checked_add(next.size()) {
-            Some(size) => Ok(Layout {
+            Some(size) => Ok(Self {
                 size,
                 align: self.align(),
             }),
@@ -151,7 +156,8 @@ impl Layout {
         }
     }
 
-    pub fn dangling(&self) -> NonNull<u8> {
+    #[must_use]
+    pub const fn dangling(&self) -> NonNull<u8> {
         // NOTE: this is an implementation detail
         // Future versions may offer randomization or
         unsafe { NonNull::new_unchecked(self.align as *mut u8) }
@@ -183,7 +189,7 @@ pub unsafe trait Allocator {
                 ptr.as_ptr(),
                 nptr.as_ptr().cast::<u8>(),
                 old_layout.size(),
-            )
+            );
         }
         self.deallocate(ptr, old_layout);
         Some(nptr)
@@ -202,7 +208,7 @@ pub unsafe trait Allocator {
                 ptr.as_ptr(),
                 nptr.as_ptr().cast::<u8>(),
                 old_layout.size(),
-            )
+            );
         }
         self.deallocate(ptr, old_layout);
         Some(nptr)
@@ -221,7 +227,7 @@ pub unsafe trait Allocator {
                 ptr.as_ptr(),
                 nptr.as_ptr().cast::<u8>(),
                 new_layout.size(),
-            )
+            );
         }
         self.deallocate(ptr, old_layout);
         Some(nptr)
@@ -241,7 +247,7 @@ unsafe impl<A: ?Sized + Allocator> Allocator for &A {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        A::deallocate(self, ptr, layout)
+        A::deallocate(self, ptr, layout);
     }
 
     fn allocate_zeroed(&self, layout: Layout) -> Option<NonNull<u8>> {
@@ -282,7 +288,7 @@ unsafe impl<A: ?Sized + Allocator> Allocator for &mut A {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        A::deallocate(self, ptr, layout)
+        A::deallocate(self, ptr, layout);
     }
 
     fn allocate_zeroed(&self, layout: Layout) -> Option<NonNull<u8>> {
@@ -317,11 +323,13 @@ unsafe impl<A: ?Sized + Allocator> Allocator for &mut A {
     }
 }
 
+#[allow(clippy::module_name_repetitions)] // TODO: Should this be changed?
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct XLangAlloc(MaybeUninit<u8>);
 
 impl XLangAlloc {
+    #[must_use]
     pub const fn new() -> Self {
         Self(MaybeUninit::uninit())
     }
@@ -357,7 +365,7 @@ unsafe impl Allocator for XLangAlloc {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        xlang_deallocate_aligned(ptr.as_ptr().cast(), layout.size(), layout.align())
+        xlang_deallocate_aligned(ptr.as_ptr().cast(), layout.size(), layout.align());
     }
 }
 
@@ -396,21 +404,21 @@ unsafe impl AbiSafeTrait for dyn Allocator + Send + Sync {
 }
 
 unsafe extern "C" fn vtbl_destroy<T>(this: *mut ()) {
-    core::ptr::drop_in_place(this as *mut T)
+    core::ptr::drop_in_place(this.cast::<T>());
 }
 
 unsafe extern "C" fn vtbl_allocate<T: Allocator>(
     this: *const (),
     layout: Layout,
 ) -> Option<NonNull<u8>> {
-    <T as Allocator>::allocate(&*(this as *const T), layout)
+    <T as Allocator>::allocate(&*(this.cast::<T>()), layout)
 }
 
 unsafe extern "C" fn vtbl_allocate_zeroed<T: Allocator>(
     this: *const (),
     layout: Layout,
 ) -> Option<NonNull<u8>> {
-    <T as Allocator>::allocate_zeroed(&*(this as *const T), layout)
+    <T as Allocator>::allocate_zeroed(&*(this.cast::<T>()), layout)
 }
 
 unsafe extern "C" fn vtbl_deallocate<T: Allocator>(
@@ -418,7 +426,7 @@ unsafe extern "C" fn vtbl_deallocate<T: Allocator>(
     ptr: NonNull<u8>,
     layout: Layout,
 ) {
-    <T as Allocator>::deallocate(&*(this as *const T), ptr, layout)
+    <T as Allocator>::deallocate(&*(this.cast::<T>()), ptr, layout);
 }
 
 unsafe extern "C" fn vtbl_grow<T: Allocator>(
@@ -427,7 +435,7 @@ unsafe extern "C" fn vtbl_grow<T: Allocator>(
     old_layout: Layout,
     new_layout: Layout,
 ) -> Option<NonNull<u8>> {
-    <T as Allocator>::grow(&*(this as *const T), ptr, old_layout, new_layout)
+    <T as Allocator>::grow(&*(this.cast::<T>()), ptr, old_layout, new_layout)
 }
 
 unsafe extern "C" fn vtbl_grow_zeroed<T: Allocator>(
@@ -436,7 +444,7 @@ unsafe extern "C" fn vtbl_grow_zeroed<T: Allocator>(
     old_layout: Layout,
     new_layout: Layout,
 ) -> Option<NonNull<u8>> {
-    <T as Allocator>::grow_zeroed(&*(this as *const T), ptr, old_layout, new_layout)
+    <T as Allocator>::grow_zeroed(&*(this.cast::<T>()), ptr, old_layout, new_layout)
 }
 
 unsafe extern "C" fn vtbl_shrink<T: Allocator>(
@@ -445,7 +453,7 @@ unsafe extern "C" fn vtbl_shrink<T: Allocator>(
     old_layout: Layout,
     new_layout: Layout,
 ) -> Option<NonNull<u8>> {
-    <T as Allocator>::shrink(&*(this as *const T), ptr, old_layout, new_layout)
+    <T as Allocator>::shrink(&*(this.cast::<T>()), ptr, old_layout, new_layout)
 }
 
 unsafe impl<T: Allocator> AbiSafeUnsize<T> for dyn Allocator {
@@ -522,7 +530,7 @@ unsafe impl<'lt> Allocator for dyn DynPtrSafe<dyn Allocator> + 'lt {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        (self.vtable().deallocate)(self.as_raw(), ptr, layout)
+        (self.vtable().deallocate)(self.as_raw(), ptr, layout);
     }
 
     fn allocate_zeroed(&self, layout: Layout) -> Option<NonNull<u8>> {
@@ -563,7 +571,7 @@ unsafe impl<'lt> Allocator for dyn DynPtrSafe<dyn Allocator + Send> + 'lt {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        (self.vtable().deallocate)(self.as_raw(), ptr, layout)
+        (self.vtable().deallocate)(self.as_raw(), ptr, layout);
     }
 
     fn allocate_zeroed(&self, layout: Layout) -> Option<NonNull<u8>> {
@@ -604,7 +612,7 @@ unsafe impl<'lt> Allocator for dyn DynPtrSafe<dyn Allocator + Sync> + 'lt {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        (self.vtable().deallocate)(self.as_raw(), ptr, layout)
+        (self.vtable().deallocate)(self.as_raw(), ptr, layout);
     }
 
     fn allocate_zeroed(&self, layout: Layout) -> Option<NonNull<u8>> {
@@ -645,7 +653,7 @@ unsafe impl<'lt> Allocator for dyn DynPtrSafe<dyn Allocator + Send + Sync> + 'lt
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        (self.vtable().deallocate)(self.as_raw(), ptr, layout)
+        (self.vtable().deallocate)(self.as_raw(), ptr, layout);
     }
 
     fn allocate_zeroed(&self, layout: Layout) -> Option<NonNull<u8>> {
@@ -689,7 +697,7 @@ where
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        <dyn DynPtrSafe<T> as Allocator>::deallocate(&**self, ptr, layout)
+        <dyn DynPtrSafe<T> as Allocator>::deallocate(&**self, ptr, layout);
     }
 
     fn allocate_zeroed(&self, layout: Layout) -> Option<NonNull<u8>> {
@@ -733,7 +741,7 @@ where
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        <dyn DynPtrSafe<T> as Allocator>::deallocate(&**self, ptr, layout)
+        <dyn DynPtrSafe<T> as Allocator>::deallocate(&**self, ptr, layout);
     }
 
     fn allocate_zeroed(&self, layout: Layout) -> Option<NonNull<u8>> {
@@ -777,7 +785,7 @@ where
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        <dyn DynPtrSafe<T> as Allocator>::deallocate(&**self, ptr, layout)
+        <dyn DynPtrSafe<T> as Allocator>::deallocate(&**self, ptr, layout);
     }
 
     fn allocate_zeroed(&self, layout: Layout) -> Option<NonNull<u8>> {

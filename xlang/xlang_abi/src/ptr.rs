@@ -31,7 +31,8 @@ unsafe impl<T: Sync> Sync for Unique<T> {}
 impl<T> Unpin for Unique<T> {}
 
 impl<T> Unique<T> {
-    pub fn dangling() -> Self {
+    #[must_use]
+    pub const fn dangling() -> Self {
         Self {
             ptr: NonNull::dangling(),
             phantom: PhantomData,

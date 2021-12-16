@@ -1,4 +1,10 @@
-#![allow(clippy::missing_safety_doc)] // FIXME: Remove this allow
+#![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::missing_safety_doc
+)] // FIXME: Remove this allow
 pub mod option;
 pub mod traits;
 

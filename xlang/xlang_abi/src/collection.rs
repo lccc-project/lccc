@@ -41,13 +41,14 @@ impl<K, V, H: BuildHasher, A: Allocator> Drop for HashMap<K, V, H, A> {
                 self.alloc.deallocate(
                     self.htab.as_nonnull().cast(),
                     Layout::array::<HashMapSlot<K, V>>(self.buckets).unwrap(),
-                )
+                );
             }
         }
     }
 }
 
 impl<K, V, H: BuildHasher + Default, A: Allocator + Default> HashMap<K, V, H, A> {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             htab: Unique::dangling(),
@@ -98,12 +99,14 @@ impl<K, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
 }
 
 impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
+    #[allow(clippy::similar_names)]
     fn rehash(&mut self) {
         let ocount = self.buckets;
         let ncount = self.buckets * 2;
-        if ncount > (std::isize::MAX as usize) {
-            panic!("We have too many buckets, bail before we maybe cause UB")
-        }
+        assert!(
+            ncount <= (std::isize::MAX as usize),
+            "We have too many buckets, bail before we maybe cause UB"
+        );
 
         let ptr = self
             .alloc
@@ -125,9 +128,11 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
             self.alloc.deallocate(
                 ptr.as_nonnull().cast(),
                 Layout::array::<HashMapSlot<K, V>>(ocount).unwrap(),
-            )
+            );
         }
     }
+
+    #[allow(clippy::cast_possible_truncation)]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         if self.buckets != 0 {
             let ptr = self
@@ -157,20 +162,21 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
             if bucket.ecount == 16 {
                 self.rehash();
                 continue;
-            } else {
-                // SAFETY:
-                // This is literally MaybeUninit::write, but valid in 1.39
-                unsafe {
-                    bucket.entries[bucket.ecount]
-                        .as_mut_ptr()
-                        .write(Pair(key, value))
-                };
-                bucket.ecount += 1;
-                return None;
             }
+            // SAFETY:
+            // This is literally MaybeUninit::write, but valid in 1.39
+            // TODO: Change this to MaybeUninit::write, since we are no longer in 1.39
+            unsafe {
+                bucket.entries[bucket.ecount]
+                    .as_mut_ptr()
+                    .write(Pair(key, value));
+            }
+            bucket.ecount += 1;
+            return None;
         }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     pub fn get_or_insert_mut(&mut self, key: K, value: V) -> &mut V {
         loop {
             let mut hasher = self.hash.build_hasher();
@@ -192,20 +198,21 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
             if bucket.ecount == 16 {
                 self.rehash();
                 continue;
-            } else {
-                // SAFETY:
-                // This is literally MaybeUninit::write, but valid in 1.39
-                unsafe {
-                    bucket.entries[bucket.ecount]
-                        .as_mut_ptr()
-                        .write(Pair(key, value))
-                };
-                bucket.ecount += 1;
-                return &mut unsafe { &mut *bucket.entries[bucket.ecount].as_mut_ptr() }.1;
             }
+            // SAFETY:
+            // This is literally MaybeUninit::write, but valid in 1.39
+            // TODO: Change this to MaybeUninit::write, since we're no longer bound to 1.39
+            unsafe {
+                bucket.entries[bucket.ecount]
+                    .as_mut_ptr()
+                    .write(Pair(key, value));
+            }
+            bucket.ecount += 1;
+            return &mut unsafe { &mut *bucket.entries[bucket.ecount].as_mut_ptr() }.1;
         }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     pub fn get<Q: Hash + Eq>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
@@ -228,6 +235,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         None
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     pub fn get_mut<Q: Hash + Eq>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
@@ -254,6 +262,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
 impl<K: Clone, V: Clone, H: BuildHasher + Clone, A: Allocator + Clone> Clone
     for HashMap<K, V, H, A>
 {
+    #[allow(clippy::similar_names)]
     fn clone(&self) -> Self {
         let buckets = self.buckets;
         let hash = self.hash.clone();
@@ -270,7 +279,7 @@ impl<K: Clone, V: Clone, H: BuildHasher + Clone, A: Allocator + Clone> Clone
                 unsafe {
                     bucket.entries[j]
                         .as_mut_ptr()
-                        .write((&*obucket.entries[j].as_ptr()).clone())
+                        .write((&*obucket.entries[j].as_ptr()).clone());
                 }
             }
         }

@@ -47,10 +47,12 @@ impl<T: ?Sized> Box<T, XLangAlloc> {
 }
 
 impl<T> Box<MaybeUninit<T>, XLangAlloc> {
+    #[must_use]
     pub fn new_uninit() -> Self {
         Self::new_uninit_in(XLangAlloc::new())
     }
 
+    #[must_use]
     pub fn new_zeroed() -> Self {
         Self::new_zeroed_in(XLangAlloc::new())
     }
@@ -62,7 +64,7 @@ impl<T, A: Allocator> Box<MaybeUninit<T>, A> {
             .allocate(Layout::new::<T>())
             .unwrap_or_else(|| crate::alloc::handle_alloc_error(Layout::new::<T>()))
             .cast::<MaybeUninit<T>>();
-        Box {
+        Self {
             ptr: unsafe { Unique::new_nonnull_unchecked(ptr) },
             alloc,
         }
@@ -73,16 +75,16 @@ impl<T, A: Allocator> Box<MaybeUninit<T>, A> {
             .allocate_zeroed(Layout::new::<T>())
             .unwrap_or_else(|| crate::alloc::handle_alloc_error(Layout::new::<T>()))
             .cast::<MaybeUninit<T>>();
-        Box {
+        Self {
             ptr: unsafe { Unique::new_nonnull_unchecked(ptr) },
             alloc,
         }
     }
 
-    pub unsafe fn assume_init(this: Self) -> Box<T, A> {
+    pub unsafe fn assume_init(this: Self) -> Self {
         let (ptr, alloc) = Self::into_raw_with_alloc(this);
 
-        Box::from_raw_in(ptr.cast(), alloc)
+        Self::from_raw_in(ptr.cast(), alloc)
     }
 }
 
@@ -99,7 +101,7 @@ impl<T, A: Allocator> Box<T, A> {
         }
     }
 
-    pub fn pin_in(x: T, alloc: A) -> Pin<Box<T, A>> {
+    pub fn pin_in(x: T, alloc: A) -> Pin<Self> {
         unsafe { Pin::new_unchecked(Self::new_in(x, alloc)) }
     }
 
@@ -230,21 +232,21 @@ impl<T: ?Sized, A: Allocator> BorrowMut<T> for Box<T, A> {
 
 impl<T: Default, A: Allocator + Default> Default for Box<T, A> {
     fn default() -> Self {
-        Box::new_in(Default::default(), Default::default())
+        Self::new_in(Default::default(), Default::default())
     }
 }
 
 impl<T> Default for Box<[T], XLangAlloc> {
     fn default() -> Self {
         let (ptr, alloc) = Box::into_raw_with_alloc(Box::<[T; 0]>::new([]));
-        unsafe { Box::from_raw_in(ptr as *mut [T], alloc) }
+        unsafe { Self::from_raw_in(ptr as *mut [T], alloc) }
     }
 }
 
 impl Default for Box<str, XLangAlloc> {
     fn default() -> Self {
         let (ptr, alloc) = Box::into_raw_with_alloc(Box::<[u8; 0]>::new([]));
-        unsafe { Box::from_raw_in(ptr as *mut [u8] as *mut str, alloc) }
+        unsafe { Self::from_raw_in(ptr as *mut [u8] as *mut str, alloc) }
     }
 }
 
@@ -252,7 +254,7 @@ impl<T: Clone, A: Allocator + Clone> Clone for Box<T, A> {
     fn clone(&self) -> Self {
         let alloc = Self::allocator(self).clone();
         let val = T::clone(self);
-        Box::new_in(val, alloc)
+        Self::new_in(val, alloc)
     }
 }
 
@@ -293,7 +295,7 @@ unsafe impl<T: Allocator + ?Sized, A: Allocator> Allocator for Box<T, A> {
     }
 
     unsafe fn deallocate(&self, ptr: std::ptr::NonNull<u8>, layout: Layout) {
-        T::deallocate(self, ptr, layout)
+        T::deallocate(self, ptr, layout);
     }
 }
 
@@ -312,7 +314,7 @@ impl<F: ?Sized + Future + Unpin, A: Allocator + 'static> Future for Box<F, A> {
 
 impl<T: ?Sized + Hash, A: Allocator> Hash for Box<T, A> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        T::hash(self, state)
+        T::hash(self, state);
     }
 }
 

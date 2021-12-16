@@ -51,6 +51,7 @@ mod x86;
 
 #[doc(hidden)]
 #[deprecated(note = "internal interface that doesn't get linked in via xlang_interface")]
+#[must_use]
 pub fn __get_properties(targ: Target) -> &'static TargetProperties {
     target_tuples::match_targets! {
         match (targ.into()){
@@ -64,6 +65,7 @@ extern "C" {
     pub fn xlang_get_target_properties(targ: Target) -> &'static TargetProperties;
 }
 
+#[must_use]
 pub fn get_properties(targ: Target) -> &'static TargetProperties {
     unsafe { xlang_get_target_properties(targ) }
 }

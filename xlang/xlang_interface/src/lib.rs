@@ -1,3 +1,4 @@
+#![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
 #![allow(clippy::missing_safety_doc)] // FIXME: Remove this allow
 use std::alloc::Layout;
 
@@ -30,7 +31,7 @@ pub unsafe extern "C" fn xlang_allocate_aligned(
     }
     let size = size + (align - size % align) % align;
     let layout = Layout::from_size_align_unchecked(size, align);
-    std::alloc::alloc(layout) as *mut _
+    std::alloc::alloc(layout).cast::<_>()
 }
 
 #[no_mangle]
@@ -48,7 +49,7 @@ pub unsafe extern "C" fn xlang_deallocate(ptr: *mut core::ffi::c_void, size: usi
             } else {
                 size.next_power_of_two()
             },
-        )
+        );
     }
 }
 
@@ -63,7 +64,7 @@ pub unsafe extern "C" fn xlang_deallocate_aligned(
     }
     let size = size + (align - size % align) % align;
     let layout = Layout::from_size_align_unchecked(size, align);
-    std::alloc::dealloc(ptr as *mut _, layout);
+    std::alloc::dealloc(ptr.cast::<_>(), layout);
 }
 
 #[no_mangle]

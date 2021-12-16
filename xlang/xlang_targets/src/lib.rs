@@ -1,3 +1,5 @@
+#![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+#![allow(clippy::module_name_repetitions)]
 use xlang_abi::prelude::v1::*;
 
 use target_tuples::{Architecture, Environment, ObjectFormat, Vendor, OS};

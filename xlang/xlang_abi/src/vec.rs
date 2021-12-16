@@ -21,10 +21,12 @@ pub struct Vec<T, A: Allocator = XLangAlloc> {
 }
 
 impl<T> Vec<T, XLangAlloc> {
+    #[must_use]
     pub fn new() -> Self {
         Self::new_in(XLangAlloc::new())
     }
 
+    #[must_use]
     pub fn with_capacity(cap: usize) -> Self {
         Self::with_capacity_in(cap, XLangAlloc::new())
     }
@@ -240,9 +242,9 @@ impl<T, A: Allocator + Default> FromIterator<T> for Vec<T, A> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let iter = iter.into_iter();
         let (size, _) = iter.size_hint();
-        let mut ret = Vec::with_capacity_in(size, Default::default());
+        let mut ret = Self::with_capacity_in(size, Default::default());
         for v in iter {
-            ret.push(v)
+            ret.push(v);
         }
         ret
     }
@@ -255,7 +257,7 @@ impl<T, A: Allocator> Extend<T> for Vec<T, A> {
 
         self.reserve(size);
         for v in iter {
-            self.push(v)
+            self.push(v);
         }
     }
 }
@@ -311,7 +313,7 @@ impl<'a, T, A: Allocator> IntoIterator for &'a mut Vec<T, A> {
 impl<T: Hash, A: Allocator> Hash for Vec<T, A> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         for i in 0..self.len() {
-            self[i].hash(state)
+            self[i].hash(state);
         }
     }
 }
@@ -340,7 +342,11 @@ impl<A: Allocator> Write for Vec<u8, A> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.reserve(buf.len());
         unsafe {
-            core::ptr::copy_nonoverlapping(buf.as_ptr(), self.ptr.as_ptr().add(self.len), buf.len())
+            core::ptr::copy_nonoverlapping(
+                buf.as_ptr(),
+                self.ptr.as_ptr().add(self.len),
+                buf.len(),
+            );
         }
         Ok(buf.len())
     }

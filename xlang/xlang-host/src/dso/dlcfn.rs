@@ -28,9 +28,7 @@ impl RawHandle {
         let hdl = unsafe { dlopen(cstr.as_ptr(), RTLD_NOW) };
         if hdl.is_null() {
             let err = unsafe { dlerror() };
-            if err.is_null() {
-                panic!("dlopen returned null but there's no error")
-            }
+            assert!(!err.is_null(), "dlopen returned null but there's no error");
             let opt = unsafe { CStr::from_ptr(err) };
 
             Err(std::io::Error::new(
@@ -42,7 +40,8 @@ impl RawHandle {
         }
     }
 
-    pub fn open_self() -> std::io::Result<Self> {
+    #[allow(clippy::unnecessary_wraps)]
+    pub const fn open_self() -> std::io::Result<Self> {
         Ok(Self {
             hdl: core::ptr::null_mut(),
         })

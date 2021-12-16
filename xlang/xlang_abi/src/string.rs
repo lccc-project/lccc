@@ -51,6 +51,7 @@ impl<A: Allocator> DerefMut for String<A> {
 }
 
 impl String<XLangAlloc> {
+    #[must_use]
     pub fn new() -> Self {
         Self(crate::vec::Vec::new())
     }
@@ -70,7 +71,7 @@ impl<A: Allocator> String<A> {
 
 impl<A: Allocator> Hash for String<A> {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
-        self.0.hash(hasher)
+        self.0.hash(hasher);
     }
 }
 
@@ -117,6 +118,7 @@ impl<A: Allocator> Write for String<A> {
 ///
 /// An abi safe &str
 #[repr(C)]
+#[allow(clippy::module_name_repetitions)] // TODO: Determine if this should or should not be changed
 pub struct StringView<'a> {
     begin: NonNull<u8>,
     end: NonNull<u8>,
@@ -159,7 +161,7 @@ impl core::fmt::Display for StringView<'_> {
 
 impl core::hash::Hash for StringView<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        <str as core::hash::Hash>::hash(self, state)
+        <str as core::hash::Hash>::hash(self, state);
     }
 }
 
@@ -172,6 +174,7 @@ impl PartialEq for StringView<'_> {
 impl Eq for StringView<'_> {}
 
 impl<'a> StringView<'a> {
+    #[must_use]
     pub const fn empty() -> Self {
         StringView {
             begin: NonNull::dangling(),
@@ -180,6 +183,7 @@ impl<'a> StringView<'a> {
         }
     }
 
+    #[must_use]
     pub fn new(v: &'a str) -> Self {
         let ptr = v.as_bytes().as_ptr();
         Self {
@@ -195,6 +199,7 @@ impl<'a> StringView<'a> {
     /// * Neither begin nor end may be null pointers or deallocated pointers
     /// * For 'a, the range [begin,end) must be a valid range
     /// * The text in the range [begin,end) must be valid UTF-8
+    #[must_use]
     pub const unsafe fn from_raw_parts(begin: *const u8, end: *const u8) -> Self {
         Self {
             begin: NonNull::new_unchecked(begin as *mut u8),
@@ -208,7 +213,7 @@ impl<'a> StringView<'a> {
 pub use str as __rust_str;
 
 ///
-/// Constructs a StringView in a constant context.
+/// Constructs a `StringView` in a constant context.
 /// This is equivalent to `StringView::new(str)`, except it is valid in a const initializer
 /// ## Examples
 /// ```

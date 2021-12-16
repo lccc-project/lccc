@@ -31,11 +31,12 @@ impl<H> Default for BuildHasherDefault<H> {
     }
 }
 
-const PRIME: u64 = 1099511628211;
+const PRIME: u64 = 1_099_511_628_211;
 
 impl XLangHasher {
+    #[must_use]
     pub const fn new() -> Self {
-        Self(Wrapping(14695981039346656037))
+        Self(Wrapping(14_695_981_039_346_656_037))
     }
 }
 
@@ -46,62 +47,63 @@ impl Hasher for XLangHasher {
 
     fn write(&mut self, bytes: &[u8]) {
         for &b in bytes {
-            self.0 ^= Wrapping(b as u64);
+            self.0 ^= Wrapping(u64::from(b));
             self.0 *= Wrapping(PRIME);
         }
     }
 
     fn write_u8(&mut self, i: u8) {
-        self.write(&[i])
+        self.write(&[i]);
     }
 
     fn write_u16(&mut self, i: u16) {
-        self.write(&i.to_ne_bytes())
+        self.write(&i.to_ne_bytes());
     }
 
     fn write_u32(&mut self, i: u32) {
-        self.write(&i.to_ne_bytes())
+        self.write(&i.to_ne_bytes());
     }
 
     fn write_u64(&mut self, i: u64) {
-        self.write(&i.to_ne_bytes())
+        self.write(&i.to_ne_bytes());
     }
 
     fn write_u128(&mut self, i: u128) {
-        self.write(&i.to_ne_bytes())
+        self.write(&i.to_ne_bytes());
     }
 
     fn write_usize(&mut self, i: usize) {
-        self.write(&i.to_ne_bytes())
+        self.write(&i.to_ne_bytes());
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn write_i8(&mut self, i: i8) {
-        self.write_u8(i as u8)
+        self.write_u8(i as u8);
     }
 
     fn write_i16(&mut self, i: i16) {
-        self.write(&i.to_ne_bytes())
+        self.write(&i.to_ne_bytes());
     }
 
     fn write_i32(&mut self, i: i32) {
-        self.write(&i.to_ne_bytes())
+        self.write(&i.to_ne_bytes());
     }
 
     fn write_i64(&mut self, i: i64) {
-        self.write(&i.to_ne_bytes())
+        self.write(&i.to_ne_bytes());
     }
 
     fn write_i128(&mut self, i: i128) {
-        self.write(&i.to_ne_bytes())
+        self.write(&i.to_ne_bytes());
     }
 
     fn write_isize(&mut self, i: isize) {
-        self.write(&i.to_ne_bytes())
+        self.write(&i.to_ne_bytes());
     }
 }
 
 impl Default for XLangHasher {
-    fn default() -> XLangHasher {
+    fn default() -> Self {
         Self::new()
     }
 }

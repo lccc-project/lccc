@@ -21,6 +21,7 @@ impl<T> Clone for Span<'_, T> {
 impl<T> Copy for Span<'_, T> {}
 
 impl<'a, T> Span<'a, T> {
+    #[must_use]
     pub const fn empty() -> Self {
         Self {
             begin: NonNull::dangling(),
@@ -29,6 +30,7 @@ impl<'a, T> Span<'a, T> {
         }
     }
 
+    #[must_use]
     pub const fn new(x: &'a [T]) -> Self {
         Self {
             begin: unsafe { NonNull::new_unchecked(x.as_ptr() as *mut T) },
@@ -40,6 +42,7 @@ impl<'a, T> Span<'a, T> {
     ///
     /// Reborrows the span immutably.
     /// This is the same as copying the Span and shrinking the lifetime.
+    #[must_use]
     pub const fn reborrow(&self) -> Span<'_, T> {
         *self
     }
@@ -104,6 +107,7 @@ where
     }
 }
 
+#[allow(clippy::module_name_repetitions)]
 #[repr(C)]
 pub struct SpanMut<'a, T> {
     begin: NonNull<T>,
@@ -156,6 +160,7 @@ impl<T: ?Sized> Hack for PhantomData<T> {
 }
 
 impl<'a, T> SpanMut<'a, T> {
+    #[must_use]
     pub const fn empty() -> Self {
         Self {
             begin: NonNull::dangling(),
@@ -164,6 +169,7 @@ impl<'a, T> SpanMut<'a, T> {
         }
     }
 
+    #[must_use]
     pub fn new(x: &'a mut [T]) -> Self {
         Self {
             len: x.len(),
@@ -172,6 +178,7 @@ impl<'a, T> SpanMut<'a, T> {
         }
     }
 
+    #[must_use]
     pub const fn reborrow(&self) -> Span<'_, T> {
         Span {
             begin: self.begin,

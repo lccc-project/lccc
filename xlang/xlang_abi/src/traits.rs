@@ -1,8 +1,8 @@
 //!
 //! # ABI Safe Trait Objects
 //! This module provides the low and mid-level api for ABI-Safe Trait objects
-//! Most user code will interact with the DynRef, DynMut, and DynBox types.
-//! The rest of the api is to support those types and the `#[abi_safe]` attribute defined by the xlang_abi_macro crate
+//! Most user code will interact with the `DynRef`, `DynMut`, and `DynBox` types.
+//! The rest of the api is to support those types and the `#[abi_safe]` attribute defined by the `xlang_abi_macro` crate
 //!
 //! ## Defining an ABI Safe Trait
 //! Any trait can be defined as ABI Safe if it meets the following requirements:
@@ -26,12 +26,12 @@
 //! ```
 //!
 //! ## Using an ABI Safe Trait
-//! Abi safe traits can be used with the DynRef, DynMut, DynBox, and DynPtr types in this module,
+//! Abi safe traits can be used with the `DynRef`, `DynMut`, `DynBox`, and `DynPtr` types in this module,
 //! by calling the `unsize_*` methods of those types on concrete pointers/references to types implementing the trait (note, this does not work if you have already unsize the type to a language trait object, like `&dyn Foo`).
 //! You can then use these types with the methods of the trait
 //!
 //! ## Manually Implementing [`AbiSafeTrait`]
-//! While it is recommend to use the attribute to implement the various AbiSafe traits, it is possible to implement them manually.
+//! While it is recommend to use the attribute to implement the various `AbiSafe` traits, it is possible to implement them manually.
 //! All of these traits are unsafe and impose numerous preconditions on implmenetors, any of which will result in very unsound code if violated.
 //! That being said, if you accept the Nasal Demons you are invoking, it can be fairly simple, and, in some cases, advantageous to implement the traits manually.
 //! For example, manual implementations can use additional recievers (usually combined with the `arbitrary_self_types` feature) or to provide custom implementations of
@@ -41,7 +41,7 @@
 //! Before attempting this, you must ensure the trait in use is object safe, and it is recommended that each method have an explicit abi other than extern"Rust", extern"rust-call", or extern"rust-intrinsic".
 //!
 //! ### Vtables
-//! The first requirement is to create a trait's abi safe VTable. This must be a `#[repr(C)]` type,
+//! The first requirement is to create a trait's abi safe `VTable`. This must be a `#[repr(C)]` type,
 //! and the first four (non 1-ZST) members must be the members of the [`AbiSafeVTableHead`] type (size, alignment, destructor, reserved dellocation function)
 //! The remainder of the members should typically be the virtual functions of the trait (the methods not bound on Self: Sized). Each member should be public
 //!
@@ -56,10 +56,10 @@ use std::{
 
 ///
 ///##  SAFETY
-/// * construct_vtable_for() must return the same value for the same type Self in repeated calls
-/// * construct_vtable_for().size() must equal size_of::<Self>()
-/// * construct_vtable_for().size() must equal align_of::<Self>()
-/// * construct_vtable_for().drop_in_place(x) must perform no operation other than `core::ptr::drop_in_place(x as *mut Self)` if the preconditions are met
+/// * `construct_vtable_for()` must return the same value for the same type Self in repeated calls
+/// * `construct_vtable_for().size()` must equal `size_of::<Self>()`
+/// * `construct_vtable_for().size()` must equal `align_of::<Self>()`
+/// * `construct_vtable_for().drop_in_place(x)` must perform no operation other than `core::ptr::drop_in_place(x as *mut Self)` if the preconditions are met
 pub unsafe trait AbiSafeUnsize<T>: AbiSafeTrait {
     fn construct_vtable_for() -> &'static Self::VTable;
 }
@@ -91,7 +91,7 @@ unsafe impl<'lt, T> FromReciever for &'lt mut T {
     /// - Neither x nor any pointer derived from x or to the same memory region may be used to access that memory region for the duration of 'lt
     /// - x must point to a valid, initialized, value of type T
     unsafe fn from_raw_ptr(x: *mut ()) -> &'lt mut T {
-        &mut *(x as *mut T)
+        &mut *(x.cast::<T>())
     }
 }
 
@@ -103,10 +103,10 @@ unsafe impl<'lt, T> FromReciever for &'lt T {
     /// - x must be non-null and well-aligned to T
     /// - x must be valid for reads for the size of T
     /// - No mutable references may exist to the same memory region as x
-    /// - Neither x nor any pointer derived from x or to the same memory region may be used to modify that memory region for the duration of 'lt, unless T is or contains an UnsafeCell.
+    /// - Neither x nor any pointer derived from x or to the same memory region may be used to modify that memory region for the duration of 'lt, unless T is or contains an `UnsafeCell`.
     /// - x must point to a valid, initialized, value of type T
     unsafe fn from_raw_ptr(x: *mut ()) -> &'lt T {
-        &*(x as *mut T)
+        &*(x.cast::<T>())
     }
 }
 
@@ -122,7 +122,7 @@ where
     /// Additionaly, unless T implements the Unpin triyat, it's destructor must be called on the memory region before the storage is deallocated or reused for any other type
     /// These restriictions apply whether or not the pointee of x was previously pinned.
     unsafe fn from_raw_ptr(x: *mut ()) -> Self {
-        Pin::new_unchecked(P::from_raw_ptr(x))
+        Self::new_unchecked(P::from_raw_ptr(x))
     }
 }
 
@@ -134,7 +134,7 @@ unsafe impl<T: ?Sized + AbiSafeTrait, P: Deref + AbiSafeReciever<T>> AbiSafeReci
 
 ///
 /// ## SAFETY:
-/// The implementor of AbiSafeTrait shall be `dyn Trait`
+/// The implementor of `AbiSafeTrait` shall be `dyn Trait`
 pub unsafe trait AbiSafeTrait {
     type VTable: AbiSafeVTable<Self> + 'static;
 }
@@ -149,16 +149,16 @@ pub struct AbiSafeVTableHead {
 
 ///
 /// ## SAFETY:
-/// It shall be valid to transmute &Self to &AbiSafeVTableHead
-/// Additionally, if T: AbiSafeTrait, then it must be valid to transmute between implementors of AbiSafeVTable<T> and references thereto
+/// It shall be valid to transmute &Self to &`AbiSafeVTableHead`
+/// Additionally, if T: `AbiSafeTrait`, then it must be valid to transmute between implementors of `AbiSafeVTable`<T> and references thereto
 pub unsafe trait AbiSafeVTable<T: ?Sized>: Sized {
-    /// Returns the size field of the VTable
+    /// Returns the size field of the `VTable`
     fn size_of(&self) -> usize {
-        unsafe { (*(self as *const _ as *const AbiSafeVTableHead)).size }
+        unsafe { (*(self as *const Self).cast::<AbiSafeVTableHead>()).size }
     }
-    /// Returns the align field of the VTable
+    /// Returns the align field of the `VTable`
     fn align_of(&self) -> usize {
-        unsafe { (*(self as *const _ as *const AbiSafeVTableHead)).align }
+        unsafe { (*(self as *const Self).cast::<AbiSafeVTableHead>()).align }
     }
     /// Invokes the destructor (if any) on ptr
     /// ## SAFETY:
@@ -168,7 +168,8 @@ pub unsafe trait AbiSafeVTable<T: ?Sized>: Sized {
     /// * Satisfy all safety and validity invariants of the pointed to type expected by the destructor
     #[allow(unused_unsafe)]
     unsafe fn drop_in_place(&self, ptr: *mut ()) {
-        if let Some(f) = unsafe { (*(self as *const _ as *const AbiSafeVTableHead)).destructor } {
+        if let Some(f) = unsafe { (*(self as *const Self).cast::<AbiSafeVTableHead>()).destructor }
+        {
             unsafe { (f)(ptr) };
         }
     }
@@ -191,7 +192,7 @@ impl<T: ?Sized + AbiSafeTrait> DynPtr<T> {
         T: AbiSafeUnsize<U>,
     {
         Self {
-            ptr: x as *mut (),
+            ptr: x.cast::<()>(),
             vtable: T::construct_vtable_for(),
             phantom: PhantomData,
         }
@@ -205,6 +206,7 @@ impl<T: ?Sized + AbiSafeTrait> DynPtr<T> {
         }
     }
 
+    #[must_use]
     pub unsafe fn into_ref<'lt>(self) -> DynRef<'lt, T> {
         DynRef {
             inner: self,
@@ -212,6 +214,7 @@ impl<T: ?Sized + AbiSafeTrait> DynPtr<T> {
         }
     }
 
+    #[must_use]
     pub unsafe fn into_mut<'lt>(self) -> DynMut<'lt, T> {
         DynMut {
             inner: self,
@@ -235,6 +238,7 @@ pub struct DynRef<'lt, T: ?Sized + AbiSafeTrait> {
 }
 
 impl<'lt, T: ?Sized + AbiSafeTrait> DynRef<'lt, T> {
+    #[must_use]
     pub fn as_pinned(x: &Pin<Self>) -> Pin<&(dyn DynPtrSafe<T> + 'lt)> {
         x.as_ref()
     }
@@ -264,7 +268,7 @@ unsafe impl<'lt, T: ?Sized + AbiSafeTrait + Sync> Sync for DynRef<'lt, T> {}
 impl<'lt, T: ?Sized + AbiSafeTrait> Deref for DynRef<'lt, T> {
     type Target = dyn DynPtrSafe<T> + 'lt;
     fn deref(&self) -> &Self::Target {
-        unsafe { &*(&self.inner as *const DynPtr<T> as *const DynPtrSafeWrap<T>) }
+        unsafe { &*((&self.inner as *const DynPtr<T>).cast::<DynPtrSafeWrap<T>>()) }
     }
 }
 
@@ -314,6 +318,7 @@ pub struct DynMut<'lt, T: ?Sized + AbiSafeTrait> {
 }
 
 impl<'lt, T: ?Sized + AbiSafeTrait> DynMut<'lt, T> {
+    #[must_use]
     pub fn as_ref(&self) -> DynRef<T> {
         DynRef {
             inner: self.inner,
@@ -321,6 +326,7 @@ impl<'lt, T: ?Sized + AbiSafeTrait> DynMut<'lt, T> {
         }
     }
 
+    #[must_use]
     pub fn into_ref(self) -> DynRef<'lt, T> {
         DynRef {
             inner: self.inner,
@@ -342,6 +348,7 @@ impl<'lt, T: ?Sized + AbiSafeTrait> DynMut<'lt, T> {
         x.as_mut()
     }
 
+    #[must_use]
     pub fn as_pinned(x: &Pin<Self>) -> Pin<&dyn DynPtrSafe<T>> {
         x.as_ref()
     }
@@ -361,13 +368,13 @@ unsafe impl<'lt, T: ?Sized + AbiSafeTrait + Sync> Sync for DynMut<'lt, T> {}
 impl<'lt, T: ?Sized + AbiSafeTrait> Deref for DynMut<'lt, T> {
     type Target = dyn DynPtrSafe<T> + 'lt;
     fn deref(&self) -> &Self::Target {
-        unsafe { &*(&self.inner as *const DynPtr<T> as *const DynPtrSafeWrap<T>) }
+        unsafe { &*((&self.inner as *const DynPtr<T>).cast::<DynPtrSafeWrap<T>>()) }
     }
 }
 
 impl<'lt, T: ?Sized + AbiSafeTrait> DerefMut for DynMut<'lt, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *(&mut self.inner as *mut DynPtr<T> as *mut DynPtrSafeWrap<T>) }
+        unsafe { &mut *((&mut self.inner as *mut DynPtr<T>).cast::<DynPtrSafeWrap<T>>()) }
     }
 }
 
@@ -406,7 +413,7 @@ impl<T: ?Sized + AbiSafeTrait, A: Allocator> Drop for DynBox<T, A> {
         let ptr = self.ptr.ptr;
         unsafe {
             self.alloc
-                .deallocate(NonNull::new_unchecked(ptr.cast()), layout)
+                .deallocate(NonNull::new_unchecked(ptr.cast()), layout);
         }
     }
 }
@@ -415,12 +422,12 @@ impl<T: ?Sized + AbiSafeTrait + 'static, A: Allocator> Deref for DynBox<T, A> {
     type Target = dyn DynPtrSafe<T>;
 
     fn deref(&self) -> &(dyn DynPtrSafe<T> + 'static) {
-        unsafe { &*(&self.ptr as *const DynPtr<T> as *const DynPtrSafeWrap<T>) }
+        unsafe { &*((&self.ptr as *const DynPtr<T>).cast::<DynPtrSafeWrap<T>>()) }
     }
 }
 
 impl<T: ?Sized + AbiSafeTrait + 'static, A: Allocator> DerefMut for DynBox<T, A> {
     fn deref_mut(&mut self) -> &mut (dyn DynPtrSafe<T> + 'static) {
-        unsafe { &mut *(&mut self.ptr as *mut DynPtr<T> as *mut DynPtrSafeWrap<T>) }
+        unsafe { &mut *((&mut self.ptr as *mut DynPtr<T>).cast::<DynPtrSafeWrap<T>>()) }
     }
 }

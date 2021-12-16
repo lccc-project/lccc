@@ -1,4 +1,4 @@
-use xlang_abi::traits::*;
+use xlang_abi::traits::{AbiSafeTrait, AbiSafeUnsize, AbiSafeVTable, DynPtrSafe};
 
 pub trait Visitor {
     fn visit_end(&mut self);
@@ -34,11 +34,11 @@ unsafe impl AbiSafeTrait for dyn Visitor + Send + Sync {
 }
 
 unsafe extern "C" fn destructor<T>(x: *mut ()) {
-    core::ptr::drop_in_place(x as *mut T)
+    core::ptr::drop_in_place(x.cast::<T>());
 }
 
 unsafe extern "C" fn visit_end<T: Visitor>(x: *mut ()) {
-    <T as Visitor>::visit_end(&mut *(x as *mut T))
+    <T as Visitor>::visit_end(&mut *x.cast::<T>());
 }
 
 unsafe impl<T: Visitor> AbiSafeUnsize<T> for dyn Visitor {

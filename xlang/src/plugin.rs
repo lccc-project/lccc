@@ -2,13 +2,14 @@ use xlang_abi::{prelude::v1::*, result::Result};
 use xlang_struct::File;
 
 #[repr(u8)]
-pub enum PluginError {
+pub enum Error {
     Diagnostic(String),
     InternalError(String),
 }
 
+#[allow(clippy::module_name_repetitions)]
 pub trait XLangPlugin {
-    fn accept_ir(&mut self, ir: &mut File) -> Result<(), PluginError>;
+    fn accept_ir(&mut self, ir: &mut File) -> Result<(), Error>;
 }
 
 mod abi {
@@ -18,7 +19,7 @@ mod abi {
     };
     use xlang_struct::File;
 
-    use super::{PluginError, XLangPlugin};
+    use super::{Error, XLangPlugin};
 
     unsafe impl AbiSafeTrait for dyn XLangPlugin {
         type VTable = vtable::XLangPlugin;
@@ -28,7 +29,7 @@ mod abi {
         use xlang_abi::{result::Result, traits::AbiSafeVTable};
         use xlang_struct::File;
 
-        use super::super::PluginError;
+        use super::super::Error;
 
         #[repr(C)]
         pub struct XLangPlugin {
@@ -36,21 +37,21 @@ mod abi {
             pub align: usize,
             pub dtor: Option<unsafe extern "C" fn(*mut ())>,
             pub reserved: Option<unsafe extern "C" fn(*mut ())>,
-            pub accept_ir: unsafe extern "C" fn(*mut (), ir: &mut File) -> Result<(), PluginError>,
+            pub accept_ir: unsafe extern "C" fn(*mut (), ir: &mut File) -> Result<(), Error>,
         }
 
         unsafe impl AbiSafeVTable<dyn super::XLangPlugin> for XLangPlugin {}
     }
 
     unsafe extern "C" fn __dtor<T>(x: *mut ()) {
-        core::ptr::drop_in_place(x as *mut T)
+        core::ptr::drop_in_place(x.cast::<T>());
     }
 
     unsafe extern "C" fn __accept_ir<T: XLangPlugin>(
         x: *mut (),
         ir: &mut File,
-    ) -> Result<(), PluginError> {
-        (&mut *(x as *mut T)).accept_ir(ir)
+    ) -> Result<(), Error> {
+        (&mut *(x.cast::<T>())).accept_ir(ir)
     }
 
     unsafe impl<T: XLangPlugin + 'static> AbiSafeUnsize<T> for dyn XLangPlugin {
@@ -66,7 +67,7 @@ mod abi {
     }
 
     impl XLangPlugin for dyn DynPtrSafe<dyn XLangPlugin> {
-        fn accept_ir(&mut self, ir: &mut File) -> Result<(), PluginError> {
+        fn accept_ir(&mut self, ir: &mut File) -> Result<(), Error> {
             unsafe { (self.vtable().accept_ir)(self.as_raw_mut(), ir) }
         }
     }
