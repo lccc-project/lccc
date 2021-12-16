@@ -46,10 +46,9 @@ pub fn parse_args(argspecs: Vec<ArgSpec>) -> (Vec<Arg>, Vec<String>) {
     let mut args = std::env::args();
     let _ = args.next();
     while let std::option::Option::Some(arg) = args.next() {
-        if arg.starts_with("-") && arg != "-" {
+        if arg.starts_with('-') && arg != "-" {
             // "-" is a special argument
-            if arg.starts_with("--") {
-                let arg = &arg[2..]; // Skip dashes
+            if let std::option::Option::Some(arg) = arg.strip_prefix("--") {
                 let mut found = false;
                 for spec in &argspecs {
                     for long in &spec.long {
