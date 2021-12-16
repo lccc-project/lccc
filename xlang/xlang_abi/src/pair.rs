@@ -8,9 +8,9 @@ impl<T, U> From<(T, U)> for Pair<T, U> {
     }
 }
 
-impl<T, U> Into<(T, U)> for Pair<T, U> {
-    fn into(self) -> (T, U) {
-        let Self(a, b) = self;
+impl<T, U> From<Pair<T, U>> for (T, U) {
+    fn from(pair: Pair<T, U>) -> (T, U) {
+        let Pair(a, b) = pair;
 
         (a, b)
     }

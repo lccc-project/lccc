@@ -48,21 +48,21 @@ impl From<target_tuples::Target> for Target {
     }
 }
 
-impl Into<target_tuples::Target> for Target {
-    fn into(self) -> target_tuples::Target {
-        target_tuples::Target::parse(&self.name)
+impl From<Target> for target_tuples::Target {
+    fn from(t: Target) -> Self {
+        Self::parse(&t.name)
     }
 }
 
-impl Into<target_tuples::Target> for &Target {
-    fn into(self) -> target_tuples::Target {
-        target_tuples::Target::parse(&self.name)
+impl From<&Target> for target_tuples::Target {
+    fn from(t: &Target) -> Self {
+        Self::parse(&t.name)
     }
 }
 
-impl Into<target_tuples::Target> for &mut Target {
-    fn into(self) -> target_tuples::Target {
-        target_tuples::Target::parse(&self.name)
+impl From<&mut Target> for target_tuples::Target {
+    fn from(t: &mut Target) -> Self {
+        Self::parse(&t.name)
     }
 }
 
