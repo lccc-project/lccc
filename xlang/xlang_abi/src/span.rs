@@ -58,10 +58,12 @@ impl<'a, T> Span<'a, T> {
             std::ops::Bound::Excluded(x) => *x,
             std::ops::Bound::Unbounded => self.len,
         };
-        let len = if end < begin { 0 } else { end - begin };
-        if len > self.len {
-            None
-        } else if begin > self.len {
+        let len = if end < begin {
+            0
+        } else {
+            end.saturating_sub(begin)
+        };
+        if (end.saturating_sub(1)) > self.len {
             None
         } else {
             Some(Span {
@@ -200,10 +202,12 @@ impl<'a, T> SpanMut<'a, T> {
             std::ops::Bound::Excluded(x) => *x,
             std::ops::Bound::Unbounded => self.len,
         };
-        let len = if end < begin { 0 } else { end - begin };
-        if len > self.len {
-            None
-        } else if begin > self.len {
+        let len = if end < begin {
+            0
+        } else {
+            end.saturating_sub(begin)
+        };
+        if len > self.len || begin > self.len {
             None
         } else {
             Some(Span {
@@ -228,10 +232,12 @@ impl<'a, T> SpanMut<'a, T> {
             std::ops::Bound::Excluded(x) => *x,
             std::ops::Bound::Unbounded => self.len,
         };
-        let len = if end < begin { 0 } else { end - begin };
-        if len > self.len {
-            None
-        } else if begin > self.len {
+        let len = if end < begin {
+            0
+        } else {
+            end.saturating_sub(begin)
+        };
+        if (end.saturating_sub(1)) > self.len {
             None
         } else {
             Some(SpanMut {
