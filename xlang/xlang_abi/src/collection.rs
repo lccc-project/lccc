@@ -30,7 +30,7 @@ pub struct HashMap<
 impl<K, V, H: BuildHasher, A: Allocator> Drop for HashMap<K, V, H, A> {
     fn drop(&mut self) {
         for i in 0..self.buckets {
-            let bucket = unsafe { &mut *self.htab.as_ptr().offset(i as isize) };
+            let bucket = unsafe { &mut *self.htab.as_ptr().add(i) };
             for i in 0..bucket.ecount {
                 unsafe { core::ptr::drop_in_place(bucket.entries[i].as_mut_ptr()) }
             }
@@ -115,7 +115,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         self.buckets = ncount;
 
         for i in 0..self.buckets {
-            let bucket = unsafe { &mut *ptr.as_ptr().offset(i as isize) };
+            let bucket = unsafe { &mut *ptr.as_ptr().add(i) };
             for i in 0..bucket.ecount {
                 let Pair(key, value) = unsafe { bucket.entries[i].as_ptr().read() };
                 self.insert(key, value).unwrap();
@@ -143,7 +143,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
             let hash = hasher.finish() as usize % self.buckets;
             // SAFETY:
             // htab is as long as the number of available buckets, thus this offset is guaranteed to be valid
-            let bucket = unsafe { &mut *self.htab.as_ptr().offset(hash as isize) };
+            let bucket = unsafe { &mut *self.htab.as_ptr().add(hash) };
             for i in 0..bucket.ecount {
                 // SAFETY:
                 // bucket.ecount never exceeds 16, by the check following this loop
@@ -178,7 +178,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
             let hash = hasher.finish() as usize % self.buckets;
             // SAFETY:
             // htab is as long as the number of available buckets, thus this offset is guaranteed to be valid
-            let bucket = unsafe { &mut *self.htab.as_ptr().offset(hash as isize) };
+            let bucket = unsafe { &mut *self.htab.as_ptr().add(hash) };
             for i in 0..bucket.ecount {
                 // SAFETY:
                 // bucket.ecount never exceeds 16, by the check following this loop
@@ -214,7 +214,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         key.hash(&mut hasher);
         let hash = hasher.finish() as usize % self.buckets;
 
-        let bucket = unsafe { &mut *self.htab.as_ptr().offset(hash as isize) };
+        let bucket = unsafe { &mut *self.htab.as_ptr().add(hash) };
         for i in 0..bucket.ecount {
             // SAFETY:
             // bucket.ecount never exceeds 16, by the check following this loop
@@ -236,13 +236,13 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         key.hash(&mut hasher);
         let hash = hasher.finish() as usize % self.buckets;
 
-        let bucket = unsafe { &mut *self.htab.as_ptr().offset(hash as isize) };
+        let bucket = unsafe { &mut *self.htab.as_ptr().add(hash) };
         for i in 0..bucket.ecount {
             // SAFETY:
             // bucket.ecount never exceeds 16, by the check following this loop
             let key_val = unsafe { &mut *bucket.entries.get_unchecked_mut(i).as_mut_ptr() };
 
-            if key_val.0.borrow().eq(&key) {
+            if key_val.0.borrow().eq(key) {
                 return Some(&mut key_val.1);
             }
         }
@@ -264,8 +264,8 @@ impl<K: Clone, V: Clone, H: BuildHasher + Clone, A: Allocator + Clone> Clone
             .cast::<HashMapSlot<K, V>>();
         let ptr = htab.as_ptr();
         for i in 0..buckets {
-            let bucket = unsafe { &mut *ptr.offset(i as isize) };
-            let obucket = unsafe { &*self.htab.as_ptr().offset(i as isize) };
+            let bucket = unsafe { &mut *ptr.add(i) };
+            let obucket = unsafe { &*self.htab.as_ptr().add(i) };
             for j in 0..obucket.ecount {
                 unsafe {
                     bucket.entries[j]

@@ -1,21 +1,23 @@
+#![allow(clippy::missing_safety_doc)] // FIXME: Remove this allow
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use syn::{punctuated::Punctuated, Type};
 
+#[allow(unused_mut)]
 #[proc_macro_attribute]
 pub fn xlang_trait(_attrs: TokenStream, ts: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(ts as syn::ItemTrait);
     let mut assoc_types = Vec::new();
     let mut methods = Vec::new();
     let generics = input.generics.clone();
-    let mut recievers = Vec::<Type>::new();
+    let mut _recievers = Vec::<Type>::new();
 
     let trait_name = input.ident.clone();
     let trait_name_span = trait_name.span();
 
-    let trait_type = {
-        let tok = syn::Token![dyn](trait_name_span);
+    let _trait_type = {
+        let _tok = syn::Token![dyn](trait_name_span);
         let mut generic_args = syn::AngleBracketedGenericArguments {
             colon2_token: Some(syn::Token![::](trait_name_span)),
             lt_token: syn::Token![<](trait_name_span),
@@ -43,8 +45,8 @@ pub fn xlang_trait(_attrs: TokenStream, ts: TokenStream) -> TokenStream {
                     }));
                     generic_args.args.push(arg);
                 }
-                syn::GenericParam::Lifetime(lt) => unimplemented!(),
-                syn::GenericParam::Const(c) => unimplemented!(),
+                syn::GenericParam::Lifetime(_) => unimplemented!(),
+                syn::GenericParam::Const(_) => unimplemented!(),
             }
         }
     };
@@ -67,7 +69,7 @@ pub fn xlang_trait(_attrs: TokenStream, ts: TokenStream) -> TokenStream {
     for m in &methods {
         if let Some(arg) = m.sig.inputs.first() {
             match arg {
-                syn::FnArg::Receiver(r) => {}
+                syn::FnArg::Receiver(_) => {}
                 syn::FnArg::Typed(_) => unimplemented!(),
             }
         }

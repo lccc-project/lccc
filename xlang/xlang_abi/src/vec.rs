@@ -353,7 +353,7 @@ impl<A: Allocator> Write for Vec<u8, A> {
 impl<T: Clone, A: Allocator + Default, S: AsRef<[T]> + ?Sized> From<&S> for Vec<T, A> {
     fn from(s: &S) -> Self {
         let s = s.as_ref();
-        if s.len() == 0 {
+        if s.is_empty() {
             Self::new_in(Default::default())
         } else {
             let mut v = Self::with_capacity_in(s.len(), Default::default());
@@ -365,7 +365,7 @@ impl<T: Clone, A: Allocator + Default, S: AsRef<[T]> + ?Sized> From<&S> for Vec<
 
 impl<T, A: Allocator + Default> From<std::vec::Vec<T>> for Vec<T, A> {
     fn from(s: std::vec::Vec<T>) -> Self {
-        if s.len() == 0 {
+        if s.is_empty() {
             Self::new_in(Default::default())
         } else {
             let mut s = ManuallyDrop::new(s);

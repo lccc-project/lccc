@@ -1,3 +1,4 @@
+#![allow(clippy::missing_safety_doc)] // FIXME: Remove this allow
 use std::alloc::Layout;
 
 use xlang_targets::{properties::TargetProperties, Target};

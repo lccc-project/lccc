@@ -56,6 +56,12 @@ impl String<XLangAlloc> {
     }
 }
 
+impl Default for String<XLangAlloc> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<A: Allocator> String<A> {
     pub fn new_in(alloc: A) -> Self {
         Self(crate::vec::Vec::new_in(alloc))
@@ -91,7 +97,7 @@ impl<A: Allocator> Eq for String<A> {}
 impl<S: AsRef<str> + ?Sized> From<&S> for String {
     fn from(s: &S) -> Self {
         let s = s.as_ref();
-        if s.len() == 0 {
+        if s.is_empty() {
             Self::new()
         } else {
             let mut bytes = crate::vec::Vec::with_capacity(s.len());
@@ -178,7 +184,7 @@ impl<'a> StringView<'a> {
         let ptr = v.as_bytes().as_ptr();
         Self {
             begin: unsafe { NonNull::new_unchecked(ptr as *mut u8) },
-            end: unsafe { NonNull::new_unchecked(ptr.offset(v.len() as isize) as *mut u8) },
+            end: unsafe { NonNull::new_unchecked(ptr.add(v.len()) as *mut u8) },
             phantom: PhantomData,
         }
     }
