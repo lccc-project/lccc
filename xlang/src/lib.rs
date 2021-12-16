@@ -5,4 +5,4 @@ pub mod visit;
 
 pub use xlang_abi as abi;
 
-pub use xlang_abi::vec;
+pub use abi::vec;
