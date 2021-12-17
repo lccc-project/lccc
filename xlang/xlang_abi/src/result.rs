@@ -40,6 +40,7 @@ impl<T, E> Result<T, E> {
         }
     }
 
+    #[allow(clippy::missing_const_for_fn)] // Objectively incorrect lint, missing ability to drop
     pub fn ok(self) -> Option<T> {
         if let Ok(val) = self {
             Some(val)
@@ -48,6 +49,7 @@ impl<T, E> Result<T, E> {
         }
     }
 
+    #[allow(clippy::missing_const_for_fn)] // Objectively incorrect lint, missing ability to drop
     pub fn err(self) -> Option<E> {
         if let Err(e) = self {
             Some(e)

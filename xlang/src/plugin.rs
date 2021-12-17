@@ -85,7 +85,7 @@ mod abi {
     }
 
     unsafe extern "C" fn __set_file_path<T: XLangFrontend>(ptr: *mut (), file: StringView) {
-        (&mut *(ptr.cast::<T>())).set_file_path(file)
+        (&mut *(ptr.cast::<T>())).set_file_path(file);
     }
 
     unsafe impl<T: XLangPlugin + 'static> AbiSafeUnsize<T> for dyn XLangPlugin {
