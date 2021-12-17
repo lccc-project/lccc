@@ -55,4 +55,39 @@ impl<T, E> Result<T, E> {
             None
         }
     }
+
+    pub const fn as_ref(&self) -> Result<&T, &E> {
+        match self {
+            Ok(x) => Ok(x),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn as_mut(&mut self) -> Result<&mut T, &mut E> {
+        match self {
+            Ok(x) => Ok(x),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn map<U, F: FnOnce(T) -> U>(self, op: F) -> Result<U, E> {
+        match self {
+            Ok(x) => Ok(op(x)),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn map_or<U, F: FnOnce(T) -> U>(self, default: U, op: F) -> U {
+        match self {
+            Ok(x) => op(x),
+            Err(_) => default,
+        }
+    }
+
+    pub fn map_or_else<U, F: FnOnce(T) -> U, D: FnOnce(E) -> U>(self, default_op: D, op: F) -> U {
+        match self {
+            Ok(x) => op(x),
+            Err(e) => default_op(e),
+        }
+    }
 }

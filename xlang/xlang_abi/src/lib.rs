@@ -13,6 +13,7 @@ pub mod boxed;
 pub mod collection;
 pub mod hash;
 mod internal;
+pub mod io;
 pub mod pair;
 pub mod prelude;
 pub mod ptr;
