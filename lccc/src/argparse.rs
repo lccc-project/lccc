@@ -81,12 +81,12 @@ pub fn parse_args(argspecs: &Vec<ArgSpec>) -> (Vec<Arg>, Vec<String>) {
                             if spec.takes_arg == TakesArg::Always {
                                 let mut remainder: std::string::String = arg.by_ref().collect();
                                 if remainder.is_empty() {
-                                    if let std::option::Option::Some(next) = args.next() {
-                                        remainder = next;
-                                    } else {
+                                    args.next().map_or_else(|| {
                                         eprintln!("error: Got short option \"-{}\" without required parameter", opt);
                                         std::process::exit(1);
-                                    }
+                                    }, |next| {
+                                        remainder = next;
+                                    });
                                 }
                                 result.push(Arg {
                                     name: spec.name,
