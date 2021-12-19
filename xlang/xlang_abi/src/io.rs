@@ -135,6 +135,131 @@ where
     }
 }
 
+pub trait IntoChars {
+    type IntoChars: Iterator<Item = char>;
+    fn into_chars(self) -> Self::IntoChars;
+}
+
+pub struct ReadIntoChars<R: Read> {
+    buf: Vec<u8>,
+    pos: usize,
+    len: usize,
+    source: R,
+}
+
+impl<R: Read> ReadIntoChars<R> {
+    fn next_byte(&mut self) -> Option<u8> {
+        if self.pos >= self.len {
+            self.pos = 0;
+            self.len = if let Result::Ok(len) = self.source.read(SpanMut::new(&mut self.buf)) {len} else {return None;}
+        }
+        if self.len == 0 {
+            return None;
+        }
+        let result = self.buf[self.pos];
+        self.pos += 1;
+        Some(result)
+    }
+}
+
+impl<R: Read> Iterator for ReadIntoChars<R> {
+    type Item = char;
+    fn next(&mut self) -> Option<char> {
+        let first = self.next_byte()?;
+        if first & 0x80 == 0 {
+            Some(first as char)
+        } else if first & 0xE0 == 0xC0 {
+            let next = self.next_byte()?;
+            assert!(
+                next & 0xC0 == 0x80,
+                "Got invalid UTF-8 sequence [{:#04X}, {:#04X}]",
+                first,
+                next
+            );
+            Some(unsafe {
+                char::from_u32_unchecked((((first & 0x1F) as u32) << 6) | (next & 0x7F) as u32)
+            })
+        } else if first & 0xF0 == 0xE0 {
+            let next1 = self.next_byte()?;
+            let next2 = self.next_byte()?;
+            assert!(
+                next1 & 0xC0 == 0x80,
+                "Got invalid UTF-8 sequence [{:#04X}, {:#04X}, {:#04X}]",
+                first,
+                next1,
+                next2
+            );
+            assert!(
+                next2 & 0xC0 == 0x80,
+                "Got invalid UTF-8 sequence [{:#04X}, {:#04X}, {:#04X}]",
+                first,
+                next1,
+                next2
+            );
+            Some(unsafe {
+                char::from_u32_unchecked(
+                    (((first & 0x0F) as u32) << 12)
+                        | (((next1 & 0x7F) as u32) << 6)
+                        | (next2 & 0x7F) as u32,
+                )
+            })
+        } else {
+            assert!(
+                first & 0xF8 == 0xF0,
+                "Got invalid UTF-8 start char {:#04X}",
+                first
+            );
+            let next1 = self.next_byte()?;
+            let next2 = self.next_byte()?;
+            let next3 = self.next_byte()?;
+            assert!(
+                next1 & 0xC0 == 0x80,
+                "Got invalid UTF-8 sequence [{:#04X}, {:#04X}, {:#04X}, {:#04X}]",
+                first,
+                next1,
+                next2,
+                next3
+            );
+            assert!(
+                next2 & 0xC0 == 0x80,
+                "Got invalid UTF-8 sequence [{:#04X}, {:#04X}, {:#04X}, {:#04X}]",
+                first,
+                next1,
+                next2,
+                next3
+            );
+            assert!(
+                next3 & 0xC0 == 0x80,
+                "Got invalid UTF-8 sequence [{:#04X}, {:#04X}, {:#04X}, {:#04X}]",
+                first,
+                next1,
+                next2,
+                next3
+            );
+            Some(unsafe {
+                char::from_u32_unchecked(
+                    (((first & 0x07) as u32) << 18)
+                        | (((next1 & 0x7F) as u32) << 12)
+                        | (((next2 & 0x7F) as u32) << 6)
+                        | (next3 & 0x7F) as u32,
+                )
+            })
+        }
+    }
+}
+
+impl<R: Read> IntoChars for R {
+    type IntoChars = ReadIntoChars<R>;
+    fn into_chars(self) -> Self::IntoChars {
+        ReadIntoChars::<Self> {
+            buf: vec![0; 8],
+            pos: 0,
+            len: 0,
+            source: self,
+        }
+    }
+}
+
 pub trait Write {
     fn write(&mut self, buf: Span<u8>) -> Result<usize>;
 }
