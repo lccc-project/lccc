@@ -181,7 +181,7 @@ impl<R: Read> Iterator for ReadIntoChars<R> {
                 next
             );
             Some(unsafe {
-                char::from_u32_unchecked((((first & 0x1F) as u32) << 6) | (next & 0x7F) as u32)
+                char::from_u32_unchecked((u32::from(first & 0x1F) << 6) | u32::from(next & 0x7F))
             })
         } else if first & 0xF0 == 0xE0 {
             let next1 = self.next_byte()?;
@@ -202,9 +202,9 @@ impl<R: Read> Iterator for ReadIntoChars<R> {
             );
             Some(unsafe {
                 char::from_u32_unchecked(
-                    (((first & 0x0F) as u32) << 12)
-                        | (((next1 & 0x7F) as u32) << 6)
-                        | (next2 & 0x7F) as u32,
+                    (u32::from(first & 0x0F) << 12)
+                        | (u32::from(next1 & 0x7F) << 6)
+                        | u32::from(next2 & 0x7F),
                 )
             })
         } else {
@@ -242,10 +242,10 @@ impl<R: Read> Iterator for ReadIntoChars<R> {
             );
             Some(unsafe {
                 char::from_u32_unchecked(
-                    (((first & 0x07) as u32) << 18)
-                        | (((next1 & 0x7F) as u32) << 12)
-                        | (((next2 & 0x7F) as u32) << 6)
-                        | (next3 & 0x7F) as u32,
+                    (u32::from(first & 0x07) << 18)
+                        | (u32::from(next1 & 0x7F) << 12)
+                        | (u32::from(next2 & 0x7F) << 6)
+                        | u32::from(next3 & 0x7F),
                 )
             })
         }
