@@ -151,7 +151,11 @@ impl<R: Read> ReadIntoChars<R> {
     fn next_byte(&mut self) -> Option<u8> {
         if self.pos >= self.len {
             self.pos = 0;
-            self.len = if let Result::Ok(len) = self.source.read(SpanMut::new(&mut self.buf)) {len} else {return None;}
+            self.len = if let Result::Ok(len) = self.source.read(SpanMut::new(&mut self.buf)) {
+                len
+            } else {
+                return None;
+            }
         }
         if self.len == 0 {
             return None;
