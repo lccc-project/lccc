@@ -69,6 +69,7 @@ name = "frontend-c"
 version = "0.1.0"
 dependencies = [
  "xlang",
+ "xlang_struct",
 ]
 
 [[package]]
