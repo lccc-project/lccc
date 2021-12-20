@@ -7,7 +7,7 @@ name = "arch-ops"
 version = "0.1.0"
 dependencies = [
  "lazy_static",
- "target-tuples 0.5.0",
+ "target-tuples 0.5.2",
 ]
 
 [[package]]
@@ -19,7 +19,7 @@ dependencies = [
  "fake-enum",
  "lazy_static",
  "static_assertions",
- "target-tuples 0.5.0",
+ "target-tuples 0.5.2",
 ]
 
 [[package]]
@@ -128,9 +128,9 @@ checksum = "a50e80f6ada7860f52175c48679e22005d0d6df8a4ff87b66aeef976ea1481fe"
 
 [[package]]
 name = "target-tuples"
-version = "0.5.0"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b667d7a73dc3e93a31c76819fcee0ef4fb8806e2eb118a817aa81d81ab22048c"
+checksum = "3d05cc47f264e5b8baea23fa14552f463c46ae0a5bd7a6e998b7c5380986059b"
 
 [[package]]
 name = "unicode-xid"
@@ -191,6 +191,6 @@ dependencies = [
 name = "xlang_targets"
 version = "0.1.0"
 dependencies = [
- "target-tuples 0.5.0",
+ "target-tuples 0.5.2",
  "xlang_abi",
 ]
