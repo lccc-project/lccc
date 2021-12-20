@@ -24,6 +24,10 @@ impl XLangFrontend for CFrontend {
     fn set_file_path(&mut self, name: StringView) {
         self.filename = Some(String::from(&*name));
     }
+
+    fn read_source(&mut self, _x: DynMut<dyn xlang::abi::io::Read>) -> xlang::abi::io::Result<()> {
+        todo!()
+    }
 }
 
 impl XLangPlugin for CFrontend {

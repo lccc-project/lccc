@@ -1,5 +1,5 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
-pub use xlang_abi::prelude::v1::*;
+use xlang_abi::prelude::v1::*;
 use xlang_targets::Target;
 
 #[repr(u16)]

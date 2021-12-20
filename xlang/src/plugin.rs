@@ -1,4 +1,9 @@
-use xlang_abi::{prelude::v1::*, result::Result, string::StringView};
+use xlang_abi::{
+    io::{self, Read},
+    prelude::v1::*,
+    result::Result,
+    string::StringView,
+};
 use xlang_struct::File;
 
 #[repr(u8)]
@@ -15,13 +20,14 @@ pub trait XLangPlugin {
 pub trait XLangFrontend: XLangPlugin {
     fn file_matches(&self, x: StringView) -> bool;
     fn set_file_path(&mut self, x: StringView);
+    fn read_source(&mut self, x: DynMut<dyn Read>) -> io::Result<()>;
 }
 
 mod abi {
     use xlang_abi::{
         result::Result,
         string::StringView,
-        traits::{AbiSafeTrait, AbiSafeUnsize, DynPtrSafe},
+        traits::{AbiSafeTrait, AbiSafeUnsize, DynMut, DynPtrSafe},
     };
     use xlang_struct::File;
 
@@ -36,7 +42,11 @@ mod abi {
     }
 
     mod vtable {
-        use xlang_abi::{result::Result, string::StringView, traits::AbiSafeVTable};
+        use xlang_abi::{
+            result::Result,
+            string::StringView,
+            traits::{AbiSafeVTable, DynMut},
+        };
         use xlang_struct::File;
 
         use super::super::Error;
@@ -61,6 +71,10 @@ mod abi {
             pub accept_ir: unsafe extern "C" fn(*mut (), &mut File) -> Result<(), Error>,
             pub file_matches: unsafe extern "C" fn(*const (), StringView) -> bool,
             pub set_file_path: unsafe extern "C" fn(*mut (), StringView),
+            pub read_source: unsafe extern "C" fn(
+                *mut (),
+                DynMut<dyn xlang_abi::io::Read>,
+            ) -> xlang_abi::io::Result<()>,
         }
 
         unsafe impl AbiSafeVTable<dyn super::super::XLangFrontend> for XLangFrontend {}
@@ -88,6 +102,13 @@ mod abi {
         (&mut *(ptr.cast::<T>())).set_file_path(file);
     }
 
+    unsafe extern "C" fn __read_source<T: XLangFrontend>(
+        ptr: *mut (),
+        input: DynMut<dyn xlang_abi::io::Read>,
+    ) -> xlang_abi::io::Result<()> {
+        (&mut *(ptr.cast::<T>())).read_source(input)
+    }
+
     unsafe impl<T: XLangPlugin + 'static> AbiSafeUnsize<T> for dyn XLangPlugin {
         fn construct_vtable_for() -> &'static Self::VTable {
             &vtable::XLangPlugin {
@@ -110,6 +131,7 @@ mod abi {
                 accept_ir: __accept_ir::<T>,
                 file_matches: __file_matches::<T>,
                 set_file_path: __set_file_path::<T>,
+                read_source: __read_source::<T>,
             }
         }
     }
@@ -133,6 +155,13 @@ mod abi {
 
         fn set_file_path(&mut self, x: StringView) {
             unsafe { (self.vtable().set_file_path)(self.as_raw_mut(), x) }
+        }
+
+        fn read_source(
+            &mut self,
+            x: xlang_abi::traits::DynMut<dyn xlang_abi::io::Read>,
+        ) -> xlang_abi::io::Result<()> {
+            unsafe { (self.vtable().read_source)(self.as_raw_mut(), x) }
         }
     }
 }
