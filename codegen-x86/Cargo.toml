@@ -1,0 +1,12 @@
+[package]
+name = "codegen-x86"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+arch-ops = {path="../arch-ops", version="0.1.0"}
+binfmt = {path="../binfmt", version="0.1.0"}
+xlang = {path="../xlang"}
+xlang_struct = {path="../xlang/xlang_struct"}

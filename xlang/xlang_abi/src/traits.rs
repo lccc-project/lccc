@@ -378,6 +378,7 @@ impl<'lt, T: ?Sized + AbiSafeTrait> DerefMut for DynMut<'lt, T> {
     }
 }
 
+#[repr(C)]
 pub struct DynBox<T: ?Sized + AbiSafeTrait, A: Allocator = XLangAlloc> {
     ptr: DynPtr<T>,
     phantom: PhantomData<T>,
