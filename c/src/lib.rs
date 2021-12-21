@@ -1,6 +1,10 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+use xlang::abi::io::{self, IntoChars, Read};
 use xlang::abi::prelude::v1::*;
 use xlang::abi::result::Result;
+mod lex;
+
+use lex::lex;
 use xlang::abi::string::StringView;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 use xlang_struct::File;
@@ -25,8 +29,11 @@ impl XLangFrontend for CFrontend {
         self.filename = Some(String::from(&*name));
     }
 
-    fn read_source(&mut self, _x: DynMut<dyn xlang::abi::io::Read>) -> xlang::abi::io::Result<()> {
-        todo!()
+    fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
+        let mut file = file.into_chars();
+        let lexed = lex(&mut file);
+        println!("{:?}", lexed);
+        io::Result::Ok(())
     }
 }
 
