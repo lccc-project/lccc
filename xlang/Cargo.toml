@@ -11,4 +11,4 @@ target-tuples = "0.4.1"
 xlang_abi = {path="xlang_abi"}
 xlang_interface = {path="xlang_interface"}
 xlang_struct = {path="xlang_struct"}
-
+xlang_targets = {path="xlang_targets"}

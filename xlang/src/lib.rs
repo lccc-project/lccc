@@ -6,5 +6,6 @@ pub mod prelude;
 pub mod visit;
 
 pub use xlang_abi as abi;
+pub use xlang_targets as targets;
 
 pub use abi::vec;

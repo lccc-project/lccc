@@ -1,5 +1,5 @@
 use xlang_abi::{
-    io::{self, Read},
+    io::{self, Read, Write},
     prelude::v1::*,
     result::Result,
     string::StringView,
@@ -23,6 +23,11 @@ pub trait XLangFrontend: XLangPlugin {
     fn read_source(&mut self, x: DynMut<dyn Read>) -> io::Result<()>;
 }
 
+pub trait XLangCodegen: XLangPlugin {
+    fn target_matches(&self, x: &xlang_targets::Target) -> bool;
+    fn write_output(&mut self, x: DynMut<dyn Write>) -> io::Result<()>;
+}
+
 mod abi {
     use xlang_abi::{
         result::Result,
@@ -31,7 +36,7 @@ mod abi {
     };
     use xlang_struct::File;
 
-    use super::{Error, XLangFrontend, XLangPlugin};
+    use super::{Error, XLangCodegen, XLangFrontend, XLangPlugin};
 
     unsafe impl AbiSafeTrait for dyn XLangPlugin {
         type VTable = vtable::XLangPlugin;
@@ -48,6 +53,7 @@ mod abi {
             traits::{AbiSafeVTable, DynMut},
         };
         use xlang_struct::File;
+        use xlang_targets::Target;
 
         use super::super::Error;
 
@@ -78,6 +84,22 @@ mod abi {
         }
 
         unsafe impl AbiSafeVTable<dyn super::super::XLangFrontend> for XLangFrontend {}
+
+        #[repr(C)]
+        pub struct XLangCodegen {
+            pub size: usize,
+            pub align: usize,
+            pub dtor: Option<unsafe extern "C" fn(*mut ())>,
+            pub reserved: Option<unsafe extern "C" fn(*mut ())>,
+            pub accept_ir: unsafe extern "C" fn(*mut (), &mut File) -> Result<(), Error>,
+            pub target_matches: unsafe extern "C" fn(*const (), &Target) -> bool,
+            pub write_output: unsafe extern "C" fn(
+                *mut (),
+                DynMut<dyn xlang_abi::io::Write>,
+            ) -> xlang_abi::io::Result<()>,
+        }
+
+        unsafe impl AbiSafeVTable<dyn super::super::XLangCodegen> for XLangCodegen {}
     }
 
     unsafe extern "C" fn __dtor<T>(x: *mut ()) {
@@ -107,6 +129,20 @@ mod abi {
         input: DynMut<dyn xlang_abi::io::Read>,
     ) -> xlang_abi::io::Result<()> {
         (&mut *(ptr.cast::<T>())).read_source(input)
+    }
+
+    unsafe extern "C" fn __write_output<T: XLangCodegen>(
+        ptr: *mut (),
+        output: DynMut<dyn xlang_abi::io::Write>,
+    ) -> xlang_abi::io::Result<()> {
+        (&mut *(ptr.cast::<T>())).write_output(output)
+    }
+
+    unsafe extern "C" fn __target_matches<T: XLangCodegen>(
+        ptr: *const (),
+        target: &xlang_targets::Target,
+    ) -> bool {
+        (&*(ptr.cast::<T>())).target_matches(target)
     }
 
     unsafe impl<T: XLangPlugin + 'static> AbiSafeUnsize<T> for dyn XLangPlugin {
@@ -162,6 +198,41 @@ mod abi {
             x: xlang_abi::traits::DynMut<dyn xlang_abi::io::Read>,
         ) -> xlang_abi::io::Result<()> {
             unsafe { (self.vtable().read_source)(self.as_raw_mut(), x) }
+        }
+    }
+
+    unsafe impl AbiSafeTrait for dyn XLangCodegen {
+        type VTable = vtable::XLangCodegen;
+    }
+
+    unsafe impl<T: XLangCodegen + 'static> AbiSafeUnsize<T> for dyn XLangCodegen {
+        fn construct_vtable_for() -> &'static Self::VTable {
+            &Self::VTable {
+                size: core::mem::size_of::<T>(),
+                align: core::mem::align_of::<T>(),
+                dtor: Some(__dtor::<T>),
+                reserved: None,
+                accept_ir: __accept_ir::<T>,
+                target_matches: __target_matches::<T>,
+                write_output: __write_output::<T>,
+            }
+        }
+    }
+    impl XLangPlugin for dyn DynPtrSafe<dyn XLangCodegen> {
+        fn accept_ir(&mut self, ir: &mut File) -> Result<(), Error> {
+            unsafe { (self.vtable().accept_ir)(self.as_raw_mut(), ir) }
+        }
+    }
+    impl XLangCodegen for dyn DynPtrSafe<dyn XLangCodegen> {
+        fn target_matches(&self, x: &xlang_targets::Target) -> bool {
+            unsafe { (self.vtable().target_matches)(self.as_raw(), x) }
+        }
+
+        fn write_output(
+            &mut self,
+            x: DynMut<dyn xlang_abi::io::Write>,
+        ) -> xlang_abi::io::Result<()> {
+            unsafe { (self.vtable().write_output)(self.as_raw_mut(), x) }
         }
     }
 }

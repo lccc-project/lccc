@@ -146,6 +146,7 @@ dependencies = [
  "xlang_abi",
  "xlang_interface",
  "xlang_struct",
+ "xlang_targets",
 ]
 
 [[package]]
