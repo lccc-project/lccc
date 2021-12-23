@@ -7,7 +7,7 @@ use std::{
 use arch_ops::{
     traits::InsnWrite,
     x86::{
-        insn::{ModRM, X86Encoder, X86Instruction, X86Opcode, X86Operand},
+        insn::{ModRM, X86Encoder, X86Instruction, X86Mode, X86Opcode, X86Operand},
         X86Register, X86RegisterClass,
     },
 };
@@ -16,8 +16,12 @@ use arch_ops::{
 extern crate xlang;
 
 use binfmt::{
-    fmt::Section,
+    fmt::{BinaryFile, FileType, Section},
     sym::{SymbolKind, SymbolType},
+};
+use xlang::{
+    plugin::{XLangCodegen, XLangPlugin},
+    prelude::v1::{Box, DynBox},
 };
 use xlang_struct::{
     Block, Expr, FnType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type, Value,
@@ -54,7 +58,7 @@ struct X86TempSymbol(
     SymbolKind,
 );
 
-struct X86CodegenState<const AMD64: bool> {
+struct X86CodegenState {
     vstack: VecDeque<VStackValue>,
     strmap: HashMap<String, usize>,
     insns: Vec<X86Instruction>,
@@ -64,10 +68,11 @@ struct X86CodegenState<const AMD64: bool> {
     locals: Vec<VStackValue>,
     regtab: [RegisterStatus; 16],
     signature: FnType,
+    mode: X86Mode,
 }
 
-impl<const AMD64: bool> X86CodegenState<{ AMD64 }> {
-    pub fn init(sig: FnType) -> Self {
+impl X86CodegenState {
+    pub fn init(sig: FnType, mode: X86Mode) -> Self {
         Self {
             vstack: VecDeque::new(),
             strmap: HashMap::new(),
@@ -81,6 +86,7 @@ impl<const AMD64: bool> X86CodegenState<{ AMD64 }> {
                 Free, CalleeSave, CalleeSave, CalleeSave, CalleeSave,
             ],
             signature: sig,
+            mode,
         }
     }
 
@@ -180,7 +186,7 @@ impl<const AMD64: bool> X86CodegenState<{ AMD64 }> {
                                     1 => X86RegisterClass::Byte,
                                     2 => X86RegisterClass::Word,
                                     4 => X86RegisterClass::Double,
-                                    8 if AMD64 => X86RegisterClass::Quad,
+                                    8 => X86RegisterClass::Quad,
                                     _ => unreachable!(),
                                 };
                                 drop(self.move_value(
@@ -206,6 +212,81 @@ impl<const AMD64: bool> X86CodegenState<{ AMD64 }> {
             Expr::CallFunction(_) => todo!(),
         }
     }
+
+    pub fn write_block(&mut self, block: &Block) {
+        for item in &block.items {
+            match item {
+                xlang_struct::BlockItem::Expr(e) => self.write_expr(e),
+                xlang_struct::BlockItem::Target { num, stack } => {
+                    todo!("target @{} {:?}", num, &**stack)
+                }
+            }
+        }
+    }
 }
 
-pub struct X86CodegenPlugin {}
+pub struct X86CodegenPlugin {
+    fns: Vec<X86CodegenState>,
+    target: Option<target_tuples::Target>,
+}
+
+impl X86CodegenPlugin {
+    fn write_output_impl<W: std::io::Write>(&mut self, x: W) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl XLangPlugin for X86CodegenPlugin {
+    fn accept_ir(
+        &mut self,
+        ir: &mut xlang_struct::File,
+    ) -> xlang::abi::result::Result<(), xlang::plugin::Error> {
+        self.target = Some(ir.target.clone().into());
+
+        for item in &ir.root.items {
+            match item {
+                xlang_struct::BlockItem::Expr(_) => todo!(),
+                xlang_struct::BlockItem::Target { num, stack } => todo!(),
+            }
+        }
+
+        xlang::abi::result::Ok(())
+    }
+}
+
+impl XLangCodegen for X86CodegenPlugin {
+    fn target_matches(&self, x: &xlang::targets::Target) -> bool {
+        let target: target_tuples::Target = x.clone().into();
+
+        match target.arch() {
+            target_tuples::Architecture::I86 => true,
+            target_tuples::Architecture::I8086 => true,
+            target_tuples::Architecture::I086 => true,
+            target_tuples::Architecture::I186 => true,
+            target_tuples::Architecture::I286 => true,
+            target_tuples::Architecture::I386 => true,
+            target_tuples::Architecture::I486 => true,
+            target_tuples::Architecture::I586 => true,
+            target_tuples::Architecture::I686 => true,
+            target_tuples::Architecture::X86_64 => true,
+            _ => false,
+        }
+    }
+
+    fn write_output(
+        &mut self,
+        x: xlang::prelude::v1::DynMut<dyn xlang::abi::io::Write>,
+    ) -> xlang::abi::io::Result<()> {
+        let wrapper = xlang::abi::io::WriteAdaptor::new(x);
+
+        self.write_output_impl(wrapper).map_err(Into::into).into()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
+    DynBox::unsize_box(Box::new(X86CodegenPlugin {
+        fns: Vec::new(),
+        target: None,
+    }))
+}

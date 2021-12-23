@@ -54,6 +54,7 @@ version = "0.1.0"
 dependencies = [
  "arch-ops",
  "binfmt",
+ "target-tuples 0.5.2",
  "xlang",
  "xlang_struct",
 ]

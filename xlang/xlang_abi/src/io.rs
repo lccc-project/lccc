@@ -21,6 +21,18 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Self::Message(crate::format!("{}", e))
+    }
+}
+
+impl From<Error> for std::io::Error {
+    fn from(e: Error) -> Self {
+        std::io::Error::new(std::io::ErrorKind::Other, e) // FIXME: This really needs to handle error codes properly
+    }
+}
+
 pub type Result<T> = crate::result::Result<T, Error>;
 
 pub trait Read {
@@ -438,17 +450,11 @@ impl<W> WriteAdaptor<W> {
 
 impl<W: self::Write> std::io::Write for WriteAdaptor<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0
-            .write(Span::new(buf))
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-            .into()
+        self.0.write(Span::new(buf)).map_err(Into::into).into()
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        self.0
-            .flush()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-            .into()
+        self.0.flush().map_err(Into::into).into()
     }
 }
 
@@ -456,14 +462,14 @@ impl<W: std::io::Write> self::Write for WriteAdaptor<W> {
     fn write(&mut self, buf: Span<u8>) -> Result<usize> {
         self.0
             .write(&buf)
-            .map_err(|e| self::Error::Message(crate::format!("{}", e))) // TODO: Proper error codes here
+            .map_err(Into::into) // TODO: Proper error codes here
             .into()
     }
 
     fn flush(&mut self) -> Result<()> {
         self.0
             .flush()
-            .map_err(|e| self::Error::Message(crate::format!("{}", e))) // TODO: Proper error codes here
+            .map_err(Into::into) // TODO: Proper error codes here
             .into()
     }
 }

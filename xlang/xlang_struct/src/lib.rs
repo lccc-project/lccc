@@ -274,8 +274,8 @@ pub struct FunctionDeclaration {
 }
 
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct File {
     pub target: Target,
-    pub root: Block,
+    pub root: Scope,
 }

@@ -57,6 +57,22 @@ impl<K, V, H: BuildHasher + Default, A: Allocator + Default> HashMap<K, V, H, A>
             alloc: Default::default(),
         }
     }
+
+    pub fn iter(&self) -> Iter<'_, K, V> {
+        Iter(
+            unsafe { core::slice::from_raw_parts(self.htab.as_ptr(), self.buckets) }.iter(),
+            None,
+        )
+    }
+
+    #[allow(dead_code)]
+    // Note: Not pub because this gives mutable access to the [`K`]eys.
+    fn iter_mut(&mut self) -> IterMut<'_, K, V> {
+        IterMut(
+            unsafe { core::slice::from_raw_parts_mut(self.htab.as_ptr(), self.buckets) }.iter_mut(),
+            None,
+        )
+    }
 }
 
 impl<K, V, H: BuildHasher + Default, A: Allocator + Default> Default for HashMap<K, V, H, A> {
@@ -291,3 +307,14 @@ impl<K: Clone, V: Clone, H: BuildHasher + Clone, A: Allocator + Clone> Clone
         }
     }
 }
+
+pub struct Iter<'a, K, V>(
+    core::slice::Iter<'a, HashMapSlot<K, V>>,
+    Option<(&'a HashMapSlot<K, V>, usize)>,
+);
+
+#[allow(dead_code)]
+struct IterMut<'a, K, V>(
+    core::slice::IterMut<'a, HashMapSlot<K, V>>,
+    Option<(&'a mut HashMapSlot<K, V>, usize)>,
+);
