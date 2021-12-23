@@ -12,6 +12,9 @@ use arch_ops::{
     },
 };
 
+// Forcibly link xlang_interface
+extern crate xlang;
+
 use binfmt::{
     fmt::Section,
     sym::{SymbolKind, SymbolType},
