@@ -39,7 +39,7 @@ fn main() {
     if intree {
         let executable_path = std::env::current_exe()
             .expect("Unable to find executable location; can't use --intree");
-        search_paths.push(unsafe { executable_path.parent().unwrap_unchecked() }.to_owned());
+        search_paths.push(executable_path.parent().unwrap().to_owned());
     }
 
     if cfg!(windows) {
