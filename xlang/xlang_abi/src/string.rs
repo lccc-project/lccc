@@ -130,6 +130,7 @@ macro_rules! format{
 /// An abi safe &str
 #[repr(C)]
 #[allow(clippy::module_name_repetitions)] // TODO: Determine if this should or should not be changed
+#[derive(Clone, Copy)]
 pub struct StringView<'a> {
     begin: NonNull<u8>,
     end: NonNull<u8>,

@@ -2,6 +2,7 @@
 mod argparse;
 
 use crate::argparse::{parse_args, ArgSpec, TakesArg};
+use xlang::abi::string::StringView;
 use xlang::plugin::XLangFrontend;
 use xlang::prelude::v1::*;
 use xlang_host::dso::Handle;
@@ -103,5 +104,21 @@ fn main() {
         frontends.push(initializer());
     }
 
-    println!("{}", frontends.len());
+    for file in &args.1 {
+        let file_view = StringView::new(file);
+        let mut frontend = None;
+        for fe in &mut frontends {
+            if fe.file_matches(file_view) {
+                frontend = Some(fe);
+                break;
+            }
+        }
+        if let Some(frontend) = frontend {
+            frontend.set_file_path(file_view);
+            todo!();
+            // frontend.read_source().unwrap();
+        } else {
+            panic!("couldn't find a frontend to process {}", file);
+        }
+    }
 }
