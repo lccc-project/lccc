@@ -49,7 +49,7 @@ impl<'a, T> Span<'a, T> {
 
     ///
     /// Returns a subspan of the span, using a range as the index.
-    /// Note: This function only accepts ranges. To slice a particular element, use [`slice::get`] or [`Index`]
+    /// Note: This function only accepts ranges. To slice a particular element, use [`slice::get`] or [`std::ops::Index`]
     pub fn subspan<I: RangeBounds<usize>>(&self, idx: I) -> Option<Span<T>> {
         let begin = match idx.start_bound() {
             std::ops::Bound::Included(x) => *x,
@@ -197,7 +197,7 @@ impl<'a, T> SpanMut<'a, T> {
 
     ///
     /// Returns a subspan of the span, using a range as the index.
-    /// Note: This function only accepts ranges. To slice a particular element, use [`slice::get`] or [`Index`]
+    /// Note: This function only accepts ranges. To slice a particular element, use [`slice::get`] or [`std::ops::Index`]
     pub fn subspan<I: RangeBounds<usize>>(&self, idx: I) -> Option<Span<T>> {
         let begin = match idx.start_bound() {
             std::ops::Bound::Included(x) => *x,
@@ -227,7 +227,7 @@ impl<'a, T> SpanMut<'a, T> {
 
     ///
     /// Returns a subspan of the span, using a range as the index.
-    /// Note: This function only accepts ranges. To slice a particular element, use [`slice::get`] or [`Index`]
+    /// Note: This function only accepts ranges. To slice a particular element, use [`slice::get`] or [`std::ops::Index`]
     pub fn subspan_mut<I: RangeBounds<usize>>(&mut self, idx: I) -> Option<SpanMut<T>> {
         let begin = match idx.start_bound() {
             std::ops::Bound::Included(x) => *x,

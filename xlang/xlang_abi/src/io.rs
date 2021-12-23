@@ -430,6 +430,7 @@ impl<W> WriteAdaptor<W> {
         Self(r)
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     pub fn into_inner(self) -> W {
         self.0
     }

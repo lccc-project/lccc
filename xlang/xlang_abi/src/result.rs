@@ -102,7 +102,7 @@ impl<T, E> Result<T, E> {
 }
 
 impl<T, E> From<std::result::Result<T, E>> for Result<T, E> {
-    fn from(f: std::result::Result<T, E>) -> Result<T, E> {
+    fn from(f: std::result::Result<T, E>) -> Self {
         match f {
             std::result::Result::Ok(x) => Ok(x),
             std::result::Result::Err(e) => Err(e),
@@ -111,10 +111,10 @@ impl<T, E> From<std::result::Result<T, E>> for Result<T, E> {
 }
 
 impl<T, E> From<Result<T, E>> for std::result::Result<T, E> {
-    fn from(f: Result<T, E>) -> std::result::Result<T, E> {
+    fn from(f: Result<T, E>) -> Self {
         match f {
-            Ok(x) => std::result::Result::Ok(x),
-            Err(e) => std::result::Result::Err(e),
+            Ok(x) => Self::Ok(x),
+            Err(e) => Self::Err(e),
         }
     }
 }
