@@ -92,4 +92,29 @@ impl<T, E> Result<T, E> {
             Err(e) => default_op(e),
         }
     }
+
+    pub fn map_err<D, F: FnOnce(E) -> D>(self, op: F) -> Result<T, D> {
+        match self {
+            Ok(x) => Ok(x),
+            Err(e) => Err(op(e)),
+        }
+    }
+}
+
+impl<T, E> From<std::result::Result<T, E>> for Result<T, E> {
+    fn from(f: std::result::Result<T, E>) -> Result<T, E> {
+        match f {
+            std::result::Result::Ok(x) => Ok(x),
+            std::result::Result::Err(e) => Err(e),
+        }
+    }
+}
+
+impl<T, E> From<Result<T, E>> for std::result::Result<T, E> {
+    fn from(f: Result<T, E>) -> std::result::Result<T, E> {
+        match f {
+            Ok(x) => std::result::Result::Ok(x),
+            Err(e) => std::result::Result::Err(e),
+        }
+    }
 }

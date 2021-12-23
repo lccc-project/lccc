@@ -6,9 +6,20 @@ use crate::{
 };
 
 #[repr(u8)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Error {
     Message(String),
 }
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Message(m) => m.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
 
 pub type Result<T> = crate::result::Result<T, Error>;
 
@@ -266,17 +277,25 @@ impl<R: Read> IntoChars for R {
 
 pub trait Write {
     fn write(&mut self, buf: Span<u8>) -> Result<usize>;
+    fn flush(&mut self) -> Result<()>;
 }
 
 impl<W: ?Sized + Write> Write for &mut W {
     fn write(&mut self, buf: Span<u8>) -> Result<usize> {
         W::write(self, buf)
     }
+    fn flush(&mut self) -> Result<()> {
+        W::flush(self)
+    }
 }
 
 impl<W: ?Sized + Write> Write for Box<W> {
     fn write(&mut self, buf: Span<u8>) -> Result<usize> {
         W::write(self, buf)
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        W::flush(self)
     }
 }
 
@@ -287,6 +306,7 @@ pub struct WriteVTable {
     destructor: Option<unsafe extern "C" fn(*mut ())>,
     reserved_dealloc: Option<unsafe extern "C" fn(*mut ())>,
     write: unsafe extern "C" fn(*mut (), Span<u8>) -> Result<usize>,
+    flush: unsafe extern "C" fn(*mut ()) -> Result<()>,
 }
 
 unsafe impl AbiSafeVTable<dyn Write> for WriteVTable {}
@@ -311,6 +331,10 @@ unsafe extern "C" fn vtbl_write<T: Write>(this: *mut (), buf: Span<u8>) -> Resul
     <T as Write>::write(&mut *(this.cast::<T>()), buf)
 }
 
+unsafe extern "C" fn vtbl_flush<T: Write>(this: *mut ()) -> Result<()> {
+    <T as Write>::flush(&mut *(this.cast::<T>()))
+}
+
 unsafe impl<T: Write> AbiSafeUnsize<T> for dyn Write {
     fn construct_vtable_for() -> &'static Self::VTable {
         &WriteVTable {
@@ -319,6 +343,7 @@ unsafe impl<T: Write> AbiSafeUnsize<T> for dyn Write {
             destructor: Some(vtbl_destroy::<T>),
             reserved_dealloc: None,
             write: vtbl_write::<T>,
+            flush: vtbl_flush::<T>,
         }
     }
 }
@@ -331,6 +356,7 @@ unsafe impl<T: Write + Send> AbiSafeUnsize<T> for dyn Write + Send {
             destructor: Some(vtbl_destroy::<T>),
             reserved_dealloc: None,
             write: vtbl_write::<T>,
+            flush: vtbl_flush::<T>,
         }
     }
 }
@@ -343,6 +369,7 @@ unsafe impl<T: Write + Sync> AbiSafeUnsize<T> for dyn Write + Sync {
             destructor: Some(vtbl_destroy::<T>),
             reserved_dealloc: None,
             write: vtbl_write::<T>,
+            flush: vtbl_flush::<T>,
         }
     }
 }
@@ -355,6 +382,7 @@ unsafe impl<T: Write + Send + Sync> AbiSafeUnsize<T> for dyn Write + Send + Sync
             destructor: Some(vtbl_destroy::<T>),
             reserved_dealloc: None,
             write: vtbl_write::<T>,
+            flush: vtbl_flush::<T>,
         }
     }
 }
@@ -362,6 +390,10 @@ unsafe impl<T: Write + Send + Sync> AbiSafeUnsize<T> for dyn Write + Send + Sync
 impl<'lt> Write for dyn DynPtrSafe<dyn Write> + 'lt {
     fn write(&mut self, buf: Span<u8>) -> Result<usize> {
         unsafe { (self.vtable().write)(self.as_raw_mut(), buf) }
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        unsafe { (self.vtable().flush)(self.as_raw_mut()) }
     }
 }
 
@@ -372,6 +404,10 @@ where
     fn write(&mut self, buf: Span<u8>) -> Result<usize> {
         <dyn DynPtrSafe<T> as Write>::write(&mut **self, buf)
     }
+
+    fn flush(&mut self) -> Result<()> {
+        <dyn DynPtrSafe<T> as Write>::flush(&mut **self)
+    }
 }
 
 impl<'lt, T: ?Sized + AbiSafeTrait + 'static, A: Allocator> Write for DynBox<T, A>
@@ -380,5 +416,53 @@ where
 {
     fn write(&mut self, buf: Span<u8>) -> Result<usize> {
         <dyn DynPtrSafe<T> as Write>::write(&mut **self, buf)
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        <dyn DynPtrSafe<T> as Write>::flush(&mut **self)
+    }
+}
+
+pub struct WriteAdaptor<W>(W);
+
+impl<W> WriteAdaptor<W> {
+    pub const fn new(r: W) -> Self {
+        Self(r)
+    }
+
+    pub fn into_inner(self) -> W {
+        self.0
+    }
+}
+
+impl<W: self::Write> std::io::Write for WriteAdaptor<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .write(Span::new(buf))
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            .into()
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0
+            .flush()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            .into()
+    }
+}
+
+impl<W: std::io::Write> self::Write for WriteAdaptor<W> {
+    fn write(&mut self, buf: Span<u8>) -> Result<usize> {
+        self.0
+            .write(&buf)
+            .map_err(|e| self::Error::Message(crate::format!("{}", e))) // TODO: Proper error codes here
+            .into()
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        self.0
+            .flush()
+            .map_err(|e| self::Error::Message(crate::format!("{}", e))) // TODO: Proper error codes here
+            .into()
     }
 }

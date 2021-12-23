@@ -115,6 +115,17 @@ impl<A: Allocator> Write for String<A> {
     }
 }
 
+#[macro_export]
+macro_rules! format{
+    ($($tt:tt)*) => {
+        {
+            let mut val = $crate::string::String::new();
+            ::core::fmt::write(&mut val, ::core::format_args!($($tt)*)).unwrap();
+            val
+        }
+    }
+}
+
 ///
 /// An abi safe &str
 #[repr(C)]
