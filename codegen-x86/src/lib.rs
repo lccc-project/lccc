@@ -243,12 +243,12 @@ impl XLangPlugin for X86CodegenPlugin {
     ) -> xlang::abi::result::Result<(), xlang::plugin::Error> {
         self.target = Some(ir.target.clone().into());
 
-        for item in &ir.root.items {
-            match item {
-                xlang_struct::BlockItem::Expr(_) => todo!(),
-                xlang_struct::BlockItem::Target { num, stack } => todo!(),
-            }
-        }
+        // for item in &ir.root.members {
+        //     match item {
+        //         xlang_struct::BlockItem::Expr(_) => todo!(),
+        //         xlang_struct::BlockItem::Target { num, stack } => todo!(),
+        //     }
+        // }
 
         xlang::abi::result::Ok(())
     }
