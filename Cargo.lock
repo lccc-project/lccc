@@ -83,6 +83,7 @@ name = "lccc"
 version = "0.1.0"
 dependencies = [
  "xlang",
+ "xlang-host",
 ]
 
 [[package]]

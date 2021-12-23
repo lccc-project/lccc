@@ -45,6 +45,6 @@ impl XLangPlugin for CFrontend {
 
 #[allow(clippy::missing_const_for_fn)]
 #[no_mangle]
-pub extern "C" fn xlang_plugin_main() -> DynBox<dyn XLangFrontend> {
+pub extern "C" fn xlang_frontend_main() -> DynBox<dyn XLangFrontend> {
     DynBox::unsize_box(Box::new(CFrontend::new()))
 }

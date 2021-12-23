@@ -2,9 +2,12 @@
 mod argparse;
 
 use crate::argparse::{parse_args, ArgSpec, TakesArg};
+use xlang::plugin::XLangFrontend;
 use xlang::prelude::v1::*;
+use xlang_host::dso::Handle;
 
 static FRONTENDS: [&str; 1] = ["c"];
+type FrontendInit = extern "C" fn() -> DynBox<dyn XLangFrontend>;
 
 fn main() {
     let s = String::from("Hello World");
@@ -87,5 +90,18 @@ fn main() {
         }
     }
 
-    println!("{:?}", frontend_paths);
+    let mut frontend_handles = Vec::new();
+    for frontend_path in &frontend_paths {
+        frontend_handles.push(Handle::open(frontend_path).expect("couldn't load frontend library"));
+    }
+
+    let mut frontends = Vec::new();
+    for frontend_handle in &frontend_handles {
+        let initializer: FrontendInit =
+            unsafe { frontend_handle.function_sym("xlang_frontend_main") }
+                .expect("frontend library missing required entry point");
+        frontends.push(initializer());
+    }
+
+    println!("{}", frontends.len());
 }
