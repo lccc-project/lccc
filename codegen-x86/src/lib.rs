@@ -335,7 +335,7 @@ impl XLangCodegen for X86CodegenPlugin {
         &mut self,
         x: xlang::prelude::v1::DynMut<dyn xlang::abi::io::Write>,
     ) -> xlang::abi::io::Result<()> {
-        let wrapper = xlang::abi::io::WriteAdaptor::new(x);
+        let wrapper = xlang::abi::io::WriteAdapter::new(x);
 
         self.write_output_impl(wrapper).map_err(Into::into).into()
     }

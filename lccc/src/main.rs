@@ -2,6 +2,8 @@
 mod argparse;
 
 use crate::argparse::{parse_args, ArgSpec, TakesArg};
+use std::fs::File;
+use xlang::abi::io::ReadAdapter;
 use xlang::abi::string::StringView;
 use xlang::plugin::XLangFrontend;
 use xlang::prelude::v1::*;
@@ -115,8 +117,11 @@ fn main() {
         }
         if let Some(frontend) = frontend {
             frontend.set_file_path(file_view);
-            todo!();
-            // frontend.read_source().unwrap();
+            let mut read_adapter =
+                ReadAdapter::new(File::open(&**file).expect("can't read input file"));
+            frontend
+                .read_source(DynMut::unsize_mut(&mut read_adapter))
+                .unwrap();
         } else {
             panic!("couldn't find a frontend to process {}", file);
         }

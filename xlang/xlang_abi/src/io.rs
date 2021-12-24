@@ -287,6 +287,34 @@ impl<R: Read> IntoChars for R {
     }
 }
 
+pub struct ReadAdapter<R>(R);
+
+impl<R> ReadAdapter<R> {
+    pub const fn new(r: R) -> Self {
+        Self(r)
+    }
+
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn into_inner(self) -> R {
+        self.0
+    }
+}
+
+impl<R: self::Read> std::io::Read for ReadAdapter<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0.read(SpanMut::new(buf)).map_err(Into::into).into()
+    }
+}
+
+impl<R: std::io::Read> self::Read for ReadAdapter<R> {
+    fn read(&mut self, mut buf: SpanMut<u8>) -> Result<usize> {
+        self.0
+            .read(&mut buf)
+            .map_err(Into::into) // TODO: Proper error codes here
+            .into()
+    }
+}
+
 pub trait Write {
     fn write(&mut self, buf: Span<u8>) -> Result<usize>;
     fn flush(&mut self) -> Result<()>;
@@ -435,9 +463,9 @@ where
     }
 }
 
-pub struct WriteAdaptor<W>(W);
+pub struct WriteAdapter<W>(W);
 
-impl<W> WriteAdaptor<W> {
+impl<W> WriteAdapter<W> {
     pub const fn new(r: W) -> Self {
         Self(r)
     }
@@ -448,7 +476,7 @@ impl<W> WriteAdaptor<W> {
     }
 }
 
-impl<W: self::Write> std::io::Write for WriteAdaptor<W> {
+impl<W: self::Write> std::io::Write for WriteAdapter<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.0.write(Span::new(buf)).map_err(Into::into).into()
     }
@@ -458,7 +486,7 @@ impl<W: self::Write> std::io::Write for WriteAdaptor<W> {
     }
 }
 
-impl<W: std::io::Write> self::Write for WriteAdaptor<W> {
+impl<W: std::io::Write> self::Write for WriteAdapter<W> {
     fn write(&mut self, buf: Span<u8>) -> Result<usize> {
         self.0
             .write(&buf)
