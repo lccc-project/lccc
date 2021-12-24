@@ -102,6 +102,7 @@ impl<T, E> Result<T, E> {
         }
     }
 
+    #[allow(clippy::missing_const_for_fn)] // Objectively incorrect lint, missing ability to drop
     pub fn unwrap(self) -> T
     where
         E: Debug,
@@ -112,6 +113,7 @@ impl<T, E> Result<T, E> {
         }
     }
 
+    #[allow(clippy::missing_const_for_fn)] // Objectively incorrect lint, missing ability to drop
     pub fn expect(self, diag: &str) -> T {
         match self {
             Ok(x) => x,
@@ -119,6 +121,7 @@ impl<T, E> Result<T, E> {
         }
     }
 
+    #[allow(clippy::missing_const_for_fn)] // Objectively incorrect lint, missing ability to drop
     pub fn unwrap_or(self, val: T) -> T {
         match self {
             Ok(x) => x,
@@ -135,6 +138,7 @@ impl<T, E> Result<T, E> {
 
     /// # SAFETY:
     /// self shall be Ok.
+    #[allow(clippy::missing_const_for_fn)] // Objectively incorrect lint, missing ability to drop
     #[inline]
     pub unsafe fn unwrap_unchecked(self) -> T {
         match self {

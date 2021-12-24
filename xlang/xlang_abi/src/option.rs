@@ -52,6 +52,7 @@ impl<T> Option<T> {
         }
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     pub fn unwrap(self) -> T {
         match self {
             Some(val) => val,
@@ -59,6 +60,7 @@ impl<T> Option<T> {
         }
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     pub fn expect(self, diag: &str) -> T {
         match self {
             Some(val) => val,
@@ -66,6 +68,7 @@ impl<T> Option<T> {
         }
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     pub fn unwrap_or(self, default: T) -> T {
         match self {
             Some(val) => val,
@@ -73,6 +76,7 @@ impl<T> Option<T> {
         }
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     pub fn unwrap_or_else<F: FnOnce() -> T>(self, op: F) -> T {
         match self {
             Some(val) => val,
@@ -80,6 +84,7 @@ impl<T> Option<T> {
         }
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     #[inline]
     pub unsafe fn unwrap_unchecked(self) -> T {
         match self {

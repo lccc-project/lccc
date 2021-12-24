@@ -29,7 +29,7 @@ impl From<std::io::Error> for Error {
 
 impl From<Error> for std::io::Error {
     fn from(e: Error) -> Self {
-        std::io::Error::new(std::io::ErrorKind::Other, e) // FIXME: This really needs to handle error codes properly
+        Self::new(std::io::ErrorKind::Other, e) // FIXME: This really needs to handle error codes properly
     }
 }
 

@@ -12,6 +12,7 @@ use xlang_host::dso::Handle;
 static FRONTENDS: [&str; 1] = ["c"];
 type FrontendInit = extern "C" fn() -> DynBox<dyn XLangFrontend>;
 
+#[allow(clippy::too_many_lines)]
 fn main() {
     let s = String::from("Hello World");
     println!("{}", s);

@@ -310,13 +310,12 @@ pub struct Iter<'a, K, V>(
 
 impl<'a, K, V> Iter<'a, K, V> {
     fn current_slot(&mut self) -> std::option::Option<(&'a HashMapSlot<K, V>, usize)> {
-        match self.1 {
-            Some((slot, offset)) => Some((slot, offset)),
-            None => {
-                let x = self.0.next()?;
-                self.1 = Some((x, 0));
-                Some((x, 0))
-            }
+        if let Some((slot, offset)) = self.1 {
+            Some((slot, offset))
+        } else {
+            let x = self.0.next()?;
+            self.1 = Some((x, 0));
+            Some((x, 0))
         }
     }
 }
@@ -337,7 +336,7 @@ impl<'a, K, V> Iterator for Iter<'a, K, V> {
         };
 
         Some(unsafe {
-            &*(&slot.entries[offset] as *const MaybeUninit<Pair<K, V>> as *const Pair<K, V>)
+            &*(&slot.entries[offset] as *const MaybeUninit<Pair<K, V>>).cast::<Pair<K, V>>()
         })
     }
 }
