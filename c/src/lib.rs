@@ -3,8 +3,10 @@ use xlang::abi::io::{self, IntoChars, Read};
 use xlang::abi::prelude::v1::*;
 use xlang::abi::result::Result;
 mod lex;
+mod parse;
 
 use lex::lex;
+use parse::parse;
 use xlang::abi::string::StringView;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 use xlang_struct::{
@@ -36,7 +38,8 @@ impl XLangFrontend for CFrontend {
     fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
         let mut file = file.into_chars();
         let lexed = lex(&mut file);
-        println!("{:?}", lexed);
+        let parsed = parse(&lexed);
+        println!("{:?}", parsed);
         io::Result::Ok(())
     }
 }
