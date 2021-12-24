@@ -7,7 +7,11 @@ mod lex;
 use lex::lex;
 use xlang::abi::string::StringView;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
-use xlang_struct::File;
+use xlang_struct::{
+    Abi, AnnotatedElement, File, FnType, FunctionDeclaration, MemberDeclaration, Path,
+    PathComponent, ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, ScopeMember, Type,
+    Visibility,
+};
 
 struct CFrontend {
     filename: Option<String>,
@@ -38,8 +42,40 @@ impl XLangFrontend for CFrontend {
 }
 
 impl XLangPlugin for CFrontend {
-    fn accept_ir(&mut self, _: &mut File) -> Result<(), Error> {
-        todo!()
+    fn accept_ir(&mut self, file: &mut File) -> Result<(), Error> {
+        let main_path = Path {
+            components: xlang::abi::vec![PathComponent::Text("main".into())],
+        };
+        let function = FunctionDeclaration {
+            ty: FnType {
+                ret: Type::Scalar(ScalarType {
+                    header: ScalarTypeHeader {
+                        bitsize: 32,
+                        vectorsize: 0,
+                        validity: ScalarValidity::empty(),
+                    },
+                    kind: ScalarTypeKind::Integer {
+                        signed: true,
+                        min: i128::MIN,
+                        max: i128::MAX,
+                    },
+                }),
+                params: Vec::new(),
+                tag: Abi::C,
+            },
+            body: None,
+        };
+        file.root.members.insert(
+            main_path,
+            ScopeMember {
+                annotations: AnnotatedElement {
+                    annotations: Vec::new(),
+                },
+                vis: Visibility::Public,
+                member_decl: MemberDeclaration::Function(function),
+            },
+        );
+        Result::Ok(())
     }
 }
 
