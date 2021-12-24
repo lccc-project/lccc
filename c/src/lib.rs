@@ -10,9 +10,9 @@ use parse::parse;
 use xlang::abi::string::StringView;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 use xlang_struct::{
-    Abi, AnnotatedElement, File, FnType, FunctionDeclaration, MemberDeclaration, Path,
-    PathComponent, ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, ScopeMember, Type,
-    Visibility,
+    Abi, AnnotatedElement, Block, BlockItem, Expr, File, FnType, FunctionDeclaration,
+    MemberDeclaration, Path, PathComponent, ScalarType, ScalarTypeHeader, ScalarTypeKind,
+    ScalarValidity, ScopeMember, Type, Value, Visibility,
 };
 
 struct CFrontend {
@@ -46,27 +46,37 @@ impl XLangFrontend for CFrontend {
 
 impl XLangPlugin for CFrontend {
     fn accept_ir(&mut self, file: &mut File) -> Result<(), Error> {
+        let i32_type = ScalarType {
+            header: ScalarTypeHeader {
+                bitsize: 32,
+                vectorsize: 0,
+                validity: ScalarValidity::empty(),
+            },
+            kind: ScalarTypeKind::Integer {
+                signed: true,
+                min: i128::MIN,
+                max: i128::MAX,
+            },
+        };
         let main_path = Path {
             components: xlang::abi::vec![PathComponent::Text("main".into())],
         };
+        let body = Block {
+            items: xlang::abi::vec![
+                BlockItem::Expr(Expr::Const(Value::Integer {
+                    ty: i32_type,
+                    val: 0,
+                })),
+                BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
+            ],
+        };
         let function = FunctionDeclaration {
             ty: FnType {
-                ret: Type::Scalar(ScalarType {
-                    header: ScalarTypeHeader {
-                        bitsize: 32,
-                        vectorsize: 0,
-                        validity: ScalarValidity::empty(),
-                    },
-                    kind: ScalarTypeKind::Integer {
-                        signed: true,
-                        min: i128::MIN,
-                        max: i128::MAX,
-                    },
-                }),
+                ret: Type::Scalar(i32_type),
                 params: Vec::new(),
                 tag: Abi::C,
             },
-            body: None,
+            body: Some(body),
         };
         file.root.members.insert(
             main_path,
