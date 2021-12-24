@@ -117,8 +117,11 @@ fn main() {
         }
         if let Some(frontend) = frontend {
             frontend.set_file_path(file_view);
-            let mut read_adapter = ReadAdapter::new(File::open(&**file).expect("can't read input file"));
-            frontend.read_source(DynMut::unsize_mut(&mut read_adapter)).unwrap();
+            let mut read_adapter =
+                ReadAdapter::new(File::open(&**file).expect("can't read input file"));
+            frontend
+                .read_source(DynMut::unsize_mut(&mut read_adapter))
+                .unwrap();
         } else {
             panic!("couldn't find a frontend to process {}", file);
         }
