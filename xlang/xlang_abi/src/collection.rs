@@ -57,22 +57,6 @@ impl<K, V, H: BuildHasher + Default, A: Allocator + Default> HashMap<K, V, H, A>
             alloc: Default::default(),
         }
     }
-
-    pub fn iter(&self) -> Iter<'_, K, V> {
-        Iter(
-            unsafe { core::slice::from_raw_parts(self.htab.as_ptr(), self.buckets) }.iter(),
-            None,
-        )
-    }
-
-    #[allow(dead_code)]
-    // Note: Not pub because this gives mutable access to the [`K`]eys.
-    fn iter_mut(&mut self) -> IterMut<'_, K, V> {
-        IterMut(
-            unsafe { core::slice::from_raw_parts_mut(self.htab.as_ptr(), self.buckets) }.iter_mut(),
-            None,
-        )
-    }
 }
 
 impl<K, V, H: BuildHasher + Default, A: Allocator + Default> Default for HashMap<K, V, H, A> {
@@ -111,6 +95,17 @@ impl<K, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
             hash,
             alloc,
         }
+    }
+
+    pub fn iter(&self) -> Iter<'_, K, V> {
+        Iter(
+            unsafe { core::slice::from_raw_parts(self.htab.as_ptr(), self.buckets) }.iter(),
+            None,
+        )
+    }
+
+    pub fn values(&self) -> Values<'_, K, V> {
+        Values(self.iter())
     }
 }
 
@@ -313,8 +308,67 @@ pub struct Iter<'a, K, V>(
     Option<(&'a HashMapSlot<K, V>, usize)>,
 );
 
-#[allow(dead_code)]
-struct IterMut<'a, K, V>(
-    core::slice::IterMut<'a, HashMapSlot<K, V>>,
-    Option<(&'a mut HashMapSlot<K, V>, usize)>,
-);
+impl<'a, K, V> Iter<'a, K, V> {
+    fn current_slot(&mut self) -> std::option::Option<(&'a HashMapSlot<K, V>, usize)> {
+        match self.1 {
+            Some((slot, offset)) => Some((slot, offset)),
+            None => {
+                let x = self.0.next()?;
+                self.1 = Some((x, 0));
+                Some((x, 0))
+            }
+        }
+    }
+}
+
+impl<'a, K, V> Iterator for Iter<'a, K, V> {
+    type Item = &'a Pair<K, V>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (slot, offset) = self.current_slot()?;
+
+        let (slot, offset) = if offset == slot.ecount {
+            let slot = self.0.next()?;
+            self.1 = Some((slot, 0));
+            (slot, 0)
+        } else {
+            self.1.as_mut().unwrap().1 += 1;
+            (slot, offset)
+        };
+
+        Some(unsafe {
+            &*(&slot.entries[offset] as *const MaybeUninit<Pair<K, V>> as *const Pair<K, V>)
+        })
+    }
+}
+
+pub struct Values<'a, K, V>(Iter<'a, K, V>);
+
+impl<'a, K, V> Iterator for Values<'a, K, V> {
+    type Item = &'a V;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.0.next() {
+            Some(Pair(_, v)) => Some(v),
+            None => None,
+        }
+    }
+}
+
+impl<'a, K, V, H: BuildHasher, A: Allocator> IntoIterator for &'a HashMap<K, V, H, A> {
+    type Item = &'a Pair<K, V>;
+
+    type IntoIter = Iter<'a, K, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, K: Hash, V: Hash, H: BuildHasher, A: Allocator> Hash for HashMap<K, V, H, A> {
+    fn hash<P: Hasher>(&self, state: &mut P) {
+        for i in self {
+            i.hash(state);
+        }
+    }
+}

@@ -21,10 +21,11 @@ use binfmt::{
 };
 use xlang::{
     plugin::{XLangCodegen, XLangPlugin},
-    prelude::v1::{Box, DynBox},
+    prelude::v1::{Box, DynBox, Pair},
 };
 use xlang_struct::{
-    Block, Expr, FnType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type, Value,
+    Block, Expr, FnType, FunctionDeclaration, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type,
+    Value,
 };
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -226,7 +227,7 @@ impl X86CodegenState {
 }
 
 pub struct X86CodegenPlugin {
-    fns: Vec<X86CodegenState>,
+    fns: HashMap<String, X86CodegenState>,
     target: Option<target_tuples::Target>,
 }
 
@@ -243,12 +244,31 @@ impl XLangPlugin for X86CodegenPlugin {
     ) -> xlang::abi::result::Result<(), xlang::plugin::Error> {
         self.target = Some(ir.target.clone().into());
 
-        // for item in &ir.root.members {
-        //     match item {
-        //         xlang_struct::BlockItem::Expr(_) => todo!(),
-        //         xlang_struct::BlockItem::Target { num, stack } => todo!(),
-        //     }
-        // }
+        for Pair(path, member) in &ir.root.members {
+            let name = &*path.components;
+
+            let name = match name {
+                [xlang_struct::PathComponent::Text(t)] => &**t,
+                [xlang_struct::PathComponent::Root, xlang_struct::PathComponent::Text(t)] => &&**t,
+                _ => panic!("Cannot access name component"),
+            }
+            .to_string();
+
+            match &member.member_decl {
+                xlang_struct::MemberDeclaration::Function(FunctionDeclaration {
+                    ty,
+                    body: xlang::abi::option::Some(body),
+                }) => {
+                    let mut state = X86CodegenState::init(
+                        ty.clone(),
+                        X86Mode::default_mode_for(self.target.as_ref().unwrap()).unwrap(),
+                    );
+                    state.write_block(body);
+                    self.fns.insert(name, state);
+                }
+                _ => {}
+            }
+        }
 
         xlang::abi::result::Ok(())
     }
@@ -286,7 +306,7 @@ impl XLangCodegen for X86CodegenPlugin {
 #[no_mangle]
 pub extern "C" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
     DynBox::unsize_box(Box::new(X86CodegenPlugin {
-        fns: Vec::new(),
+        fns: HashMap::new(),
         target: None,
     }))
 }

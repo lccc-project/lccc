@@ -4,6 +4,8 @@ pub enum Result<T, E> {
     Err(E),
 }
 
+use std::fmt::Debug;
+
 use crate::option::{None, Option, Some};
 
 pub use self::Result::{Err, Ok};
@@ -97,6 +99,47 @@ impl<T, E> Result<T, E> {
         match self {
             Ok(x) => Ok(x),
             Err(e) => Err(op(e)),
+        }
+    }
+
+    pub fn unwrap(self) -> T
+    where
+        E: Debug,
+    {
+        match self {
+            Ok(x) => x,
+            Err(e) => panic!("Called unwrap with Err({:?})", e),
+        }
+    }
+
+    pub fn expect(self, diag: &str) -> T {
+        match self {
+            Ok(x) => x,
+            Err(_) => panic!("{}", diag),
+        }
+    }
+
+    pub fn unwrap_or(self, val: T) -> T {
+        match self {
+            Ok(x) => x,
+            Err(_) => val,
+        }
+    }
+
+    pub fn unwrap_or_else<F: FnOnce(E) -> T>(self, op: F) -> T {
+        match self {
+            Ok(x) => x,
+            Err(e) => op(e),
+        }
+    }
+
+    /// # SAFETY:
+    /// self shall be Ok.
+    #[inline]
+    pub unsafe fn unwrap_unchecked(self) -> T {
+        match self {
+            Ok(x) => x,
+            Err(_) => core::hint::unreachable_unchecked(),
         }
     }
 }
