@@ -51,6 +51,7 @@ enum RegisterStatus {
 
 use RegisterStatus::{Allocated, CalleeSave, Free};
 
+#[derive(Debug, Clone)]
 struct X86TempSymbol(
     String,
     Option<&'static str>,
@@ -233,8 +234,8 @@ pub struct X86CodegenPlugin {
 
 impl X86CodegenPlugin {
     fn write_output_impl<W: std::io::Write>(&mut self, mut x: W) -> std::io::Result<()> {
-        let mut file =
-            binfmt::def_vec_for(self.target.as_ref().unwrap()).create_file(FileType::Relocatable);
+        let fmt = binfmt::def_vec_for(self.target.as_ref().unwrap());
+        let mut file = fmt.create_file(FileType::Relocatable);
         let mut text = Section {
             name: String::from(".text"),
             align: 1204,
@@ -254,7 +255,6 @@ impl X86CodegenPlugin {
         };
 
         let mut syms = Vec::new();
-
         for (name, output) in self.fns.take().unwrap() {
             let sym = X86TempSymbol(
                 name.clone(),
@@ -265,6 +265,7 @@ impl X86CodegenPlugin {
             ); // TODO: internal linkage is a thing
             syms.push(sym);
             let mut encoder = X86Encoder::new(&mut text, output.mode);
+            syms.extend_from_slice(&output.symbols);
             output.encode(&mut encoder, &mut rodata)?;
         }
         file.add_section(text).unwrap();
@@ -283,6 +284,8 @@ impl X86CodegenPlugin {
             *fsym.symbol_type_mut() = sym.3;
             *fsym.kind_mut() = sym.4;
         }
+
+        fmt.write_file(&mut x, &file)?;
         Ok(())
     }
 }
@@ -292,11 +295,10 @@ impl XLangPlugin for X86CodegenPlugin {
         &mut self,
         ir: &mut xlang_struct::File,
     ) -> xlang::abi::result::Result<(), xlang::plugin::Error> {
-        self.target = Some(ir.target.clone().into());
+        self.target = Some((&ir.target).into());
 
         for Pair(path, member) in &ir.root.members {
             let name = &*path.components;
-
             let name = match name {
                 [xlang_struct::PathComponent::Text(t)] => &**t,
                 [xlang_struct::PathComponent::Root, xlang_struct::PathComponent::Text(t)] => &&**t,
@@ -309,6 +311,7 @@ impl XLangPlugin for X86CodegenPlugin {
                     ty,
                     body: xlang::abi::option::Some(body),
                 }) => {
+                    println!("{}: {:?}", name, ty);
                     let mut state = X86CodegenState::init(
                         ty.clone(),
                         X86Mode::default_mode_for(self.target.as_ref().unwrap()).unwrap(),
@@ -326,7 +329,7 @@ impl XLangPlugin for X86CodegenPlugin {
 
 impl XLangCodegen for X86CodegenPlugin {
     fn target_matches(&self, x: &xlang::targets::Target) -> bool {
-        let target: target_tuples::Target = x.clone().into();
+        let target: target_tuples::Target = x.into();
 
         match target.arch() {
             target_tuples::Architecture::I86 => true,

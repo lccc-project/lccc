@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::fmt::Debug;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::mem::MaybeUninit;
 
@@ -14,7 +15,6 @@ struct HashMapSlot<K, V> {
     entries: [MaybeUninit<Pair<K, V>>; 16],
 }
 
-#[derive(Debug)]
 pub struct HashMap<
     K,
     V,
@@ -145,7 +145,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
 
     #[allow(clippy::cast_possible_truncation)]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
-        if self.buckets != 0 {
+        if self.buckets == 0 {
             let ptr = self
                 .alloc
                 .allocate_zeroed(Layout::array::<HashMapSlot<K, V>>(16).unwrap())
@@ -324,17 +324,14 @@ impl<'a, K, V> Iterator for Iter<'a, K, V> {
     type Item = &'a Pair<K, V>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (slot, offset) = self.current_slot()?;
+        let (mut slot, mut offset) = self.current_slot()?;
 
-        let (slot, offset) = if offset == slot.ecount {
-            let slot = self.0.next()?;
+        while offset == slot.ecount {
+            slot = self.0.next()?;
+            offset = 0;
             self.1 = Some((slot, 0));
-            (slot, 0)
-        } else {
-            self.1.as_mut().unwrap().1 += 1;
-            (slot, offset)
-        };
-
+        }
+        self.1.as_mut().unwrap().1 += 1;
         Some(unsafe {
             &*(&slot.entries[offset] as *const MaybeUninit<Pair<K, V>>).cast::<Pair<K, V>>()
         })
@@ -369,5 +366,13 @@ impl<'a, K: Hash, V: Hash, H: BuildHasher, A: Allocator> Hash for HashMap<K, V, 
         for i in self {
             i.hash(state);
         }
+    }
+}
+
+impl<'a, K: Debug, V: Debug, H: BuildHasher, A: Allocator> Debug for HashMap<K, V, H, A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_map()
+            .entries(self.iter().map(|Pair(k, v)| (k, v)))
+            .finish()
     }
 }

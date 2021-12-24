@@ -282,12 +282,16 @@ impl<T: Clone, A: Allocator + Clone> Clone for Vec<T, A> {
     // Specialization would be nice here
     fn clone(&self) -> Self {
         let nalloc = self.alloc.clone();
-        let nvec = Self::with_capacity_in(self.len, nalloc);
+        let mut nvec = Self::with_capacity_in(self.len, nalloc);
         let ptr = nvec.ptr.as_ptr();
         for i in 0..self.len {
             unsafe {
                 core::ptr::write(ptr.add(i), self[i].clone());
             }
+        }
+
+        unsafe {
+            nvec.set_len(self.len);
         }
 
         nvec

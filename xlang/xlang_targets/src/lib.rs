@@ -9,12 +9,12 @@ use core::hash::Hash;
 #[repr(C)]
 #[derive(Clone, Debug)]
 pub struct Target {
-    name: String,
-    arch: Architecture,
-    vendor: Vendor,
-    os: OS,
-    env: Environment,
-    of: ObjectFormat,
+    pub name: String,
+    pub arch: Architecture,
+    pub vendor: Vendor,
+    pub os: OS,
+    pub env: Environment,
+    pub of: ObjectFormat,
 }
 
 impl Hash for Target {
@@ -39,7 +39,6 @@ impl PartialEq for Target {
 
 impl From<target_tuples::Target> for Target {
     fn from(t: target_tuples::Target) -> Self {
-        dbg!(&t);
         Self {
             name: t.get_name().into(),
             arch: t.arch(),
@@ -59,14 +58,12 @@ impl From<Target> for target_tuples::Target {
 
 impl From<&Target> for target_tuples::Target {
     fn from(t: &Target) -> Self {
-        dbg!(&t.name);
         Self::parse(&t.name)
     }
 }
 
 impl From<&mut Target> for target_tuples::Target {
     fn from(t: &mut Target) -> Self {
-        dbg!(&t.name);
         Self::parse(&t.name)
     }
 }

@@ -6,8 +6,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-arch-ops = {path="../arch-ops", version="0.1.0"}
-binfmt = {path="../binfmt", version="0.1.0"}
+arch-ops = {path="../arch-ops", version="0.1.0", features=["x86"]}
+binfmt = {path="../binfmt", version="0.1.0", features=["all-formats", "x86"]}
 xlang = {path="../xlang"}
 xlang_struct = {path="../xlang/xlang_struct"}
 target-tuples = "0.5.2"

@@ -157,7 +157,7 @@ fn main() {
     } else {
         panic!(
             "couldn't find a backend for target {}",
-            Target::from(xtarget)
+            Target::from(&xtarget)
         )
     };
 
@@ -183,6 +183,7 @@ fn main() {
             };
 
             frontend.accept_ir(&mut file).unwrap();
+            dbg!(&file);
             codegen.accept_ir(&mut file).unwrap();
 
             let mut write_adapter =
