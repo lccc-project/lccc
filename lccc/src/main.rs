@@ -53,6 +53,7 @@ fn find_libraries(search_paths: &[PathBuf], names: &[&str], prefix: &str) -> Vec
 
 const XLANG_PLUGIN_DIR: &str = std::env!("xlang_plugin_dir");
 
+#[allow(clippy::too_many_lines)]
 fn main() {
     let mut target = target_tuples::from_env!("default_target");
     println!("Target: {} ({})", target, target.get_name());
@@ -179,7 +180,7 @@ fn main() {
                 .unwrap();
             let mut file = xlang::ir::File {
                 target: xtarget.clone(),
-                root: Default::default(),
+                root: xlang::ir::Scope::default(),
             };
 
             frontend.accept_ir(&mut file).unwrap();

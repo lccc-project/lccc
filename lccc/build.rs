@@ -27,7 +27,7 @@ pub struct Paths {
 
 fn parse_target<'de, D: Deserializer<'de>>(de: D) -> Result<Target, D::Error> {
     let s = <&'de str>::deserialize(de)?;
-    Target::from_str(s).map_err(|e| <D::Error as serde::de::Error>::custom(e))
+    Target::from_str(s).map_err(<D::Error as serde::de::Error>::custom)
 }
 
 fn use_host() -> Target {
@@ -94,7 +94,7 @@ fn main() -> std::io::Result<()> {
     );
     println!(
         "cargo:rustc-env=default_target={}",
-        cfg.targets.default_target.to_string()
+        cfg.targets.default_target
     );
     Ok(())
 }
