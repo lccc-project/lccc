@@ -1,5 +1,5 @@
 target/
 autom4te.cache/
 config.toml
-a.o
+*.o
 a.out
