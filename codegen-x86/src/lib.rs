@@ -16,8 +16,8 @@ use arch_ops::{
 extern crate xlang;
 
 use binfmt::{
-    fmt::{BinaryFile, FileType, Section},
-    sym::{SymbolKind, SymbolType},
+    fmt::{BinaryFile, FileType, Section, SectionType},
+    sym::{Symbol, SymbolKind, SymbolType},
 };
 use xlang::{
     plugin::{XLangCodegen, XLangPlugin},
@@ -227,12 +227,50 @@ impl X86CodegenState {
 }
 
 pub struct X86CodegenPlugin {
-    fns: HashMap<String, X86CodegenState>,
+    fns: Option<HashMap<String, X86CodegenState>>,
     target: Option<target_tuples::Target>,
 }
 
 impl X86CodegenPlugin {
-    fn write_output_impl<W: std::io::Write>(&mut self, x: W) -> std::io::Result<()> {
+    fn write_output_impl<W: std::io::Write>(&mut self, mut x: W) -> std::io::Result<()> {
+        let mut file =
+            binfmt::def_vec_for(self.target.as_ref().unwrap()).create_file(FileType::Relocatable);
+        let mut text = Section {
+            name: String::from(".text"),
+            align: 1204,
+            ty: SectionType::ProgBits,
+            content: Vec::new(),
+            relocs: Vec::new(),
+            ..Default::default()
+        };
+
+        let mut rodata = Section {
+            name: String::from(".rodata"),
+            align: 1024,
+            ty: SectionType::ProgBits,
+            content: Vec::new(),
+            relocs: Vec::new(),
+            ..Default::default()
+        };
+
+        let mut syms = Vec::new();
+
+        for (name, output) in self.fns.take().unwrap() {
+            let sym = X86TempSymbol(
+                name.clone(),
+                Some(".text"),
+                Some(text.content.len()),
+                SymbolType::Function,
+                SymbolKind::Global,
+            ); // TODO: internal linkage is a thing
+            syms.push(sym);
+            let mut encoder = X86Encoder::new(&mut text, output.mode);
+            output.encode(&mut encoder, &mut rodata)?;
+        }
+
+        let textno = file.add_section(text).unwrap();
+        let rodatano = file.add_section(rodata).unwrap();
+
         Ok(())
     }
 }
@@ -264,7 +302,7 @@ impl XLangPlugin for X86CodegenPlugin {
                         X86Mode::default_mode_for(self.target.as_ref().unwrap()).unwrap(),
                     );
                     state.write_block(body);
-                    self.fns.insert(name, state);
+                    self.fns.as_mut().unwrap().insert(name, state);
                 }
                 _ => {}
             }
@@ -306,7 +344,7 @@ impl XLangCodegen for X86CodegenPlugin {
 #[no_mangle]
 pub extern "C" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
     DynBox::unsize_box(Box::new(X86CodegenPlugin {
-        fns: HashMap::new(),
+        fns: Some(HashMap::new()),
         target: None,
     }))
 }
