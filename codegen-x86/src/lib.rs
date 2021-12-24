@@ -267,10 +267,22 @@ impl X86CodegenPlugin {
             let mut encoder = X86Encoder::new(&mut text, output.mode);
             output.encode(&mut encoder, &mut rodata)?;
         }
-
-        let textno = file.add_section(text).unwrap();
-        let rodatano = file.add_section(rodata).unwrap();
-
+        file.add_section(text).unwrap();
+        file.add_section(rodata).unwrap();
+        for sym in syms {
+            let secno = sym
+                .1
+                .map(|v| file.sections().enumerate().find(|(_, s)| &*s.name == v))
+                .flatten()
+                .map(|(s, _)| s as u32);
+            let fsym = file.get_or_create_symbol(&sym.0).unwrap();
+            if secno.is_some() {
+                *fsym.section_mut() = secno;
+            }
+            *fsym.value_mut() = sym.2.map(|v| v as u128);
+            *fsym.symbol_type_mut() = sym.3;
+            *fsym.kind_mut() = sym.4;
+        }
         Ok(())
     }
 }
