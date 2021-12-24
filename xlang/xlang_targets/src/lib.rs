@@ -39,6 +39,7 @@ impl PartialEq for Target {
 
 impl From<target_tuples::Target> for Target {
     fn from(t: target_tuples::Target) -> Self {
+        dbg!(&t);
         Self {
             name: t.get_name().into(),
             arch: t.arch(),
@@ -58,12 +59,14 @@ impl From<Target> for target_tuples::Target {
 
 impl From<&Target> for target_tuples::Target {
     fn from(t: &Target) -> Self {
+        dbg!(&t.name);
         Self::parse(&t.name)
     }
 }
 
 impl From<&mut Target> for target_tuples::Target {
     fn from(t: &mut Target) -> Self {
+        dbg!(&t.name);
         Self::parse(&t.name)
     }
 }

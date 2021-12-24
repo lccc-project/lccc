@@ -7,6 +7,7 @@ use xlang_abi::{
 use xlang_struct::File;
 
 #[repr(u8)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Error {
     Diagnostic(String),
     InternalError(String),

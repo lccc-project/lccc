@@ -5,6 +5,8 @@ pub enum Option<T> {
     Some(T),
 }
 
+use std::ops::{Deref, DerefMut};
+
 pub use self::Option::{None, Some};
 
 impl<T> From<T> for Option<T> {
@@ -90,6 +92,40 @@ impl<T> Option<T> {
         match self {
             Some(val) => val,
             None => core::hint::unreachable_unchecked(),
+        }
+    }
+
+    pub const fn as_ref(&self) -> Option<&T> {
+        match self {
+            Some(x) => Some(x),
+            None => None,
+        }
+    }
+
+    pub fn as_mut(&mut self) -> Option<&mut T> {
+        match self {
+            Some(x) => Some(x),
+            None => None,
+        }
+    }
+
+    pub fn as_deref(&self) -> Option<&<T as Deref>::Target>
+    where
+        T: Deref,
+    {
+        match self {
+            Some(x) => Some(x),
+            None => None,
+        }
+    }
+
+    pub fn as_deref_mut(&mut self) -> Option<&<T as Deref>::Target>
+    where
+        T: DerefMut,
+    {
+        match self {
+            Some(x) => Some(x),
+            None => None,
         }
     }
 }

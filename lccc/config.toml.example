@@ -1,0 +1,23 @@
+[paths]
+#prefix = "/usr/local"
+#exec_prefix = ""
+#bindir = "bin"
+#libdir = "lib"
+#sbindir = "sbin"
+#libexecdir = "libexec"
+#includedir = "include"
+#datarootdir = "share"
+#datadir = ""
+#mandir = "man"
+#docdir = "doc"
+#infodir = "info"
+#localedir = "locale"
+#localstatedir = "var"
+#sharedstatedir = "com"
+#runstatedir = "run"
+#sysconfdir = "etc"
+#lccc-dir = "lccc"
+#xlang-plugin-dir = "xlang/plugins"
+
+[targets]
+#default-target = "<host>"

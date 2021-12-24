@@ -9,3 +9,10 @@ edition = "2018"
 [dependencies]
 xlang = {path="../xlang"}
 xlang-host = {path="../xlang/xlang-host"}
+target-tuples = "0.5.3"
+
+[build-dependencies]
+install-dirs = {version="0.2.1", features=["serde"]}
+serde = {version="1",features=["derive"]}
+toml = "0.5.8"
+target-tuples = "0.5.3"

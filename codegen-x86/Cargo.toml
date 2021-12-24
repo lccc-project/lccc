@@ -11,3 +11,6 @@ binfmt = {path="../binfmt", version="0.1.0"}
 xlang = {path="../xlang"}
 xlang_struct = {path="../xlang/xlang_struct"}
 target-tuples = "0.5.2"
+
+[lib]
+crate-type = ["cdylib"]

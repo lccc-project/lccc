@@ -1,3 +1,6 @@
 [submodule "lc-binutils"]
 	path = lc-binutils
 	url = https://github.com/LightningCreations/lc-binutils
+[submodule "rust-target-tuples"]
+	path = rust-target-tuples
+	url = https://github.com/chorman0773/rust-target-tuples.git
