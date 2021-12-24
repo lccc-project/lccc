@@ -198,6 +198,7 @@ impl X86CodegenState {
                                     ),
                                 ));
                                 self.insns.push(X86Instruction::Leave);
+                                self.insns.push(X86Instruction::Retn);
                             }
                             _ => todo!("return scalar type"),
                         },
