@@ -3,6 +3,7 @@ mod argparse;
 
 use crate::argparse::{parse_args, ArgSpec, TakesArg};
 use std::fs::File;
+use std::path::PathBuf;
 use xlang::abi::io::ReadAdapter;
 use xlang::abi::string::StringView;
 use xlang::plugin::XLangFrontend;
@@ -12,7 +13,41 @@ use xlang_host::dso::Handle;
 static FRONTENDS: [&str; 1] = ["c"];
 type FrontendInit = extern "C" fn() -> DynBox<dyn XLangFrontend>;
 
-#[allow(clippy::too_many_lines)]
+fn load_libraries(search_paths: &[PathBuf], names: &[&str], prefix: &str) -> Vec<PathBuf> {
+    let mut result = Vec::new();
+    for &library in names {
+        let library_name = if cfg!(windows) {
+            prefix.to_owned() + "_" + library + ".dll"
+        } else if cfg!(target_os = "linux") {
+            "lib".to_owned() + prefix + "_" + library + ".so"
+        } else if cfg!(target_os = "macos") {
+            "lib".to_owned() + prefix + "_" + library + ".dylib"
+        } else {
+            panic!("unrecognized target OS; can't get frontend library name")
+        };
+
+        let mut path = None;
+        for search_path in search_paths {
+            let mut library_path = search_path.clone();
+            library_path.push(&library_name);
+            if library_path.exists() {
+                path = Some(library_path);
+                break;
+            }
+        }
+
+        if let Some(path) = path {
+            result.push(path);
+        } else {
+            eprintln!(
+                "warning: couldn't locate library to load for {} \"{}\"",
+                prefix, library
+            );
+        }
+    }
+    result
+}
+
 fn main() {
     let s = String::from("Hello World");
     println!("{}", s);
@@ -62,37 +97,7 @@ fn main() {
         panic!("unrecognized target OS; can't build plugin list");
     }
 
-    let mut frontend_paths = Vec::new();
-    for &frontend in &FRONTENDS {
-        let library_name = if cfg!(windows) {
-            "frontend_".to_owned() + frontend + ".dll"
-        } else if cfg!(target_os = "linux") {
-            "libfrontend_".to_owned() + frontend + ".so"
-        } else if cfg!(target_os = "macos") {
-            "libfrontend_".to_owned() + frontend + ".dylib"
-        } else {
-            panic!("unrecognized target OS; can't get frontend library name")
-        };
-
-        let mut path = None;
-        for search_path in &search_paths {
-            let mut library_path = search_path.clone();
-            library_path.push(&library_name);
-            if library_path.exists() {
-                path = Some(library_path);
-                break;
-            }
-        }
-
-        if let Some(path) = path {
-            frontend_paths.push(path);
-        } else {
-            eprintln!(
-                "warning: couldn't locate library to load for frontend \"{}\"",
-                frontend
-            );
-        }
-    }
+    let frontend_paths = load_libraries(&search_paths, &FRONTENDS, "frontend");
 
     let mut frontend_handles = Vec::new();
     for frontend_path in &frontend_paths {
