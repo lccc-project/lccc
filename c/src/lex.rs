@@ -155,7 +155,29 @@ pub fn lex<I: Iterator<Item = char>>(file: &mut I) -> Vec<Token> {
                     }
                 }
             }
-            _ => todo!(),
+            x if x.is_whitespace() => {
+                file.next();
+            }
+            '[' | ']' | '(' | ')' | '{' | '}' | '~' | '?' | ';' | ',' => {
+                file.next();
+                result.push(Token::Punctuator(String::from(c)));
+            }
+            '*' | '!' | '%' => {
+                file.next();
+                if file.peek() == Some(&'=') {
+                    file.next();
+                    result.push(Token::Punctuator(String::from(c) + "="));
+                } else {
+                    result.push(Token::Punctuator(String::from(c)));
+                }
+            }
+            '"' => {
+                result.push(Token::StringLiteral(
+                    StringEncoding::Character,
+                    string_literal(&mut file),
+                ));
+            }
+            _ => todo!("{}", c),
         }
     }
     result
