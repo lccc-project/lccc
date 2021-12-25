@@ -79,6 +79,7 @@ impl<'a, T> Span<'a, T> {
         }
     }
 
+    #[must_use]
     pub fn into_slice(self) -> &'a [T] {
         unsafe { core::slice::from_raw_parts(self.begin.as_ptr(), self.len) }
     }
@@ -90,6 +91,15 @@ impl<'a, T> IntoIterator for Span<'a, T> {
 
     fn into_iter(self) -> Self::IntoIter {
         <&'a [T]>::into_iter(self.into_slice())
+    }
+}
+
+impl<'b, 'a, T> IntoIterator for &'b Span<'a, T> {
+    type Item = &'b T;
+    type IntoIter = core::slice::Iter<'b, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
@@ -139,7 +149,7 @@ where
     [T]: Hash,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        <[T] as Hash>::hash(self, state)
+        <[T] as Hash>::hash(self, state);
     }
 }
 
@@ -263,7 +273,7 @@ where
     [T]: Hash,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        <[T] as Hash>::hash(self, state)
+        <[T] as Hash>::hash(self, state);
     }
 }
 
@@ -319,7 +329,25 @@ impl<'a, T> IntoIterator for SpanMut<'a, T> {
     type IntoIter = core::slice::IterMut<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.into_slice_mut().into_iter()
+        self.into_slice_mut().iter_mut()
+    }
+}
+
+impl<'b, 'a, T> IntoIterator for &'b mut SpanMut<'a, T> {
+    type Item = &'b mut T;
+    type IntoIter = core::slice::IterMut<'b, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
+impl<'b, 'a, T> IntoIterator for &'b SpanMut<'a, T> {
+    type Item = &'b T;
+    type IntoIter = core::slice::Iter<'b, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
@@ -427,10 +455,12 @@ impl<'a, T> SpanMut<'a, T> {
         }
     }
 
+    #[must_use]
     pub fn into_slice(self) -> &'a [T] {
         unsafe { core::slice::from_raw_parts(self.begin.as_ptr(), self.len) }
     }
 
+    #[must_use]
     pub fn into_slice_mut(self) -> &'a mut [T] {
         unsafe { core::slice::from_raw_parts_mut(self.begin.as_ptr(), self.len) }
     }

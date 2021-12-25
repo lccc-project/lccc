@@ -115,12 +115,12 @@ impl<A: Allocator> String<A> {
     }
 
     pub fn push(&mut self, st: &str) {
-        self.0.extend_from_slice(st.as_bytes())
+        self.0.extend_from_slice(st.as_bytes());
     }
 }
 
 impl<A: Allocator, S: AsRef<str>> Add<S> for String<A> {
-    type Output = String<A>;
+    type Output = Self;
 
     fn add(mut self, rhs: S) -> Self::Output {
         self += rhs;
@@ -130,7 +130,7 @@ impl<A: Allocator, S: AsRef<str>> Add<S> for String<A> {
 
 impl<A: Allocator, S: AsRef<str>> AddAssign<S> for String<A> {
     fn add_assign(&mut self, rhs: S) {
-        self.push(rhs.as_ref())
+        self.push(rhs.as_ref());
     }
 }
 
