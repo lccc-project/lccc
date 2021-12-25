@@ -29,7 +29,7 @@ pub static X86_64_LINUX_GNU: TargetProperties = TargetProperties {
     lock_free_atomic_masks: 0xff,
     arch: &super::x86::X86_64,
     os: &LINUX,
-    libdirs: span![const_sv!("/lib"), const_sv!("/lib64")],
+    libdirs: span![const_sv!("lib"), const_sv!("lib64")],
     default_libs: span![const_sv!("c")],
     startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
     endfiles: span![const_sv!("crtn.o")],

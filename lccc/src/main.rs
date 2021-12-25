@@ -4,7 +4,9 @@ mod argparse;
 use crate::argparse::{parse_args, ArgSpec, TakesArg};
 use std::fs::File;
 use std::io::ErrorKind;
+use std::ops::Deref;
 use std::path::PathBuf;
+use std::process::Command;
 use target_tuples::Target;
 use xlang::abi::io::{ReadAdapter, WriteAdapter};
 use xlang::abi::string::StringView;
@@ -82,7 +84,7 @@ fn main() {
     let mut tmpfiles = Vec::new();
 
     let mut mode = Mode::Link;
-    let link_output = LinkOutput::Executable;
+    let mut link_output = LinkOutput::Executable;
 
     let argspecs = xlang::vec![
         ArgSpec::new(
@@ -158,6 +160,17 @@ fn main() {
             "output" => output = arg.value.clone(),
             "compile" => mode = Mode::CompileOnly,
             "typeck" => mode = Mode::TypeCheck,
+            "ldout" => {
+                link_output = match arg.value.as_deref() {
+                    Some("shared") => LinkOutput::Shared,
+                    Some("static") => LinkOutput::Static,
+                    Some("pie") => LinkOutput::Pie,
+                    Some("executable") => LinkOutput::Executable,
+                    Some("manifest") => LinkOutput::Manifest,
+                    Some(val) => panic!("Invalid or unknown type {}", val),
+                    None => unreachable!(),
+                };
+            }
             _ => panic!(),
         }
     }
@@ -197,7 +210,7 @@ fn main() {
         codegens.push(initializer());
     }
 
-    let xtarget = xlang::targets::Target::from(target);
+    let xtarget = xlang::targets::Target::from(&target);
 
     let properties = xlang::targets::properties::get_properties(xtarget.clone());
 
@@ -231,14 +244,19 @@ fn main() {
             }
         }
         if let Some(frontend) = frontend {
+            println!("Frontend found for {}", file);
             let outputfile = if mode < Mode::Link {
-                let mut fname = &**file;
-                if let std::option::Option::Some(offset) = fname.rfind('.') {
-                    fname = &fname[..offset];
+                if let Some(ref output) = output {
+                    output.clone()
+                } else {
+                    let mut fname = &**file;
+                    if let std::option::Option::Some(offset) = fname.rfind('.') {
+                        fname = &fname[..offset];
+                    }
+                    let mut name = String::from(fname);
+                    name += properties.os.obj_suffix;
+                    name
                 }
-                let mut name = String::from(fname);
-                name += properties.os.obj_suffix;
-                name
             } else {
                 let tmpfile = loop {
                     let tmpfile = temp_file::TempFile::with_prefix("lcccobj");
@@ -253,6 +271,7 @@ fn main() {
                 tmpfiles.push(tmpfile);
                 path
             };
+            println!("Output name for {}: {}", file, outputfile);
             file_pairs.push((file.clone(), outputfile.clone()));
             frontend.set_file_path(file_view);
             let mut read_adapter =
@@ -267,7 +286,7 @@ fn main() {
 
             frontend.accept_ir(&mut file).unwrap();
             dbg!(&file);
-            if mode < Mode::Asm {
+            if mode >= Mode::Asm {
                 codegen.accept_ir(&mut file).unwrap();
                 let mut write_adapter =
                     WriteAdapter::new(File::create(outputfile).expect("Can't create output file"));
@@ -284,7 +303,158 @@ fn main() {
     }
 
     if mode == Mode::Link {
-        drop(output);
-        drop(link_output);
+        match link_output {
+            LinkOutput::Shared => todo!(),
+            LinkOutput::Static => {
+                let outputs = file_pairs.iter().map(|(_, output)| output);
+
+                match Command::new("ar")
+                    .arg("r")
+                    .arg("c")
+                    .arg("s")
+                    .arg(output.as_ref().unwrap())
+                    .args(outputs)
+                    .status()
+                {
+                    Ok(_) => todo!(),
+                    Err(e) => panic!(
+                        "Could not run command ar rcs {}: {}",
+                        file_pairs
+                            .iter()
+                            .map(|(_, output)| output)
+                            .map(Deref::deref)
+                            .collect::<std::string::String>(),
+                        e
+                    ),
+                }
+            }
+            LinkOutput::Executable | LinkOutput::Pie => {
+                let mut link_args = Vec::<String>::new();
+
+                let mut libdirs = Vec::new();
+
+                for basedir in properties.os.base_dirs {
+                    for libdir in properties.libdirs {
+                        let targ1 = target.to_string();
+                        let targ2 = {
+                            let arch = target.arch_name();
+                            let os = target.operating_system().map(|o| o.canonical_name());
+                            let env = target.environment().map(|o| o.canonical_name());
+                            let of = target.object_format().map(|o| o.canonical_name());
+                            let mut name = String::from(arch);
+                            name.push("-");
+                            if let std::option::Option::Some(os) = os {
+                                name.push(os);
+                                name.push("-"); // Assume, for now, there's at least one more component
+                            }
+
+                            if let std::option::Option::Some(env) = env {
+                                name.push(env);
+                            }
+
+                            if let std::option::Option::Some(of) = of {
+                                name.push(of);
+                            }
+
+                            name
+                        };
+
+                        for &targ in &["", &targ1, &targ2] {
+                            let mut path = PathBuf::from(basedir);
+                            path.push(libdir);
+                            path.push(targ);
+                            libdirs.push(path);
+                        }
+                        for &targ in &[&*targ1, &targ2] {
+                            let mut path = PathBuf::from(basedir);
+                            path.push(targ);
+                            path.push(libdir);
+                            libdirs.push(path);
+                        }
+                    }
+                }
+
+                println!("libdirs: {:?}", libdirs);
+
+                if link_output == LinkOutput::Pie {
+                    link_args.push(String::from("-pie"))
+                }
+
+                let mut startfiles = Vec::new();
+                for file in properties.startfiles {
+                    let mut found = false;
+                    for libdir in &libdirs {
+                        let mut path = libdir.clone();
+                        path.push(file);
+                        if path.exists() {
+                            startfiles.push(path);
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if !found {
+                        panic!("Could not find startfile {}", file);
+                    }
+                }
+
+                println!("startfiles: {:?}", startfiles);
+
+                let mut endfiles = Vec::new();
+                for file in properties.endfiles {
+                    let mut found = false;
+                    for libdir in &libdirs {
+                        let mut path = libdir.clone();
+                        path.push(file);
+                        if path.exists() {
+                            endfiles.push(path);
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if !found {
+                        panic!("Could not find startfile {}", file);
+                    }
+                }
+
+                println!("endffiles: {:?}", endfiles);
+
+                match Command::new("ld")
+                    .args(&link_args)
+                    .arg("-dynamic-linker")
+                    .arg(properties.interp)
+                    .args(
+                        libdirs
+                            .iter()
+                            .map(|p| String::from("-L") + p.as_os_str().to_str().unwrap()),
+                    )
+                    .arg("-o")
+                    .arg(&output.unwrap())
+                    .args(&startfiles)
+                    .args(file_pairs.iter().map(|(_, s)| s))
+                    .arg("--as-needed")
+                    .args(
+                        properties
+                            .default_libs
+                            .iter()
+                            .map(|s| String::from("-l") + s),
+                    )
+                    .args(&endfiles)
+                    .status()
+                {
+                    Ok(_) => {}
+                    Err(e) => panic!(
+                        "Failed to execute command ld {}: {}",
+                        link_args
+                            .iter()
+                            .map(Deref::deref)
+                            .collect::<std::string::String>(),
+                        e
+                    ),
+                }
+            }
+            LinkOutput::Manifest => panic!("Manifest Handled elsewhere"),
+        }
     }
 }

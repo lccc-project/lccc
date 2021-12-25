@@ -50,6 +50,19 @@ impl From<target_tuples::Target> for Target {
     }
 }
 
+impl From<&target_tuples::Target> for Target {
+    fn from(t: &target_tuples::Target) -> Self {
+        Self {
+            name: t.get_name().into(),
+            arch: t.arch(),
+            vendor: t.vendor(),
+            os: t.operating_system().unwrap_or(OS::Null),
+            env: t.environment().unwrap_or(Environment::Null),
+            of: t.object_format().unwrap_or(ObjectFormat::Null),
+        }
+    }
+}
+
 impl From<Target> for target_tuples::Target {
     fn from(t: Target) -> Self {
         Self::parse(&t.name)
