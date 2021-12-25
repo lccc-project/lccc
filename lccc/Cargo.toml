@@ -10,6 +10,7 @@ edition = "2018"
 xlang = {path="../xlang"}
 xlang-host = {path="../xlang/xlang-host"}
 target-tuples = "0.5.3"
+temp-file = "0.1"
 
 [build-dependencies]
 install-dirs = {version="0.2.1", features=["serde"]}

@@ -3,9 +3,13 @@ use core::{
     str::Utf8Error,
 };
 use std::{
+    borrow::{Borrow, BorrowMut},
+    ffi::OsStr,
     fmt::{Formatter, Write},
     hash::{Hash, Hasher},
     marker::PhantomData,
+    ops::{Add, AddAssign},
+    path::Path,
     ptr::NonNull,
 };
 
@@ -50,6 +54,48 @@ impl<A: Allocator> DerefMut for String<A> {
     }
 }
 
+impl<A: Allocator> AsRef<str> for String<A> {
+    fn as_ref(&self) -> &str {
+        self
+    }
+}
+
+impl<A: Allocator> AsMut<str> for String<A> {
+    fn as_mut(&mut self) -> &mut str {
+        self
+    }
+}
+
+impl<A: Allocator> Borrow<str> for String<A> {
+    fn borrow(&self) -> &str {
+        self
+    }
+}
+
+impl<A: Allocator> BorrowMut<str> for String<A> {
+    fn borrow_mut(&mut self) -> &mut str {
+        self
+    }
+}
+
+impl<A: Allocator> AsRef<[u8]> for String<A> {
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
+impl<A: Allocator> AsRef<OsStr> for String<A> {
+    fn as_ref(&self) -> &OsStr {
+        <str as AsRef<OsStr>>::as_ref(self)
+    }
+}
+
+impl<A: Allocator> AsRef<Path> for String<A> {
+    fn as_ref(&self) -> &Path {
+        <str as AsRef<Path>>::as_ref(self)
+    }
+}
+
 impl String<XLangAlloc> {
     #[must_use]
     pub fn new() -> Self {
@@ -66,6 +112,25 @@ impl Default for String<XLangAlloc> {
 impl<A: Allocator> String<A> {
     pub fn new_in(alloc: A) -> Self {
         Self(crate::vec::Vec::new_in(alloc))
+    }
+
+    pub fn push(&mut self, st: &str) {
+        self.0.extend_from_slice(st.as_bytes())
+    }
+}
+
+impl<A: Allocator, S: AsRef<str>> Add<S> for String<A> {
+    type Output = String<A>;
+
+    fn add(mut self, rhs: S) -> Self::Output {
+        self += rhs;
+        self
+    }
+}
+
+impl<A: Allocator, S: AsRef<str>> AddAssign<S> for String<A> {
+    fn add_assign(&mut self, rhs: S) {
+        self.push(rhs.as_ref())
     }
 }
 
@@ -159,6 +224,36 @@ impl Deref for StringView<'_> {
     }
 }
 
+impl<'a> AsRef<str> for StringView<'a> {
+    fn as_ref(&self) -> &str {
+        self
+    }
+}
+
+impl<'a> AsRef<[u8]> for StringView<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
+impl<'a> AsRef<OsStr> for StringView<'a> {
+    fn as_ref(&self) -> &OsStr {
+        <str as AsRef<OsStr>>::as_ref(self)
+    }
+}
+
+impl AsRef<Path> for StringView<'_> {
+    fn as_ref(&self) -> &Path {
+        <str as AsRef<Path>>::as_ref(self)
+    }
+}
+
+impl Borrow<str> for StringView<'_> {
+    fn borrow(&self) -> &str {
+        self
+    }
+}
+
 impl core::fmt::Debug for StringView<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         <str as core::fmt::Debug>::fmt(self, f)
@@ -179,6 +274,24 @@ impl core::hash::Hash for StringView<'_> {
 
 impl PartialEq for StringView<'_> {
     fn eq(&self, other: &Self) -> bool {
+        <str as PartialEq>::eq(self, other)
+    }
+}
+
+impl PartialEq<str> for StringView<'_> {
+    fn eq(&self, other: &str) -> bool {
+        <str as PartialEq>::eq(self, other)
+    }
+}
+
+impl PartialEq<&str> for StringView<'_> {
+    fn eq(&self, other: &&str) -> bool {
+        <str as PartialEq>::eq(self, other)
+    }
+}
+
+impl PartialEq<&mut str> for StringView<'_> {
+    fn eq(&self, other: &&mut str) -> bool {
         <str as PartialEq>::eq(self, other)
     }
 }

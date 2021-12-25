@@ -96,5 +96,7 @@ fn main() -> std::io::Result<()> {
         "cargo:rustc-env=default_target={}",
         cfg.targets.default_target
     );
+
+    println!("cargo:rustc-env=host={}", std::env::var("TARGET").unwrap());
     Ok(())
 }

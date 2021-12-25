@@ -1,5 +1,7 @@
 use std::{
+    borrow::{Borrow, BorrowMut},
     fmt::Debug,
+    hash::Hash,
     marker::PhantomData,
     ops::{Deref, DerefMut, RangeBounds},
     ptr::NonNull,
@@ -76,6 +78,19 @@ impl<'a, T> Span<'a, T> {
             })
         }
     }
+
+    pub fn into_slice(self) -> &'a [T] {
+        unsafe { core::slice::from_raw_parts(self.begin.as_ptr(), self.len) }
+    }
+}
+
+impl<'a, T> IntoIterator for Span<'a, T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        <&'a [T]>::into_iter(self.into_slice())
+    }
 }
 
 unsafe impl<T: Sync> Send for Span<'_, T> {}
@@ -85,6 +100,18 @@ impl<T> Deref for Span<'_, T> {
     type Target = [T];
     fn deref(&self) -> &[T] {
         unsafe { core::slice::from_raw_parts(self.begin.as_ptr(), self.len) }
+    }
+}
+
+impl<T> AsRef<[T]> for Span<'_, T> {
+    fn as_ref(&self) -> &[T] {
+        self
+    }
+}
+
+impl<T> Borrow<[T]> for Span<'_, T> {
+    fn borrow(&self) -> &[T] {
+        self
     }
 }
 
@@ -106,6 +133,62 @@ where
         <[T] as Debug>::fmt(self, f)
     }
 }
+
+impl<T> Hash for Span<'_, T>
+where
+    [T]: Hash,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        <[T] as Hash>::hash(self, state)
+    }
+}
+
+impl<T, U> PartialEq<Span<'_, U>> for Span<'_, T>
+where
+    [T]: PartialEq<[U]>,
+{
+    fn eq(&self, other: &Span<U>) -> bool {
+        <[T] as PartialEq<[U]>>::eq(self, other)
+    }
+}
+
+impl<T, U> PartialEq<SpanMut<'_, U>> for Span<'_, T>
+where
+    [T]: PartialEq<[U]>,
+{
+    fn eq(&self, other: &SpanMut<U>) -> bool {
+        <[T] as PartialEq<[U]>>::eq(self, other)
+    }
+}
+
+impl<T, U> PartialEq<[U]> for Span<'_, T>
+where
+    [T]: PartialEq<[U]>,
+{
+    fn eq(&self, other: &[U]) -> bool {
+        <[T] as PartialEq<[U]>>::eq(self, other)
+    }
+}
+
+impl<T, U> PartialEq<&[U]> for Span<'_, T>
+where
+    [T]: PartialEq<[U]>,
+{
+    fn eq(&self, other: &&[U]) -> bool {
+        <[T] as PartialEq<[U]>>::eq(self, other)
+    }
+}
+
+impl<T, U> PartialEq<&mut [U]> for Span<'_, T>
+where
+    [T]: PartialEq<[U]>,
+{
+    fn eq(&self, other: &&mut [U]) -> bool {
+        <[T] as PartialEq<[U]>>::eq(self, other)
+    }
+}
+
+impl<T> Eq for Span<'_, T> where [T]: Eq {}
 
 #[allow(clippy::module_name_repetitions)]
 #[repr(C)]
@@ -148,6 +231,95 @@ impl<T> Deref for SpanMut<'_, T> {
 impl<T> DerefMut for SpanMut<'_, T> {
     fn deref_mut(&mut self) -> &mut [T] {
         unsafe { core::slice::from_raw_parts_mut(self.begin.as_ptr(), self.len) }
+    }
+}
+
+impl<T> AsRef<[T]> for SpanMut<'_, T> {
+    fn as_ref(&self) -> &[T] {
+        self
+    }
+}
+
+impl<T> AsMut<[T]> for SpanMut<'_, T> {
+    fn as_mut(&mut self) -> &mut [T] {
+        self
+    }
+}
+
+impl<T> Borrow<[T]> for SpanMut<'_, T> {
+    fn borrow(&self) -> &[T] {
+        self
+    }
+}
+
+impl<T> BorrowMut<[T]> for SpanMut<'_, T> {
+    fn borrow_mut(&mut self) -> &mut [T] {
+        self
+    }
+}
+
+impl<T> Hash for SpanMut<'_, T>
+where
+    [T]: Hash,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        <[T] as Hash>::hash(self, state)
+    }
+}
+
+impl<T, U> PartialEq<Span<'_, U>> for SpanMut<'_, T>
+where
+    [T]: PartialEq<[U]>,
+{
+    fn eq(&self, other: &Span<U>) -> bool {
+        <[T] as PartialEq<[U]>>::eq(self, other)
+    }
+}
+
+impl<T, U> PartialEq<SpanMut<'_, U>> for SpanMut<'_, T>
+where
+    [T]: PartialEq<[U]>,
+{
+    fn eq(&self, other: &SpanMut<U>) -> bool {
+        <[T] as PartialEq<[U]>>::eq(self, other)
+    }
+}
+
+impl<T, U> PartialEq<[U]> for SpanMut<'_, T>
+where
+    [T]: PartialEq<[U]>,
+{
+    fn eq(&self, other: &[U]) -> bool {
+        <[T] as PartialEq<[U]>>::eq(self, other)
+    }
+}
+
+impl<T, U> PartialEq<&[U]> for SpanMut<'_, T>
+where
+    [T]: PartialEq<[U]>,
+{
+    fn eq(&self, other: &&[U]) -> bool {
+        <[T] as PartialEq<[U]>>::eq(self, other)
+    }
+}
+
+impl<T, U> PartialEq<&mut [U]> for SpanMut<'_, T>
+where
+    [T]: PartialEq<[U]>,
+{
+    fn eq(&self, other: &&mut [U]) -> bool {
+        <[T] as PartialEq<[U]>>::eq(self, other)
+    }
+}
+
+impl<T> Eq for SpanMut<'_, T> where [T]: Eq {}
+
+impl<'a, T> IntoIterator for SpanMut<'a, T> {
+    type Item = &'a mut T;
+    type IntoIter = core::slice::IterMut<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.into_slice_mut().into_iter()
     }
 }
 
@@ -253,6 +425,14 @@ impl<'a, T> SpanMut<'a, T> {
                 phantom: PhantomData,
             })
         }
+    }
+
+    pub fn into_slice(self) -> &'a [T] {
+        unsafe { core::slice::from_raw_parts(self.begin.as_ptr(), self.len) }
+    }
+
+    pub fn into_slice_mut(self) -> &'a mut [T] {
+        unsafe { core::slice::from_raw_parts_mut(self.begin.as_ptr(), self.len) }
     }
 }
 

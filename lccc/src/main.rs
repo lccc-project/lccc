@@ -3,6 +3,7 @@ mod argparse;
 
 use crate::argparse::{parse_args, ArgSpec, TakesArg};
 use std::fs::File;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use target_tuples::Target;
 use xlang::abi::io::{ReadAdapter, WriteAdapter};
@@ -15,6 +16,25 @@ static FRONTENDS: [&str; 1] = ["c"];
 static CODEGENS: [&str; 1] = ["x86"];
 type FrontendInit = extern "C" fn() -> DynBox<dyn XLangFrontend>;
 type CodegenInit = extern "C" fn() -> DynBox<dyn XLangCodegen>;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Mode {
+    Preprocess,
+    TypeCheck,
+    Xir,
+    Asm,
+    CompileOnly,
+    Link,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum LinkOutput {
+    Shared,
+    Static,
+    Executable,
+    Pie,
+    Manifest,
+}
 
 fn find_libraries(search_paths: &[PathBuf], names: &[&str], prefix: &str) -> Vec<PathBuf> {
     let mut result = Vec::new();
@@ -57,7 +77,12 @@ const XLANG_PLUGIN_DIR: &str = std::env!("xlang_plugin_dir");
 fn main() {
     let mut target = target_tuples::from_env!("default_target");
     println!("Target: {} ({})", target, target.get_name());
-    let mut output = String::from("a.o");
+    let mut output = None;
+
+    let mut tmpfiles = Vec::new();
+
+    let mut mode = Mode::Link;
+    let link_output = LinkOutput::Executable;
 
     let argspecs = xlang::vec![
         ArgSpec::new(
@@ -87,7 +112,35 @@ fn main() {
             Vec::new(),
             TakesArg::Always,
             true
-        )
+        ),
+        ArgSpec::new(
+            "compile",
+            xlang::vec!["compile-only"],
+            xlang::vec!['c'],
+            TakesArg::Never,
+            true
+        ),
+        ArgSpec::new(
+            "typeck",
+            xlang::vec!["type-check"],
+            Vec::new(),
+            TakesArg::Never,
+            true
+        ),
+        ArgSpec::new(
+            "shared",
+            xlang::vec!["shared"],
+            Vec::new(),
+            TakesArg::Never,
+            true
+        ),
+        ArgSpec::new(
+            "ldout",
+            xlang::vec!["linker-output"],
+            Vec::new(),
+            TakesArg::Never,
+            true
+        ),
     ];
 
     let (args, files) = parse_args(&argspecs);
@@ -102,7 +155,9 @@ fn main() {
             "intree" => intree = true,
             "plugindirs" => search_paths.push(PathBuf::from(arg.value.as_deref().unwrap())),
             "target" => target = Target::parse(arg.value.as_ref().unwrap()),
-            "output" => output = arg.value.as_ref().unwrap().clone(),
+            "output" => output = arg.value.clone(),
+            "compile" => mode = Mode::CompileOnly,
+            "typeck" => mode = Mode::TypeCheck,
             _ => panic!(),
         }
     }
@@ -144,6 +199,10 @@ fn main() {
 
     let xtarget = xlang::targets::Target::from(target);
 
+    let properties = xlang::targets::properties::get_properties(xtarget.clone());
+
+    let mut file_pairs = Vec::new();
+
     let mut codegen = None;
 
     for cg in &mut codegens {
@@ -172,9 +231,32 @@ fn main() {
             }
         }
         if let Some(frontend) = frontend {
+            let outputfile = if mode < Mode::Link {
+                let mut fname = &**file;
+                if let std::option::Option::Some(offset) = fname.rfind('.') {
+                    fname = &fname[..offset];
+                }
+                let mut name = String::from(fname);
+                name += properties.os.obj_suffix;
+                name
+            } else {
+                let tmpfile = loop {
+                    let tmpfile = temp_file::TempFile::with_prefix("lcccobj");
+
+                    match tmpfile {
+                        Ok(e) => break e,
+                        Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+                        Err(e) => panic!("Cannot create object file: {}", e),
+                    }
+                };
+                let path = tmpfile.path().as_os_str().to_str().unwrap().into();
+                tmpfiles.push(tmpfile);
+                path
+            };
+            file_pairs.push((file.clone(), outputfile.clone()));
             frontend.set_file_path(file_view);
             let mut read_adapter =
-                ReadAdapter::new(File::open(&**file).expect("can't read input file"));
+                ReadAdapter::new(File::open(&file).expect("can't read input file"));
             frontend
                 .read_source(DynMut::unsize_mut(&mut read_adapter))
                 .unwrap();
@@ -185,15 +267,24 @@ fn main() {
 
             frontend.accept_ir(&mut file).unwrap();
             dbg!(&file);
-            codegen.accept_ir(&mut file).unwrap();
-
-            let mut write_adapter =
-                WriteAdapter::new(File::create(&*output).expect("Can't create output file"));
-            codegen
-                .write_output(DynMut::unsize_mut(&mut write_adapter))
-                .unwrap();
+            if mode < Mode::Asm {
+                codegen.accept_ir(&mut file).unwrap();
+                let mut write_adapter =
+                    WriteAdapter::new(File::create(outputfile).expect("Can't create output file"));
+                codegen
+                    .write_output(DynMut::unsize_mut(&mut write_adapter))
+                    .unwrap();
+                // TODO: Handle `-S` and write assembly instead of an object
+            } else if mode == Mode::Xir {
+                todo!()
+            }
         } else {
-            panic!("couldn't find a frontend to process {}", file);
+            file_pairs.push((file.clone(), file.clone()))
         }
+    }
+
+    if mode == Mode::Link {
+        drop(output);
+        drop(link_output);
     }
 }

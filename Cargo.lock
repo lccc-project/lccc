@@ -95,6 +95,7 @@ dependencies = [
  "install-dirs",
  "serde",
  "target-tuples 0.5.3",
+ "temp-file",
  "toml",
  "xlang",
  "xlang-host",
@@ -166,6 +167,12 @@ name = "target-tuples"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca2de718f92f7c38604d26f162a44dfa5f506d8836a63a914c4676fe131dce8f"
+
+[[package]]
+name = "temp-file"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee71da36831f42b12ba5fa8bf3fc7a54305f9091f1fcb2409a80ad29aaf06152"
 
 [[package]]
 name = "toml"
