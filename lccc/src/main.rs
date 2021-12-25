@@ -430,7 +430,7 @@ fn main() {
                             .map(|p| String::from("-L") + p.as_os_str().to_str().unwrap()),
                     )
                     .arg("-o")
-                    .arg(&output.unwrap())
+                    .arg(output.as_deref().unwrap_or("a.out"))
                     .args(&startfiles)
                     .args(file_pairs.iter().map(|(_, s)| s))
                     .arg("--as-needed")
