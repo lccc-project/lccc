@@ -78,9 +78,11 @@ fn diagnostic() -> ! {
 }
 
 fn parse_identifier<'a, I: Iterator<Item = &'a Token>>(tokens: &mut I) -> String {
-    if let Some(Token::Identifier(id)) = tokens.next() {
+    let next = tokens.next();
+    if let Some(Token::Identifier(id)) = next {
         String::from(id)
     } else {
+        dbg!(next);
         diagnostic()
     }
 }
@@ -120,6 +122,84 @@ fn parse_type<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>) -> Ty
     }
     let base = base.unwrap_or(BaseType::Primitive(PrimitiveType::Int));
     Type { base, constant }
+}
+
+fn parse_primary_expression<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>) -> Expression {
+    let next = tokens.next();
+    if let Some(Token::Identifier(id)) = next {
+        Expression::Identifier(id.clone())
+    } else if let Some(Token::StringLiteral(_, str)) = next {
+        Expression::String(str.clone())
+    } else {
+        diagnostic()
+    }
+}
+
+fn parse_expression<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>) -> Expression {
+    let mut lhs = parse_primary_expression(tokens);
+    while let Some(t) = tokens.peek() {
+        if let Token::Punctuator(p) = t {
+            if p == ";" || p == "," || p == ")" {
+                break;
+            } else if p == "(" {
+                tokens.next();
+                let mut args = Vec::new();
+                let mut comma_expected = false;
+                let mut trailing_comma = false;
+                while let Some(&t) = tokens.peek() {
+                    if t == &Token::Punctuator(String::from(")")) {
+                        if trailing_comma {
+                            diagnostic();
+                        }
+                        tokens.next();
+                        break;
+                    } else if comma_expected {
+                        if t == &Token::Punctuator(String::from(",")) {
+                            tokens.next();
+                            trailing_comma = true;
+                            comma_expected = false;
+                            continue;
+                        }
+                        diagnostic();
+                    } else {
+                        args.push(parse_expression(tokens));
+                        trailing_comma = false;
+                        comma_expected = true;
+                    }
+                }
+                lhs = Expression::FunctionCall {
+                    callee: Box::new(lhs),
+                    args
+                };
+            }
+        } else {
+            diagnostic();
+        }
+    }
+    lhs
+}
+
+fn parse_statement<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>) -> Statement {
+    let result = parse_expression(tokens);
+    if tokens.next() != Some(&Token::Punctuator(String::from(";"))) {
+        diagnostic();
+    }
+    Statement::Expression(result)
+}
+
+fn parse_code_block<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>) -> Vec<Statement> {
+    let mut result = Vec::new();
+    while let Some(&t) = tokens.peek() {
+        if t == &Token::Punctuator(String::from("}")) {
+            break;
+        } else {
+            result.push(parse_statement(tokens));
+        }
+    }
+    if tokens.next() != Some(&Token::Punctuator(String::from("}"))) {
+        diagnostic();
+    }
+    result
 }
 
 fn parse_declaration<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>) -> Declaration {
@@ -177,7 +257,7 @@ fn parse_declaration<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>
             };
             if let Some(Token::Punctuator(p)) = tokens.next() {
                 if p == "{" {
-                    todo!();
+                    Some(Initializer::Function(parse_code_block(tokens)))
                 } else if p == ";" {
                     None
                 } else {
