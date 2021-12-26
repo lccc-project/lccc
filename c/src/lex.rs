@@ -53,7 +53,7 @@ static KEYWORDS: [&str; 47] = [
 
 // 6.4.4.4: Character constants
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CharacterEncoding {
     Integer,
     Utf,
@@ -62,7 +62,7 @@ pub enum CharacterEncoding {
 
 // 6.4.4: Constants
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Constant {
     Integer(String),
     Floating(String),
@@ -71,7 +71,7 @@ pub enum Constant {
 
 // 6.4.5: String literals
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StringEncoding {
     Character,
     Utf,
@@ -80,7 +80,7 @@ pub enum StringEncoding {
 
 // 6.4: Lexical elements
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Token {
     Keyword(String),
     Identifier(String),
