@@ -12,6 +12,7 @@ pub use xlang_targets as targets;
 
 pub use abi::vec;
 
+#[must_use]
 pub fn version() -> StringView<'static> {
     // SAFETY: xlang_get_version has no undefined behaviour
     unsafe { exports::xlang_get_version() }
