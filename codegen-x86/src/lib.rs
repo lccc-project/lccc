@@ -1,32 +1,68 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    cell::RefCell,
+    collections::VecDeque,
     convert::TryFrom,
+    hash::{Hash, Hasher},
     io::Write,
+    rc::Rc,
 };
 
 use arch_ops::{
-    traits::InsnWrite,
+    traits::{Address, InsnWrite},
     x86::{
-        insn::{ModRM, X86Encoder, X86Instruction, X86Mode, X86Opcode, X86Operand},
+        insn::{ModRM, ModRMRegOrSib, X86Encoder, X86Instruction, X86Mode, X86Opcode, X86Operand},
         X86Register, X86RegisterClass,
     },
 };
 
-// Forcibly link xlang_interface
-extern crate xlang;
-
 use binfmt::{
-    fmt::{BinaryFile, FileType, Section, SectionType},
-    sym::{Symbol, SymbolKind, SymbolType},
+    fmt::{FileType, Section, SectionType},
+    sym::{SymbolKind, SymbolType},
 };
 use xlang::{
+    abi::{collection::HashMap, hash::XLangHasher},
     plugin::{XLangCodegen, XLangPlugin},
     prelude::v1::{Box, DynBox, Pair},
 };
 use xlang_struct::{
-    Block, Expr, FnType, FunctionDeclaration, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type,
-    Value,
+    Block, Expr, FnType, FunctionDeclaration, PointerType, ScalarType, ScalarTypeHeader,
+    ScalarTypeKind, StringEncoding, Type, Value,
 };
+
+#[derive(Clone, Debug, Hash)]
+pub struct StringInterner {
+    syms: HashMap<xlang::abi::string::String, String>,
+    inuse: HashMap<u64, usize>,
+}
+
+impl StringInterner {
+    pub fn new() -> Self {
+        Self {
+            syms: HashMap::new(),
+            inuse: HashMap::new(),
+        }
+    }
+
+    pub fn get_or_insert_string(&mut self, st: xlang::abi::string::String) -> String {
+        let StringInterner { syms, inuse } = self;
+        syms.get_or_insert_with_mut(st, |s| {
+            let mut hasher = XLangHasher::default();
+            s.hash(&mut hasher);
+            let val = hasher.finish();
+            let suffix = if let Some(x) = inuse.get_mut(&val) {
+                let val = *x;
+                *x += 1;
+                format!(".{}", val)
+            } else {
+                inuse.insert(val, 0);
+                format!("")
+            };
+
+            format!("__xlang_string.{}.{:016x}{}", xlang::version(), val, suffix)
+        })
+        .clone()
+    }
+}
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 enum ValLocation {
@@ -36,8 +72,18 @@ enum ValLocation {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+enum LValue {
+    Local(usize),
+    PointerConstant(Value),
+    Temporary(Box<VStackValue>),
+    OpaquePointer(ValLocation),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 enum VStackValue {
     Constant(Value),
+    LValue(LValue),
+    Pointer(LValue, PointerType),
     OpaqueInt(ValLocation, ScalarType),
 }
 
@@ -62,7 +108,7 @@ struct X86TempSymbol(
 
 struct X86CodegenState {
     vstack: VecDeque<VStackValue>,
-    strmap: HashMap<String, usize>,
+    strmap: Rc<RefCell<StringInterner>>,
     insns: Vec<X86Instruction>,
     rodata: Vec<u8>,
     frame_size: u64,
@@ -74,10 +120,10 @@ struct X86CodegenState {
 }
 
 impl X86CodegenState {
-    pub fn init(sig: FnType, mode: X86Mode) -> Self {
+    pub fn init(sig: FnType, mode: X86Mode, strmap: Rc<RefCell<StringInterner>>) -> Self {
         Self {
             vstack: VecDeque::new(),
-            strmap: HashMap::new(),
+            strmap,
             insns: Vec::new(),
             rodata: Vec::new(),
             frame_size: 0,
@@ -124,7 +170,37 @@ impl X86CodegenState {
                     VStackValue::OpaqueInt(tloc, ty)
                 }
             },
+            VStackValue::Constant(Value::String {
+                encoding: StringEncoding::Utf8,
+                utf8,
+                ty: Type::Pointer(ty),
+            }) => match tloc {
+                ValLocation::BpDisp(_) => todo!(),
+                ValLocation::SpDisp(_) => todo!(),
+                ValLocation::Register(r) => {
+                    let symname = self.strmap.borrow_mut().get_or_insert_string(utf8);
+                    self.insns.push(X86Instruction::new(
+                        X86Opcode::Lea,
+                        vec![
+                            X86Operand::Register(r),
+                            X86Operand::ModRM(ModRM::Indirect {
+                                mode: ModRMRegOrSib::RipRel(Address::Symbol {
+                                    name: symname.clone(),
+                                    disp: 0,
+                                }),
+                            }),
+                        ],
+                    ));
+
+                    VStackValue::Pointer(LValue::OpaquePointer(tloc), ty)
+                }
+            },
+            VStackValue::Constant(Value::Uninitialized(ty)) => {
+                VStackValue::Constant(Value::Uninitialized(ty))
+            }
+            VStackValue::Constant(Value::Invalid(ty)) => VStackValue::Constant(Value::Invalid(ty)),
             VStackValue::OpaqueInt(loc, ty) => todo!("Opaque Int in {:?}: {:?}", loc, ty),
+
             v => todo!("Other value {:?}", v),
         }
     }
@@ -168,9 +244,51 @@ impl X86CodegenState {
         match expr {
             Expr::Null => (),
             Expr::Const(v) => self.vstack.push_back(VStackValue::Constant(v.clone())),
+            Expr::CallFunction(ty) => {
+                let vcount = ty.params.len();
+                let vslen = self.vstack.len();
+
+                let params = self.vstack.drain(vslen - vcount..).collect::<Vec<_>>();
+                let f = self.vstack.pop_back().unwrap();
+                match f {
+                    VStackValue::Constant(Value::GlobalAddress { ty: _, item }) => {
+                        let name = match &*item.components {
+                            [xlang_struct::PathComponent::Text(t)] => &**t,
+                            [xlang_struct::PathComponent::Root, xlang_struct::PathComponent::Text(t)] => &**t,
+                            _ => panic!("Cannot access name component"),
+                        }
+                        .to_string();
+                        for (i, val) in params.into_iter().enumerate() {
+                            match i {
+                                0 => self.move_value(val, ValLocation::Register(X86Register::Rdi)),
+                                1 => self.move_value(val, ValLocation::Register(X86Register::Rsi)),
+                                2 => self.move_value(val, ValLocation::Register(X86Register::Rdx)),
+                                _ => todo!(),
+                            };
+                        }
+
+                        self.insns.push(X86Instruction::new(
+                            X86Opcode::Call,
+                            vec![X86Operand::RelAddr(Address::PltSym { name })],
+                        ))
+                    }
+                    VStackValue::Constant(Value::Invalid(_))
+                    | VStackValue::Constant(Value::Uninitialized(_)) => {
+                        self.insns.push(X86Instruction::Ud2)
+                    }
+                    VStackValue::Constant(_) => todo!(),
+                    VStackValue::LValue(_) => todo!(),
+                    VStackValue::Pointer(_, _) => todo!(),
+                    VStackValue::OpaqueInt(_, _) => todo!(),
+                }
+            }
             Expr::ExitBlock { blk, values } => match (blk, values) {
                 (0, 1) => {
                     let val = self.vstack.pop_back().unwrap();
+                    if let VStackValue::Constant(Value::Invalid(_)) = val {
+                        self.insns.push(X86Instruction::Ud2);
+                        return;
+                    }
                     let ty = self.signature.ret.clone();
                     match ty {
                         Type::Scalar(s) => match s {
@@ -212,7 +330,6 @@ impl X86CodegenState {
             },
             Expr::BinaryOp(_) => todo!(),
             Expr::UnaryOp(_) => todo!(),
-            Expr::CallFunction(_) => todo!(),
         }
     }
 
@@ -229,8 +346,9 @@ impl X86CodegenState {
 }
 
 pub struct X86CodegenPlugin {
-    fns: Option<HashMap<String, X86CodegenState>>,
+    fns: Option<std::collections::HashMap<String, X86CodegenState>>,
     target: Option<target_tuples::Target>,
+    strings: Rc<RefCell<StringInterner>>,
 }
 
 impl X86CodegenPlugin {
@@ -256,6 +374,19 @@ impl X86CodegenPlugin {
         };
 
         let mut syms = Vec::new();
+
+        for Pair(str, sym) in &self.strings.borrow_mut().syms {
+            let sym = X86TempSymbol(
+                sym.clone(),
+                Some(".rodata"),
+                Some(rodata.content.len()),
+                SymbolType::Object,
+                SymbolKind::Local,
+            );
+            rodata.content.extend_from_slice(str.as_ref());
+            syms.push(sym)
+        }
+
         for (name, output) in self.fns.take().unwrap() {
             let sym = X86TempSymbol(
                 name.clone(),
@@ -315,6 +446,7 @@ impl XLangPlugin for X86CodegenPlugin {
                     let mut state = X86CodegenState::init(
                         ty.clone(),
                         X86Mode::default_mode_for(self.target.as_ref().unwrap()).unwrap(),
+                        self.strings.clone(),
                     );
                     state.write_block(body);
                     self.fns.as_mut().unwrap().insert(name, state);
@@ -364,7 +496,8 @@ impl XLangCodegen for X86CodegenPlugin {
 #[no_mangle]
 pub extern "C" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
     DynBox::unsize_box(Box::new(X86CodegenPlugin {
-        fns: Some(HashMap::new()),
+        fns: Some(std::collections::HashMap::new()),
         target: None,
+        strings: Rc::new(RefCell::new(StringInterner::new())),
     }))
 }

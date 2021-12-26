@@ -175,14 +175,38 @@ pub struct FnType {
     pub tag: Abi,
 }
 
+#[repr(u32)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum StringEncoding {
+    Utf8,
+    Utf16,
+    Utf32,
+    Wtf8,
+    Wtf16,
+}
+
 #[repr(u16)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Value {
-    Invalid,
-    Uninitialized,
+    Invalid(Type),
+    Uninitialized(Type),
     GenericParameter(u32),
-    Integer { ty: ScalarType, val: u32 },
-    GlobalAddress { ty: Type, item: Path },
+    Integer {
+        ty: ScalarType,
+        val: u32,
+    },
+    GlobalAddress {
+        ty: Type,
+        item: Path,
+    },
+    ByteString {
+        content: Vec<u8>,
+    },
+    String {
+        encoding: StringEncoding,
+        utf8: String,
+        ty: Type,
+    },
 }
 
 #[repr(u16)]

@@ -224,6 +224,43 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
     }
 
     #[allow(clippy::cast_possible_truncation)]
+    pub fn get_or_insert_with_mut<F: FnOnce(&K) -> V>(&mut self, key: K, value: F) -> &mut V {
+        loop {
+            let mut hasher = self.hash.build_hasher();
+            key.hash(&mut hasher);
+            let hash = hasher.finish() as usize % self.buckets;
+            // SAFETY:
+            // htab is as long as the number of available buckets, thus this offset is guaranteed to be valid
+            let bucket = unsafe { &mut *self.htab.as_ptr().add(hash) };
+            for i in 0..bucket.ecount {
+                // SAFETY:
+                // bucket.ecount never exceeds 16, by the check following this loop
+                let key_val = unsafe { &mut *bucket.entries.get_unchecked_mut(i).as_mut_ptr() };
+
+                if key_val.0.eq(&key) {
+                    return &mut key_val.1;
+                }
+            }
+
+            if bucket.ecount == 16 {
+                self.rehash();
+                continue;
+            }
+            // SAFETY:
+            // This is literally MaybeUninit::write, but valid in 1.39
+            // TODO: Change this to MaybeUninit::write, since we're no longer bound to 1.39
+            let value = value(&key);
+            unsafe {
+                bucket.entries[bucket.ecount]
+                    .as_mut_ptr()
+                    .write(Pair(key, value));
+            }
+            bucket.ecount += 1;
+            return &mut unsafe { &mut *bucket.entries[bucket.ecount].as_mut_ptr() }.1;
+        }
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
     pub fn get<Q: Hash + Eq>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,

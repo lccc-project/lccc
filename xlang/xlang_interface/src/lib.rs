@@ -2,6 +2,7 @@
 #![allow(clippy::missing_safety_doc)] // FIXME: Remove this allow
 use std::alloc::Layout;
 
+use xlang_abi::{const_sv, string::StringView};
 use xlang_targets::{properties::TargetProperties, Target};
 
 #[no_mangle]
@@ -80,4 +81,9 @@ pub extern "C" fn xlang_on_allocation_failure(size: usize, align: usize) -> ! {
 pub extern "C" fn xlang_get_target_properties(targ: Target) -> &'static TargetProperties {
     #[allow(deprecated)]
     xlang_targets::properties::__get_properties(targ)
+}
+
+#[no_mangle]
+pub extern "C" fn xlang_get_version() -> StringView<'static> {
+    const_sv!("0.1")
 }
