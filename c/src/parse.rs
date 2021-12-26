@@ -111,10 +111,9 @@ fn parse_type<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>) -> Ty
         } else if let Token::Identifier(_) = t {
             if base.is_some() {
                 break;
-            } else {
-                tokens.next();
-                todo!();
             }
+            tokens.next();
+            todo!();
         } else {
             dbg!(t);
             diagnostic();
@@ -194,9 +193,8 @@ fn parse_code_block<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>)
     while let Some(&t) = tokens.peek() {
         if t == &Token::Punctuator(String::from("}")) {
             break;
-        } else {
-            result.push(parse_statement(tokens));
         }
+        result.push(parse_statement(tokens));
     }
     if tokens.next() != Some(&Token::Punctuator(String::from("}"))) {
         diagnostic();
@@ -219,36 +217,35 @@ fn parse_declaration<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>
                 if t == &Token::Punctuator(String::from(")")) {
                     tokens.next();
                     break;
-                } else {
-                    let ty = parse_type(tokens);
-                    let mut pointer = None;
-                    while let Some(Token::Punctuator(p)) = tokens.peek() {
-                        if p != "*" {
-                            break;
-                        }
-                        tokens.next();
-                        let mut result_ptr = Pointer {
-                            constant: false,
-                            restrict: false,
-                            sub_ptr: pointer.map(Box::new),
-                        };
-                        while let Some(Token::Keyword(kw)) = tokens.peek() {
-                            if kw == "const" {
-                                result_ptr.constant = true;
-                            } else if kw == "restrict" {
-                                result_ptr.restrict = true;
-                            }
-                        }
-                        pointer = Some(result_ptr);
-                    }
-                    let name = if let Some(Token::Identifier(id)) = tokens.peek() {
-                        tokens.next();
-                        Some(id.clone())
-                    } else {
-                        None
-                    };
-                    parameters.push((FullType { inner: ty, pointer }, name));
                 }
+                let ty = parse_type(tokens);
+                let mut pointer = None;
+                while let Some(Token::Punctuator(p)) = tokens.peek() {
+                    if p != "*" {
+                        break;
+                    }
+                    tokens.next();
+                    let mut result_ptr = Pointer {
+                        constant: false,
+                        restrict: false,
+                        sub_ptr: pointer.map(Box::new),
+                    };
+                    while let Some(Token::Keyword(kw)) = tokens.peek() {
+                        if kw == "const" {
+                            result_ptr.constant = true;
+                        } else if kw == "restrict" {
+                            result_ptr.restrict = true;
+                        }
+                    }
+                    pointer = Some(result_ptr);
+                }
+                let name = if let Some(Token::Identifier(id)) = tokens.peek() {
+                    tokens.next();
+                    Some(id.clone())
+                } else {
+                    None
+                };
+                parameters.push((FullType { inner: ty, pointer }, name));
             }
             ty = Type {
                 base: BaseType::Function {
