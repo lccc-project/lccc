@@ -82,6 +82,17 @@ pub fn __get_properties(targ: Target) -> &'static TargetProperties {
     target_tuples::match_targets! {
         match (targ.into()){
             x86_64-*-linux-gnu => &linux::X86_64_LINUX_GNU,
+            x86_64-*-linux-gnux32 => &linux::X86_64_LINUX_GNUX32,
+            x86_64v2-*-linux-gnu => &linux::X86_64V2_LINUX_GNU,
+            x86_64v2-*-linux-gnux32 => &linux::X86_64V2_LINUX_GNUX32,
+            x86_64v3-*-linux-gnu => &linux::X86_64V3_LINUX_GNU,
+            x86_64v3-*-linux-gnux32 => &linux::X86_64V3_LINUX_GNUX32,
+            x86_64v4-*-linux-gnu => &linux::X86_64V4_LINUX_GNU,
+            x86_64v4-*-linux-gnux32 => &linux::X86_64V4_LINUX_GNUX32,
+            i386-*-linux-gnu => &linux::I386_LINUX_GNU,
+            i486-*-linux-gnu => &linux::I486_LINUX_GNU,
+            i586-*-linux-gnu => &linux::I586_LINUX_GNU,
+            i686-*-linux-gnu => &linux::I686_LINUX_GNU,
             * => todo!()
         }
     }

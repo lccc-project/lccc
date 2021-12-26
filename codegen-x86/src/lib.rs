@@ -274,8 +274,7 @@ impl X86CodegenPlugin {
         for sym in syms {
             let secno = sym
                 .1
-                .map(|v| file.sections().enumerate().find(|(_, s)| &*s.name == v))
-                .flatten()
+                .and_then(|v| file.sections().enumerate().find(|(_, s)| &*s.name == v))
                 .map(|(s, _)| s as u32);
             let fsym = file.get_or_create_symbol(&sym.0).unwrap();
             if secno.is_some() {
@@ -302,7 +301,7 @@ impl XLangPlugin for X86CodegenPlugin {
             let name = &*path.components;
             let name = match name {
                 [xlang_struct::PathComponent::Text(t)] => &**t,
-                [xlang_struct::PathComponent::Root, xlang_struct::PathComponent::Text(t)] => &&**t,
+                [xlang_struct::PathComponent::Root, xlang_struct::PathComponent::Text(t)] => &**t,
                 _ => panic!("Cannot access name component"),
             }
             .to_string();
@@ -320,7 +319,12 @@ impl XLangPlugin for X86CodegenPlugin {
                     state.write_block(body);
                     self.fns.as_mut().unwrap().insert(name, state);
                 }
-                _ => {}
+                xlang_struct::MemberDeclaration::Function(FunctionDeclaration {
+                    ty: _,
+                    body: xlang::abi::option::None,
+                })
+                | xlang_struct::MemberDeclaration::Scope(_)
+                | xlang_struct::MemberDeclaration::Empty => {}
             }
         }
 
@@ -332,19 +336,19 @@ impl XLangCodegen for X86CodegenPlugin {
     fn target_matches(&self, x: &xlang::targets::Target) -> bool {
         let target: target_tuples::Target = x.into();
 
-        match target.arch() {
-            target_tuples::Architecture::I86 => true,
-            target_tuples::Architecture::I8086 => true,
-            target_tuples::Architecture::I086 => true,
-            target_tuples::Architecture::I186 => true,
-            target_tuples::Architecture::I286 => true,
-            target_tuples::Architecture::I386 => true,
-            target_tuples::Architecture::I486 => true,
-            target_tuples::Architecture::I586 => true,
-            target_tuples::Architecture::I686 => true,
-            target_tuples::Architecture::X86_64 => true,
-            _ => false,
-        }
+        matches!(
+            target.arch(),
+            target_tuples::Architecture::I86
+                | target_tuples::Architecture::I8086
+                | target_tuples::Architecture::I086
+                | target_tuples::Architecture::I186
+                | target_tuples::Architecture::I286
+                | target_tuples::Architecture::I386
+                | target_tuples::Architecture::I486
+                | target_tuples::Architecture::I586
+                | target_tuples::Architecture::I686
+                | target_tuples::Architecture::X86_64
+        )
     }
 
     fn write_output(

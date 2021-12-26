@@ -75,7 +75,7 @@ fn find_libraries(search_paths: &[PathBuf], names: &[&str], prefix: &str) -> Vec
 
 const XLANG_PLUGIN_DIR: &str = std::env!("xlang_plugin_dir");
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 fn main() {
     let mut target = target_tuples::from_env!("default_target");
     println!("Target: {} ({})", target, target.get_name());
@@ -249,11 +249,11 @@ fn main() {
                 if let Some(ref output) = output {
                     output.clone()
                 } else {
-                    let mut fname = &**file;
-                    if let std::option::Option::Some(offset) = fname.rfind('.') {
-                        fname = &fname[..offset];
+                    let mut filename = &**file;
+                    if let std::option::Option::Some(offset) = filename.rfind('.') {
+                        filename = &filename[..offset];
                     }
-                    let mut name = String::from(fname);
+                    let mut name = String::from(filename);
                     name += properties.os.obj_suffix;
                     name
                 }
@@ -298,7 +298,7 @@ fn main() {
                 todo!()
             }
         } else {
-            file_pairs.push((file.clone(), file.clone()))
+            file_pairs.push((file.clone(), file.clone()));
         }
     }
 
@@ -377,7 +377,7 @@ fn main() {
                 println!("libdirs: {:?}", libdirs);
 
                 if link_output == LinkOutput::Pie {
-                    link_args.push(String::from("-pie"))
+                    link_args.push(String::from("-pie"));
                 }
 
                 let mut startfiles = Vec::new();
@@ -393,6 +393,8 @@ fn main() {
                         }
                     }
 
+                    #[allow(clippy::manual_assert)]
+                    // This will be a proper error message at some point
                     if !found {
                         panic!("Could not find startfile {}", file);
                     }
@@ -413,12 +415,14 @@ fn main() {
                         }
                     }
 
+                    #[allow(clippy::manual_assert)]
+                    // This will be a proper error message at some point
                     if !found {
-                        panic!("Could not find startfile {}", file);
+                        panic!("Could not find endfile {}", file);
                     }
                 }
 
-                println!("endffiles: {:?}", endfiles);
+                println!("endfiles: {:?}", endfiles);
 
                 match Command::new("ld")
                     .args(&link_args)
