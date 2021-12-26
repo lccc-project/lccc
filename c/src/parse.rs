@@ -124,7 +124,9 @@ fn parse_type<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>) -> Ty
     Type { base, constant }
 }
 
-fn parse_primary_expression<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>) -> Expression {
+fn parse_primary_expression<'a, I: Iterator<Item = &'a Token>>(
+    tokens: &mut Peekable<I>,
+) -> Expression {
     let next = tokens.next();
     if let Some(Token::Identifier(id)) = next {
         Expression::Identifier(id.clone())
@@ -169,7 +171,7 @@ fn parse_expression<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>)
                 }
                 lhs = Expression::FunctionCall {
                     callee: Box::new(lhs),
-                    args
+                    args,
                 };
             }
         } else {
