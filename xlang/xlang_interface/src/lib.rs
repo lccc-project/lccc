@@ -84,6 +84,7 @@ pub extern "C" fn xlang_get_target_properties(targ: Target) -> &'static TargetPr
 }
 
 #[no_mangle]
+#[allow(clippy::missing_const_for_fn)] // const extern fn is unstable
 pub extern "C" fn xlang_get_version() -> StringView<'static> {
     const_sv!("0.1")
 }
