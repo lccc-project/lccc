@@ -6,7 +6,9 @@ mod lex;
 mod parse;
 
 use lex::lex;
-use parse::{parse, BaseType, Declaration, Expression, Initializer, Pointer, PrimitiveType, Statement, Type};
+use parse::{
+    parse, BaseType, Declaration, Expression, Initializer, Pointer, PrimitiveType, Statement, Type,
+};
 use xlang::abi::string::StringView;
 use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
@@ -74,12 +76,17 @@ impl XLangPlugin for CFrontend {
             },
         };
 
-        let into_xir_type = |ty: &Type, pointer: Option<&Pointer>| -> ir::Type {
+        fn into_xir_type_real(
+            char_type: &ir::ScalarType,
+            int_type: &ir::ScalarType,
+            ty: &Type,
+            pointer: Option<&Pointer>,
+        ) -> ir::Type {
             // const is not currently supported by xir
             let inner = match ty.base {
                 BaseType::Function { .. } => todo!(),
-                BaseType::Primitive(PrimitiveType::Char) => ir::Type::Scalar(char_type),
-                BaseType::Primitive(PrimitiveType::Int) => ir::Type::Scalar(int_type),
+                BaseType::Primitive(PrimitiveType::Char) => ir::Type::Scalar(*char_type),
+                BaseType::Primitive(PrimitiveType::Int) => ir::Type::Scalar(*int_type),
             };
             if let Some(pointer) = pointer {
                 if pointer.sub_ptr.is_some() {
@@ -94,12 +101,47 @@ impl XLangPlugin for CFrontend {
             } else {
                 inner
             }
-        };
+        }
 
-        let codegen_expr = |expr: &Expression, _block: &mut Vec<ir::BlockItem>| {
+        let into_xir_type =
+            |ty: &Type, pointer: Option<&Pointer>| into_xir_type_real(&char_type, &int_type, ty, pointer);
+
+        fn codegen_expr_real(
+            char_type: &ir::ScalarType,
+            int_type: &ir::ScalarType,
+            expr: &Expression,
+            block: &mut Vec<ir::BlockItem>,
+        ) {
             match expr {
+                Expression::FunctionCall { callee, args } => {
+                    codegen_expr_real(char_type, int_type, callee, block);
+                    for arg in args {
+                        codegen_expr_real(char_type, int_type, arg, block);
+                    }
+                    block.push(ir::BlockItem::Expr(ir::Expr::CallFunction(ir::FnType {
+                        ret: ir::Type::Scalar(*int_type),
+                        params: xlang::vec![into_xir_type_real(
+                            char_type,
+                            int_type,
+                            &Type {
+                                base: BaseType::Primitive(PrimitiveType::Char),
+                                constant: false
+                            },
+                            Some(&Pointer {
+                                constant: true,
+                                restrict: false,
+                                sub_ptr: std::option::Option::None
+                            })
+                        )],
+                        tag: ir::Abi::C,
+                    })));
+                }
                 _ => todo!("{:?}", expr),
             }
+        }
+
+        let codegen_expr = |expr: &Expression, block: &mut Vec<ir::BlockItem>| {
+            codegen_expr_real(&char_type, &int_type, expr, block)
         };
 
         for decl in &self.parsed {
@@ -110,7 +152,10 @@ impl XLangPlugin for CFrontend {
             {
                 let mut param_types = Vec::new();
                 for param in params {
-                    param_types.push(into_xir_type(&param.0.inner, param.0.pointer.as_ref().into()));
+                    param_types.push(into_xir_type(
+                        &param.0.inner,
+                        param.0.pointer.as_ref().into(),
+                    ));
                 }
                 let body = decl.initializer.as_ref().map(|init| {
                     if let Initializer::Function(statements) = init {
