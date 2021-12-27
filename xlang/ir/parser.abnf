@@ -1,0 +1,17 @@
+
+target-component := <id>
+target := <target-component> "-" <target-component> ["-" <target-component> ["-" <target-component>]]
+
+target-spec := "target" <target> ";"
+
+scope := [*<declaration>]
+
+path-component := <id> / ("#" <string-literal>) / ("<" <generic-arguments> ">")
+
+path := ["::" /("%" <dec-literal> "::")]  <path-component> [*("::" <path-component>)]
+
+file := <target-spec> <scope>
+
+function-declaration := "function" <path> "(" [*("_" <dec-literal> ":" <type>)] ")"
+
+

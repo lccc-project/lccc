@@ -1,0 +1,38 @@
+
+id := (<XID_Start>/"_"/"$") [*(<XID_Continue>/"_"/"$")]
+
+newline := %x0a [%x0d]
+
+comment := // (%x01-09 / %x0b-0c / -%0e-7e / %x80-d7fff / %xe000-10ffff)* <newline>
+
+whitespace := %0x00-20 / %x85 / %x200e-200f / %x2028-2029 / <comment>
+
+quote := %x22
+single-quote := %x27
+
+backslash := "\\"
+
+escape := <backslash> ("n" / "r" / "t" / <quote> / <single-quote> / ("x"*2(%x30-39 / %x41-46 / %x61-66)) / ("u"*4(%x30-39 / %x41-46 / %x61-66)) / ("U" *6(%x30-39 / %x41-46 / %x61-66)))\
+
+string-char := %x01-09 / %x0b-21 / %x23-7e / %x80-d7fff / %xe000-10ff / <escape>
+char-lit-char := %x01-09 / %x0b-26 / %x28-7e / %x80-d7fff / %xe000-10ff / <escape>
+
+string-literal := [<id>] <quote> [*(<string-char>)] <quote>
+char-literal := [<id>] <single-quote> <char-lit-char> <quote>
+
+dec-digit := %x30-39
+hex-digit := <dec-digit> / %x41-46 / %x61-66
+
+dec-literal := <dec-digit> / (<dec-literal> <dec-digit>)
+
+hex-literal := ("0x" <hex-digit>) / (<hex-literal> <hex-digit>)
+
+int-literal := <dec-literal> / <hex-literal>
+
+float-literal := <dec-literal> "." <dec-literal> [("e"/"E") ["+"/"-] <dec-literal>]
+
+literal := <string-literal> / <int-literal> / <float-literal>
+
+sigil := "!" / "@" / "#" / "$" / "%" / "^" / "&" / "*" / "<" / ">" / "=" / "-" / "+" / ";" / ":"
+
+token-tree := <literal> / <sigil> / <id> / ("(" [*<token-tree>] ")") / ("[" [*<token-tree>] "]") / ("{" [*<token-tree>] "}")
