@@ -6,23 +6,27 @@ mod lex;
 mod parse;
 
 use lex::lex;
-use parse::parse;
+use parse::{parse, BaseType, Declaration, Expression, Initializer, Pointer, PrimitiveType, Statement, Type};
 use xlang::abi::string::StringView;
+use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
-use xlang_struct::{
-    Abi, AnnotatedElement, Block, BlockItem, Expr, File, FnType, FunctionDeclaration,
-    MemberDeclaration, Path, PathComponent, ScalarType, ScalarTypeHeader, ScalarTypeKind,
-    ScalarValidity, ScopeMember, Type, Value, Visibility,
-};
+
+fn diagnostic() -> ! {
+    panic!("Hello everyone, and welcome to yet another placeholder function for generating a diagnostic!")
+}
 
 struct CFrontend {
     filename: Option<String>,
+    parsed: std::vec::Vec<Declaration>,
 }
 
 impl CFrontend {
     #[must_use]
     pub const fn new() -> Self {
-        Self { filename: None }
+        Self {
+            filename: None,
+            parsed: std::vec::Vec::new(),
+        }
     }
 }
 
@@ -38,56 +42,123 @@ impl XLangFrontend for CFrontend {
     fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
         let mut file = file.into_chars();
         let lexed = lex(&mut file);
-        let parsed = parse(&lexed);
-        println!("{:?}", parsed);
+        self.parsed = parse(&lexed);
         io::Result::Ok(())
     }
 }
 
 impl XLangPlugin for CFrontend {
-    fn accept_ir(&mut self, file: &mut File) -> Result<(), Error> {
-        let i32_type = ScalarType {
-            header: ScalarTypeHeader {
+    fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
+        let char_type = ir::ScalarType {
+            header: ir::ScalarTypeHeader {
+                bitsize: 8,
+                vectorsize: 0,
+                validity: ir::ScalarValidity::empty(),
+            },
+            kind: ir::ScalarTypeKind::Integer {
+                signed: false,
+                min: i128::from(u8::MIN),
+                max: i128::from(u8::MAX),
+            },
+        };
+        let int_type = ir::ScalarType {
+            header: ir::ScalarTypeHeader {
                 bitsize: 32,
                 vectorsize: 0,
-                validity: ScalarValidity::empty(),
+                validity: ir::ScalarValidity::empty(),
             },
-            kind: ScalarTypeKind::Integer {
+            kind: ir::ScalarTypeKind::Integer {
                 signed: true,
-                min: i128::MIN,
-                max: i128::MAX,
+                min: i128::from(i32::MIN),
+                max: i128::from(i32::MAX),
             },
         };
-        let main_path = Path {
-            components: xlang::abi::vec![PathComponent::Text("main".into())],
+
+        let into_xir_type = |ty: &Type, pointer: Option<&Pointer>| -> ir::Type {
+            // const is not currently supported by xir
+            let inner = match ty.base {
+                BaseType::Function { .. } => todo!(),
+                BaseType::Primitive(PrimitiveType::Char) => ir::Type::Scalar(char_type),
+                BaseType::Primitive(PrimitiveType::Int) => ir::Type::Scalar(int_type),
+            };
+            if let Some(pointer) = pointer {
+                if pointer.sub_ptr.is_some() {
+                    todo!()
+                } else {
+                    ir::Type::Pointer(ir::PointerType {
+                        alias: ir::PointerAliasingRule::None,
+                        valid_range: xlang::abi::pair::Pair(ir::ValidRangeType::None, 0),
+                        inner: Box::new(inner),
+                    })
+                }
+            } else {
+                inner
+            }
         };
-        let body = Block {
-            items: xlang::abi::vec![
-                BlockItem::Expr(Expr::Const(Value::Integer {
-                    ty: i32_type,
-                    val: 0,
-                })),
-                BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
-            ],
+
+        let codegen_expr = |expr: &Expression, _block: &mut Vec<ir::BlockItem>| {
+            match expr {
+                _ => todo!("{:?}", expr),
+            }
         };
-        let function = FunctionDeclaration {
-            ty: FnType {
-                ret: Type::Scalar(i32_type),
-                params: Vec::new(),
-                tag: Abi::C,
-            },
-            body: Some(body),
-        };
-        file.root.members.insert(
-            main_path,
-            ScopeMember {
-                annotations: AnnotatedElement {
-                    annotations: Vec::new(),
+
+        for decl in &self.parsed {
+            let member = if let Type {
+                base: BaseType::Function { ret, params },
+                ..
+            } = &decl.ty
+            {
+                let mut param_types = Vec::new();
+                for param in params {
+                    param_types.push(into_xir_type(&param.0.inner, param.0.pointer.as_ref().into()));
+                }
+                let body = decl.initializer.as_ref().map(|init| {
+                    if let Initializer::Function(statements) = init {
+                        let mut block = Vec::new();
+                        for statement in statements {
+                            let Statement::Expression(expr) = statement;
+                            codegen_expr(expr, &mut block);
+                        }
+                        if decl.name == "main" {
+                            block.push(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Integer {
+                                ty: int_type,
+                                val: 0,
+                            })));
+                            block.push(ir::BlockItem::Expr(ir::Expr::ExitBlock {
+                                blk: 0,
+                                values: 1,
+                            }));
+                        }
+                        ir::Block { items: block }
+                    } else {
+                        diagnostic()
+                    }
+                });
+                let function = ir::FunctionDeclaration {
+                    ty: ir::FnType {
+                        ret: into_xir_type(&**ret, None),
+                        params: param_types,
+                        tag: ir::Abi::C,
+                    },
+                    body: body.into(),
+                };
+                ir::ScopeMember {
+                    annotations: ir::AnnotatedElement {
+                        annotations: Vec::new(),
+                    },
+                    vis: ir::Visibility::Public,
+                    member_decl: ir::MemberDeclaration::Function(function),
+                }
+            } else {
+                todo!()
+            };
+            file.root.members.insert(
+                ir::Path {
+                    components: xlang::vec![ir::PathComponent::Text(String::from(&decl.name))],
                 },
-                vis: Visibility::Public,
-                member_decl: MemberDeclaration::Function(function),
-            },
-        );
+                member,
+            );
+        }
         Result::Ok(())
     }
 }

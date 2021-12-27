@@ -11,7 +11,7 @@ pub enum PrimitiveType {
 pub enum BaseType {
     Function {
         ret: Box<Type>,
-        parameters: Vec<(FullType, Option<String>)>,
+        params: Vec<(FullType, Option<String>)>,
     },
     Primitive(PrimitiveType),
 }
@@ -19,23 +19,23 @@ pub enum BaseType {
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Type {
-    base: BaseType,
-    constant: bool,
+    pub base: BaseType,
+    pub constant: bool,
 }
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Pointer {
-    constant: bool,
-    restrict: bool,
-    sub_ptr: Option<Box<Pointer>>,
+    pub constant: bool,
+    pub restrict: bool,
+    pub sub_ptr: Option<Box<Pointer>>,
 }
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct FullType {
-    inner: Type,
-    pointer: Option<Pointer>,
+    pub inner: Type,
+    pub pointer: Option<Pointer>,
 }
 
 #[allow(dead_code)]
@@ -65,10 +65,10 @@ pub enum Initializer {
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Declaration {
-    ty: Type,
-    pointer: Option<Pointer>,
-    name: String,
-    initializer: Option<Initializer>,
+    pub ty: Type,
+    pub pointer: Option<Pointer>,
+    pub name: String,
+    pub initializer: Option<Initializer>,
 }
 
 #[allow(clippy::missing_panics_doc)]
@@ -212,7 +212,7 @@ fn parse_declaration<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>
         } else if p == "=" {
             todo!()
         } else if p == "(" {
-            let mut parameters = Vec::new();
+            let mut params = Vec::new();
             while let Some(&t) = tokens.peek() {
                 if t == &Token::Punctuator(String::from(")")) {
                     tokens.next();
@@ -245,12 +245,12 @@ fn parse_declaration<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>
                 } else {
                     None
                 };
-                parameters.push((FullType { inner: ty, pointer }, name));
+                params.push((FullType { inner: ty, pointer }, name));
             }
             ty = Type {
                 base: BaseType::Function {
                     ret: Box::new(ty),
-                    parameters,
+                    params,
                 },
                 constant: false,
             };
