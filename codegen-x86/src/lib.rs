@@ -426,8 +426,6 @@ impl XLangPlugin for X86CodegenPlugin {
         &mut self,
         ir: &mut xlang_struct::File,
     ) -> xlang::abi::result::Result<(), xlang::plugin::Error> {
-        self.target = Some((&ir.target).into());
-
         for Pair(path, member) in &ir.root.members {
             let name = &*path.components;
             let name = match name {
@@ -461,6 +459,10 @@ impl XLangPlugin for X86CodegenPlugin {
         }
 
         xlang::abi::result::Ok(())
+    }
+
+    fn set_target(&mut self, targ: xlang::targets::Target) {
+        self.target = Some(targ.into());
     }
 }
 

@@ -207,6 +207,8 @@ impl XLangPlugin for CFrontend {
         }
         Result::Ok(())
     }
+
+    fn set_target(&mut self, _targ: xlang::targets::Target) {}
 }
 
 #[allow(clippy::missing_const_for_fn)]

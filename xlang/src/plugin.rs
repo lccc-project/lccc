@@ -5,6 +5,7 @@ use xlang_abi::{
     string::StringView,
 };
 use xlang_struct::File;
+use xlang_targets::Target;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -16,6 +17,7 @@ pub enum Error {
 #[allow(clippy::module_name_repetitions)]
 pub trait XLangPlugin {
     fn accept_ir(&mut self, ir: &mut File) -> Result<(), Error>;
+    fn set_target(&mut self, targ: Target);
 }
 
 pub trait XLangFrontend: XLangPlugin {
@@ -36,6 +38,7 @@ mod abi {
         traits::{AbiSafeTrait, AbiSafeUnsize, DynMut, DynPtrSafe},
     };
     use xlang_struct::File;
+    use xlang_targets::Target;
 
     use super::{Error, XLangCodegen, XLangFrontend, XLangPlugin};
 
@@ -65,6 +68,7 @@ mod abi {
             pub dtor: Option<unsafe extern "C" fn(*mut ())>,
             pub reserved: Option<unsafe extern "C" fn(*mut ())>,
             pub accept_ir: unsafe extern "C" fn(*mut (), ir: &mut File) -> Result<(), Error>,
+            pub set_target: unsafe extern "C" fn(*mut (), Target),
         }
 
         unsafe impl AbiSafeVTable<dyn super::XLangPlugin> for XLangPlugin {}
@@ -76,6 +80,7 @@ mod abi {
             pub dtor: Option<unsafe extern "C" fn(*mut ())>,
             pub reserved: Option<unsafe extern "C" fn(*mut ())>,
             pub accept_ir: unsafe extern "C" fn(*mut (), &mut File) -> Result<(), Error>,
+            pub set_target: unsafe extern "C" fn(*mut (), Target),
             pub file_matches: unsafe extern "C" fn(*const (), StringView) -> bool,
             pub set_file_path: unsafe extern "C" fn(*mut (), StringView),
             pub read_source: unsafe extern "C" fn(
@@ -93,6 +98,7 @@ mod abi {
             pub dtor: Option<unsafe extern "C" fn(*mut ())>,
             pub reserved: Option<unsafe extern "C" fn(*mut ())>,
             pub accept_ir: unsafe extern "C" fn(*mut (), &mut File) -> Result<(), Error>,
+            pub set_target: unsafe extern "C" fn(*mut (), Target),
             pub target_matches: unsafe extern "C" fn(*const (), &Target) -> bool,
             pub write_output: unsafe extern "C" fn(
                 *mut (),
@@ -125,6 +131,10 @@ mod abi {
         (&mut *(ptr.cast::<T>())).set_file_path(file);
     }
 
+    unsafe extern "C" fn __set_target<T: XLangPlugin>(ptr: *mut (), target: Target) {
+        (&mut *(ptr.cast::<T>())).set_target(target);
+    }
+
     unsafe extern "C" fn __read_source<T: XLangFrontend>(
         ptr: *mut (),
         input: DynMut<dyn xlang_abi::io::Read>,
@@ -154,6 +164,7 @@ mod abi {
                 dtor: std::option::Option::Some(__dtor::<T>),
                 reserved: std::option::Option::None,
                 accept_ir: __accept_ir::<T>,
+                set_target: __set_target::<T>,
             }
         }
     }
@@ -166,6 +177,7 @@ mod abi {
                 dtor: std::option::Option::Some(__dtor::<T>),
                 reserved: std::option::Option::None,
                 accept_ir: __accept_ir::<T>,
+                set_target: __set_target::<T>,
                 file_matches: __file_matches::<T>,
                 set_file_path: __set_file_path::<T>,
                 read_source: __read_source::<T>,
@@ -177,11 +189,19 @@ mod abi {
         fn accept_ir(&mut self, ir: &mut File) -> Result<(), Error> {
             unsafe { (self.vtable().accept_ir)(self.as_raw_mut(), ir) }
         }
+
+        fn set_target(&mut self, targ: Target) {
+            unsafe { (self.vtable().set_target)(self.as_raw_mut(), targ) }
+        }
     }
 
     impl XLangPlugin for dyn DynPtrSafe<dyn XLangFrontend> {
         fn accept_ir(&mut self, ir: &mut File) -> Result<(), Error> {
             unsafe { (self.vtable().accept_ir)(self.as_raw_mut(), ir) }
+        }
+
+        fn set_target(&mut self, targ: Target) {
+            unsafe { (self.vtable().set_target)(self.as_raw_mut(), targ) }
         }
     }
 
@@ -214,6 +234,7 @@ mod abi {
                 dtor: Some(__dtor::<T>),
                 reserved: None,
                 accept_ir: __accept_ir::<T>,
+                set_target: __set_target::<T>,
                 target_matches: __target_matches::<T>,
                 write_output: __write_output::<T>,
             }
@@ -222,6 +243,9 @@ mod abi {
     impl XLangPlugin for dyn DynPtrSafe<dyn XLangCodegen> {
         fn accept_ir(&mut self, ir: &mut File) -> Result<(), Error> {
             unsafe { (self.vtable().accept_ir)(self.as_raw_mut(), ir) }
+        }
+        fn set_target(&mut self, targ: Target) {
+            unsafe { (self.vtable().set_target)(self.as_raw_mut(), targ) }
         }
     }
     impl XLangCodegen for dyn DynPtrSafe<dyn XLangCodegen> {

@@ -283,10 +283,11 @@ fn main() {
                 target: xtarget.clone(),
                 root: xlang::ir::Scope::default(),
             };
-
+            frontend.set_target(xtarget.clone());
             frontend.accept_ir(&mut file).unwrap();
             dbg!(&file);
             if mode >= Mode::Asm {
+                codegen.set_target(xtarget.clone());
                 codegen.accept_ir(&mut file).unwrap();
                 let mut write_adapter =
                     WriteAdapter::new(File::create(outputfile).expect("Can't create output file"));
