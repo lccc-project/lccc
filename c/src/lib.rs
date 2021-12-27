@@ -103,8 +103,9 @@ impl XLangPlugin for CFrontend {
             }
         }
 
-        let into_xir_type =
-            |ty: &Type, pointer: Option<&Pointer>| into_xir_type_real(&char_type, &int_type, ty, pointer);
+        let into_xir_type = |ty: &Type, pointer: Option<&Pointer>| {
+            into_xir_type_real(&char_type, &int_type, ty, pointer)
+        };
 
         fn codegen_expr_real(
             char_type: &ir::ScalarType,
