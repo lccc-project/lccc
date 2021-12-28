@@ -1,3 +1,4 @@
+#![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
 use std::str::FromStr;
 use std::{io::Read, path::PathBuf};
 
@@ -82,7 +83,7 @@ fn main() -> std::io::Result<()> {
         InstallDirs::canonicalize_dir(&cfg.paths.lccc_dir, cfg.paths.xlang_plugin_dir);
 
     for (name, dir) in cfg.paths.installdirs.as_env() {
-        println!("cargo:rustc-env={}={}", name, dir.display())
+        println!("cargo:rustc-env={}={}", name, dir.display());
     }
 
     println!("cargo:rustc-env=lccc_dir={}", cfg.paths.lccc_dir.display());

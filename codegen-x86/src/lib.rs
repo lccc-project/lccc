@@ -31,17 +31,18 @@ use xlang_struct::{
     ScalarTypeKind, StringEncoding, Type, Value,
 };
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct StringInterner {
     syms: HashMap<xlang::abi::string::String, String>,
-    inuse: HashMap<u64, usize>,
+    inuse: std::collections::HashMap<u64, usize>,
 }
 
 impl StringInterner {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             syms: HashMap::new(),
-            inuse: HashMap::new(),
+            inuse: std::collections::HashMap::new(),
         }
     }
 
@@ -51,19 +52,28 @@ impl StringInterner {
             let mut hasher = XLangHasher::default();
             s.hash(&mut hasher);
             let val = hasher.finish();
-            let suffix = if let Some(x) = inuse.get_mut(&val) {
-                let val = *x;
-                *x += 1;
-                format!(".{}", val)
-            } else {
-                inuse.insert(val, 0);
-                format!("")
+            let suffix = match inuse.entry(val) {
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    entry.insert(0);
+                    String::new()
+                }
+                std::collections::hash_map::Entry::Occupied(entry) => {
+                    let entry = entry.into_mut();
+                    *entry += 1;
+                    format!(".{}", val)
+                }
             };
 
             let str = format!("__xlang_string.{}.{:016x}{}", xlang::version(), val, suffix);
             str
         })
         .clone()
+    }
+}
+
+impl Default for StringInterner {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -158,34 +168,35 @@ impl X86CodegenState {
         todo!("allocate_register")
     }
 
-    fn move_value(&mut self, val: VStackValue, tloc: ValLocation) -> VStackValue {
+    fn move_value(&mut self, val: VStackValue, target_loc: ValLocation) -> VStackValue {
         match val {
-            VStackValue::Constant(Value::Integer { ty, val }) => match tloc {
-                ValLocation::BpDisp(_) => todo!(),
-                ValLocation::SpDisp(_) => todo!(),
+            VStackValue::Constant(Value::Integer { ty, val }) => match target_loc {
+                ValLocation::BpDisp(_) | ValLocation::SpDisp(_) => todo!(),
                 ValLocation::Register(r) => {
                     if val == 0 {
                         self.insns.push(X86Instruction::new(
                             X86Opcode::XorMR,
                             vec![X86Operand::ModRM(ModRM::Direct(r)), X86Operand::Register(r)],
-                        ))
+                        ));
                     } else {
                         self.insns.push(X86Instruction::new(
                             X86Opcode::MovImm,
-                            vec![X86Operand::Register(r), X86Operand::Immediate(val as u64)],
-                        ))
+                            vec![
+                                X86Operand::Register(r),
+                                X86Operand::Immediate(u64::from(val)),
+                            ],
+                        ));
                     }
 
-                    VStackValue::OpaqueInt(tloc, ty)
+                    VStackValue::OpaqueInt(target_loc, ty)
                 }
             },
             VStackValue::Constant(Value::String {
                 encoding: StringEncoding::Utf8,
                 utf8,
                 ty: Type::Pointer(ty),
-            }) => match tloc {
-                ValLocation::BpDisp(_) => todo!(),
-                ValLocation::SpDisp(_) => todo!(),
+            }) => match target_loc {
+                ValLocation::BpDisp(_) | ValLocation::SpDisp(_) => todo!(),
                 ValLocation::Register(r) => {
                     let symname = self.strmap.borrow_mut().get_or_insert_string(utf8);
                     self.insns.push(X86Instruction::new(
@@ -207,7 +218,7 @@ impl X86CodegenState {
                         SymbolType::Null,
                         SymbolKind::Local,
                     ));
-                    VStackValue::Pointer(LValue::OpaquePointer(tloc), ty)
+                    VStackValue::Pointer(LValue::OpaquePointer(target_loc), ty)
                 }
             },
             VStackValue::Constant(Value::Uninitialized(ty)) => {
@@ -268,8 +279,7 @@ impl X86CodegenState {
                 match f {
                     VStackValue::Constant(Value::GlobalAddress { ty: _, item }) => {
                         let name = match &*item.components {
-                            [xlang_struct::PathComponent::Text(t)] => &**t,
-                            [xlang_struct::PathComponent::Root, xlang_struct::PathComponent::Text(t)] => &**t,
+                            [xlang_struct::PathComponent::Text(t)] | [xlang_struct::PathComponent::Root, xlang_struct::PathComponent::Text(t)] => &**t,
                             _ => panic!("Cannot access name component"),
                         }
                         .to_string();
@@ -285,16 +295,15 @@ impl X86CodegenState {
                         self.insns.push(X86Instruction::new(
                             X86Opcode::Call,
                             vec![X86Operand::RelAddr(Address::PltSym { name })],
-                        ))
+                        ));
                     }
-                    VStackValue::Constant(Value::Invalid(_))
-                    | VStackValue::Constant(Value::Uninitialized(_)) => {
-                        self.insns.push(X86Instruction::Ud2)
+                    VStackValue::Constant(Value::Invalid(_) | Value::Uninitialized(_)) => {
+                        self.insns.push(X86Instruction::Ud2);
                     }
-                    VStackValue::Constant(_) => todo!(),
-                    VStackValue::LValue(_) => todo!(),
-                    VStackValue::Pointer(_, _) => todo!(),
-                    VStackValue::OpaqueInt(_, _) => todo!(),
+                    VStackValue::Constant(_)
+                    | VStackValue::LValue(_)
+                    | VStackValue::Pointer(_, _)
+                    | VStackValue::OpaqueInt(_, _) => todo!(),
                 }
             }
             Expr::ExitBlock { blk, values } => match (blk, values) {
@@ -316,8 +325,8 @@ impl X86CodegenState {
                                     },
                                 kind: ScalarTypeKind::Integer { .. },
                             } => {
-                                let bsize = ((7 + size) / 8).next_power_of_two();
-                                let class = match bsize {
+                                let bytesize = ((7 + size) / 8).next_power_of_two();
+                                let class = match bytesize {
                                     1 => X86RegisterClass::Byte,
                                     2 => X86RegisterClass::Word,
                                     4 => X86RegisterClass::Double,
@@ -336,15 +345,13 @@ impl X86CodegenState {
                             _ => todo!("return scalar type"),
                         },
                         Type::Void => panic!("Cannot have a value of type Void"),
-                        Type::FnType(_) => todo!(),
-                        Type::Pointer(_) => todo!(),
+                        Type::FnType(_) | Type::Pointer(_) => todo!(),
                     }
                 }
                 (0, _) => panic!("Cannot return multiple values from a function"),
                 (_, _) => todo!("exit block"),
             },
-            Expr::BinaryOp(_) => todo!(),
-            Expr::UnaryOp(_) => todo!(),
+            Expr::BinaryOp(_) | Expr::UnaryOp(_) => todo!(),
         }
     }
 
