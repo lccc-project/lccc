@@ -7,7 +7,7 @@ pub enum PrimitiveType {
     Int,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BaseType {
     Function {
         ret: Box<Type>,
@@ -17,53 +17,68 @@ pub enum BaseType {
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Type {
     pub base: BaseType,
     pub constant: bool,
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Pointer {
     pub constant: bool,
     pub restrict: bool,
-    pub sub_ptr: Option<Box<Pointer>>,
+    pub sub_ptr: Option<Box<Self>>,
 }
 
-#[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FullType {
     pub inner: Type,
     pub pointer: Option<Pointer>,
 }
 
-#[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Expression {
     FunctionCall {
-        callee: Box<Expression>,
-        args: Vec<Expression>,
+        callee: Box<Self>,
+        args: Vec<Self>,
+        ty: Option<FullType>,
     },
-    Identifier(String),
-    String(String),
+    Identifier {
+        id: String,
+        ty: Option<FullType>,
+    },
+    String {
+        str: String,
+        ty: Option<FullType>,
+    },
+}
+
+impl Expression {
+    pub const fn get_type(&self) -> Option<&FullType> {
+        match self {
+            Self::FunctionCall { ty, .. }
+            | Self::Identifier { ty, .. }
+            | Self::String { ty, .. } => ty.as_ref(),
+        }
+    }
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Statement {
     Expression(Expression),
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Initializer {
     Expression(Expression),
     Function(Vec<Statement>),
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Declaration {
     pub ty: Type,
     pub pointer: Option<Pointer>,
@@ -128,9 +143,15 @@ fn parse_primary_expression<'a, I: Iterator<Item = &'a Token>>(
 ) -> Expression {
     let next = tokens.next();
     if let Some(Token::Identifier(id)) = next {
-        Expression::Identifier(id.clone())
+        Expression::Identifier {
+            id: id.clone(),
+            ty: None,
+        }
     } else if let Some(Token::StringLiteral(_, str)) = next {
-        Expression::String(str.clone())
+        Expression::String {
+            str: str.clone(),
+            ty: None,
+        }
     } else {
         diagnostic()
     }
@@ -171,6 +192,7 @@ fn parse_expression<'a, I: Iterator<Item = &'a Token>>(tokens: &mut Peekable<I>)
                 lhs = Expression::FunctionCall {
                     callee: Box::new(lhs),
                     args,
+                    ty: None,
                 };
             }
         } else {
