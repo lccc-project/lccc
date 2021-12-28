@@ -140,7 +140,10 @@ impl XLangPlugin for CFrontend {
                         },
                     )));
                 }
-                Expression::String { str, ty: std::option::Option::Some(ty) } => {
+                Expression::String {
+                    str,
+                    ty: std::option::Option::Some(ty),
+                } => {
                     let mut str = str.clone();
                     str.push('\0'); // Null terminator
                     block.push(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::String {
