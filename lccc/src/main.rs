@@ -78,7 +78,6 @@ const XLANG_PLUGIN_DIR: &str = std::env!("xlang_plugin_dir");
 #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 fn main() {
     let mut target = target_tuples::from_env!("default_target");
-    println!("Target: {} ({})", target, target.get_name());
     let mut output = None;
 
     let mut tmpfiles = Vec::new();
@@ -244,7 +243,6 @@ fn main() {
             }
         }
         if let Some(frontend) = frontend {
-            println!("Frontend found for {}", file);
             let outputfile = if mode < Mode::Link {
                 if let Some(ref output) = output {
                     output.clone()
@@ -271,7 +269,6 @@ fn main() {
                 tmpfiles.push(tmpfile);
                 path
             };
-            println!("Output name for {}: {}", file, outputfile);
             file_pairs.push((file.clone(), outputfile.clone()));
             frontend.set_file_path(file_view);
             let mut read_adapter =
@@ -285,7 +282,6 @@ fn main() {
             };
             frontend.set_target(xtarget.clone());
             frontend.accept_ir(&mut file).unwrap();
-            dbg!(&file);
             if mode >= Mode::Asm {
                 codegen.set_target(xtarget.clone());
                 codegen.accept_ir(&mut file).unwrap();
@@ -375,8 +371,6 @@ fn main() {
                     }
                 }
 
-                println!("libdirs: {:?}", libdirs);
-
                 if link_output == LinkOutput::Pie {
                     link_args.push(String::from("-pie"));
                 }
@@ -401,8 +395,6 @@ fn main() {
                     }
                 }
 
-                println!("startfiles: {:?}", startfiles);
-
                 let mut endfiles = Vec::new();
                 for file in properties.endfiles {
                     let mut found = false;
@@ -422,8 +414,6 @@ fn main() {
                         panic!("Could not find endfile {}", file);
                     }
                 }
-
-                println!("endfiles: {:?}", endfiles);
 
                 match Command::new("ld")
                     .args(&link_args)

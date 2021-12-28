@@ -59,7 +59,6 @@ impl StringInterner {
             };
 
             let str = format!("__xlang_string.{}.{:016x}{}", xlang::version(), val, suffix);
-            println!("Inserted Symbol: {}", str);
             str
         })
         .clone()
@@ -181,7 +180,6 @@ impl X86CodegenState {
                 ValLocation::SpDisp(_) => todo!(),
                 ValLocation::Register(r) => {
                     let symname = self.strmap.borrow_mut().get_or_insert_string(utf8);
-                    println!("String {}", symname);
                     self.insns.push(X86Instruction::new(
                         X86Opcode::Lea,
                         vec![
@@ -385,7 +383,6 @@ impl X86CodegenPlugin {
         let mut syms = Vec::new();
 
         for Pair(str, sym) in &self.strings.borrow_mut().syms {
-            println!("String {:?}: {}", str, sym);
             let sym = X86TempSymbol(
                 sym.clone(),
                 Some(".rodata"),
@@ -413,7 +410,6 @@ impl X86CodegenPlugin {
         file.add_section(text).unwrap();
         file.add_section(rodata).unwrap();
         for sym in syms {
-            println!("Sym {}", sym.0);
             let secno = sym
                 .1
                 .and_then(|v| file.sections().enumerate().find(|(_, s)| &*s.name == v))
@@ -451,7 +447,6 @@ impl XLangPlugin for X86CodegenPlugin {
                     ty,
                     body: xlang::abi::option::Some(body),
                 }) => {
-                    println!("{}: {:?}", name, ty);
                     let mut state = X86CodegenState::init(
                         ty.clone(),
                         X86Mode::default_mode_for(self.target.as_ref().unwrap()).unwrap(),
