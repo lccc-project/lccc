@@ -57,14 +57,12 @@ fn main() -> std::io::Result<()> {
         file
     };
 
-    let mut cfg: Config;
-
-    if let Ok(mut file) = std::fs::File::open(file) {
+    let mut cfg: Config = if let Ok(mut file) = std::fs::File::open(file) {
         let mut content = String::new();
         file.read_to_string(&mut content)?;
-        cfg = toml::from_str(&content).unwrap();
+        toml::from_str(&content).unwrap()
     } else {
-        cfg = Config {
+        Config {
             paths: Paths {
                 installdirs: InstallDirs::defaults(),
                 lccc_dir: default_lccc_dir(),
@@ -73,8 +71,8 @@ fn main() -> std::io::Result<()> {
             targets: Targets {
                 default_target: Target::parse(&std::env::var("TARGET").unwrap()),
             },
-        };
-    }
+        }
+    };
 
     cfg.paths.installdirs.read_env();
     cfg.paths.installdirs = cfg.paths.installdirs.canonicalize().unwrap();

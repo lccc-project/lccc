@@ -1,3 +1,5 @@
+#![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -65,6 +67,7 @@ impl StringInterner {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 enum ValLocation {
     BpDisp(i32),
@@ -72,6 +75,7 @@ enum ValLocation {
     Register(X86Register),
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 enum LValue {
     Local(usize),
@@ -80,6 +84,7 @@ enum LValue {
     OpaquePointer(ValLocation),
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 enum VStackValue {
     Constant(Value),
@@ -88,6 +93,7 @@ enum VStackValue {
     OpaqueInt(ValLocation, ScalarType),
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 enum RegisterStatus {
     Allocated,
@@ -107,6 +113,7 @@ struct X86TempSymbol(
     SymbolKind,
 );
 
+#[allow(dead_code)]
 struct X86CodegenState {
     vstack: VecDeque<VStackValue>,
     strmap: Rc<RefCell<StringInterner>>,
@@ -139,6 +146,7 @@ impl X86CodegenState {
         }
     }
 
+    #[allow(dead_code)]
     fn allocate_register(&mut self, class: X86RegisterClass) -> X86Register {
         for (r, i) in self.regtab.iter_mut().enumerate() {
             if let Free = i {
@@ -368,7 +376,7 @@ impl X86CodegenPlugin {
             ty: SectionType::ProgBits,
             content: Vec::new(),
             relocs: Vec::new(),
-            ..Default::default()
+            ..Section::default()
         };
 
         let mut rodata = Section {
@@ -377,7 +385,7 @@ impl X86CodegenPlugin {
             ty: SectionType::ProgBits,
             content: Vec::new(),
             relocs: Vec::new(),
-            ..Default::default()
+            ..Section::default()
         };
 
         let mut syms = Vec::new();
@@ -391,7 +399,7 @@ impl X86CodegenPlugin {
                 SymbolKind::Local,
             );
             rodata.content.extend_from_slice(str.as_ref());
-            syms.push(sym)
+            syms.push(sym);
         }
 
         for (name, output) in self.fns.take().unwrap() {
@@ -413,7 +421,7 @@ impl X86CodegenPlugin {
             let secno = sym
                 .1
                 .and_then(|v| file.sections().enumerate().find(|(_, s)| &*s.name == v))
-                .map(|(s, _)| s as u32);
+                .map(|(s, _)| u32::try_from(s).unwrap());
             let fsym = file.get_or_create_symbol(&sym.0).unwrap();
             if secno.is_some() {
                 *fsym.section_mut() = secno;
@@ -436,8 +444,8 @@ impl XLangPlugin for X86CodegenPlugin {
         for Pair(path, member) in &ir.root.members {
             let name = &*path.components;
             let name = match name {
-                [xlang_struct::PathComponent::Text(t)] => &**t,
-                [xlang_struct::PathComponent::Root, xlang_struct::PathComponent::Text(t)] => &**t,
+                [xlang_struct::PathComponent::Text(t)]
+                | [xlang_struct::PathComponent::Root, xlang_struct::PathComponent::Text(t)] => &**t,
                 _ => panic!("Cannot access name component"),
             }
             .to_string();
