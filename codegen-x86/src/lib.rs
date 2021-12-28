@@ -191,7 +191,13 @@ impl X86CodegenState {
                             }),
                         ],
                     ));
-
+                    self.symbols.push(X86TempSymbol(
+                        symname,
+                        None,
+                        None,
+                        SymbolType::Null,
+                        SymbolKind::Local,
+                    ));
                     VStackValue::Pointer(LValue::OpaquePointer(tloc), ty)
                 }
             },
@@ -376,6 +382,7 @@ impl X86CodegenPlugin {
         let mut syms = Vec::new();
 
         for Pair(str, sym) in &self.strings.borrow_mut().syms {
+            println!("{}: {}", str.escape_default(), sym);
             let sym = X86TempSymbol(
                 sym.clone(),
                 Some(".rodata"),

@@ -189,6 +189,14 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
 
     #[allow(clippy::cast_possible_truncation)]
     pub fn get_or_insert_mut(&mut self, key: K, value: V) -> &mut V {
+        if self.buckets == 0 {
+            let ptr = self
+                .alloc
+                .allocate_zeroed(Layout::array::<HashMapSlot<K, V>>(16).unwrap())
+                .unwrap();
+            self.htab = unsafe { Unique::new_nonnull_unchecked(ptr.cast()) };
+            self.buckets = 16;
+        }
         loop {
             let mut hasher = self.hash.build_hasher();
             key.hash(&mut hasher);
@@ -225,6 +233,14 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
 
     #[allow(clippy::cast_possible_truncation)]
     pub fn get_or_insert_with_mut<F: FnOnce(&K) -> V>(&mut self, key: K, value: F) -> &mut V {
+        if self.buckets == 0 {
+            let ptr = self
+                .alloc
+                .allocate_zeroed(Layout::array::<HashMapSlot<K, V>>(16).unwrap())
+                .unwrap();
+            self.htab = unsafe { Unique::new_nonnull_unchecked(ptr.cast()) };
+            self.buckets = 16;
+        }
         loop {
             let mut hasher = self.hash.build_hasher();
             key.hash(&mut hasher);
@@ -265,6 +281,9 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
     where
         K: Borrow<Q>,
     {
+        if self.buckets == 0 {
+            return None;
+        }
         let mut hasher = self.hash.build_hasher();
         key.hash(&mut hasher);
         let hash = hasher.finish() as usize % self.buckets;
@@ -288,6 +307,9 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
     where
         K: Borrow<Q>,
     {
+        if self.buckets == 0 {
+            return None;
+        }
         let mut hasher = self.hash.build_hasher();
         key.hash(&mut hasher);
         let hash = hasher.finish() as usize % self.buckets;
