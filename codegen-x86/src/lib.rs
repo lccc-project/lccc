@@ -58,7 +58,9 @@ impl StringInterner {
                 format!("")
             };
 
-            format!("__xlang_string.{}.{:016x}{}", xlang::version(), val, suffix)
+            let str = format!("__xlang_string.{}.{:016x}{}", xlang::version(), val, suffix);
+            println!("Inserted Symbol: {}", str);
+            str
         })
         .clone()
     }
@@ -179,6 +181,7 @@ impl X86CodegenState {
                 ValLocation::SpDisp(_) => todo!(),
                 ValLocation::Register(r) => {
                     let symname = self.strmap.borrow_mut().get_or_insert_string(utf8);
+                    println!("String {}", symname);
                     self.insns.push(X86Instruction::new(
                         X86Opcode::Lea,
                         vec![
@@ -410,6 +413,7 @@ impl X86CodegenPlugin {
         file.add_section(text).unwrap();
         file.add_section(rodata).unwrap();
         for sym in syms {
+            println!("Sym {}", sym.0);
             let secno = sym
                 .1
                 .and_then(|v| file.sections().enumerate().find(|(_, s)| &*s.name == v))
@@ -417,10 +421,10 @@ impl X86CodegenPlugin {
             let fsym = file.get_or_create_symbol(&sym.0).unwrap();
             if secno.is_some() {
                 *fsym.section_mut() = secno;
+                *fsym.value_mut() = sym.2.map(|v| v as u128);
+                *fsym.symbol_type_mut() = sym.3;
+                *fsym.kind_mut() = sym.4;
             }
-            *fsym.value_mut() = sym.2.map(|v| v as u128);
-            *fsym.symbol_type_mut() = sym.3;
-            *fsym.kind_mut() = sym.4;
         }
 
         fmt.write_file(&mut x, &file)?;

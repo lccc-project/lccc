@@ -227,7 +227,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
                     .write(Pair(key, value));
             }
             bucket.ecount += 1;
-            return &mut unsafe { &mut *bucket.entries[bucket.ecount].as_mut_ptr() }.1;
+            return &mut unsafe { &mut *bucket.entries[bucket.ecount - 1].as_mut_ptr() }.1;
         }
     }
 
@@ -245,6 +245,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
             let mut hasher = self.hash.build_hasher();
             key.hash(&mut hasher);
             let hash = hasher.finish() as usize % self.buckets;
+            println!("Bucket {}", hash);
             // SAFETY:
             // htab is as long as the number of available buckets, thus this offset is guaranteed to be valid
             let bucket = unsafe { &mut *self.htab.as_ptr().add(hash) };
@@ -254,6 +255,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
                 let key_val = unsafe { &mut *bucket.entries.get_unchecked_mut(i).as_mut_ptr() };
 
                 if key_val.0.eq(&key) {
+                    println!("Found entry: {} @ {}", i, hash);
                     return &mut key_val.1;
                 }
             }
@@ -272,7 +274,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
                     .write(Pair(key, value));
             }
             bucket.ecount += 1;
-            return &mut unsafe { &mut *bucket.entries[bucket.ecount].as_mut_ptr() }.1;
+            return &mut unsafe { &mut *bucket.entries[bucket.ecount - 1].as_mut_ptr() }.1;
         }
     }
 
