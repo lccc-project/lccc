@@ -382,7 +382,7 @@ impl X86CodegenPlugin {
         let mut syms = Vec::new();
 
         for Pair(str, sym) in &self.strings.borrow_mut().syms {
-            println!("{}: {}", str.escape_default(), sym);
+            println!("String {:?}: {}", str, sym);
             let sym = X86TempSymbol(
                 sym.clone(),
                 Some(".rodata"),
