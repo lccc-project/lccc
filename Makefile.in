@@ -1,0 +1,38 @@
+# Makefile.in for lccc, toplevel
+
+## Variables
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+bindir = @bindir@
+libdir = @libdir@
+includedir = @includedir@
+sbindir = @sbindir@
+libexecdir = @libexecdir@
+datarootdir = @datarootdir@
+datadir = @datadir@
+mandir = @mandir@
+docdir = @docdir@
+infodir = @infodir@
+localedir = @localedir@
+sysconfdir = @sysconfdir@
+localstatedir = @localstatedir@
+runstatedir = @runstatedir@
+sharedstatedir = @sharedstatedir@
+lcccdir = @lcccdir@
+xlangplugindir = @xlangplugindir@
+
+target = @target@
+host = @host@
+build = @build@
+
+
+CC = @CC@
+RUSTC = @RUSTC@
+CC_FOR_BUILD = @CC_FOR_BUILD@
+RUSTC_FOR_BUILD = @RUSTC_FOR_BUILD@
+
+CFLAGS = @CFLAGS@
+RUSTFLAGS = @RUSTFLAGS@
+CFLAGS_FOR_BUILD = @CFLAGS_FOR_BUILD@
+RUSTFLAGS_FOR_BUILD = @RUSTFLAGS_FOR_BUILD@
+

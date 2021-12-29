@@ -375,6 +375,19 @@ fn main() {
                     link_args.push(String::from("-pie"));
                 }
 
+                let mut interp = None;
+
+                for libdir in &libdirs {
+                    let mut path = libdir.clone();
+                    path.push(properties.interp);
+                    if path.exists() {
+                        interp = Some(path);
+                        break;
+                    }
+                }
+
+                let interp = interp.unwrap();
+
                 let mut startfiles = Vec::new();
                 for file in properties.startfiles {
                     let mut found = false;
@@ -418,7 +431,7 @@ fn main() {
                 match Command::new("ld")
                     .args(&link_args)
                     .arg("-dynamic-linker")
-                    .arg(properties.interp)
+                    .arg(interp)
                     .args(
                         libdirs
                             .iter()

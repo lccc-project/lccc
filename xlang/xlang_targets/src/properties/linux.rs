@@ -35,7 +35,7 @@ pub static X86_64_LINUX_GNU: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib64/ld-linux-x86-64.so.2"),
+    interp: const_sv!("ld-linux-x86-64.so.2"),
 };
 
 pub static X86_64_LINUX_GNUX32: TargetProperties = TargetProperties {
@@ -175,7 +175,7 @@ pub static X86_64V4_LINUX_GNUX32: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib64/ld-linux-x32.so.2"),
+    interp: const_sv!("/libx32/ld-linux-x32.so.2"),
 };
 
 pub static I386_LINUX_GNU: TargetProperties = TargetProperties {
@@ -195,7 +195,7 @@ pub static I386_LINUX_GNU: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib64/ld-linux.so.2"),
+    interp: const_sv!("/lib32/ld-linux.so.2"),
 };
 
 pub static I486_LINUX_GNU: TargetProperties = TargetProperties {
@@ -215,7 +215,7 @@ pub static I486_LINUX_GNU: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib64/ld-linux.so.2"),
+    interp: const_sv!("/lib32/ld-linux.so.2"),
 };
 
 pub static I586_LINUX_GNU: TargetProperties = TargetProperties {
@@ -235,7 +235,7 @@ pub static I586_LINUX_GNU: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib64/ld-linux.so.2"),
+    interp: const_sv!("/lib32/ld-linux.so.2"),
 };
 
 pub static I686_LINUX_GNU: TargetProperties = TargetProperties {
@@ -255,5 +255,5 @@ pub static I686_LINUX_GNU: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib64/ld-linux.so.2"),
+    interp: const_sv!("/lib32/ld-linux.so.2"),
 };
