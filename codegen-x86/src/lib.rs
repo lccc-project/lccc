@@ -1,5 +1,7 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
 
+pub mod callconv;
+
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -83,6 +85,10 @@ enum ValLocation {
     BpDisp(i32),
     SpDisp(i32),
     Register(X86Register),
+    RegPair {
+        areg: X86Register,
+        dreg: X86Register,
+    },
 }
 
 #[allow(dead_code)]
@@ -171,7 +177,9 @@ impl X86CodegenState {
     fn move_value(&mut self, val: VStackValue, target_loc: ValLocation) -> VStackValue {
         match val {
             VStackValue::Constant(Value::Integer { ty, val }) => match target_loc {
-                ValLocation::BpDisp(_) | ValLocation::SpDisp(_) => todo!(),
+                ValLocation::BpDisp(_) | ValLocation::SpDisp(_) | ValLocation::RegPair { .. } => {
+                    todo!()
+                }
                 ValLocation::Register(r) => {
                     if val == 0 {
                         self.insns.push(X86Instruction::new(
@@ -196,7 +204,9 @@ impl X86CodegenState {
                 utf8,
                 ty: Type::Pointer(ty),
             }) => match target_loc {
-                ValLocation::BpDisp(_) | ValLocation::SpDisp(_) => todo!(),
+                ValLocation::BpDisp(_) | ValLocation::SpDisp(_) | ValLocation::RegPair { .. } => {
+                    todo!()
+                }
                 ValLocation::Register(r) => {
                     let symname = self.strmap.borrow_mut().get_or_insert_string(utf8);
                     self.insns.push(X86Instruction::new(
@@ -516,11 +526,12 @@ impl XLangCodegen for X86CodegenPlugin {
     }
 }
 
+xlang::host::rustcall! {
 #[no_mangle]
-pub extern "C" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
+pub extern "rustcall" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
     DynBox::unsize_box(Box::new(X86CodegenPlugin {
         fns: Some(std::collections::HashMap::new()),
         target: None,
         strings: Rc::new(RefCell::new(StringInterner::new())),
     }))
-}
+}}

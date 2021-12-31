@@ -194,6 +194,7 @@ name = "xlang"
 version = "0.1.0"
 dependencies = [
  "target-tuples 0.4.1",
+ "xlang-host",
  "xlang_abi",
  "xlang_interface",
  "xlang_struct",
@@ -218,6 +219,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "xlang_callconv"
+version = "0.1.0"
+dependencies = [
+ "xlang_abi",
+ "xlang_struct",
+ "xlang_targets",
 ]
 
 [[package]]

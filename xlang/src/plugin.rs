@@ -1,3 +1,10 @@
+//! Defines traits used by xlang plugins, frontends, and backends.
+//! xlang plugins provide an interface to the lccc program and other drivers, defined by the traits here. This interface is stable in both API and ABI (either changes may be made only in a Semver major version)
+//! xlang plugins use the system suffix for dynamic libraries (.so on unix, .dll on windows, and .dylib on macos) and are built and loaded as such. On dll platforms, an import library is not necessary and is unused.
+//!
+//! xlang plugins should be installed to the xlang plugin directory
+//!
+
 use xlang_abi::{
     io::{self, Read, Write},
     prelude::v1::*,

@@ -252,8 +252,10 @@ impl XLangPlugin for CFrontend {
     fn set_target(&mut self, _targ: xlang::targets::Target) {}
 }
 
-#[allow(clippy::missing_const_for_fn)]
-#[no_mangle]
-pub extern "C" fn xlang_frontend_main() -> DynBox<dyn XLangFrontend> {
-    DynBox::unsize_box(Box::new(CFrontend::new()))
+xlang::host::rustcall! {
+    #[allow(clippy::missing_const_for_fn)]
+    #[no_mangle]
+    pub extern "rustcall" fn xlang_frontend_main() -> DynBox<dyn XLangFrontend> {
+        DynBox::unsize_box(Box::new(CFrontend::new()))
+    }
 }

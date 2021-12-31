@@ -2,6 +2,7 @@
 mod argparse;
 
 use crate::argparse::{parse_args, ArgSpec, TakesArg};
+use lccc::{LinkOutput, Mode};
 use std::fs::File;
 use std::io::ErrorKind;
 use std::ops::Deref;
@@ -13,67 +14,6 @@ use xlang::abi::string::StringView;
 use xlang::plugin::{XLangCodegen, XLangFrontend, XLangPlugin};
 use xlang::prelude::v1::*;
 use xlang_host::dso::Handle;
-
-static FRONTENDS: [&str; 1] = ["c"];
-static CODEGENS: [&str; 1] = ["x86"];
-type FrontendInit = extern "C" fn() -> DynBox<dyn XLangFrontend>;
-type CodegenInit = extern "C" fn() -> DynBox<dyn XLangCodegen>;
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Mode {
-    Preprocess,
-    TypeCheck,
-    Xir,
-    Asm,
-    CompileOnly,
-    Link,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum LinkOutput {
-    Shared,
-    Static,
-    Executable,
-    Pie,
-    Manifest,
-}
-
-fn find_libraries(search_paths: &[PathBuf], names: &[&str], prefix: &str) -> Vec<PathBuf> {
-    let mut result = Vec::new();
-    for &library in names {
-        let library_name = if cfg!(windows) {
-            prefix.to_owned() + "_" + library + ".dll"
-        } else if cfg!(target_os = "linux") {
-            "lib".to_owned() + prefix + "_" + library + ".so"
-        } else if cfg!(target_os = "macos") {
-            "lib".to_owned() + prefix + "_" + library + ".dylib"
-        } else {
-            panic!("unrecognized target OS; can't get frontend library name")
-        };
-
-        let mut path = None;
-        for search_path in search_paths {
-            let mut library_path = search_path.clone();
-            library_path.push(&library_name);
-            if library_path.exists() {
-                path = Some(library_path);
-                break;
-            }
-        }
-
-        if let Some(path) = path {
-            result.push(path);
-        } else {
-            eprintln!(
-                "warning: couldn't locate library to load for {} \"{}\"",
-                prefix, library
-            );
-        }
-    }
-    result
-}
-
-const XLANG_PLUGIN_DIR: &str = std::env!("xlang_plugin_dir");
 
 #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 fn main() {
@@ -179,9 +119,9 @@ fn main() {
         search_paths.push(executable_path.parent().unwrap().to_owned());
     }
 
-    search_paths.push(XLANG_PLUGIN_DIR.into());
+    search_paths.push(lccc::XLANG_PLUGIN_DIR.into());
 
-    let frontend_paths = find_libraries(&search_paths, &FRONTENDS, "frontend");
+    let frontend_paths = lccc::find_libraries(&search_paths, &lccc::FRONTENDS, "frontend");
 
     let mut frontend_handles = Vec::new();
     for frontend_path in &frontend_paths {
@@ -190,13 +130,13 @@ fn main() {
 
     let mut frontends = Vec::new();
     for frontend_handle in &frontend_handles {
-        let initializer: FrontendInit =
+        let initializer: lccc::FrontendInit =
             unsafe { frontend_handle.function_sym("xlang_frontend_main") }
                 .expect("frontend library missing required entry point");
         frontends.push(initializer());
     }
 
-    let codegen_paths = find_libraries(&search_paths, &CODEGENS, "codegen");
+    let codegen_paths = lccc::find_libraries(&search_paths, &lccc::CODEGENS, "codegen");
 
     let mut codegen_handles = Vec::new();
     for codegen_path in &codegen_paths {
@@ -204,8 +144,9 @@ fn main() {
     }
     let mut codegens = Vec::new();
     for codegen_handle in &codegen_handles {
-        let initializer: CodegenInit = unsafe { codegen_handle.function_sym("xlang_backend_main") }
-            .expect("frontend library missing required entry point");
+        let initializer: lccc::CodegenInit =
+            unsafe { codegen_handle.function_sym("xlang_backend_main") }
+                .expect("frontend library missing required entry point");
         codegens.push(initializer());
     }
 

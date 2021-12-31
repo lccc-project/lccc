@@ -1,0 +1,11 @@
+[package]
+name = "xlang_callconv"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+xlang_struct = {path="../xlang_struct"}
+xlang_targets = {path="../xlang_targets"}
+xlang_abi = {path="../xlang_abi"}

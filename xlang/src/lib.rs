@@ -7,6 +7,7 @@ pub mod visit;
 
 use abi::string::StringView;
 pub use xlang_abi as abi;
+pub use xlang_host as host;
 pub use xlang_struct as ir;
 pub use xlang_targets as targets;
 

@@ -12,3 +12,4 @@ xlang_abi = {path="xlang_abi"}
 xlang_interface = {path="xlang_interface"}
 xlang_struct = {path="xlang_struct"}
 xlang_targets = {path="xlang_targets"}
+xlang-host = {path="xlang-host"}
