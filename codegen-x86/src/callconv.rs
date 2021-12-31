@@ -68,12 +68,16 @@ pub static SYSV64: X86CallConv = X86CallConv {
     salign: 16,
 };
 
+#[must_use]
+///
+/// # Panics
+/// if the target is not a known x86 target
 pub fn get_calling_convention(tag: xlang::ir::Abi, target: &Target) -> &'static X86CallConv {
     target_tuples::match_targets! {
         match (target){
             x86_64-*-windows-msvc => match tag{
-                xlang_struct::Abi::Vectorcall => todo!(),
-                _ => todo!()
+                xlang_struct::Abi::Vectorcall => todo!("vectorcall"),
+                _ => todo!("win64")
             },
             x86_64-*-* => &SYSV64,
 
