@@ -3,9 +3,12 @@ name = "xlang_abi"
 version = "0.1.0"
 authors = ["Connor Horman <chorman64@gmail.com>"]
 edition = "2018"
+license = "MIT OR Apache-2.0"
+description = """
+ABI safe interfaces used by xlang
+"""
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-xlang_abi_macro = {path = "../xlang_abi_macro"}
-xlang_host = {path="../xlang_host"}
+xlang_host = {path="../xlang_host", version="0.1.0"}

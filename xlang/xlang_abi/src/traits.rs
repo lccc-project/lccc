@@ -196,8 +196,6 @@ pub unsafe trait AbiSafeVTable<T: ?Sized>: Sized {
 #[allow(clippy::doc_markdown)]
 pub unsafe trait TrustedVTable<T: ?Sized>: AbiSafeVTable<T> {}
 
-pub use xlang_abi_macro::*;
-
 use crate::alloc::{Allocator, XLangAlloc};
 
 /// A type that wraps a raw pointer to an abi safe trait object

@@ -37,6 +37,3 @@ pub mod span;
 pub mod string;
 /// Implementation of `std::string::String` that uses [`alloc::Allocator`], and is ABI safe.
 pub mod vec;
-
-#[doc(hidden)] // TODO: unfinished macro, should not be used
-pub use xlang_abi_macro::xlang_trait;
