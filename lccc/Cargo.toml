@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 xlang = {path="../xlang"}
-xlang-host = {path="../xlang/xlang-host"}
+xlang_host = {path="../xlang/xlang_host"}
 target-tuples = "0.5.3"
 temp-file = "0.1"
 

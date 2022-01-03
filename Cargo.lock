@@ -98,7 +98,7 @@ dependencies = [
  "temp-file",
  "toml",
  "xlang",
- "xlang-host",
+ "xlang_host",
 ]
 
 [[package]]
@@ -194,23 +194,19 @@ name = "xlang"
 version = "0.1.0"
 dependencies = [
  "target-tuples 0.4.1",
- "xlang-host",
  "xlang_abi",
+ "xlang_host",
  "xlang_interface",
  "xlang_struct",
  "xlang_targets",
 ]
 
 [[package]]
-name = "xlang-host"
-version = "0.1.0"
-
-[[package]]
 name = "xlang_abi"
 version = "0.1.0"
 dependencies = [
- "xlang-host",
  "xlang_abi_macro",
+ "xlang_host",
 ]
 
 [[package]]
@@ -223,11 +219,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "xlang_host"
+version = "0.1.0"
+
+[[package]]
 name = "xlang_interface"
 version = "0.1.0"
 dependencies = [
- "xlang-host",
  "xlang_abi",
+ "xlang_host",
  "xlang_targets",
 ]
 

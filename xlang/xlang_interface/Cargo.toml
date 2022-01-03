@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 xlang_abi = {path="../xlang_abi"}
 xlang_targets = {path="../xlang_targets"}
-xlang-host = {path="../xlang-host"}
+xlang_host = {path="../xlang_host"}
 
 [lib]
 crate-type=["cdylib"]
