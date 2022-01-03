@@ -338,7 +338,7 @@ impl<'a> StringView<'a> {
     /// ## Safety
     /// The behaviour is undefined if any of the following constraints are violated:
     /// * Neither begin nor end may be null pointers or deallocated pointers
-    /// * For 'a, the range [begin,end) must be a range that is valid for reads
+    /// * For 'a, the range offset_from[begin,end) must be a range that is valid for reads
     /// * The text in the range [begin,end) must be valid UTF-8
     #[must_use]
     pub const unsafe fn from_raw_parts(begin: *const u8, end: *const u8) -> Self {
@@ -348,10 +348,20 @@ impl<'a> StringView<'a> {
             phantom: PhantomData,
         }
     }
+
+    /// Determines the length of the string view
+    #[must_use]
+    #[allow(clippy::cast_sign_loss)] // offset_from can never be negative
+    pub fn len(&self) -> usize {
+        unsafe { self.begin.as_ptr().offset_from(self.end.as_ptr()) as usize }
+    }
 }
 
 #[doc(hidden)]
 pub use str as __rust_str;
+
+#[doc(hidden)]
+pub use core::ptr::addr_of as __addr_of;
 
 ///
 /// Constructs a [`StringView`] in a constant context.
@@ -390,9 +400,9 @@ macro_rules! const_sv{
                 }
 
                 #[repr(C)]
-                union AsPacked<'a, Arr, T> {
+                union AsPacked< Arr, T> {
                     start: *const T,
-                    packed: &'a ArrayAndEmpty<Arr>,
+                    packed: *const ArrayAndEmpty<Arr>,
                 }
 
                 struct GetEnd<T>(::core::marker::PhantomData<T>);
@@ -403,13 +413,10 @@ macro_rules! const_sv{
                         use ::std::mem::size_of;
                         let same_size = size_of::<ArrayAndEmpty<T::Arr>>() != size_of::<T::Arr>();
                         [(/* no padding allowed */)][same_size as usize];
-
-                        AsPacked::<T::Arr, T::Elem> {
-                            start: T::SLICE.as_ptr(),
-                        }
-                        .packed
-                        .empty
-                        .as_ptr() as *const T::Elem
+                        let start = T::SLICE.as_ptr();
+                        let packed = AsPacked::<T::Arr,T::Elem>{start}.packed;
+                        let end = $crate::string::__addr_of!((*packed).empty);
+                        end as *const T::Elem
                     };
                 }
 
@@ -458,6 +465,7 @@ mod test {
     #[test]
     pub fn test_const_sv() {
         const FOO: StringView = crate::const_sv!("Foo");
+        assert_eq!(FOO.len(), 3);
         assert_eq!(&*FOO, "Foo");
     }
 
