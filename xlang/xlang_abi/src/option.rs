@@ -1,7 +1,16 @@
+/// An abi safe version of [`std::option::Option`].
+///
+/// ## FFI Behaviour
+///
+/// This type has fixed ABI for all `T` that has fixed ABI. This means that [`self::Option`] is always FFI safe (provided `T` is). However, this costs a number of things.
+/// In particular, niche optimization does not occur for this type. If `T` is known to be a type guaranteed to have niche optimization (such as a reference, function pointer, or `std::boxed::Box`),
+/// then [`std::option::Option`] should be used instead.
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Option<T> {
+    /// None
     None,
+    /// Some(T)
     Some(T),
 }
 
@@ -34,16 +43,19 @@ impl<T> From<Option<T>> for core::option::Option<T> {
 }
 
 impl<T> Option<T> {
+    /// Checks if `self` is `Some`.
     #[must_use]
     pub const fn is_some(&self) -> bool {
         matches!(self, Some(_))
     }
 
+    /// Checks if `self` is `None`.
     #[must_use]
     pub const fn is_none(&self) -> bool {
         matches!(self, None)
     }
 
+    /// Checks if `self` contains a value that compares equal to `val`
     pub fn contains<U>(&self, val: &U) -> bool
     where
         U: PartialEq<T>,
@@ -54,6 +66,10 @@ impl<T> Option<T> {
         }
     }
 
+    /// Unwraps self into a value of type `T` if it is `Some`.
+    ///
+    /// # Panics
+    /// panics if self is `None`
     #[allow(clippy::missing_const_for_fn)]
     pub fn unwrap(self) -> T {
         match self {
@@ -63,6 +79,10 @@ impl<T> Option<T> {
     }
 
     #[allow(clippy::missing_const_for_fn)]
+    /// Unwraps self into a value of type `T` if it is `Some`.
+    ///
+    /// # Panics
+    /// panics if with a message containing `diag` if self is `None`.
     pub fn expect(self, diag: &str) -> T {
         match self {
             Some(val) => val,
@@ -71,6 +91,7 @@ impl<T> Option<T> {
     }
 
     #[allow(clippy::missing_const_for_fn)]
+    /// Unwraps self into a value of type `T` if it is `Some`, or returns the default value otherwise.
     pub fn unwrap_or(self, default: T) -> T {
         match self {
             Some(val) => val,
@@ -78,6 +99,7 @@ impl<T> Option<T> {
         }
     }
 
+    /// Unwraps self into a value of type `T` if it is `Some`, or returns the result of calling `op` otherwise.
     #[allow(clippy::missing_const_for_fn)]
     pub fn unwrap_or_else<F: FnOnce() -> T>(self, op: F) -> T {
         match self {
@@ -86,6 +108,10 @@ impl<T> Option<T> {
         }
     }
 
+    /// Unwraps self into a value of type `T`
+    ///
+    /// # Safety
+    /// self must not be `None`.
     #[allow(clippy::missing_const_for_fn)]
     #[inline]
     pub unsafe fn unwrap_unchecked(self) -> T {
@@ -95,13 +121,14 @@ impl<T> Option<T> {
         }
     }
 
+    /// Maps `self` into an Option containing a reference to the inner value if `self` is `Some` or `None` otherwise
     pub const fn as_ref(&self) -> Option<&T> {
         match self {
             Some(x) => Some(x),
             None => None,
         }
     }
-
+    /// Maps `self` into an Option containing a mutable reference to the inner value if `self` is `Some` or `None` otherwise
     pub fn as_mut(&mut self) -> Option<&mut T> {
         match self {
             Some(x) => Some(x),
@@ -109,6 +136,7 @@ impl<T> Option<T> {
         }
     }
 
+    /// Maps `self` into an Option dereferencing the inner value if `self` is `Some`, or `None` otherwise.
     pub fn as_deref(&self) -> Option<&<T as Deref>::Target>
     where
         T: Deref,
@@ -119,12 +147,40 @@ impl<T> Option<T> {
         }
     }
 
+    /// Maps `self` into an Option mutably dereferencing the inner value if `self` is `Some`, or `None` otherwise.
     pub fn as_deref_mut(&mut self) -> Option<&<T as Deref>::Target>
     where
         T: DerefMut,
     {
         match self {
             Some(x) => Some(x),
+            None => None,
+        }
+    }
+
+    /// Maps self using `f`.
+    pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> Option<U> {
+        match self {
+            Some(x) => Some(f(x)),
+            None => None,
+        }
+    }
+
+    /// Maps self using `f`, and flattens the result
+    pub fn flat_map<U, F: FnOnce(T) -> Option<U>>(self, f: F) -> Option<U> {
+        match self {
+            Some(x) => f(x),
+            None => None,
+        }
+    }
+}
+
+impl<T> Option<Option<T>> {
+    /// Flattens self by removing a single level of [`Option`]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn flatten(self) -> Option<T> {
+        match self {
+            Some(x) => x,
             None => None,
         }
     }

@@ -7,6 +7,7 @@ use std::{
     ptr::NonNull,
 };
 
+/// An ABI Safe reference to a dynamically sized contiguous region of values
 #[repr(C)]
 pub struct Span<'a, T> {
     begin: NonNull<T>,
@@ -23,6 +24,7 @@ impl<T> Clone for Span<'_, T> {
 impl<T> Copy for Span<'_, T> {}
 
 impl<'a, T> Span<'a, T> {
+    /// Returns a Span with length of `0`
     #[must_use]
     pub const fn empty() -> Self {
         Self {
@@ -32,6 +34,7 @@ impl<'a, T> Span<'a, T> {
         }
     }
 
+    /// Returns a Span over the elements of `x`
     #[must_use]
     pub const fn new(x: &'a [T]) -> Self {
         Self {
@@ -79,6 +82,7 @@ impl<'a, T> Span<'a, T> {
         }
     }
 
+    /// Converts self into a slice of its elements with the same lifetime
     #[must_use]
     pub fn into_slice(self) -> &'a [T] {
         unsafe { core::slice::from_raw_parts(self.begin.as_ptr(), self.len) }
@@ -200,6 +204,7 @@ where
 
 impl<T> Eq for Span<'_, T> where [T]: Eq {}
 
+/// An abi safe mutable span to a contiguous, dynamically sized, region of values
 #[allow(clippy::module_name_repetitions)]
 #[repr(C)]
 pub struct SpanMut<'a, T> {
@@ -360,6 +365,7 @@ impl<T: ?Sized> Hack for PhantomData<T> {
 }
 
 impl<'a, T> SpanMut<'a, T> {
+    /// Returns a mutable span over an empty range
     #[must_use]
     pub const fn empty() -> Self {
         Self {
@@ -369,6 +375,7 @@ impl<'a, T> SpanMut<'a, T> {
         }
     }
 
+    /// Returns a span over the elements of `x`
     #[must_use]
     pub fn new(x: &'a mut [T]) -> Self {
         Self {
@@ -378,6 +385,7 @@ impl<'a, T> SpanMut<'a, T> {
         }
     }
 
+    /// Reborws self into an immutable span for a shorter lifetime
     #[must_use]
     pub const fn reborrow(&self) -> Span<'_, T> {
         Span {
@@ -387,6 +395,7 @@ impl<'a, T> SpanMut<'a, T> {
         }
     }
 
+    /// Reborrows self into a mutable span for a shorter lifetime
     pub fn reborrow_mut(&mut self) -> SpanMut<'_, T> {
         SpanMut {
             begin: self.begin,
@@ -455,14 +464,28 @@ impl<'a, T> SpanMut<'a, T> {
         }
     }
 
+    ///
+    /// Converts self into an (immutable) slice over its region
     #[must_use]
     pub fn into_slice(self) -> &'a [T] {
         unsafe { core::slice::from_raw_parts(self.begin.as_ptr(), self.len) }
     }
 
+    /// Converts self into a (mutable) slice over its region
     #[must_use]
     pub fn into_slice_mut(self) -> &'a mut [T] {
         unsafe { core::slice::from_raw_parts_mut(self.begin.as_ptr(), self.len) }
+    }
+
+    /// Downgrades `self` into an immutable span over the same region. Note that this consumes `self`.
+    /// If an immutable region is needed but self should not be consumed, use [`SpanMut::reborrow`] instead.
+    #[must_use]
+    pub const fn into_span(self) -> Span<'a, T> {
+        Span {
+            begin: self.begin,
+            len: self.len,
+            phantom: PhantomData,
+        }
     }
 }
 
@@ -475,6 +498,7 @@ where
     }
 }
 
+/// Produces an immutable span over a static (promoted) array of constant exressions
 #[macro_export]
 macro_rules! span{
     [$($expr:expr),* $(,)?] => {

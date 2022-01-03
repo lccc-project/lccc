@@ -1,7 +1,7 @@
 pub use std::alloc::GlobalAlloc;
 use std::{
+    convert::TryFrom,
     hash::{Hash, Hasher},
-    mem::MaybeUninit,
     ptr::NonNull,
 };
 
@@ -12,48 +12,89 @@ use crate::{
 
 #[cfg(not(test))]
 extern "C" {
-    pub fn xlang_allocate(size: usize) -> *mut core::ffi::c_void;
-    pub fn xlang_allocate_aligned(size: usize, align: usize) -> *mut core::ffi::c_void;
-    pub fn xlang_deallocate(ptr: *mut core::ffi::c_void, size: usize);
-    pub fn xlang_deallocate_aligned(ptr: *mut core::ffi::c_void, size: usize, align: usize);
-    pub fn xlang_on_allocation_failure(size: usize, align: usize) -> !;
+    /// Function that allocates memory suitable for storing an object of size `size`, with at least the maximum fundamental alignment for that size.
+    ///
+    /// The function permits allocations of size `0`, returning a pointer that is aligned to at least the maximum fundamental alignment for the platform.
+    ///
+    /// # Errors
+    /// On allocation failure, or other (unspecified) errors, returns a null pointer. Allocations of size `0` always succeed
+    ///
+    /// # Safety
+    /// size, rounded to the next multiple of the alignment used by this function, must not be greater than `isize::MAX`
+    pub fn xlang_allocate(size: xlang_host::primitives::size_t) -> *mut core::ffi::c_void;
+    /// Function that allocates memory suitable for storing an object of size `size`, with at least the alignment given by `align`.
+    ///
+    /// This function permits allocations of size `0`, returning a pointer that is aligned to at least the given alignment
+    ///
+    /// # Errors
+    /// On allocation failure, or other (unspecified) errors, returns a null pointer. Allocations of size `0` always succeed
+    ///
+    /// # Safety
+    /// `align` must be a power of two. size, rounded to the next multiple of `align`, must not be greater than `isize::MAX`
+    pub fn xlang_allocate_aligned(
+        size: xlang_host::primitives::size_t,
+        align: xlang_host::primitives::size_t,
+    ) -> *mut core::ffi::c_void;
+    /// Deallocates memory allocated using [`xlang_allocate`]
+    ///
+    /// # Safety
+    /// ptr must be a null pointer, or have been allocated using [`xlang_allocate`] with `size`
+    pub fn xlang_deallocate(ptr: *mut core::ffi::c_void, size: xlang_host::primitives::size_t);
+    /// Deallocates memory allocated using [`xlang_allocate`]
+    ///
+    /// # Safety
+    /// ptr must be a null pointer, or have been allocated using [`xlang_allocate_aligned`] with `size` and `align`
+    pub fn xlang_deallocate_aligned(
+        ptr: *mut core::ffi::c_void,
+        size: xlang_host::primitives::size_t,
+        align: xlang_host::primitives::size_t,
+    );
+
+    /// Function to call when allocation fails.
+    pub fn xlang_on_allocation_failure(
+        size: xlang_host::primitives::size_t,
+        align: xlang_host::primitives::size_t,
+    ) -> !;
 }
 
 #[cfg(test)]
 #[no_mangle]
-pub extern "C" fn xlang_allocate(size: usize) -> *mut core::ffi::c_void {
+pub unsafe extern "C" fn xlang_allocate(
+    size: xlang_host::primitives::size_t,
+) -> *mut core::ffi::c_void {
     if size == 0 {
         return 32usize as *mut core::ffi::c_void;
     }
-    unsafe {
-        xlang_allocate_aligned(
-            size,
-            if size > 32 {
-                32
-            } else {
-                size.next_power_of_two()
-            },
-        )
-    }
+    xlang_allocate_aligned(
+        size,
+        if size > 32 {
+            32
+        } else {
+            size.next_power_of_two()
+        },
+    )
 }
 
 #[cfg(test)]
 #[no_mangle]
 pub unsafe extern "C" fn xlang_allocate_aligned(
-    size: usize,
-    align: usize,
+    size: xlang_host::primitives::size_t,
+    align: xlang_host::primitives::size_t,
 ) -> *mut core::ffi::c_void {
     if size == 0 {
         return align as *mut core::ffi::c_void;
     }
     let size = size + (align - size % align) % align;
-    let layout = std::alloc::Layout::from_size_align_unchecked(size, align);
+    let layout = std::alloc::Layout::from_size_align_unchecked(size as usize, align as usize);
     std::alloc::alloc(layout).cast::<_>()
 }
 
 #[cfg(test)]
 #[no_mangle]
-pub unsafe extern "C" fn xlang_deallocate(ptr: *mut core::ffi::c_void, size: usize) {
+pub unsafe extern "C" fn xlang_deallocate(
+    ptr: *mut core::ffi::c_void,
+    size: xlang_host::primitives::size_t,
+) {
     if size == 0 {
         return;
     }
@@ -75,20 +116,23 @@ pub unsafe extern "C" fn xlang_deallocate(ptr: *mut core::ffi::c_void, size: usi
 #[no_mangle]
 pub unsafe extern "C" fn xlang_deallocate_aligned(
     ptr: *mut core::ffi::c_void,
-    size: usize,
-    align: usize,
+    size: xlang_host::primitives::size_t,
+    align: xlang_host::primitives::size_t,
 ) {
     if size == 0 || ptr.is_null() {
         return;
     }
     let size = size + (align - size % align) % align;
-    let layout = std::alloc::Layout::from_size_align_unchecked(size, align);
+    let layout = std::alloc::Layout::from_size_align_unchecked(size as usize, align as usize);
     std::alloc::dealloc(ptr.cast::<_>(), layout);
 }
 
 #[cfg(test)]
 #[no_mangle]
-pub extern "C" fn xlang_on_allocation_failure(size: usize, align: usize) -> ! {
+pub extern "C" fn xlang_on_allocation_failure(
+    size: xlang_host::primitives::size_t,
+    align: xlang_host::primitives::size_t,
+) -> ! {
     eprintln!(
         "Failed to allocate with size: {}, and alignment: {}",
         size, align
@@ -96,6 +140,7 @@ pub extern "C" fn xlang_on_allocation_failure(size: usize, align: usize) -> ! {
     std::process::abort()
 }
 
+/// An abi safe version of the [`std::alloc::Layout`] type
 #[repr(C)]
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct Layout {
@@ -103,6 +148,7 @@ pub struct Layout {
     align: usize,
 }
 
+/// Error returned when an invalid Layout is produced
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct LayoutError(());
 
@@ -114,7 +160,13 @@ impl core::fmt::Display for LayoutError {
 
 impl std::error::Error for LayoutError {}
 
+#[allow(
+    clippy::checked_conversions,
+    clippy::missing_const_for_fn,
+    clippy::missing_panics_doc
+)] // All of the panics are impossible, or result from a precondition violation (and thus cannot happen)
 impl Layout {
+    /// Produces the layout for T
     #[must_use]
     pub const fn new<T>() -> Self {
         Self {
@@ -123,18 +175,38 @@ impl Layout {
         }
     }
 
+    /// Produces a layout with the given size and alignment.
+    ///
+    /// # Errors
+    /// A [`LayoutError`] is returned if any of the following conditions do not hold:
+    /// * `align` is a power of two
+    /// * `size`, rounded up to the next multiple of align, does not exceed [`isize::MAX`]
     pub const fn from_size_align(size: usize, align: usize) -> Result<Self, LayoutError> {
-        match (size.overflowing_add(size % align), align) {
-            ((_, true), align) if align.is_power_of_two() => Ok(Self { size, align }),
+        match (
+            (size).overflowing_add((align - (size % align)) % align),
+            align,
+        ) {
+            ((x, true), align) if x < (isize::MAX as usize) && align.is_power_of_two() => {
+                Ok(Self { size, align })
+            }
             _ => Err(LayoutError(())),
         }
     }
 
+    ///
+    /// Produces a layout with the given size and alignment, without checking any preconditions
+    ///
+    /// # Safety
+    /// The following conditions must hold:
+    /// * `align` is a power of two
+    /// * `size`, rounded up to the next multiple of align, does not exceed [`isize::MAX`]
     #[must_use]
     pub const unsafe fn from_size_align_unchecked(size: usize, align: usize) -> Self {
         Self { size, align }
     }
 
+    /// Computes the layout of a given dynamically sized value
+    #[must_use]
     pub fn from_val<T: ?Sized>(x: &T) -> Self {
         Self {
             size: core::mem::size_of_val(x),
@@ -142,6 +214,8 @@ impl Layout {
         }
     }
 
+    /// Computes the layout of a given [`AbiSafeTrait`] object
+    #[must_use]
     pub fn from_dyn<T: ?Sized + AbiSafeTrait>(a: &dyn DynPtrSafe<T>) -> Self {
         Self {
             size: a.size_of_val(),
@@ -149,37 +223,57 @@ impl Layout {
         }
     }
 
-    pub const fn array<T>(x: usize) -> Result<Self, LayoutError> {
+    /// Computes the layout of an array of x values of type `T`.
+    ///
+    /// ## Errors
+    /// Returns a [`LayoutError`] if x, times the size of T, exceeds [`isize::MAX`]
+    #[allow(clippy::cast_sign_loss)]
+    pub fn array<T>(x: usize) -> Result<Self, LayoutError> {
         match (
-            core::mem::size_of::<T>().checked_mul(x),
+            (isize::try_from(core::mem::size_of::<T>()).unwrap())
+                .checked_mul(isize::try_from(x).map_err(|_| LayoutError(()))?),
             core::mem::align_of::<T>(),
         ) {
-            (Some(size), align) => Ok(Self { size, align }),
+            (Some(size), align) => Ok(Self {
+                // Can't be negative becacuse of `checked_mul`
+                size: size as usize,
+                align,
+            }),
             (None, _) => Err(LayoutError(())),
         }
     }
 
+    /// Returns the size of this layout
     #[must_use]
     pub const fn size(&self) -> usize {
         self.size
     }
 
+    /// Returns the alignment of this layout
     #[must_use]
     pub const fn align(&self) -> usize {
         self.align
     }
 
+    /// Rounds the size of Self up to the next multiple of align
     #[must_use]
     pub const fn pad_to_align(&self) -> Self {
         Self {
-            size: self.size + (self.size % self.align),
+            size: self.size + ((self.align - (self.size % self.align)) % self.align),
             align: self.align,
         }
     }
 
+    /// Returns the layout with the same size as this layout, but the greatest alignment between this layout and `align`
+    ///
+    /// ## Errors
+    /// Returns an error if any of the following do not hold:
+    /// * align is a power of two
+    /// * self.size(), rounded up to the next multiple of align, overflows isize
     pub fn align_to(&self, align: usize) -> Result<Self, LayoutError> {
         match (
-            self.size.overflowing_add(self.size % align),
+            (isize::try_from(self.size).unwrap())
+                .overflowing_add(isize::try_from((align - (self.size % align)) % align).unwrap()),
             align.max(self.align()),
         ) {
             ((_, true), align) if align.is_power_of_two() => Ok(Self {
@@ -190,50 +284,82 @@ impl Layout {
         }
     }
 
+    ///
+    /// Returns the size (in bytes) of the trailing padding necessary to align this layout to `align`
     #[must_use]
     pub const fn padding_needed_for(&self, align: usize) -> usize {
-        self.size % align
+        (align - (self.size % align)) % align
     }
 
-    pub const fn repeat(&self, n: usize) -> Result<(Self, usize), LayoutError> {
+    /// Computes the layout of n contiguous records with this layout, and returns that layout and the offset from the end of this layout to the beginning of the next layout
+    ///
+    /// ## Errors
+    /// Returns [`LayoutError`] if `self.size()`, padded to `self.align()`, and multiplied by `n`, overflows isize
+    pub fn repeat(&self, n: usize) -> Result<(Self, usize), LayoutError> {
         let Layout { size, align } = self.pad_to_align();
         match (size.checked_mul(n), align) {
-            (Some(asize), align) => Ok((Self { size: asize, align }, size - self.size)),
+            (Some(asize), align) if asize <= (isize::MAX as usize) => Ok((
+                Self {
+                    size: asize as usize,
+                    align,
+                },
+                size - self.size,
+            )),
             _ => Err(LayoutError(())),
         }
     }
 
+    /// Computes the result of extending this layout by adding a field with the Layout of `next`, and returns that layout and the offset from the end of this layout to the beginning of `next`
+    /// The `next` Layout will be well-aligned within the resulting Layout
+    /// ## Errors
+    /// Returns [`LayoutError`] if the resultant size, rounded up to the next multiple of the resultant alignment, overflows isize
     pub fn extend(&self, next: Self) -> Result<(Self, usize), LayoutError> {
         let Layout { size, align } = self.align_to(next.align())?;
         match size
-            .checked_add(size % next.align())
+            .checked_add((next.align - (size % next.align)) % next.align)
             .and_then(|v| v.checked_add(next.size()))
         {
-            Some(rsize) => Ok((Self { size: rsize, align }, size - self.size())),
-            None => Err(LayoutError(())),
+            Some(rsize) if rsize <= (isize::MAX as usize) => Ok((
+                Self {
+                    size: rsize as usize,
+                    align,
+                },
+                size - self.size(),
+            )),
+            _ => Err(LayoutError(())),
         }
     }
 
+    /// Computes the result of repeating n copies of the current Layout, without aligning adjacent records
+    ///
+    /// ## Errors
+    /// Returns [`LayoutError`] if the resultant size overflows isize
     pub const fn repeat_packed(&self, n: usize) -> Result<Self, LayoutError> {
         match self.size().checked_mul(n) {
-            Some(size) => Ok(Self {
+            Some(size) if size <= (isize::MAX as usize) => Ok(Self {
                 size,
                 align: self.align(),
             }),
-            None => Err(LayoutError(())),
+            _ => Err(LayoutError(())),
         }
     }
 
+    /// Computes the result of extending n this Layout with next, without aligning adjacent records
+    ///
+    /// ## Errors
+    /// Returns [`LayoutError`] if the resultant size overflows isize
     pub const fn extend_packed(&self, next: Self) -> Result<Self, LayoutError> {
         match self.size.checked_add(next.size()) {
-            Some(size) => Ok(Self {
+            Some(size) if size <= (isize::MAX as usize) => Ok(Self {
                 size,
                 align: self.align(),
             }),
-            None => Err(LayoutError(())),
+            _ => Err(LayoutError(())),
         }
     }
 
+    /// Returns a non-null pointer that is well-aligned for this layout, and is valid for accesses of size `0`.
+    /// The pointer returned by this function is unspecified.
     #[must_use]
     pub const fn dangling(&self) -> NonNull<u8> {
         // NOTE: this is an implementation detail
@@ -242,10 +368,32 @@ impl Layout {
     }
 }
 
+///
+/// The Allocator trait provides an interface for collections and smart pointers to obtain memory
+///
+/// ## Safety
+/// Pointers returned from [`Allocator::allocate`] must belong to logically different allocations.
+/// That is, deallocating one pointer returned from [`Allocator::allocate`] must not invalidate other pointers returned from other calls.
+///
+/// Further, all pointers returned from [`Allocator::allocate`], [`Allocator::allocate_zeroed`], [`Allocator::grow`], [`Allocator::grow_zeroed`], and [`Allocator::shrink`] must
+///  be aligned to at least the alignment given by layout, and be valid for both reads and writes of at least the size given by the layout.
+///
+/// The pointers returned from [`Allocator::allocate_zeroed`] and [`Allocator::grow_zeroed`] must contain `size` `0` bytes.
+///
+/// Allocators must be trivial or cheap to [`Copy`] or [`Clone`]. Further, Allocators obtained by [`Clone::clone`]ing a particular allocator must be mutually able to deallocate memory obtained
+///  from other clones of the same allocator
 pub unsafe trait Allocator {
+    /// Allocates memory suitable for `layout`, and returns a pointer to it, or `None` if an error occurs.
+    /// The value of the memory accessed via the pointer is uninitialized
     fn allocate(&self, layout: Layout) -> Option<NonNull<u8>>;
+    /// Deallocates Memory obtained from a call to [`Allocator::allocate`] with the given layout
+    ///
+    /// ## Safety
+    /// ptr must have been allocated by this allocator, a [`Clone::clone`] of this allocator, or a reference to this allocator, with the given layout
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout);
 
+    /// Allocates memory suitable for `layout`, and returns a pointer to it, or `None` if an error occurs.
+    /// Each byte pointed to by the return value up to `layout.size()` is `0`
     fn allocate_zeroed(&self, layout: Layout) -> Option<NonNull<u8>> {
         let ptr = self.allocate(layout)?;
         unsafe {
@@ -254,6 +402,12 @@ pub unsafe trait Allocator {
         Some(ptr)
     }
 
+    /// Grows an allocation given by `ptr` and `old_layout`, copying the data from the old allocation into the new allocation.
+    /// `ptr` may not be used to access memory after a call to this function. It is unsound to call `grow` on [`core::pin::Pin`]ned memory
+    /// ## Safety
+    /// ptr must have been allocated by this allocator, a [`Clone::clone`] of this allocator, or a reference to this allocator, with `old_layout`
+    ///
+    /// The size of `new_layout` must be at least the size of `old_layout`
     unsafe fn grow(
         &self,
         ptr: NonNull<u8>,
@@ -273,6 +427,14 @@ pub unsafe trait Allocator {
         Some(nptr)
     }
 
+    /// Grows an allocation given by `ptr` and `old_layout`, copying the data from the old allocation into the new allocation.
+    /// `ptr` may not be used to access memory after a call to this function. It is unsound to call `grow_zeroed` on [`core::pin::Pin`]ned memory
+    ///
+    /// Any bytes between `old_layout.size()` and `new_layout.size()` are set to `0`
+    /// ## Safety
+    /// ptr must have been allocated by this allocator, a [`Clone::clone`] of this allocator, or a reference to this allocator, with `old_layout`
+    ///
+    /// The size of `new_layout` must be at least the size of `old_layout`
     unsafe fn grow_zeroed(
         &self,
         ptr: NonNull<u8>,
@@ -292,6 +454,12 @@ pub unsafe trait Allocator {
         Some(nptr)
     }
 
+    /// Grows an allocation given by `ptr` and `old_layout`, copying the data from the old allocation into the new allocation.
+    /// `ptr` may not be used to access memory after a call to this function. It is unsound to call `shrink` on [`core::pin::Pin`]ned memory
+    /// ## Safety
+    /// ptr must have been allocated by this allocator, a [`Clone::clone`] of this allocator, or a reference to this allocator, with `old_layout`
+    ///
+    /// The size of `new_layout` must be at most the size of `old_layout`
     unsafe fn shrink(
         &self,
         ptr: NonNull<u8>,
@@ -311,6 +479,7 @@ pub unsafe trait Allocator {
         Some(nptr)
     }
 
+    /// Returns exactly self
     fn as_ref(&self) -> &Self
     where
         Self: Sized,
@@ -401,15 +570,21 @@ unsafe impl<A: ?Sized + Allocator> Allocator for &mut A {
     }
 }
 
-#[allow(clippy::module_name_repetitions)] // TODO: Should this be changed?
+/// An Allocator which allocates memory using `xlang_allocate` and/or `xlang_allocate_array`
+#[allow(clippy::module_name_repetitions)]
+// TODO: Should this be changed? No. XLangAlloc is the correct name. This isn't the `Global` or `System` allocator, it's the xlang allocator
 #[derive(Copy, Clone)]
-#[repr(C)]
-pub struct XLangAlloc(MaybeUninit<u8>);
+#[repr(transparent)]
+pub struct XLangAlloc(core::mem::MaybeUninit<u8>);
 
 impl XLangAlloc {
+    ///
+    /// Produces a new [`XLangAlloc`] value.
+    ///
+    /// All values of type [`XLangAlloc`] are identical, and may be used interchangeably
     #[must_use]
     pub const fn new() -> Self {
-        Self(MaybeUninit::uninit())
+        Self(core::mem::MaybeUninit::uninit())
     }
 }
 
@@ -439,14 +614,26 @@ impl Default for XLangAlloc {
 
 unsafe impl Allocator for XLangAlloc {
     fn allocate(&self, layout: Layout) -> Option<NonNull<u8>> {
-        NonNull::new(unsafe { xlang_allocate_aligned(layout.size(), layout.align()).cast::<u8>() })
+        NonNull::new(unsafe {
+            xlang_allocate_aligned(
+                layout.size() as xlang_host::primitives::size_t,
+                layout.align() as xlang_host::primitives::size_t,
+            )
+            .cast::<u8>()
+        })
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        xlang_deallocate_aligned(ptr.as_ptr().cast(), layout.size(), layout.align());
+        xlang_deallocate_aligned(
+            ptr.as_ptr().cast(),
+            layout.size() as xlang_host::primitives::size_t,
+            layout.align() as xlang_host::primitives::size_t,
+        );
     }
 }
 
+///
+/// `VTable` for the [`Allocator`] trait
 #[repr(C)]
 pub struct AllocatorVTable {
     size: usize,
@@ -898,7 +1085,13 @@ where
     }
 }
 
+/// Called when allocation returns an unhandled error
 pub fn handle_alloc_error(layout: Layout) -> ! {
     #![cfg_attr(test, allow(unused_unsafe))]
-    unsafe { xlang_on_allocation_failure(layout.size(), layout.align()) }
+    unsafe {
+        xlang_on_allocation_failure(
+            layout.size() as xlang_host::primitives::size_t,
+            layout.align() as xlang_host::primitives::size_t,
+        )
+    }
 }

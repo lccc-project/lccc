@@ -15,18 +15,26 @@ use std::{
 
 use crate::alloc::{Allocator, XLangAlloc};
 
+/// Error returned when converting a [`crate::vec::Vec`] into [`String`] if that vector does not contain valid Utf8
 pub struct FromUtf8Error<A: Allocator> {
     err: Utf8Error,
     bytes: crate::vec::Vec<u8, A>,
 }
 
 impl<A: Allocator> FromUtf8Error<A> {
+    /// Returns a reference to the bytes that were used in the conversion
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
     }
 
+    /// Returns the bytes that were used in the conversion
     pub fn into_bytes(self) -> crate::vec::Vec<u8, A> {
         self.bytes
+    }
+
+    /// Returns the Utf8 Error that occured when validating the value
+    pub fn utf8_error(&self) -> &Utf8Error {
+        &self.err
     }
 }
 
@@ -37,6 +45,7 @@ impl<A: Allocator> Deref for FromUtf8Error<A> {
     }
 }
 
+/// An ABI Safe [`std::string::String`]
 #[repr(transparent)]
 #[derive(Clone)]
 pub struct String<A: Allocator = XLangAlloc>(crate::vec::Vec<u8, A>);
@@ -97,6 +106,7 @@ impl<A: Allocator> AsRef<Path> for String<A> {
 }
 
 impl String<XLangAlloc> {
+    /// Returns a new (empty) string
     #[must_use]
     pub fn new() -> Self {
         Self(crate::vec::Vec::new())
@@ -110,10 +120,12 @@ impl Default for String<XLangAlloc> {
 }
 
 impl<A: Allocator> String<A> {
+    /// Returns a new (empty) string using `alloc`
     pub fn new_in(alloc: A) -> Self {
         Self(crate::vec::Vec::new_in(alloc))
     }
 
+    /// Appends the contents of `st` to self.
     pub fn push(&mut self, st: &str) {
         self.0.extend_from_slice(st.as_bytes());
     }
@@ -180,6 +192,7 @@ impl<A: Allocator> Write for String<A> {
     }
 }
 
+/// Version of [`std::format`] that returns a [`String`]
 #[macro_export]
 macro_rules! format{
     ($($tt:tt)*) => {
@@ -299,6 +312,7 @@ impl PartialEq<&mut str> for StringView<'_> {
 impl Eq for StringView<'_> {}
 
 impl<'a> StringView<'a> {
+    /// Returns an empty [`StringView`]
     #[must_use]
     pub const fn empty() -> Self {
         StringView {
@@ -308,6 +322,7 @@ impl<'a> StringView<'a> {
         }
     }
 
+    /// Returns a view over the string referred to by `v`
     #[must_use]
     pub fn new(v: &'a str) -> Self {
         let ptr = v.as_bytes().as_ptr();
@@ -318,11 +333,12 @@ impl<'a> StringView<'a> {
         }
     }
 
+    /// Obtains a [`StringView`] over the contiguous range `[begin,end)`
     ///
-    /// ## SAFETY
+    /// ## Safety
     /// The behaviour is undefined if any of the following constraints are violated:
     /// * Neither begin nor end may be null pointers or deallocated pointers
-    /// * For 'a, the range [begin,end) must be a valid range
+    /// * For 'a, the range [begin,end) must be a range that is valid for reads
     /// * The text in the range [begin,end) must be valid UTF-8
     #[must_use]
     pub const unsafe fn from_raw_parts(begin: *const u8, end: *const u8) -> Self {
@@ -338,8 +354,10 @@ impl<'a> StringView<'a> {
 pub use str as __rust_str;
 
 ///
-/// Constructs a `StringView` in a constant context.
+/// Constructs a [`StringView`] in a constant context.
 /// This is equivalent to `StringView::new(str)`, except it is valid in a const initializer
+///
+/// must be called with a string literal or a constant expression of type `&'static str`
 /// ## Examples
 /// ```
 ///# use xlang_abi::string::StringView;
@@ -354,8 +372,7 @@ macro_rules! const_sv{
         {
             const __RET: $crate::string::StringView = {
                 // Thanks to matt1992 on the Rust Community Discord Server for this Rust 1.39 Friendly Hack
-                // Why is
-                const __STR: &$crate::string::__rust_str = $str;
+                const __STR: &'static $crate::string::__rust_str = $str;
                 /// # Safety
                 ///
                 /// `Self::Arr`'s type must be `[Self::Elem; Self::SLICE.len()]`
@@ -386,7 +403,6 @@ macro_rules! const_sv{
                         use ::std::mem::size_of;
                         let same_size = size_of::<ArrayAndEmpty<T::Arr>>() != size_of::<T::Arr>();
                         [(/* no padding allowed */)][same_size as usize];
-                        [(/* slice must be non-empty */)][T::SLICE.is_empty() as usize];
 
                         AsPacked::<T::Arr, T::Elem> {
                             start: T::SLICE.as_ptr(),
@@ -409,8 +425,7 @@ macro_rules! const_sv{
                 }
 
                 let (begin, end) = (__SLICE.as_ptr(), GetEnd::<__Dummy>::AS_END);
-                // SAFETY:
-                //
+
                 unsafe{$crate::string::StringView::from_raw_parts(begin,end)}
             };
             __RET
@@ -432,6 +447,24 @@ mod test {
     pub fn test_new_empty() {
         let y = StringView::new("");
         assert_eq!(&*y, "");
+    }
+
+    #[test]
+    pub fn test_empty() {
+        let y = StringView::empty();
+        assert_eq!(&*y, "");
+    }
+
+    #[test]
+    pub fn test_const_sv() {
+        const FOO: StringView = crate::const_sv!("Foo");
+        assert_eq!(&*FOO, "Foo");
+    }
+
+    #[test]
+    pub fn test_const_sv_empty() {
+        const FOO: StringView = crate::const_sv!("");
+        assert_eq!(&*FOO, "");
     }
 
     #[test]

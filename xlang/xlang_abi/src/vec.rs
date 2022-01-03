@@ -12,6 +12,7 @@ use crate::{
     ptr::Unique,
 };
 
+/// An ABI Safe implementation of [`std::vec::Vec`]
 #[repr(C)]
 pub struct Vec<T, A: Allocator = XLangAlloc> {
     ptr: Unique<T>,
@@ -21,16 +22,29 @@ pub struct Vec<T, A: Allocator = XLangAlloc> {
 }
 
 impl<T> Vec<T, XLangAlloc> {
+    /// Creates a new (empty) Vec
     #[must_use]
     pub fn new() -> Self {
         Self::new_in(XLangAlloc::new())
     }
 
+    /// Allocates a vector with a given capacity
+    /// # Panics
+    /// Panics if the new capacity in bytes exceeds [`isize::MAX`]
     #[must_use]
     pub fn with_capacity(cap: usize) -> Self {
         Self::with_capacity_in(cap, XLangAlloc::new())
     }
 
+    /// Creates a vector from raw parts,
+    ///
+    /// # Safety
+    /// The following preconditions must hold:
+    /// * ptr must have been allocated using an Allocator compatible with [`XLangAlloc`], with the layout `Layout::array::<T>(cap)`,
+    /// * ptr must not have been deallocated,
+    /// * After this call, `ptr` must not be used to access any memory,
+    /// * `len` must be less than `cap`
+    /// * The range `[ptr,ptr.add(len))` must contain valid values of type `T`
     pub unsafe fn from_raw_parts(ptr: *mut T, cap: usize, len: usize) -> Self {
         Self::from_raw_parts_in(ptr, cap, len, XLangAlloc::new())
     }
@@ -59,6 +73,7 @@ impl<T, A: Allocator> Drop for Vec<T, A> {
 }
 
 impl<T, A: Allocator> Vec<T, A> {
+    /// Creates a new (empty) Vec in `alloc` without allocating.
     pub fn new_in(alloc: A) -> Self {
         Self {
             ptr: Unique::dangling(),
@@ -68,6 +83,11 @@ impl<T, A: Allocator> Vec<T, A> {
         }
     }
 
+    /// Allocates a new Vec in `alloc` that can store at least `cap` elements before reallocating
+    /// This function does not allocate if `cap` is `0` or `T` is a ZST
+    ///
+    /// # Panics
+    /// Panics if the new capacity in bytes exceeds [`isize::MAX`]
     pub fn with_capacity_in(cap: usize, alloc: A) -> Self {
         let cap = cap.checked_next_power_of_two().unwrap();
         let raw_cap = cap.checked_mul(core::mem::size_of::<T>()).unwrap();
@@ -98,6 +118,15 @@ impl<T, A: Allocator> Vec<T, A> {
         }
     }
 
+    /// Creates a vector from raw parts, in `alloc`
+    ///
+    /// # Safety
+    /// The following preconditions must hold:
+    /// * ptr must have been allocated using an Allocator compatible with `alloc`, with the layout `Layout::array::<T>(cap)`,
+    /// * ptr must not have been deallocated,
+    /// * After this call, `ptr` must not be used to access any memory,
+    /// * `len` must be less than `cap`
+    /// * The range `[ptr,ptr.add(len))` must contain valid values of type `T`
     pub unsafe fn from_raw_parts_in(ptr: *mut T, cap: usize, len: usize, alloc: A) -> Self {
         Self {
             ptr: Unique::new_unchecked(ptr),
@@ -107,10 +136,13 @@ impl<T, A: Allocator> Vec<T, A> {
         }
     }
 
+    /// Returns a reference to the allocator used by self
     pub fn allocator(&self) -> &A {
         &self.alloc
     }
 
+    /// Converts self into its raw parts, suitable to be passed to [`Vec::from_raw_parts`]
+    /// The first element is the pointer, the second element is the capacity, and the third element is the length of the Vector
     pub fn into_raw_parts(self) -> (*mut T, usize, usize) {
         let this = ManuallyDrop::new(self);
         let ptr = this.ptr.as_ptr();
@@ -119,6 +151,8 @@ impl<T, A: Allocator> Vec<T, A> {
         (ptr, cap, len)
     }
 
+    /// Converts self into its raw parts, including the allocator, suitable to be passed to [`Vec::from_raw_parts_in`]
+    /// The first element is the pointer, the second element is the capacity, the third element is the length of the Vector, and the fourth element is the allocator
     pub fn into_raw_parts_with_alloc(self) -> (*mut T, usize, usize, A) {
         let this = ManuallyDrop::new(self);
         let ptr = this.ptr.as_ptr();
@@ -158,10 +192,23 @@ impl<T, A: Allocator> Vec<T, A> {
         }
     }
 
+    /// Unsafely sets the length of the vector, without checking, or dropping any elements.
+    ///
+    /// ## Safety
+    /// The following preconditions must hold:
+    /// * len shall be less than `self.capacity()`
+    /// * the first `len` elements of self must be valid values of type `T`
+    ///
+    /// ## Notes
+    /// If len is less than `self.len()`, then this function will leak the excess elements (unless the length is restored before dropping the Vec or overwriting them)
     pub unsafe fn set_len(&mut self, len: usize) {
         self.len = len;
     }
 
+    /// Appends a new element to the back of the Vec, reallocating if necessary.
+    ///
+    /// # Panics
+    /// Panics if the new capacity in bytes exceeds [`isize::MAX`]
     pub fn push(&mut self, val: T) {
         if self.len == self.cap {
             let ncap = (self.cap + 1).checked_next_power_of_two().unwrap();
@@ -175,6 +222,7 @@ impl<T, A: Allocator> Vec<T, A> {
         self.len += 1;
     }
 
+    /// Removes and returns the last element of the Vec, without reallocating.
     pub fn pop(&mut self) -> Option<T> {
         if self.len == 0 {
             None
@@ -185,16 +233,23 @@ impl<T, A: Allocator> Vec<T, A> {
         }
     }
 
+    /// Reserves sufficient capacity for this Vec such that at least `additional` more elements can be pushed without reallocating
+    ///
+    /// # Panics
+    /// Panics if the new capacity in bytes exceeds [`isize::MAX`]
     pub fn reserve(&mut self, additional: usize) {
         let ncap = self
-            .cap
+            .len
             .checked_add(additional)
             .unwrap()
             .checked_next_power_of_two()
             .unwrap();
-        self.reallocate(ncap);
+        if self.cap < ncap {
+            self.reallocate(ncap);
+        }
     }
 
+    /// Leaks self into a slice of `T`, without deallocating any elements or excess capacity
     pub fn leak<'a>(self) -> &'a mut [T]
     where
         A: 'a,
@@ -205,20 +260,27 @@ impl<T, A: Allocator> Vec<T, A> {
         unsafe { core::slice::from_raw_parts_mut(ptr, len) }
     }
 
+    /// Returns the capacity of the [`Vec`], that is, the total number of elements the [`Vec`] can hold without reallocating
     pub fn capacity(&self) -> usize {
         self.cap
     }
 
+    /// Clears this vector, dropping each element, without changing capacity.
+    ///
+    /// ## Panic Safety
+    /// If the destructor of any element panics, then which elements are dropped are unspecified, and the remaining elements are leaked (but the vector will still be empty).
     pub fn clear(&mut self) {
+        let len = self.len;
+        self.len = 0;
         if core::mem::needs_drop::<T>() {
             let ptr = self.ptr.as_ptr();
-            for i in 0..self.len {
+            for i in 0..len {
                 unsafe { core::ptr::drop_in_place(ptr.add(i)) }
             }
         }
-        self.len = 0;
     }
 
+    /// Clones the elements of `x` and pushes them into the Vec, reallocating at most once.
     pub fn extend_from_slice(&mut self, x: &[T])
     where
         T: Clone,
@@ -229,10 +291,13 @@ impl<T, A: Allocator> Vec<T, A> {
         }
     }
 
+    /// Returns a mutable pointer to the first element of the Vec
     pub fn as_mut_ptr(&mut self) -> *mut T {
         self.ptr.as_ptr()
     }
 
+    /// Returns a const pointer to the first element of the Vec.
+    /// The pointer may not be used to write to the elements
     pub fn as_ptr(&self) -> *const T {
         self.ptr.as_ptr()
     }
@@ -398,6 +463,7 @@ impl<T, A: Allocator + Default> From<std::vec::Vec<T>> for Vec<T, A> {
     }
 }
 
+/// Constructs a new `vec` containing the given elements.
 #[macro_export]
 macro_rules! vec{
     [$($elems:expr),* $(,)?] => {

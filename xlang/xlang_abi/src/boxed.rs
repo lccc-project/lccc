@@ -13,6 +13,8 @@ use crate::{
     ptr::Unique,
 };
 
+///
+/// ABI Safe implementation of [`std::boxed::Box`] that uses the given Allocator to allocate and deallocate memory
 #[repr(C)]
 pub struct Box<T: ?Sized, A: Allocator = XLangAlloc> {
     ptr: Unique<T>,
@@ -31,27 +33,37 @@ impl<T: ?Sized, A: Allocator> Drop for Box<T, A> {
 }
 
 impl<T> Box<T, XLangAlloc> {
+    /// Creates a new box, containing `x`
     pub fn new(x: T) -> Self {
         Self::new_in(x, XLangAlloc::new())
     }
 
+    /// Creates a new, pinned, Box, containing `x`
     pub fn pin(x: T) -> Pin<Self> {
         Self::pin_in(x, XLangAlloc::new())
     }
 }
 
 impl<T: ?Sized> Box<T, XLangAlloc> {
+    /// Converts a raw pointer to `T` into a `Box`.
+    ///
+    /// # Safety
+    /// The following constraints must hold:
+    /// * x must have been allocated from [`XLangAlloc`], using the layout of `x`, or returned from [`Box::into_inner`] from a `T` with the correct layout using an allocator compatible with [`XLangAlloc`]
+    /// * x must not be accessed after this call and must not alias any references
     pub unsafe fn from_raw(x: *mut T) -> Self {
         Self::from_raw_in(x, XLangAlloc::new())
     }
 }
 
 impl<T> Box<MaybeUninit<T>, XLangAlloc> {
+    /// Allocates a new box containing uninitialized Memory
     #[must_use]
     pub fn new_uninit() -> Self {
         Self::new_uninit_in(XLangAlloc::new())
     }
 
+    /// Allocates a new box containing zeroed memory
     #[must_use]
     pub fn new_zeroed() -> Self {
         Self::new_zeroed_in(XLangAlloc::new())
@@ -59,6 +71,7 @@ impl<T> Box<MaybeUninit<T>, XLangAlloc> {
 }
 
 impl<T, A: Allocator> Box<MaybeUninit<T>, A> {
+    /// Alllocates a new box using the given allocator, containing uninitialized memory
     pub fn new_uninit_in(alloc: A) -> Self {
         let ptr = alloc
             .allocate(Layout::new::<T>())
@@ -70,6 +83,7 @@ impl<T, A: Allocator> Box<MaybeUninit<T>, A> {
         }
     }
 
+    /// Alllocates a new box using the given allocator, containing zereod memory
     pub fn new_zeroed_in(alloc: A) -> Self {
         let ptr = alloc
             .allocate_zeroed(Layout::new::<T>())
@@ -81,14 +95,20 @@ impl<T, A: Allocator> Box<MaybeUninit<T>, A> {
         }
     }
 
-    pub unsafe fn assume_init(this: Self) -> Self {
+    /// Assumes that `this` contains an initialized `T`, and converts it into a [`Box<T,A>`].
+    /// The conversion is performed in-place, no values are moved from or to the stack or any other memory (thus this is safe to call on a pinned Box)
+    ///
+    /// # Safety
+    /// `this` must contain a valid value of type `T`
+    pub unsafe fn assume_init(this: Self) -> Box<T, A> {
         let (ptr, alloc) = Self::into_raw_with_alloc(this);
 
-        Self::from_raw_in(ptr.cast(), alloc)
+        Box::from_raw_in(ptr.cast(), alloc)
     }
 }
 
 impl<T, A: Allocator> Box<T, A> {
+    /// Allocates a new box using `alloc` that contains `x`
     pub fn new_in(x: T, alloc: A) -> Self {
         let ptr = alloc
             .allocate(Layout::new::<T>())
@@ -101,13 +121,19 @@ impl<T, A: Allocator> Box<T, A> {
         }
     }
 
-    pub fn pin_in(x: T, alloc: A) -> Pin<Self> {
+    /// Allocates a new box using `alloc` that contains `x`, and pins it in place.
+    pub fn pin_in(x: T, alloc: A) -> Pin<Self>
+    where
+        A: 'static,
+    {
         unsafe { Pin::new_unchecked(Self::new_in(x, alloc)) }
     }
 
+    /// Moves the contained value out of `this` and returns it. The memory containing the T is deallocated using the allocator
     pub fn into_inner(this: Self) -> T {
         Self::into_inner_with_alloc(this).0
     }
+    /// Moves the contained value out of `this` and returns it and the allocator used by `this`. The memory containing the T is deallocated using the allocator
     pub fn into_inner_with_alloc(this: Self) -> (T, A) {
         let this = ManuallyDrop::new(this);
         let ptr = this.ptr.as_nonnull();
@@ -120,6 +146,7 @@ impl<T, A: Allocator> Box<T, A> {
 }
 
 impl<T: ?Sized, A: Allocator> Box<T, A> {
+    /// Returns the pointer to the interior of `this` and the allocator it was obtained from. The inner value is not dropped or deallocated.
     pub fn into_raw_with_alloc(this: Self) -> (*mut T, A) {
         let this = ManuallyDrop::new(this);
         let ptr = this.ptr.as_nonnull();
@@ -127,10 +154,16 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
         (ptr.as_ptr(), alloc)
     }
 
+    /// Returns the pointer to the interior of `this`. The inner value is not dropped or deallocated.
     pub fn into_raw(this: Self) -> *mut T {
         Self::into_raw_with_alloc(this).0
     }
 
+    /// Converts a raw pointer to `T` into a `Box`.
+    ///
+    /// # Safety
+    /// * x must have been allocated from `alloc` or a compatible allocator, using the layout of `x`, or returned from [`Box::into_inner`] from a `T` with the correct layout using an allocator compatible with [`XLangAlloc`]
+    /// * x must not be accessed after this call and must not alias any references
     pub unsafe fn from_raw_in(x: *mut T, alloc: A) -> Self {
         Self {
             ptr: Unique::new_unchecked(x),
@@ -138,6 +171,9 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
         }
     }
 
+    /// Leaks `this` into a mutable reference with an arbitrary lifetime.
+    ///
+    /// Note: the returned reference is not the same as a pointer obtained from [`Box::into_raw`]. The resulting reference cannot be safely passed into [`Box::from_raw`] or [`Box::from_raw_in`].
     pub fn leak<'a>(this: Self) -> &'a mut T
     where
         A: 'a,
@@ -147,16 +183,24 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
         unsafe { &mut *ptr }
     }
 
-    pub fn into_pin(this: Self) -> Pin<Self> {
+    /// [`core::pin::Pin`]s this in place safely.
+    pub fn into_pin(this: Self) -> Pin<Self>
+    where
+        A: 'static,
+    {
         unsafe { Pin::new_unchecked(this) }
     }
 
+    /// Returns the Allocator used by `this`
     pub fn allocator(this: &Self) -> &A {
         &this.alloc
     }
 }
 
+#[allow(clippy::missing_errors_doc)]
 impl<A: Allocator> Box<dyn Any, A> {
+    /// Downcasts `this` into `T`
+    /// Returns `this` if the downcast fails
     pub fn downcast<T: Any>(this: Self) -> Result<Box<T, A>, Self> {
         if (&*this).type_id() == TypeId::of::<T>() {
             let (ptr, alloc) = Self::into_raw_with_alloc(this);
@@ -168,7 +212,10 @@ impl<A: Allocator> Box<dyn Any, A> {
     }
 }
 
+#[allow(clippy::missing_errors_doc)]
 impl<A: Allocator> Box<dyn Any + Send, A> {
+    /// Downcasts `this` into `T`
+    /// Returns `this` if the downcast fails
     pub fn downcast<T: Any>(this: Self) -> Result<Box<T, A>, Self> {
         if (&*this).type_id() == TypeId::of::<T>() {
             let (ptr, alloc) = Self::into_raw_with_alloc(this);
@@ -180,7 +227,10 @@ impl<A: Allocator> Box<dyn Any + Send, A> {
     }
 }
 
+#[allow(clippy::missing_errors_doc)]
 impl<A: Allocator> Box<dyn Any + Send + Sync, A> {
+    /// Downcasts `this` into `T`
+    /// Returns `this` if the downcast fails
     pub fn downcast<T: Any>(this: Self) -> Result<Box<T, A>, Self> {
         if (&*this).type_id() == TypeId::of::<T>() {
             let (ptr, alloc) = Self::into_raw_with_alloc(this);

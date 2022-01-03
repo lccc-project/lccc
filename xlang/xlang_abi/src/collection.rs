@@ -15,6 +15,8 @@ struct HashMapSlot<K, V> {
     entries: [MaybeUninit<Pair<K, V>>; 16],
 }
 
+/// An ABI Safe [`HashMap`] that uses an Allocator to obtain the memory to store the slots
+#[repr(C)]
 pub struct HashMap<
     K,
     V,
@@ -48,6 +50,8 @@ impl<K, V, H: BuildHasher, A: Allocator> Drop for HashMap<K, V, H, A> {
 }
 
 impl<K, V, H: BuildHasher + Default, A: Allocator + Default> HashMap<K, V, H, A> {
+    ///
+    /// Returns a new [`HashMap`] with defaults for both the hasher and the allocator, containing no entries
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -66,6 +70,7 @@ impl<K, V, H: BuildHasher + Default, A: Allocator + Default> Default for HashMap
 }
 
 impl<K, V, H: BuildHasher + Default, A: Allocator> HashMap<K, V, H, A> {
+    /// Returns a new [`HashMap`] with the given allocator and a default hasher, containing no entries.
     pub fn new_in(alloc: A) -> Self {
         Self {
             htab: Unique::dangling(),
@@ -77,6 +82,7 @@ impl<K, V, H: BuildHasher + Default, A: Allocator> HashMap<K, V, H, A> {
 }
 
 impl<K, V, H: BuildHasher, A: Allocator + Default> HashMap<K, V, H, A> {
+    /// Returns a new [`HashMap`] with the given hasher and a default alocator, containing no entries.
     pub fn with_hasher(hash: H) -> Self {
         Self {
             htab: Unique::dangling(),
@@ -88,6 +94,7 @@ impl<K, V, H: BuildHasher, A: Allocator + Default> HashMap<K, V, H, A> {
 }
 
 impl<K, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
+    /// Returns a new [`HashMap`] with the given hasher and allocator, containing no entries
     pub fn with_hasher_in(hash: H, alloc: A) -> Self {
         Self {
             htab: Unique::dangling(),
@@ -97,6 +104,7 @@ impl<K, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         }
     }
 
+    /// Produces an [`Iterator`] over pairs of keys and values in this [`HashMap`]
     pub fn iter(&self) -> Iter<'_, K, V> {
         Iter(
             unsafe { core::slice::from_raw_parts(self.htab.as_ptr(), self.buckets) }.iter(),
@@ -104,6 +112,7 @@ impl<K, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         )
     }
 
+    /// Produces an [`Iterator`] over the values in this [`HashMap`]
     pub fn values(&self) -> Values<'_, K, V> {
         Values(self.iter())
     }
@@ -122,7 +131,9 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         let ptr = self
             .alloc
             .allocate_zeroed(Layout::array::<HashMapSlot<K, V>>(ncount).unwrap())
-            .unwrap();
+            .unwrap_or_else(|| {
+                crate::alloc::handle_alloc_error(Layout::array::<HashMapSlot<K, V>>(16).unwrap())
+            });
         let ptr = core::mem::replace(&mut self.htab, unsafe {
             Unique::new_nonnull_unchecked(ptr.cast())
         });
@@ -143,13 +154,19 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         }
     }
 
-    #[allow(clippy::cast_possible_truncation)]
+    ///
+    /// Inserts `value` into the map with `key`, returning the existing value in the slot if present
+    #[allow(clippy::cast_possible_truncation, clippy::missing_panics_doc)]
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         if self.buckets == 0 {
             let ptr = self
                 .alloc
                 .allocate_zeroed(Layout::array::<HashMapSlot<K, V>>(16).unwrap())
-                .unwrap();
+                .unwrap_or_else(|| {
+                    crate::alloc::handle_alloc_error(
+                        Layout::array::<HashMapSlot<K, V>>(16).unwrap(),
+                    )
+                });
             self.htab = unsafe { Unique::new_nonnull_unchecked(ptr.cast()) };
             self.buckets = 16;
         }
@@ -187,13 +204,18 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         }
     }
 
-    #[allow(clippy::cast_possible_truncation)]
+    /// Returns a mutable reference to the value with the given key, inserting `value` in that slot if necessary
+    #[allow(clippy::cast_possible_truncation, clippy::missing_panics_doc)]
     pub fn get_or_insert_mut(&mut self, key: K, value: V) -> &mut V {
         if self.buckets == 0 {
             let ptr = self
                 .alloc
                 .allocate_zeroed(Layout::array::<HashMapSlot<K, V>>(16).unwrap())
-                .unwrap();
+                .unwrap_or_else(|| {
+                    crate::alloc::handle_alloc_error(
+                        Layout::array::<HashMapSlot<K, V>>(16).unwrap(),
+                    )
+                });
             self.htab = unsafe { Unique::new_nonnull_unchecked(ptr.cast()) };
             self.buckets = 16;
         }
@@ -231,13 +253,18 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         }
     }
 
-    #[allow(clippy::cast_possible_truncation)]
+    /// Returns a mutable reference to the value with the given key, inserting the value produced by `value`
+    #[allow(clippy::cast_possible_truncation, clippy::missing_panics_doc)]
     pub fn get_or_insert_with_mut<F: FnOnce(&K) -> V>(&mut self, key: K, value: F) -> &mut V {
         if self.buckets == 0 {
             let ptr = self
                 .alloc
-                .allocate_zeroed(Layout::array::<HashMapSlot<K, V>>(16).unwrap())
-                .unwrap();
+                .allocate_zeroed(Layout::array::<HashMapSlot<K, V>>(16).unwrap()) //
+                .unwrap_or_else(|| {
+                    crate::alloc::handle_alloc_error(
+                        Layout::array::<HashMapSlot<K, V>>(16).unwrap(),
+                    )
+                });
             self.htab = unsafe { Unique::new_nonnull_unchecked(ptr.cast()) };
             self.buckets = 16;
         }
@@ -276,6 +303,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         }
     }
 
+    /// Gets an immutable reference to the value given by `key`, if present, otherwise returns `None`.
     #[allow(clippy::cast_possible_truncation)]
     pub fn get<Q: Hash + Eq>(&self, key: &Q) -> Option<&V>
     where
@@ -302,6 +330,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         None
     }
 
+    /// Gets a mutable reference to the value given by `key`, if present, otherwise returns `None`.
     #[allow(clippy::cast_possible_truncation)]
     pub fn get_mut<Q: Hash + Eq>(&mut self, key: &Q) -> Option<&mut V>
     where
@@ -362,6 +391,7 @@ impl<K: Clone, V: Clone, H: BuildHasher + Clone, A: Allocator + Clone> Clone
     }
 }
 
+/// An [`Iterator`] over the keys and values of a [`HashMap`]
 pub struct Iter<'a, K, V>(
     core::slice::Iter<'a, HashMapSlot<K, V>>,
     Option<(&'a HashMapSlot<K, V>, usize)>,
@@ -397,6 +427,7 @@ impl<'a, K, V> Iterator for Iter<'a, K, V> {
     }
 }
 
+/// An [`Iterator`] over the values of a [`HashMap`]
 pub struct Values<'a, K, V>(Iter<'a, K, V>);
 
 impl<'a, K, V> Iterator for Values<'a, K, V> {

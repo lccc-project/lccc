@@ -4,10 +4,14 @@ use std::{
     num::Wrapping,
 };
 
+///
+/// A hasher with a consistent ABI and hash algorithm.
+/// the [`XLangHasher`] hashes bytes using the `FNV-1a` 64-bit hash
 #[repr(C)]
 #[derive(Debug)]
 pub struct XLangHasher(Wrapping<u64>);
 
+/// A [`BuildHasher`] with a consistent ABI that returns Default values for the given Hasher.
 #[repr(C)]
 #[derive(Debug)]
 pub struct BuildHasherDefault<H>(PhantomData<H>);
@@ -34,6 +38,9 @@ impl<H> Default for BuildHasherDefault<H> {
 const PRIME: u64 = 1_099_511_628_211;
 
 impl XLangHasher {
+    /// Returns a new [`XLangHasher`]
+    ///
+    /// Each [`XLangHasher`] is initialized with the same value, for consistency.
     #[must_use]
     pub const fn new() -> Self {
         Self(Wrapping(14_695_981_039_346_656_037))

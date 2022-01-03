@@ -152,7 +152,7 @@ fn main() {
 
     let xtarget = xlang::targets::Target::from(&target);
 
-    let properties = xlang::targets::properties::get_properties(xtarget.clone());
+    let properties = xlang::targets::properties::get_properties(xtarget.clone()).unwrap();
 
     let mut file_pairs = Vec::new();
 

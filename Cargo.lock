@@ -209,6 +209,7 @@ version = "0.1.0"
 name = "xlang_abi"
 version = "0.1.0"
 dependencies = [
+ "xlang-host",
  "xlang_abi_macro",
 ]
 
@@ -219,15 +220,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "xlang_callconv"
-version = "0.1.0"
-dependencies = [
- "xlang_abi",
- "xlang_struct",
- "xlang_targets",
 ]
 
 [[package]]

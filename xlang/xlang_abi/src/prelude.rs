@@ -1,3 +1,4 @@
+/// The first version prelude of `xlang_abi`
 pub mod v1 {
     pub use crate::boxed::Box;
     pub use crate::collection::HashMap;

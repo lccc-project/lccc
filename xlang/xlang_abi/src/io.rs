@@ -5,9 +5,11 @@ use crate::{
     traits::{AbiSafeTrait, AbiSafeUnsize, AbiSafeVTable, DynBox, DynMut, DynPtrSafe},
 };
 
+/// The Error type returned when an io error occurs
 #[repr(u8)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Error {
+    /// An Error that simply contains a message and no error code
     Message(String),
 }
 
@@ -33,9 +35,12 @@ impl From<Error> for std::io::Error {
     }
 }
 
+/// Type alias to a Result with [`Error`].
 pub type Result<T> = crate::result::Result<T, Error>;
 
+/// ABI Safe version of the [`std::io::Read`] trait
 pub trait Read {
+    /// Reads from `self` into `buf`
     fn read(&mut self, buf: SpanMut<u8>) -> Result<usize>;
 }
 
@@ -51,6 +56,7 @@ impl<R: ?Sized + Read> Read for Box<R> {
     }
 }
 
+/// The `VTable` used for the [`Read`] trait
 #[repr(C)]
 pub struct ReadVTable {
     size: usize,
@@ -158,12 +164,18 @@ where
     }
 }
 
+/// A trait to produce iterators over the [`char`]s read from an input stream
 pub trait IntoChars {
+    /// The iterator returned from `.into_chars`
     type IntoChars: Iterator<Item = char>;
+
+    /// produces an iterator over the chars read from `self`
     fn into_chars(self) -> Self::IntoChars;
 }
 
+/// An Iterator over the chars of `R`
 pub struct ReadIntoChars<R: Read> {
+    // Why is there a trait bound here
     buf: Vec<u8>,
     pos: usize,
     len: usize,
@@ -287,13 +299,16 @@ impl<R: Read> IntoChars for R {
     }
 }
 
+/// A type which Adapts [`std::io::Read`]ers into [`self::Read`]ers and [`self::Read`]ers into [`std::io::Read`]ers
 pub struct ReadAdapter<R>(R);
 
 impl<R> ReadAdapter<R> {
+    /// Produces a new [`ReadAdaptor`] over `r`
     pub const fn new(r: R) -> Self {
         Self(r)
     }
 
+    /// Obtains the inner `Read`er contained by `self`
     #[allow(clippy::missing_const_for_fn)]
     pub fn into_inner(self) -> R {
         self.0
@@ -315,8 +330,11 @@ impl<R: std::io::Read> self::Read for ReadAdapter<R> {
     }
 }
 
+/// An abi safe version of the [`std::io::Write`] trait
 pub trait Write {
+    /// Writes the bytes in `buf` into `self` and returns the number of bytes written, or an error if the write fails
     fn write(&mut self, buf: Span<u8>) -> Result<usize>;
+    /// Flushes the internal buffer of `self`, if any, and returns an errors that occur
     fn flush(&mut self) -> Result<()>;
 }
 
@@ -339,6 +357,7 @@ impl<W: ?Sized + Write> Write for Box<W> {
     }
 }
 
+/// The `VTable` to use for the [`Write`] trait.
 #[repr(C)]
 pub struct WriteVTable {
     size: usize,
@@ -463,13 +482,16 @@ where
     }
 }
 
+/// A type which Adapts [`std::io::Write`]rs into [`self::Write`]rs and [`self::Write`]rs into [`std::io::Write`]rs
 pub struct WriteAdapter<W>(W);
 
 impl<W> WriteAdapter<W> {
+    /// Returns a new [`WriteAdapter`] for `W`
     pub const fn new(r: W) -> Self {
         Self(r)
     }
 
+    /// Returns the value contained within `self`.
     #[allow(clippy::missing_const_for_fn)]
     pub fn into_inner(self) -> W {
         self.0

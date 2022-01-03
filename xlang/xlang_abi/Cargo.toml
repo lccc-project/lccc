@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 xlang_abi_macro = {path = "../xlang_abi_macro"}
+xlang-host = {path="../xlang-host"}
