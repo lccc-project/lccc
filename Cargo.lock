@@ -205,7 +205,6 @@ dependencies = [
 name = "xlang_abi"
 version = "0.1.0"
 dependencies = [
- "xlang_abi_macro",
  "xlang_host",
 ]
 
