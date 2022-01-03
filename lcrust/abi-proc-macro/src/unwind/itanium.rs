@@ -22,8 +22,9 @@ pub struct _Unwind_Exception {
     private_2: u64,
 }
 
-pub type __personality_routine = Option<unsafe extern"C" fn(version: c_int, action: _Unwind_Action)
+pub type __personality_routine =
+    Option<unsafe extern "C" fn(version: c_int, action: _Unwind_Action)>;
 
-extern"C"{
+extern "C" {
     pub fn _Unwind_RaiseException(x: *mut _Unwind_Exception) -> _Unwind_Reason_Code;
 }

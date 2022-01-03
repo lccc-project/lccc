@@ -9,7 +9,7 @@ mod unspecified {
 #[cfg(doc)]
 /// An unspecified unsigned integer type which is the same size as a pointer on the current architecture
 /// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `usize`
-pub type uintptr = unspecified::UnspecifiedUInt;
+pub type uintptr = unspecified::UnpsecifiedUInt;
 
 #[cfg(doc)]
 /// An unspecified signed integer type which is the same size as a pointer on the current architecture
@@ -19,7 +19,7 @@ pub type intptr = unspecified::UnspecifiedInt;
 #[cfg(doc)]
 /// An unspecified unsigned integer type which matches the size of the C typedef `size_t`
 /// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `usize`
-pub type size_t = unspecified::UnspecifiedUInt;
+pub type size_t = unspecified::UnpsecifiedUInt;
 
 #[cfg(doc)]
 /// An unspecified signed integer type which matches the size of the C typedef `ptrdiff_t`
