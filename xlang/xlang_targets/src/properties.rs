@@ -48,7 +48,7 @@ pub enum LongDoubleFormat {
     /// Intel x87, double extended precision
     X87,
     /// Double-double precision (used by PowerPC )
-    POWERPCDoubleDouble,
+    PowerPCDoubleDouble,
 }
 
 ///
