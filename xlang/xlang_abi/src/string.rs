@@ -325,12 +325,12 @@ impl<'a> StringView<'a> {
     /// Returns a view over the string referred to by `v`
     #[must_use]
     pub fn new(v: &'a str) -> Self {
-        let ptr = v.as_bytes().as_ptr();
-        Self {
-            begin: unsafe { NonNull::new_unchecked(ptr as *mut u8) },
-            end: unsafe { NonNull::new_unchecked(ptr.add(v.len()) as *mut u8) },
-            phantom: PhantomData,
-        }
+        let bytes = v.as_bytes();
+
+        let begin = bytes.as_ptr();
+        let end = unsafe { begin.add(bytes.len()) };
+
+        unsafe { Self::from_raw_parts(begin, end) }
     }
 
     /// Obtains a [`StringView`] over the contiguous range `[begin,end)`
@@ -349,12 +349,12 @@ impl<'a> StringView<'a> {
         }
     }
 
-    /// Determines the length of the string view
-    #[must_use]
-    #[allow(clippy::cast_sign_loss)] // offset_from can never be negative
-    pub fn len(&self) -> usize {
-        unsafe { self.begin.as_ptr().offset_from(self.end.as_ptr()) as usize }
-    }
+    // /// Determines the length of the string view
+    // #[must_use]
+    // #[allow(clippy::cast_sign_loss)] // offset_from can never be negative
+    // pub fn len(&self) -> usize {
+    //     unsafe { self.begin.as_ptr().offset_from(self.end.as_ptr()) as usize }
+    // }
 }
 
 #[doc(hidden)]
@@ -377,67 +377,29 @@ pub use core::ptr::addr_of as __addr_of;
 /// ```
 ///
 #[macro_export]
-macro_rules! const_sv{
-    ($str:expr) => {
-        {
-            const __RET: $crate::string::StringView = {
-                // Thanks to matt1992 on the Rust Community Discord Server for this Rust 1.39 Friendly Hack
-                const __STR: &'static $crate::string::__rust_str = $str;
-                /// # Safety
-                ///
-                /// `Self::Arr`'s type must be `[Self::Elem; Self::SLICE.len()]`
-                ///
-                unsafe trait GetSlice {
-                    type Elem: 'static;
-                    type Arr;
-                    const SLICE: &'static [Self::Elem];
-                }
+macro_rules! const_sv {
+    ($str:expr) => {{
+        const __RET: $crate::string::StringView = {
+            #[repr(C)]
+            union AsArray<'a, T> {
+                reff: &'a T,
+                arr: &'a [T; 1],
+            }
 
-                #[repr(C)]
-                struct ArrayAndEmpty<Arr> {
-                    array: Arr,
-                    empty: [u8; 0],
-                }
-
-                #[repr(C)]
-                union AsPacked< Arr, T> {
-                    start: *const T,
-                    packed: *const ArrayAndEmpty<Arr>,
-                }
-
-                struct GetEnd<T>(::core::marker::PhantomData<T>);
-
-                // Non-Empty slice case
-                impl<T: GetSlice> GetEnd<T> {
-                    pub const AS_END: *const T::Elem = unsafe {
-                        use ::std::mem::size_of;
-                        let same_size = size_of::<ArrayAndEmpty<T::Arr>>() != size_of::<T::Arr>();
-                        [(/* no padding allowed */)][same_size as usize];
-                        let start = T::SLICE.as_ptr();
-                        let packed = AsPacked::<T::Arr,T::Elem>{start}.packed;
-                        let end = $crate::string::__addr_of!((*packed).empty);
-                        end as *const T::Elem
-                    };
-                }
-
-                const __SLICE: &[u8] = (__STR).as_bytes();
-
-
-                struct __Dummy;
-
-                unsafe impl GetSlice for __Dummy {
-                    type Elem = u8;
-                    type Arr = [u8; __SLICE.len()];
-                    const SLICE: &'static [u8] = __SLICE;
-                }
-
-                let (begin, end) = (__SLICE.as_ptr(), GetEnd::<__Dummy>::AS_END);
-
-                unsafe{$crate::string::StringView::from_raw_parts(begin,end)}
+            let st: &'static $crate::string::__rust_str = $str;
+            let slice = st.as_bytes();
+            let begin = slice.as_ptr();
+            let end = if let [.., reff] = slice {
+                let [_, end @ ..] = unsafe { AsArray { reff }.arr };
+                end.as_ptr()
+            } else {
+                slice.as_ptr()
             };
-            __RET
-        }
-    }
+
+            unsafe { $crate::string::StringView::from_raw_parts(begin, end) }
+        };
+        __RET
+    }};
 }
 
 #[cfg(test)]
@@ -457,6 +419,7 @@ mod test {
     }
 
     #[test]
+
     pub fn test_empty() {
         let y = StringView::empty();
         assert_eq!(&*y, "");
