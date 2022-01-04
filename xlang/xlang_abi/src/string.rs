@@ -338,7 +338,7 @@ impl<'a> StringView<'a> {
     /// ## Safety
     /// The behaviour is undefined if any of the following constraints are violated:
     /// * Neither begin nor end may be null pointers or deallocated pointers
-    /// * For 'a, the range offset_from[begin,end) must be a range that is valid for reads
+    /// * For 'a, the range [begin,end) must be a range that is valid for reads
     /// * The text in the range [begin,end) must be valid UTF-8
     #[must_use]
     pub const unsafe fn from_raw_parts(begin: *const u8, end: *const u8) -> Self {
@@ -349,12 +349,12 @@ impl<'a> StringView<'a> {
         }
     }
 
-    // /// Determines the length of the string view
-    // #[must_use]
-    // #[allow(clippy::cast_sign_loss)] // offset_from can never be negative
-    // pub fn len(&self) -> usize {
-    //     unsafe { self.begin.as_ptr().offset_from(self.end.as_ptr()) as usize }
-    // }
+    /// Determines the length of the string view
+    #[must_use]
+    #[allow(clippy::cast_sign_loss)] // offset_from can never be negative
+    pub fn len(&self) -> usize {
+        unsafe { self.end.as_ptr().offset_from(self.begin.as_ptr()) as usize }
+    }
 }
 
 #[doc(hidden)]
