@@ -355,6 +355,12 @@ impl<'a> StringView<'a> {
     pub fn len(&self) -> usize {
         unsafe { self.end.as_ptr().offset_from(self.begin.as_ptr()) as usize }
     }
+
+    /// Checks if this string view is empty
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.begin == self.end
+    }
 }
 
 #[doc(hidden)]
