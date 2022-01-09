@@ -116,6 +116,11 @@ impl<K, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
     pub fn values(&self) -> Values<'_, K, V> {
         Values(self.iter())
     }
+
+    /// Produces an [`Iterator`] over the keys in this [`HashMap`]
+    pub fn keys(&self) -> Keys<'_, K, V> {
+        Keys(self.iter())
+    }
 }
 
 impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
@@ -305,7 +310,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
 
     /// Gets an immutable reference to the value given by `key`, if present, otherwise returns `None`.
     #[allow(clippy::cast_possible_truncation)]
-    pub fn get<Q: Hash + Eq>(&self, key: &Q) -> Option<&V>
+    pub fn get<Q: ?Sized + Hash + Eq>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
     {
@@ -332,7 +337,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
 
     /// Gets a mutable reference to the value given by `key`, if present, otherwise returns `None`.
     #[allow(clippy::cast_possible_truncation)]
-    pub fn get_mut<Q: Hash + Eq>(&mut self, key: &Q) -> Option<&mut V>
+    pub fn get_mut<Q: ?Sized + Hash + Eq>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
     {
@@ -441,6 +446,20 @@ impl<'a, K, V> Iterator for Values<'a, K, V> {
     }
 }
 
+/// An [`Iterator`] over the keys of a [`HashMap`]
+pub struct Keys<'a, K, V>(Iter<'a, K, V>);
+
+impl<'a, K, V> Iterator for Keys<'a, K, V> {
+    type Item = &'a K;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.0.next() {
+            Some(Pair(k, _)) => Some(k),
+            None => None,
+        }
+    }
+}
+
 impl<'a, K, V, H: BuildHasher, A: Allocator> IntoIterator for &'a HashMap<K, V, H, A> {
     type Item = &'a Pair<K, V>;
 
@@ -464,5 +483,90 @@ impl<'a, K: Debug, V: Debug, H: BuildHasher, A: Allocator> Debug for HashMap<K, 
         f.debug_map()
             .entries(self.iter().map(|Pair(k, v)| (k, v)))
             .finish()
+    }
+}
+
+///
+/// A [`HashSet`] that has a stable ABI and obtains storage backed by an [`Allocator`]
+#[derive(
+    Clone,
+    Debug, /* may not be good to derive(Debug) here. Maybe should provide impl instead */
+    Hash,
+)]
+pub struct HashSet<K, H: BuildHasher = BuildHasherDefault<XLangHasher>, A: Allocator = XLangAlloc> {
+    inner: HashMap<K, (), H, A>,
+}
+
+impl<K, H: BuildHasher + Default, A: Allocator + Default> HashSet<K, H, A> {
+    /// Constructs a new [`HashSet`] with a [`Default`] allocator and [`Default`] hasher
+    pub fn new() -> Self {
+        Self {
+            inner: HashMap::new(),
+        }
+    }
+}
+
+impl<K, H: BuildHasher, A: Allocator + Default> HashSet<K, H, A> {
+    /// Constructs a new [`HashSet`] with the given hasher and a [`Default`] allocator
+    pub fn with_hasher(hasher: H) -> Self {
+        Self {
+            inner: HashMap::with_hasher(hasher),
+        }
+    }
+}
+
+impl<K, H: BuildHasher + Default, A: Allocator> HashSet<K, H, A> {
+    /// Constructs a new [`HashSet`] with the given allocator and a [`Default`] hasher
+    pub fn new_in(alloc: A) -> Self {
+        Self {
+            inner: HashMap::new_in(alloc),
+        }
+    }
+}
+
+impl<K, H: BuildHasher, A: Allocator> HashSet<K, H, A> {
+    /// Constructs a new [`HashSet`] with the given hasher and allocator
+    pub fn with_hasher_in(hasher: H, alloc: A) -> Self {
+        Self {
+            inner: HashMap::with_hasher_in(hasher, alloc),
+        }
+    }
+
+    /// Produces an [`Iterator`] over each element of the set
+    pub fn iter(&self) -> SetIter<'_, K> {
+        SetIter(self.inner.keys())
+    }
+}
+
+impl<K: Eq + Hash, H: BuildHasher, A: Allocator> HashSet<K, H, A> {
+    ///
+    /// Checks if `self` contains the given val.
+    pub fn contains<Q: ?Sized + Hash + Eq>(&self, val: &Q) -> bool
+    where
+        K: Borrow<Q>,
+    {
+        self.inner.get(val).is_some()
+    }
+
+    ///
+    /// Inserts `val` into the set if it is not already present (according to the [`Eq`] implementation), or returns it (as an Err) instead.
+    pub fn insert(&mut self, val: K) -> Result<(), K> {
+        if self.inner.get(&val).is_some() {
+            Err(val)
+        } else {
+            self.inner.insert(val, ());
+            Ok(())
+        }
+    }
+}
+
+/// An [`Iterator`] over the values in a [`HashSet`]
+pub struct SetIter<'a, K>(Keys<'a, K, ()>);
+
+impl<'a, K> Iterator for SetIter<'a, K> {
+    type Item = &'a K;
+
+    fn next(&mut self) -> Option<&'a K> {
+        self.0.next()
     }
 }

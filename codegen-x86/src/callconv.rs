@@ -1,87 +1,99 @@
-use arch_ops::x86::X86Register;
-use target_tuples::Target;
-use xlang::abi::{span, span::Span};
+use std::collections::HashSet;
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub struct X86CallConv {
-    pub intregs: Span<'static, X86Register>,
-    pub floatregs: Span<'static, X86Register>,
-    pub vecregs: Span<'static, X86Register>,
-    pub saveregs: Span<'static, X86Register>,
-    pub callee_clean: bool,
-    pub stack_ltr_order: bool,
-    pub struct_always_on_stack: bool,
-    pub iretregs: Span<'static, X86Register>,
-    pub fretregs: Span<'static, X86Register>,
-    pub vretregs: Span<'static, X86Register>,
-    pub redzone: u16,
-    pub shadow: u16,
-    pub salign: u16,
+use arch_ops::x86::{features::X86Feature, X86Register};
+use xlang::targets::properties::TargetProperties;
+use xlang_struct::{FnType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type};
+
+use crate::{get_type_size, ValLocation};
+
+#[allow(dead_code)]
+pub enum TypeClass {
+    Float,
+    X87,
+    SSE,
+    Integer,
+    Memory,
+    Zero,
 }
 
-pub static SYSV64: X86CallConv = X86CallConv {
-    intregs: span![
-        X86Register::Rdi,
-        X86Register::Rsi,
-        X86Register::Rdx,
-        X86Register::Rcx,
-        X86Register::R8,
-        X86Register::R9
-    ],
-    floatregs: span![
-        X86Register::Xmm(0),
-        X86Register::Xmm(1),
-        X86Register::Xmm(2),
-        X86Register::Xmm(3),
-        X86Register::Xmm(4),
-        X86Register::Xmm(5),
-        X86Register::Xmm(6),
-        X86Register::Xmm(7)
-    ],
-    vecregs: span![
-        X86Register::Xmm(0),
-        X86Register::Xmm(1),
-        X86Register::Xmm(2),
-        X86Register::Xmm(3),
-        X86Register::Xmm(4),
-        X86Register::Xmm(5),
-        X86Register::Xmm(6),
-        X86Register::Xmm(7)
-    ],
-    saveregs: span![
-        X86Register::Rbx,
-        X86Register::Rsp,
-        X86Register::Rbp,
-        X86Register::R12,
-        X86Register::R13,
-        X86Register::R14,
-        X86Register::R15
-    ],
-    callee_clean: false,
-    stack_ltr_order: false,
-    struct_always_on_stack: false,
-    iretregs: span![X86Register::Rax, X86Register::Rdx],
-    fretregs: span![X86Register::Xmm(0), X86Register::Xmm(1)],
-    vretregs: span![X86Register::Xmm(0), X86Register::Xmm(1)],
-    redzone: 128,
-    shadow: 0,
-    salign: 16,
-};
+pub fn classify_type(ty: &Type) -> Option<TypeClass> {
+    match ty {
+        Type::Scalar(ScalarType {
+            header:
+                ScalarTypeHeader {
+                    vectorsize: 1..=65535,
+                    ..
+                },
+            ..
+        }) => Some(TypeClass::SSE),
+        Type::Scalar(ScalarType {
+            header: ScalarTypeHeader { bitsize: 80, .. },
+            kind: ScalarTypeKind::Float { .. },
+            ..
+        }) => Some(TypeClass::X87),
+        Type::Scalar(ScalarType {
+            kind: ScalarTypeKind::Float { .. },
+            ..
+        }) => Some(TypeClass::Float),
+        Type::Scalar(_) => Some(TypeClass::Integer),
+        Type::Void => None,
+        Type::FnType(_) => None,
+        Type::Pointer(_) => Some(TypeClass::Integer),
+    }
+}
 
-#[must_use]
-///
-/// # Panics
-/// if the target is not a known x86 target
-pub fn get_calling_convention(tag: xlang::ir::Abi, target: &Target) -> &'static X86CallConv {
-    target_tuples::match_targets! {
-        match (target){
-            x86_64-*-windows-msvc => match tag{
-                xlang_struct::Abi::Vectorcall => todo!("vectorcall"),
-                _ => todo!("win64")
-            },
-            x86_64-*-* => &SYSV64,
+pub trait X86CallConv {
+    fn prepare_stack(&self, ty: &FnType, frame_size: usize) -> usize;
+    fn find_parameter(&self, off: u32, ty: &FnType) -> ValLocation;
+    fn find_return_val(&self, ty: &Type) -> Option<ValLocation>;
+    fn pass_return_place(&self, ty: &Type, frame_size: usize) -> Option<ValLocation>;
+}
 
-            * => panic!("Unknown target")
+pub struct SysV64CC(&'static TargetProperties, HashSet<X86Feature>);
+
+impl X86CallConv for SysV64CC {
+    fn prepare_stack(&self, _ty: &FnType, _frame_size: usize) -> usize {
+        todo!()
+    }
+
+    fn find_parameter(&self, mut _off: u32, _ty: &FnType) -> ValLocation {
+        todo!()
+    }
+
+    fn find_return_val(&self, ty: &Type) -> Option<ValLocation> {
+        match (classify_type(ty), get_type_size(ty, self.0)) {
+            (None, None) => None,
+            (None, Some(_)) => unreachable!(),
+            (Some(_), None) => unreachable!(),
+            (Some(TypeClass::Zero), Some(0)) => Some(ValLocation::Null),
+            (Some(TypeClass::Zero), Some(_)) => {
+                panic!("Impossible situation (type has zst class, but has a size)")
+            }
+            (Some(TypeClass::Integer), Some(1)) => Some(ValLocation::Register(X86Register::Al)),
+            (Some(TypeClass::Integer), Some(2)) => Some(ValLocation::Register(X86Register::Ax)),
+            (Some(TypeClass::Integer), Some(4)) => Some(ValLocation::Register(X86Register::Eax)),
+            (Some(TypeClass::Integer), Some(8)) => Some(ValLocation::Register(X86Register::Rax)),
+            (Some(TypeClass::Integer), Some(16)) => {
+                Some(ValLocation::Regs(vec![X86Register::Rax, X86Register::Rdx]))
+            }
+            (Some(TypeClass::X87), Some(16)) => Some(ValLocation::Register(X86Register::Fp(0))),
+            (Some(TypeClass::Float), Some(4)) => Some(ValLocation::Register(X86Register::Xmm(0))),
+            (Some(TypeClass::Float), Some(8)) => Some(ValLocation::Register(X86Register::Xmm(0))),
+            (Some(TypeClass::Float), Some(16)) => Some(ValLocation::Register(X86Register::Xmm(0))),
+            (Some(TypeClass::SSE), Some(4)) => Some(ValLocation::Register(X86Register::Xmm(0))),
+            (Some(TypeClass::SSE), Some(8)) => Some(ValLocation::Register(X86Register::Xmm(0))),
+            (Some(TypeClass::SSE), Some(16)) => Some(ValLocation::Register(X86Register::Xmm(0))),
+            (Some(TypeClass::SSE), Some(32)) if self.1.contains(&X86Feature::Avx) => {
+                Some(ValLocation::Register(X86Register::Ymm(0)))
+            }
+            (Some(TypeClass::SSE), Some(64)) if self.1.contains(&X86Feature::Avx512f) => {
+                Some(ValLocation::Register(X86Register::Zmm(0)))
+            }
+            _ => None,
         }
+    }
+
+    fn pass_return_place(&self, _ty: &Type, _frame_size: usize) -> Option<ValLocation> {
+        todo!()
     }
 }

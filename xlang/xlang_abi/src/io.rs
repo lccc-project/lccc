@@ -66,21 +66,21 @@ pub struct ReadVTable {
     read: unsafe extern "C" fn(*mut (), SpanMut<u8>) -> Result<usize>,
 }
 
-unsafe impl AbiSafeVTable<dyn Read> for ReadVTable {}
-unsafe impl AbiSafeVTable<dyn Read + Send> for ReadVTable {}
-unsafe impl AbiSafeVTable<dyn Read + Sync> for ReadVTable {}
-unsafe impl AbiSafeVTable<dyn Read + Send + Sync> for ReadVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn Read + 'a> for ReadVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn Read + Send + 'a> for ReadVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn Read + Sync + 'a> for ReadVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn Read + Send + Sync + 'a> for ReadVTable {}
 
-unsafe impl AbiSafeTrait for dyn Read {
+unsafe impl<'a> AbiSafeTrait for dyn Read + 'a {
     type VTable = ReadVTable;
 }
-unsafe impl AbiSafeTrait for dyn Read + Send {
+unsafe impl<'a> AbiSafeTrait for dyn Read + Send + 'a {
     type VTable = ReadVTable;
 }
-unsafe impl AbiSafeTrait for dyn Read + Sync {
+unsafe impl<'a> AbiSafeTrait for dyn Read + Sync + 'a {
     type VTable = ReadVTable;
 }
-unsafe impl AbiSafeTrait for dyn Read + Send + Sync {
+unsafe impl<'a> AbiSafeTrait for dyn Read + Send + Sync + 'a {
     type VTable = ReadVTable;
 }
 
@@ -92,7 +92,7 @@ unsafe extern "C" fn vtbl_read<T: Read>(this: *mut (), buf: SpanMut<u8>) -> Resu
     <T as Read>::read(&mut *(this.cast::<T>()), buf)
 }
 
-unsafe impl<T: Read> AbiSafeUnsize<T> for dyn Read {
+unsafe impl<'a, T: Read + 'a> AbiSafeUnsize<T> for dyn Read + 'a {
     fn construct_vtable_for() -> &'static Self::VTable {
         &ReadVTable {
             size: core::mem::size_of::<T>(),
@@ -104,7 +104,7 @@ unsafe impl<T: Read> AbiSafeUnsize<T> for dyn Read {
     }
 }
 
-unsafe impl<T: Read + Send> AbiSafeUnsize<T> for dyn Read + Send {
+unsafe impl<'a, T: Read + Send + 'a> AbiSafeUnsize<T> for dyn Read + Send + 'a {
     fn construct_vtable_for() -> &'static Self::VTable {
         &ReadVTable {
             size: core::mem::size_of::<T>(),
@@ -116,7 +116,7 @@ unsafe impl<T: Read + Send> AbiSafeUnsize<T> for dyn Read + Send {
     }
 }
 
-unsafe impl<T: Read + Sync> AbiSafeUnsize<T> for dyn Read + Sync {
+unsafe impl<'a, T: Read + Sync + 'a> AbiSafeUnsize<T> for dyn Read + Sync + 'a {
     fn construct_vtable_for() -> &'static Self::VTable {
         &ReadVTable {
             size: core::mem::size_of::<T>(),
@@ -128,7 +128,7 @@ unsafe impl<T: Read + Sync> AbiSafeUnsize<T> for dyn Read + Sync {
     }
 }
 
-unsafe impl<T: Read + Send + Sync> AbiSafeUnsize<T> for dyn Read + Send + Sync {
+unsafe impl<'a, T: Read + Send + Sync + 'a> AbiSafeUnsize<T> for dyn Read + Send + Sync + 'a {
     fn construct_vtable_for() -> &'static Self::VTable {
         &ReadVTable {
             size: core::mem::size_of::<T>(),
@@ -140,7 +140,37 @@ unsafe impl<T: Read + Send + Sync> AbiSafeUnsize<T> for dyn Read + Send + Sync {
     }
 }
 
-impl<'lt> Read for dyn DynPtrSafe<dyn Read> + 'lt {
+impl<'a, 'lt> Read for dyn DynPtrSafe<dyn Read + 'a> + 'lt
+where
+    'a: 'lt,
+{
+    fn read(&mut self, buf: SpanMut<u8>) -> Result<usize> {
+        unsafe { (self.vtable().read)(self.as_raw_mut(), buf) }
+    }
+}
+
+impl<'a, 'lt> Read for dyn DynPtrSafe<dyn Read + Send + 'a> + 'lt
+where
+    'a: 'lt,
+{
+    fn read(&mut self, buf: SpanMut<u8>) -> Result<usize> {
+        unsafe { (self.vtable().read)(self.as_raw_mut(), buf) }
+    }
+}
+
+impl<'a, 'lt> Read for dyn DynPtrSafe<dyn Read + Sync + 'a> + 'lt
+where
+    'a: 'lt,
+{
+    fn read(&mut self, buf: SpanMut<u8>) -> Result<usize> {
+        unsafe { (self.vtable().read)(self.as_raw_mut(), buf) }
+    }
+}
+
+impl<'a, 'lt> Read for dyn DynPtrSafe<dyn Read + Send + Sync + 'a> + 'lt
+where
+    'a: 'lt,
+{
     fn read(&mut self, buf: SpanMut<u8>) -> Result<usize> {
         unsafe { (self.vtable().read)(self.as_raw_mut(), buf) }
     }
@@ -368,21 +398,21 @@ pub struct WriteVTable {
     flush: unsafe extern "C" fn(*mut ()) -> Result<()>,
 }
 
-unsafe impl AbiSafeVTable<dyn Write> for WriteVTable {}
-unsafe impl AbiSafeVTable<dyn Write + Send> for WriteVTable {}
-unsafe impl AbiSafeVTable<dyn Write + Sync> for WriteVTable {}
-unsafe impl AbiSafeVTable<dyn Write + Send + Sync> for WriteVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn Write + 'a> for WriteVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn Write + Send + 'a> for WriteVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn Write + Sync + 'a> for WriteVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn Write + Send + Sync + 'a> for WriteVTable {}
 
-unsafe impl AbiSafeTrait for dyn Write {
+unsafe impl<'a> AbiSafeTrait for dyn Write + 'a {
     type VTable = WriteVTable;
 }
-unsafe impl AbiSafeTrait for dyn Write + Send {
+unsafe impl<'a> AbiSafeTrait for dyn Write + Send + 'a {
     type VTable = WriteVTable;
 }
-unsafe impl AbiSafeTrait for dyn Write + Sync {
+unsafe impl<'a> AbiSafeTrait for dyn Write + Sync + 'a {
     type VTable = WriteVTable;
 }
-unsafe impl AbiSafeTrait for dyn Write + Send + Sync {
+unsafe impl<'a> AbiSafeTrait for dyn Write + Send + Sync + 'a {
     type VTable = WriteVTable;
 }
 
@@ -394,7 +424,7 @@ unsafe extern "C" fn vtbl_flush<T: Write>(this: *mut ()) -> Result<()> {
     <T as Write>::flush(&mut *(this.cast::<T>()))
 }
 
-unsafe impl<T: Write> AbiSafeUnsize<T> for dyn Write {
+unsafe impl<'a, T: Write + 'a> AbiSafeUnsize<T> for dyn Write + 'a {
     fn construct_vtable_for() -> &'static Self::VTable {
         &WriteVTable {
             size: core::mem::size_of::<T>(),
@@ -407,7 +437,7 @@ unsafe impl<T: Write> AbiSafeUnsize<T> for dyn Write {
     }
 }
 
-unsafe impl<T: Write + Send> AbiSafeUnsize<T> for dyn Write + Send {
+unsafe impl<'a, T: Write + Send + 'a> AbiSafeUnsize<T> for dyn Write + Send + 'a {
     fn construct_vtable_for() -> &'static Self::VTable {
         &WriteVTable {
             size: core::mem::size_of::<T>(),
@@ -420,7 +450,7 @@ unsafe impl<T: Write + Send> AbiSafeUnsize<T> for dyn Write + Send {
     }
 }
 
-unsafe impl<T: Write + Sync> AbiSafeUnsize<T> for dyn Write + Sync {
+unsafe impl<'a, T: Write + Sync + 'a> AbiSafeUnsize<T> for dyn Write + Sync + 'a {
     fn construct_vtable_for() -> &'static Self::VTable {
         &WriteVTable {
             size: core::mem::size_of::<T>(),
@@ -433,7 +463,7 @@ unsafe impl<T: Write + Sync> AbiSafeUnsize<T> for dyn Write + Sync {
     }
 }
 
-unsafe impl<T: Write + Send + Sync> AbiSafeUnsize<T> for dyn Write + Send + Sync {
+unsafe impl<'a, T: Write + Send + Sync + 'a> AbiSafeUnsize<T> for dyn Write + Send + Sync + 'a {
     fn construct_vtable_for() -> &'static Self::VTable {
         &WriteVTable {
             size: core::mem::size_of::<T>(),
@@ -446,7 +476,49 @@ unsafe impl<T: Write + Send + Sync> AbiSafeUnsize<T> for dyn Write + Send + Sync
     }
 }
 
-impl<'lt> Write for dyn DynPtrSafe<dyn Write> + 'lt {
+impl<'a, 'lt> Write for dyn DynPtrSafe<dyn Write + 'a> + 'lt
+where
+    'a: 'lt,
+{
+    fn write(&mut self, buf: Span<u8>) -> Result<usize> {
+        unsafe { (self.vtable().write)(self.as_raw_mut(), buf) }
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        unsafe { (self.vtable().flush)(self.as_raw_mut()) }
+    }
+}
+
+impl<'a, 'lt> Write for dyn DynPtrSafe<dyn Write + Send + 'a> + 'lt
+where
+    'a: 'lt,
+{
+    fn write(&mut self, buf: Span<u8>) -> Result<usize> {
+        unsafe { (self.vtable().write)(self.as_raw_mut(), buf) }
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        unsafe { (self.vtable().flush)(self.as_raw_mut()) }
+    }
+}
+
+impl<'a, 'lt> Write for dyn DynPtrSafe<dyn Write + Sync + 'a> + 'lt
+where
+    'a: 'lt,
+{
+    fn write(&mut self, buf: Span<u8>) -> Result<usize> {
+        unsafe { (self.vtable().write)(self.as_raw_mut(), buf) }
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        unsafe { (self.vtable().flush)(self.as_raw_mut()) }
+    }
+}
+
+impl<'a, 'lt> Write for dyn DynPtrSafe<dyn Write + Send + Sync + 'a> + 'lt
+where
+    'a: 'lt,
+{
     fn write(&mut self, buf: Span<u8>) -> Result<usize> {
         unsafe { (self.vtable().write)(self.as_raw_mut(), buf) }
     }

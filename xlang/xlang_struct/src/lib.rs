@@ -230,6 +230,7 @@ pub enum BinaryOp {
     CmpNe,
     CmpGe,
     GmpLe,
+    Cmp,
 }
 
 #[repr(u16)]
@@ -241,6 +242,19 @@ pub enum UnaryOp {
 }
 
 #[repr(u16)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum BranchCondition {
+    Always,
+    Less,
+    LessEqual,
+    Equal,
+    NotEqual,
+    Greater,
+    GreaterEqual,
+    Never,
+}
+
+#[repr(u16)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Expr {
     Null,
@@ -249,6 +263,7 @@ pub enum Expr {
     BinaryOp(BinaryOp),
     UnaryOp(UnaryOp),
     CallFunction(FnType),
+    Branch { cond: BranchCondition, target: u32 },
 }
 
 #[repr(u8)]
