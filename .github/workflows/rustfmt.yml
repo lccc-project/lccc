@@ -18,7 +18,8 @@ jobs:
         submodules: true
     - name: Install stable
       run: |
+        rustup toolchain add nightly --component rustfmt
         rustup update
     - name: Build
-      run: cargo +stable fmt -- --check
+      run: cargo +nightly fmt -- --check
     

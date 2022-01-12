@@ -136,7 +136,8 @@ use xlang_struct::{
 //     }
 // }
 
-pub fn get_type_size(ty: &Type, properties: &'static TargetProperties) -> Option<usize> {
+#[must_use]
+pub const fn get_type_size(ty: &Type, properties: &'static TargetProperties) -> Option<usize> {
     match ty {
         Type::Scalar(ScalarType {
             header:
@@ -157,8 +158,7 @@ pub fn get_type_size(ty: &Type, properties: &'static TargetProperties) -> Option
             };
             Some(bytes * vec)
         }
-        Type::Void => None,
-        Type::FnType(_) => None,
+        Type::Void | Type::FnType(_) => None,
         Type::Pointer(_) => Some((properties.ptrbits / 8) as usize),
     }
 }
@@ -310,10 +310,10 @@ impl X86CodegenState {
         }
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code, clippy::match_wildcard_for_single_variants)]
     fn restore_register(&mut self, reg: X86Register) {
-        match self.regs.get(&reg) {
-            Some(RegisterStatus::Saved { loc, .. }) => match loc {
+        if let Some(RegisterStatus::Saved { loc, .. }) = self.regs.get(&reg) {
+            match loc {
                 ValLocation::Null => {}
                 ValLocation::Register(r) => match reg.class() {
                     X86RegisterClass::Byte | X86RegisterClass::ByteRex => {
@@ -347,23 +347,27 @@ impl X86CodegenState {
                                     X86Operand::Register(reg),
                                     X86Operand::ModRM(ModRM::Direct(reg)),
                                 ],
-                            )))
+                            )));
                     }
                     _ => panic!("Cannot restore reg {}", reg),
                 },
-                ValLocation::BpDisp(off) => todo!("[bp{:-}]", off),
-                ValLocation::SpDisp(off) => todo!("[sp{:-}]", off),
+                ValLocation::BpDisp(off) => todo!("[bp{:+}]", off),
+                ValLocation::SpDisp(off) => todo!("[sp{:+}]", off),
                 _ => unreachable!("Not a save location for {}", reg),
-            },
-            _ => {}
+            }
         }
     }
 
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        clippy::cast_possible_wrap,
+        clippy::needless_collect,
+        clippy::cast_lossless,
+        clippy::cast_possible_truncation
+    )]
     fn save_reg(&mut self, reg: X86Register, rs: RegisterStatus) {
         match rs {
-            RegisterStatus::Free => {}
-            RegisterStatus::ToClobber => {} // Can already clobber this register, since we've saved it to *be* clobbered
+            RegisterStatus::Free | RegisterStatus::ToClobber => {}
             RegisterStatus::MustSave => {
                 self.frame_size += reg.class().size(self.mode) as i32;
                 let off = -self.frame_size;
@@ -391,9 +395,9 @@ impl X86CodegenState {
                         // Slow check, to make sure the thing we need to store is actually in the register
                         match val {
                             VStackValue::OpaqueInt(ValLocation::Register(r), ty) if r == reg => {
-                                self.frame_size +=
-                                    get_type_size(&Type::Scalar(ty.clone()), self.properties)
-                                        .unwrap() as i32;
+                                self.frame_size += get_type_size(&Type::Scalar(ty), self.properties)
+                                    .unwrap()
+                                    as i32;
                                 let off = -self.frame_size;
                                 val = self.move_value(val, ValLocation::BpDisp(off));
                             }
@@ -436,11 +440,11 @@ impl X86CodegenState {
         }
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code, clippy::unused_self)]
     fn allocate_register(&mut self, _class: X86RegisterClass) -> X86Register {
         todo!()
     }
-
+    #[allow(clippy::cast_sign_loss, clippy::cast_lossless)]
     fn move_value(&mut self, val: VStackValue, target_loc: ValLocation) -> VStackValue {
         match val {
             VStackValue::Constant(Value::Integer { ty, val }) => match target_loc {
@@ -513,6 +517,7 @@ impl X86CodegenState {
         }
     }
 
+    #[allow(clippy::cast_sign_loss)]
     pub fn encode<W: InsnWrite>(
         mut self,
         x: &mut X86Encoder<W>,
@@ -556,7 +561,12 @@ impl X86CodegenState {
         Ok(())
     }
 
-    #[allow(clippy::needless_collect)] // Because it isn't needless
+    #[allow(
+        clippy::needless_collect,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_wrap,
+        clippy::too_many_lines // 
+    )] // Because it isn't needless
     pub fn write_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Null => (),
@@ -663,23 +673,26 @@ impl X86CodegenState {
                             self.vstack.push_back(VStackValue::Constant(Value::Integer {
                                 ty,
                                 val: (-(val as i32)) as u32,
-                            }))
+                            }));
                         }
                         UnaryOp::BitNot => self
                             .vstack
                             .push_back(VStackValue::Constant(Value::Integer { ty, val: !val })),
                         UnaryOp::LogicNot => {
                             if val == 0 {
-                                self.vstack
-                                    .push_back(VStackValue::Constant(Value::Integer { ty, val: 1 }))
+                                self.vstack.push_back(VStackValue::Constant(Value::Integer {
+                                    ty,
+                                    val: 1,
+                                }));
                             } else {
-                                self.vstack
-                                    .push_back(VStackValue::Constant(Value::Integer { ty, val: 0 }))
+                                self.vstack.push_back(VStackValue::Constant(Value::Integer {
+                                    ty,
+                                    val: 0,
+                                }));
                             }
                         }
                     },
-                    VStackValue::LValue(_) => panic!("typecheck fail"),
-                    VStackValue::Pointer(_, _) => panic!("typecheck fail"),
+                    VStackValue::LValue(_) | VStackValue::Pointer(_, _) => panic!("typecheck fail"),
                     _ => todo!(),
                 }
             }
@@ -691,15 +704,15 @@ impl X86CodegenState {
                         drop(tsym);
                     }
                     BranchCondition::Always => {
-                        assert!(self.targets.get(target).unwrap().len() == 0); // TODO: Handle parameterized branches
+                        assert!(self.targets.get(target).unwrap().is_empty()); // TODO: Handle parameterized branches
                         self.vstack.clear();
                     }
-                    BranchCondition::Less => todo!(),
-                    BranchCondition::LessEqual => todo!(),
-                    BranchCondition::Equal => todo!(),
-                    BranchCondition::NotEqual => todo!(),
-                    BranchCondition::Greater => todo!(),
-                    BranchCondition::GreaterEqual => todo!(),
+                    BranchCondition::Less => todo!("branch less @{}", target),
+                    BranchCondition::LessEqual => todo!("branch less_equal @{}", target),
+                    BranchCondition::Equal => todo!("branch equal @{}", target),
+                    BranchCondition::NotEqual => todo!("branch not_equal @{}", target),
+                    BranchCondition::Greater => todo!("branch greater @{}", target),
+                    BranchCondition::GreaterEqual => todo!("branch greater_equal @{}", target),
                 }
             }
         }

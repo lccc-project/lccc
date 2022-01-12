@@ -499,6 +499,7 @@ pub struct HashSet<K, H: BuildHasher = BuildHasherDefault<XLangHasher>, A: Alloc
 
 impl<K, H: BuildHasher + Default, A: Allocator + Default> HashSet<K, H, A> {
     /// Constructs a new [`HashSet`] with a [`Default`] allocator and [`Default`] hasher
+    #[must_use]
     pub fn new() -> Self {
         Self {
             inner: HashMap::new(),
@@ -506,8 +507,15 @@ impl<K, H: BuildHasher + Default, A: Allocator + Default> HashSet<K, H, A> {
     }
 }
 
+impl<K, H: BuildHasher + Default, A: Allocator + Default> Default for HashSet<K, H, A> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<K, H: BuildHasher, A: Allocator + Default> HashSet<K, H, A> {
     /// Constructs a new [`HashSet`] with the given hasher and a [`Default`] allocator
+    #[must_use]
     pub fn with_hasher(hasher: H) -> Self {
         Self {
             inner: HashMap::with_hasher(hasher),
@@ -517,6 +525,7 @@ impl<K, H: BuildHasher, A: Allocator + Default> HashSet<K, H, A> {
 
 impl<K, H: BuildHasher + Default, A: Allocator> HashSet<K, H, A> {
     /// Constructs a new [`HashSet`] with the given allocator and a [`Default`] hasher
+    #[must_use]
     pub fn new_in(alloc: A) -> Self {
         Self {
             inner: HashMap::new_in(alloc),
@@ -526,6 +535,7 @@ impl<K, H: BuildHasher + Default, A: Allocator> HashSet<K, H, A> {
 
 impl<K, H: BuildHasher, A: Allocator> HashSet<K, H, A> {
     /// Constructs a new [`HashSet`] with the given hasher and allocator
+    #[must_use]
     pub fn with_hasher_in(hasher: H, alloc: A) -> Self {
         Self {
             inner: HashMap::with_hasher_in(hasher, alloc),
@@ -550,6 +560,7 @@ impl<K: Eq + Hash, H: BuildHasher, A: Allocator> HashSet<K, H, A> {
 
     ///
     /// Inserts `val` into the set if it is not already present (according to the [`Eq`] implementation), or returns it (as an Err) instead.
+    #[allow(clippy::missing_errors_doc)] // Not an Error to return the `K`
     pub fn insert(&mut self, val: K) -> Result<(), K> {
         if self.inner.get(&val).is_some() {
             Err(val)
