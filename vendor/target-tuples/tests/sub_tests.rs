@@ -25,6 +25,23 @@ fn test_many_config_subs() -> std::io::Result<()> {
 }
 
 #[test]
+#[ignore]
+fn test_rustc_names() -> std::io::Result<()> {
+    let f = BufReader::new(File::open(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/rustc-targets.data"
+    ))?);
+    for s in f.lines() {
+        let s = s?;
+        if s.trim().is_empty() {
+            continue;
+        }
+        Target::parse(&s);
+    }
+    Ok(())
+}
+
+#[test]
 fn test_idempotency() -> std::io::Result<()> {
     let f = BufReader::new(File::open(concat!(
         env!("CARGO_MANIFEST_DIR"),

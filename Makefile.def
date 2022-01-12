@@ -1,3 +1,11 @@
 #! /usr/bin/autogen
 AutoGen definitions Makefile.tpl;
 
+
+
+main={name="lccc";subdir="lccc";deps="xlang";};
+main={name="xlang";subdir="xlang";};
+main={name="binfmt";subdir="binfmt";deps="arch-ops";};
+main={name="archops}; subdir="arch-ops";};
+codegen={name="x86";subdir="codegen-x86";deps="xlang binfmt archops";};
+frontend={name="c";subdir="c";deps="xlang";};

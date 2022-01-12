@@ -417,3 +417,21 @@ impl<T: Ord, A: Allocator> Ord for Box<T, A> {
         T::cmp(self, other)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::Box;
+
+    #[test]
+    fn test_box() {
+        let b = Box::new(5i32);
+        assert_eq!(Box::into_inner(b), 5i32);
+    }
+
+    #[test]
+    fn test_deref() {
+        let b = Box::new(5i32);
+
+        assert_eq!(&*b, &5i32);
+    }
+}

@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "target-tuples"
-version = "0.4.1"
+version = "0.5.3"
 authors = ["Connor Horman <chorman64@gmail.com>"]
 description = "    A library to parse target tuples of the form <arch>-<vendor>-<system>, similar to those used by autoconf.\n"
 readme = "README.md"

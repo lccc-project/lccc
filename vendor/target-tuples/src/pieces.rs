@@ -4,6 +4,7 @@
     clippy::match_like_matches_macro
 )] // Kill clippy for MSRV
 use alloc::{borrow::ToOwned, string::String};
+use core::fmt::Formatter;
 use core::{fmt::Display, str::FromStr};
 
 ///
@@ -12,46 +13,56 @@ use core::{fmt::Display, str::FromStr};
 #[derive(Debug, Clone, Copy)]
 pub struct UnknownError;
 
+impl Display for UnknownError {
+    fn fmt(&self, fmt: &mut Formatter) -> core::fmt::Result {
+        fmt.write_str("Unknown or invalid target or component")
+    }
+}
+
 ///
 /// The Architecture field of a target tuple
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[repr(u32)]
 pub enum Architecture {
-    Unknown,
-    I86,
-    I8086,
-    I086,
-    I186,
-    I286,
-    I386,
-    I486,
-    I586,
-    I686,
-    X86_64,
-    Arm,
-    ArmBe,
-    Aarch64,
-    Aarch64Be,
-    Aarch64_32,
-    Mips,
-    MipsLE,
-    Mips64,
-    Mips64LE,
-    PowerPC32,
-    PowerPC64,
-    PowerPC64le,
-    RiscV32,
-    RiscV64,
-    Sparc,
-    SparcV9,
-    SparcEL,
-    Wasm32,
-    Wasm64,
-    Wc65c816,
-    M6502,
-    M65C02,
-    SPC700,
+    Unknown = 0,
+    I86 = 1,
+    I8086 = 2,
+    I086 = 3,
+    I186 = 4,
+    I286 = 5,
+    I386 = 6,
+    I486 = 7,
+    I586 = 8,
+    I686 = 9,
+    X86_64 = 10,
+    Arm = 11,
+    ArmBe = 12,
+    Aarch64 = 13,
+    Aarch64Be = 14,
+    Aarch64_32 = 15,
+    Mips = 16,
+    MipsLE = 17,
+    Mips64 = 18,
+    Mips64LE = 19,
+    PowerPC32 = 20,
+    PowerPC64 = 21,
+    PowerPC64le = 22,
+    RiscV32 = 23,
+    RiscV64 = 24,
+    Sparc = 25,
+    SparcV9 = 26,
+    SparcEL = 27,
+    Wasm32 = 28,
+    Wasm64 = 29,
+    Wc65c816 = 30,
+    M6502 = 31,
+    M65C02 = 32,
+    SPC700 = 33,
+
+    /// Used for ABI Purposes with lccc
+    Null = (-1i32) as u32,
     #[doc(hidden)]
-    __Nonexhaustive,
+    __Nonexhaustive = (-2i32) as u32,
 }
 
 impl FromStr for Architecture {
@@ -158,6 +169,7 @@ impl Architecture {
             Architecture::M6502 => "6502",
             Architecture::M65C02 => "6502",
             Architecture::SPC700 => "spc700",
+            Architecture::Null => "null",
             Architecture::__Nonexhaustive => unreachable!(),
         }
     }
@@ -181,25 +193,29 @@ impl Architecture {
 /// The Vendor field of a target tuple
 ///
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[repr(u32)]
 pub enum Vendor {
-    Unknown,
-    Apple,
-    PC,
-    SCEI,
-    Freescale,
-    IBM,
-    ImaginationTechnologies,
-    MipsTechnologies,
-    NVIDIA,
-    CSR,
-    Myriad,
-    AMD,
-    Mesa,
-    SUSE,
-    OpenEmbedded,
-    WDC,
+    Unknown = 0,
+    Apple = 1,
+    PC = 2,
+    SCEI = 3,
+    Freescale = 4,
+    IBM = 5,
+    ImaginationTechnologies = 6,
+    MipsTechnologies = 7,
+    NVIDIA = 8,
+    CSR = 9,
+    Myriad = 10,
+    AMD = 11,
+    Mesa = 12,
+    SUSE = 13,
+    OpenEmbedded = 14,
+    WDC = 15,
+
+    /// Used for ABI Purposes with lccc
+    Null = (-1i32) as u32,
     #[doc(hidden)]
-    __Nonexhaustive,
+    __Nonexhaustive = (-2i32) as u32,
 }
 
 impl FromStr for Vendor {
@@ -265,6 +281,7 @@ impl Vendor {
             Vendor::SUSE => "suse",
             Vendor::OpenEmbedded => "oe",
             Vendor::WDC => "wdc",
+            Vendor::Null => "null",
             Vendor::__Nonexhaustive => unreachable!(),
         }
     }
@@ -273,49 +290,52 @@ impl Vendor {
 ///
 /// The Operating System Field of a target tuple
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[repr(u32)]
 pub enum OS {
-    Unknown,
+    Unknown = 0,
 
-    Ananas,
-    CloudABI,
-    Darwin,
-    DragonFly,
-    FreeBSD,
-    Fuchsia,
-    IOS,
-    KFreeBSD,
-    Linux,
-    Lv2,
-    MacOSX,
-    NetBSD,
-    OpenBSD,
-    Solaris,
-    Win32,
-    ZOS,
-    Haiku,
-    Minix,
-    RTEMS,
-    NaCl,
-    AIX,
-    CUDA,
-    NVCL,
-    AMDHSA,
-    PS4,
-    ELFIAMCU,
-    TvOS,
-    WatchOS,
-    Mesa3D,
-    Contiki,
-    AMDPAL,
-    HermitCore,
-    Hurd,
-    WASI,
-    Emscripten,
-    PhantomOS,
-    SNES, // Not an OS, but the currently config.sub places it in the os field
-    NES,  // likewise
+    Ananas = 1,
+    CloudABI = 2,
+    Darwin = 3,
+    DragonFly = 4,
+    FreeBSD = 5,
+    Fuchsia = 6,
+    IOS = 7,
+    KFreeBSD = 8,
+    Linux = 9,
+    Lv2 = 10,
+    MacOSX = 11,
+    NetBSD = 12,
+    OpenBSD = 13,
+    Solaris = 14,
+    Win32 = 15,
+    ZOS = 16,
+    Haiku = 17,
+    Minix = 18,
+    RTEMS = 19,
+    NaCl = 20,
+    AIX = 21,
+    CUDA = 22,
+    NVCL = 23,
+    AMDHSA = 24,
+    PS4 = 25,
+    ELFIAMCU = 26,
+    TvOS = 27,
+    WatchOS = 28,
+    Mesa3D = 29,
+    Contiki = 30,
+    AMDPAL = 31,
+    HermitCore = 32,
+    Hurd = 33,
+    WASI = 34,
+    Emscripten = 35,
+    PhantomOS = 36,
+    SNES = 37, // Not an OS, but the currently config.sub places it in the os field
+    NES = 38,  // likewise
+
+    Null = (-1i32) as u32,
     #[doc(hidden)]
-    __Nonexhaustive,
+    __Nonexhaustive = (-2i32) as u32,
 }
 
 impl FromStr for OS {
@@ -425,6 +445,7 @@ impl OS {
             OS::PhantomOS => "phantom",
             OS::SNES => "snes",
             OS::NES => "nes",
+            OS::Null => "null",
             OS::__Nonexhaustive => unreachable!(),
         }
     }
@@ -433,34 +454,36 @@ impl OS {
 ///
 /// The Environment field of target tuples
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[repr(u32)]
 pub enum Environment {
-    Unknown,
-    GNU,
-    GNUABIN32,
-    GNUABI64,
-    GNUEABI,
-    GNUEABIHF,
-    GNUX32,
-    CODE16,
-    EABI,
-    EABIHF,
-    Android,
-    Musl,
-    MuslEABI,
-    MuslEABIHF,
+    Unknown = 0,
+    GNU = 1,
+    GNUABIN32 = 2,
+    GNUABI64 = 3,
+    GNUEABI = 4,
+    GNUEABIHF = 5,
+    GNUX32 = 6,
+    CODE16 = 7,
+    EABI = 8,
+    EABIHF = 9,
+    Android = 10,
+    Musl = 11,
+    MuslEABI = 12,
+    MuslEABIHF = 13,
 
-    MSVC,
-    Itanium,
-    Cygnus,
-    CoreCLR,
-    Simulator,
-    MacABI,
+    MSVC = 15,
+    Itanium = 16,
+    Cygnus = 17,
+    CoreCLR = 18,
+    Simulator = 19,
+    MacABI = 20,
 
-    PhantomStandard,
-    PhantomKernel,
+    PhantomStandard = 21,
+    PhantomKernel = 22,
 
+    Null = (-1i32) as u32,
     #[doc(hidden)]
-    __Nonexhaustive,
+    __Nonexhaustive = (-2i32) as u32,
 }
 
 impl FromStr for Environment {
@@ -535,6 +558,7 @@ impl Environment {
             Environment::MacABI => "macabi",
             Environment::PhantomStandard => "user",
             Environment::PhantomKernel => "kernel",
+            Environment::Null => "",
             Environment::__Nonexhaustive => unreachable!(),
         }
     }
@@ -543,21 +567,24 @@ impl Environment {
 ///
 /// The object format used by a target
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[repr(u32)]
 pub enum ObjectFormat {
-    Unknown,
-    XCoff,
-    Coff,
-    Elf,
-    Goff,
-    MachO,
-    Wasm,
+    Unknown = 0,
+    XCoff = 1,
+    Coff = 2,
+    Elf = 3,
+    Goff = 4,
+    MachO = 5,
+    Wasm = 6,
 
-    Xo65,
-    O65,
-    WlaObj,
+    Xo65 = 7,
+    O65 = 8,
+    WlaObj = 9,
+
+    Null = (-1i32) as u32,
 
     #[doc(hidden)]
-    __Nonexhaustive,
+    __Nonexhaustive = (-2i32) as u32,
 }
 
 impl FromStr for ObjectFormat {
@@ -609,6 +636,7 @@ impl ObjectFormat {
             ObjectFormat::Xo65 => "xo65",
             ObjectFormat::O65 => "o65",
             ObjectFormat::WlaObj => "wlaobj",
+            ObjectFormat::Null => "",
             ObjectFormat::__Nonexhaustive => unreachable!(),
         }
     }
@@ -742,7 +770,7 @@ impl Display for Target {
         if let Some(vendor) = &self.vendor {
             vendor.fmt(f)?;
         } else {
-            self.get_vendor().fmt(f)?;
+            self.vendor().fmt(f)?;
         }
         if let Some(os) = &self.os {
             f.write_str("-")?;
@@ -795,15 +823,15 @@ impl Target {
 
     ///
     /// Returns the architecture name
-    pub fn get_arch_name(&self) -> &str {
+    pub fn arch_name(&self) -> &str {
         self.full.split('-').next().unwrap()
     }
 
-    pub fn get_vendor_name(&self) -> &str {
+    pub fn vendor_name(&self) -> &str {
         if self.vendor.is_some() {
             self.full.split('-').nth(2).unwrap()
         } else {
-            self.get_vendor().canonical_name()
+            self.vendor().canonical_name()
         }
     }
 
@@ -908,13 +936,13 @@ impl Target {
 
     ///
     /// Gets the value of the `os` field
-    pub fn get_operating_system(&self) -> Option<OS> {
+    pub fn operating_system(&self) -> Option<OS> {
         self.os
     }
 
     ///
     /// Gets the value of the `env` field, or unknown if the environment was omitted
-    pub fn get_environment(&self) -> Option<Environment> {
+    pub fn environment(&self) -> Option<Environment> {
         self.env
     }
 
@@ -941,7 +969,7 @@ impl Target {
 
     ///
     /// Gets the object format, either from the end of the `env` field, or the default for the target
-    pub fn get_object_format(&self) -> ObjectFormat {
+    pub fn target_object_format(&self) -> ObjectFormat {
         if let Some(of) = self.objfmt {
             of
         } else {
@@ -966,15 +994,20 @@ impl Target {
         }
     }
 
+    /// Gets the object format component from the end of the env component, or None if none is present
+    pub fn object_format(&self) -> Option<ObjectFormat> {
+        self.objfmt
+    }
+
     ///
     /// Gets the value of the Architecture field
-    pub fn get_arch(&self) -> Architecture {
+    pub fn arch(&self) -> Architecture {
         self.arch
     }
 
     ///
     /// Gets the value of the vendor field.
-    pub fn get_vendor(&self) -> Vendor {
+    pub fn vendor(&self) -> Vendor {
         if let Some(vendor) = &self.vendor {
             *vendor
         } else if self.arch.is_x86() || Architecture::X86_64 == self.arch {
@@ -999,13 +1032,13 @@ impl Target {
 macro_rules! from_env {
     ($var:literal) => {{
         use core::str::FromStr as _;
-        let _target: $crate::Target = ::core::env!($var).from_string().unwrap();
+        let _target: $crate::Target = ::core::env!($var).parse().unwrap();
         _target
     }};
     ($var:literal?) => {{
         use core::str::FromStr as _;
         let _target: ::core::option::Option<$crate::Target> =
-            ::core::option_env!($var).map(|s| s.from_string().unwrap());
+            ::core::option_env!($var).map(|s| s.parse().unwrap());
         _target
     }};
 }

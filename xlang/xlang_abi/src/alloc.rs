@@ -1095,3 +1095,19 @@ pub fn handle_alloc_error(layout: Layout) -> ! {
         )
     }
 }
+
+#[cfg(all(test, miri))]
+mod test {
+    use super::{xlang_allocate, xlang_deallocate};
+    #[test]
+    pub fn test_alloc() {
+        let p = unsafe { xlang_allocate(4) } as *mut i32;
+        if p.is_null() {
+            return;
+        }
+        unsafe {
+            p.write(4i32);
+        }
+        unsafe { xlang_deallocate(p as *mut _, 4) }
+    }
+}
