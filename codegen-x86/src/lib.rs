@@ -523,11 +523,11 @@ impl X86CodegenPlugin {
                 .and_then(|v| file.sections().enumerate().find(|(_, s)| &*s.name == v))
                 .map(|(s, _)| u32::try_from(s).unwrap());
             let fsym = file.get_or_create_symbol(&sym.0).unwrap();
+            *fsym.kind_mut() = sym.4;
             if secno.is_some() {
                 *fsym.section_mut() = secno;
                 *fsym.value_mut() = sym.2.map(|v| v as u128);
                 *fsym.symbol_type_mut() = sym.3;
-                *fsym.kind_mut() = sym.4;
             }
         }
 
