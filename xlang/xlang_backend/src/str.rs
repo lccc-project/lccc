@@ -121,10 +121,11 @@ impl StringMap {
     /// Enumerates all of the symbols in the file
     pub fn symbols(&self) -> impl Iterator<Item = (Encoding, &str, &[u8])> {
         self.inner.iter().flat_map(|Pair(enc, intern)| {
+            let enc = *enc;
             intern
                 .map
                 .iter()
-                .map(|Pair(bytes, sym)| (*enc, &**sym, &**bytes))
+                .map(move |Pair(bytes, sym)| (enc, &**sym, &**bytes))
         })
     }
 }
