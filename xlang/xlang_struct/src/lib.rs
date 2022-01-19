@@ -296,6 +296,7 @@ impl AccessClass {
 }
 
 impl std::fmt::Display for AccessClass {
+    #[allow(clippy::useless_let_if_seq)]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let atomic = self.0 & 0xf;
         let bits = self.0 & 0xf0;

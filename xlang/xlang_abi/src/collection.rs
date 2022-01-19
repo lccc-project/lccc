@@ -590,7 +590,7 @@ impl<K: Eq + Hash, H: BuildHasher + Default, A: Allocator + Default> FromIterato
     where
         I: IntoIterator<Item = K>,
     {
-        let mut out = HashSet::new();
+        let mut out = Self::new();
         for item in iter {
             drop(out.insert(item));
         }
