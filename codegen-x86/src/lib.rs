@@ -141,15 +141,15 @@ impl FunctionRawCodegen for X86CodegenState {
                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                         X86Opcode::Int,
                         vec![X86Operand::Immediate(4)],
-                    )))
+                    )));
             }
         }
     }
 
     fn write_barrier(&mut self, acc: xlang_struct::AccessClass) {
         match acc & AccessClass::ATOMIC_MASK {
-            val @ AccessClass::Normal | val @ AccessClass::AtomicRelaxed => {
-                panic!("Invalid access class {}", val)
+            val @ (AccessClass::Normal | AccessClass::AtomicRelaxed) => {
+                panic!("Invalid access class {}", val);
             }
             AccessClass::AtomicAcquire | AccessClass::AtomicRelease | AccessClass::AtomicAcqRel => {
             }
@@ -193,6 +193,7 @@ impl FunctionRawCodegen for X86CodegenState {
         todo!()
     }
 
+    #[allow(clippy::match_wildcard_for_single_variants)]
     fn call_direct(
         &mut self,
         value: xlang::abi::string::StringView,
@@ -226,7 +227,7 @@ impl FunctionRawCodegen for X86CodegenState {
         match &ty.ret {
             Type::Void => XLangOption::None,
             Type::Scalar(ty) => XLangOption::Some(VStackValue::OpaqueScalar(
-                ty.clone(),
+                *ty,
                 ValLocation::Register(X86Register::Rax),
             )),
             Type::Pointer(_) => XLangOption::Some(VStackValue::Pointer(LValue::OpaquePointer(
@@ -275,8 +276,7 @@ impl FunctionRawCodegen for X86CodegenState {
     fn move_value(&mut self, val: xlang_backend::expr::VStackValue<Self::Loc>, loc: Self::Loc) {
         match val {
             VStackValue::Constant(val) => match val {
-                xlang_struct::Value::Invalid(_) => {}
-                xlang_struct::Value::Uninitialized(_) => {}
+                xlang_struct::Value::Invalid(_) | xlang_struct::Value::Uninitialized(_) => {}
                 xlang_struct::Value::GenericParameter(n) => todo!("param %{}", n),
                 xlang_struct::Value::Integer { ty: _, val } => match loc {
                     ValLocation::BpDisp(disp) => todo!("[bp{:+}]", disp),
@@ -285,8 +285,11 @@ impl FunctionRawCodegen for X86CodegenState {
                         self.insns
                             .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                                 X86Opcode::MovImm,
-                                vec![X86Operand::Register(r), X86Operand::Immediate(val as _)],
-                            )))
+                                vec![
+                                    X86Operand::Register(r),
+                                    X86Operand::Immediate(u64::from(val)),
+                                ],
+                            )));
                     }
                     _ => todo!(),
                 },
@@ -311,7 +314,7 @@ impl FunctionRawCodegen for X86CodegenState {
                                             mode: ModRMRegOrSib::RipRel(addr),
                                         }),
                                     ],
-                                )))
+                                )));
                         }
                         _ => todo!(),
                     }
@@ -340,15 +343,15 @@ impl FunctionRawCodegen for X86CodegenState {
                                             mode: ModRMRegOrSib::RipRel(addr),
                                         }),
                                     ],
-                                )))
+                                )));
                         }
                         _ => todo!(),
                     }
                 }
             },
-            VStackValue::LValue(_) => todo!(),
-            VStackValue::Pointer(_) => todo!(),
-            VStackValue::OpaqueScalar(_, _) => todo!(),
+            VStackValue::LValue(_) | VStackValue::Pointer(_) | VStackValue::OpaqueScalar(_, _) => {
+                todo!()
+            }
             VStackValue::Trapped => {}
         }
     }
@@ -424,6 +427,7 @@ impl FunctionRawCodegen for X86CodegenState {
 }
 
 impl X86CodegenState {
+    #[allow(clippy::missing_errors_doc)]
     pub fn write_output(
         self,
         text: &mut Section,
