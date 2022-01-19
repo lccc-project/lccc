@@ -7,4 +7,9 @@ pub mod v1 {
     pub use crate::string::String;
     pub use crate::traits::{DynBox, DynMut, DynRef};
     pub use crate::vec::Vec;
+
+    pub use crate::const_sv;
+    pub use crate::format;
+    pub use crate::span;
+    pub use crate::vec;
 }

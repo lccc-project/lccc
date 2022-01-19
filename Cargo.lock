@@ -56,6 +56,7 @@ dependencies = [
  "binfmt",
  "target-tuples 0.5.3",
  "xlang",
+ "xlang_backend",
  "xlang_struct",
 ]
 
@@ -223,6 +224,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "xlang_backend"
+version = "0.1.0"
+dependencies = [
+ "xlang",
 ]
 
 [[package]]

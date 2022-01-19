@@ -1,4 +1,6 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+use std::ops::{BitAnd, BitOr};
+
 use xlang_abi::prelude::v1::*;
 use xlang_targets::Target;
 
@@ -104,6 +106,8 @@ pub enum ScalarTypeKind {
     Empty,
     Integer { signed: bool, min: i128, max: i128 },
     Float { decimal: bool },
+    // long double
+    LongFloat,
     Fixed { fractbits: u16 },
 }
 
@@ -179,10 +183,13 @@ pub struct FnType {
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum StringEncoding {
     Utf8,
-    Utf16,
-    Utf32,
+    Utf16BE,
+    Utf32BE,
+    Utf16LE,
+    Utf32LE,
     Wtf8,
-    Wtf16,
+    Wtf16BE,
+    Wtf16LE,
 }
 
 #[repr(u16)]
@@ -264,6 +271,81 @@ pub enum Expr {
     UnaryOp(UnaryOp),
     CallFunction(FnType),
     Branch { cond: BranchCondition, target: u32 },
+}
+
+fake_enum::fake_enum! {
+    #[repr(pub u8)]
+    pub enum struct AccessClass{
+        Normal = 0,
+        AtomicRelaxed = 1,
+        AtomicRelease = 2,
+        AtomicAcquire = 3,
+        AtomicAcqRel = 4,
+        AtomicSeqCst = 5,
+    }
+}
+
+#[allow(non_upper_case_globals)]
+impl AccessClass {
+    pub const Volatile: Self = Self(0x10);
+    pub const Nontemporal: Self = Self(0x20);
+    pub const Freeze: Self = Self(0x40);
+    pub const AtomicFailRelaxed: Self = Self(0x80);
+
+    pub const ATOMIC_MASK: Self = Self(0xf);
+}
+
+impl std::fmt::Display for AccessClass {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let atomic = self.0 & 0xf;
+        let bits = self.0 & 0xf0;
+        let mut sep = "";
+        if (bits & 0x10) != 0 {
+            f.write_str("volatile")?;
+            sep = " ";
+        }
+        if (bits & 0x20) != 0 {
+            f.write_str(sep)?;
+            f.write_str("nontemporal")?;
+            sep = " ";
+        }
+        if (bits & 0x40) != 0 {
+            f.write_str(sep)?;
+            f.write_str("freeze")?;
+            sep = " ";
+        }
+        if (bits & 0x80) != 0 {
+            f.write_str(sep)?;
+            f.write_str("fail relaxed")?;
+            sep = " ";
+        }
+        match atomic {
+            0 => Ok(()),
+            1 => f.write_fmt(format_args!("{}atomic relaxed", sep)),
+            2 => f.write_fmt(format_args!("{}atomic release", sep)),
+            3 => f.write_fmt(format_args!("{}atomic acquire", sep)),
+            4 => f.write_fmt(format_args!("{}atomic acq_rel", sep)),
+            5 => f.write_fmt(format_args!("{}atomic seq_cst", sep)),
+            6..=16 => panic!("Invalid access class {:?}", self),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl BitOr for AccessClass {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl BitAnd for AccessClass {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self {
+        Self(self.0 & rhs.0)
+    }
 }
 
 #[repr(u8)]

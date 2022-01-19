@@ -129,6 +129,11 @@ impl<A: Allocator> String<A> {
     pub fn push(&mut self, st: &str) {
         self.0.extend_from_slice(st.as_bytes());
     }
+
+    /// Converts a [`String`] into a [`crate::vec::Vec`] of UTF-8 bytes
+    pub fn into_bytes(self) -> crate::vec::Vec<u8, A> {
+        self.0
+    }
 }
 
 impl<A: Allocator, S: AsRef<str>> Add<S> for String<A> {

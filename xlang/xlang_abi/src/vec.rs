@@ -2,8 +2,8 @@ use std::{
     fmt::Debug,
     hash::Hash,
     io::Write,
-    iter::FromIterator,
-    mem::ManuallyDrop,
+    iter::{FromIterator, FusedIterator},
+    mem::{size_of, ManuallyDrop},
     ops::{Deref, DerefMut},
 };
 
@@ -459,6 +459,101 @@ impl<T, A: Allocator + Default> From<std::vec::Vec<T>> for Vec<T, A> {
             }
             drop(ManuallyDrop::into_inner(s));
             v
+        }
+    }
+}
+
+/// An iterator over the values of a [`Vec`]
+pub struct IntoIter<T, A: Allocator> {
+    ptr: Unique<T>,
+    len: usize,
+    cap: usize,
+    consumed: usize,
+    alloc: A,
+}
+
+impl<T, A: Allocator> Iterator for IntoIter<T, A> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        if self.consumed == self.len {
+            None
+        } else {
+            // SAFETY:
+            // self.ptr, self.len, and self.cap all come from `Vec`, so we know that `ptr` is at least self.cap `T`s long
+            // and is valid up to `self.len`, which self.consumed is at most here
+            let ptr = unsafe { self.ptr.as_ptr().add(self.consumed) };
+            self.consumed += 1;
+            // SAFETY:
+            // Same as above reasoning. Additionally, no !Copy value is duplicated, because we've advanced past the previously `ptr::read` value above
+            Some(unsafe { core::ptr::read(ptr) })
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len - self.consumed, Some(self.len - self.consumed))
+    }
+}
+
+impl<T, A: Allocator> ExactSizeIterator for IntoIter<T, A> {}
+
+impl<T, A: Allocator> FusedIterator for IntoIter<T, A> {}
+
+impl<T, A: Allocator> DoubleEndedIterator for IntoIter<T, A> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.consumed == self.len {
+            None
+        } else {
+            self.len -= 1;
+            // SAFETY:
+            // self.ptr, self.len, and self.cap all come from `Vec`, so we know that `ptr` is at least self.cap `T`s long
+            // and is valid up to `self.len`.
+            let ptr = unsafe { self.ptr.as_ptr().add(self.len) };
+
+            // SAFETY:
+            // Same as above reasoning. Additionally, no !Copy value is duplicated, because we've advanced past the previously `ptr::read` value above
+            Some(unsafe { core::ptr::read(ptr) })
+        }
+    }
+}
+
+impl<T, A: Allocator> Drop for IntoIter<T, A> {
+    fn drop(&mut self) {
+        if core::mem::needs_drop::<T>() {
+            for i in self.consumed..self.len {
+                // SAFETY:
+                // self.ptr, self.len, and self.cap all come from `Vec`, so we know that `ptr` is exactly self.cap `T`s long
+                // and is valid up to `self.len`, which i is at most here
+                // Additionally, no !Copy value is duplicated, because we've advanced past any previously consumed values of `T`
+                unsafe { core::ptr::drop_in_place(self.ptr.as_ptr().add(i)) }
+            }
+        }
+        let raw_cap = self.cap * size_of::<T>();
+        if raw_cap != 0 {
+            let layout =
+                unsafe { Layout::from_size_align_unchecked(raw_cap, core::mem::align_of::<T>()) };
+
+            // SAFETY:
+            // self.ptr and self.cap both come from `Vec`, so `ptr` is exactly self.capacity `T`s long,
+            // and that it was allocated using an allocator compatible with `self.alloc`
+            unsafe { self.alloc.deallocate(self.ptr.as_nonnull().cast(), layout) };
+        }
+    }
+}
+
+impl<T, A: Allocator> IntoIterator for Vec<T, A> {
+    type Item = T;
+    type IntoIter = IntoIter<T, A>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let (ptr, cap, len, alloc) = self.into_raw_parts_with_alloc();
+
+        IntoIter {
+            ptr: unsafe { Unique::new_unchecked(ptr) },
+            cap,
+            len,
+            alloc,
+            consumed: 0,
         }
     }
 }

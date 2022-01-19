@@ -1,7 +1,9 @@
 use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::hash::{BuildHasher, Hash, Hasher};
+use std::iter::FromIterator;
 use std::mem::MaybeUninit;
+use std::ops::Index;
 
 use crate::pair::Pair;
 
@@ -486,6 +488,17 @@ impl<'a, K: Debug, V: Debug, H: BuildHasher, A: Allocator> Debug for HashMap<K, 
     }
 }
 
+impl<'a, K: Eq + Hash, V, Q: Eq + Hash + 'a, H: BuildHasher, A: Allocator> Index<&'a Q>
+    for HashMap<K, V, H, A>
+where
+    K: Borrow<Q>,
+{
+    type Output = V;
+    fn index(&self, idx: &'a Q) -> &V {
+        self.get(idx).unwrap()
+    }
+}
+
 ///
 /// A [`HashSet`] that has a stable ABI and obtains storage backed by an [`Allocator`]
 #[derive(
@@ -569,6 +582,42 @@ impl<K: Eq + Hash, H: BuildHasher, A: Allocator> HashSet<K, H, A> {
             Ok(())
         }
     }
+}
+impl<K: Eq + Hash, H: BuildHasher + Default, A: Allocator + Default> FromIterator<K>
+    for HashSet<K, H, A>
+{
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = K>,
+    {
+        let mut out = HashSet::new();
+        for item in iter {
+            drop(out.insert(item));
+        }
+        out
+    }
+}
+
+impl<K: Eq + Hash, H: BuildHasher + Default, A: Allocator + Default> Extend<K>
+    for HashSet<K, H, A>
+{
+    fn extend<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = K>,
+    {
+        for item in iter {
+            drop(self.insert(item));
+        }
+    }
+}
+
+/// Creates a [`HashSet`] from given elements, discarding duplicates
+#[macro_export]
+macro_rules! set{
+    {$($expr:expr),*} => {{
+        let __array = [$($expr),*];
+        $crate::collection::HashSet::from_iter(::core::iter::IntoIterator::into_iter(__array))
+    }}
 }
 
 /// An [`Iterator`] over the values in a [`HashSet`]

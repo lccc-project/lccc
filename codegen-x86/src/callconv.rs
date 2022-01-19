@@ -54,8 +54,33 @@ impl X86CallConv for SysV64CC {
         todo!()
     }
 
-    fn find_parameter(&self, mut _off: u32, _ty: &FnType) -> ValLocation {
-        todo!()
+    fn find_parameter(&self, off: u32, ty: &FnType) -> ValLocation {
+        let mut int_regs: &[X86Register] = &[
+            X86Register::Rdi,
+            X86Register::Rsi,
+            X86Register::Rdx,
+            X86Register::Rcx,
+            X86Register::R8,
+            X86Register::R9,
+        ];
+        let mut xmm_regs: &[X86Register] = &[
+            X86Register::Xmm(0),
+            X86Register::Xmm(1),
+            X86Register::Xmm(2),
+            X86Register::Xmm(3),
+            X86Register::Xmm(4),
+            X86Register::Xmm(5),
+        ];
+
+        let has_return_param = self.pass_return_place(&ty.ret, 0).is_some();
+        let param = &ty.params[off as usize];
+
+        match (
+            classify_type(param).unwrap(),
+            get_type_size(param, self.0).unwrap(),
+        ) {
+            (_, 0) => ValLocation::Null,
+        }
     }
 
     #[allow(clippy::unnested_or_patterns)]
