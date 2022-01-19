@@ -13,9 +13,7 @@ struct XirFrontend {
 impl XirFrontend {
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            filename: None,
-        }
+        Self { filename: None }
     }
 }
 
