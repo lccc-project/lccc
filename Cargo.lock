@@ -74,6 +74,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "frontend-xir"
+version = "0.1.0"
+dependencies = [
+ "xlang",
+ "xlang_struct",
+]
+
+[[package]]
 name = "install-dirs"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
