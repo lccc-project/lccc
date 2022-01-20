@@ -4,7 +4,8 @@ use crate::parse::{
 };
 use std::collections::HashMap;
 
-const fn diagnostic() -> ! {
+#[allow(clippy::missing_const_for_fn)] // b/c 1.54.0 doesn't support panic in const fns
+fn diagnostic() -> ! {
     panic!("¯\\_(ツ)_/¯ Sema error");
 }
 

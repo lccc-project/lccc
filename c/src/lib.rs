@@ -15,7 +15,8 @@ use xlang::abi::string::StringView;
 use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 
-const fn diagnostic() -> ! {
+#[allow(clippy::missing_const_for_fn)] // b/c 1.54.0 doesn't support panic in const fns
+fn diagnostic() -> ! {
     panic!("Hello everyone, and welcome to yet another placeholder function for generating a diagnostic!")
 }
 
