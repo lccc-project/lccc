@@ -441,8 +441,8 @@ impl X86CodegenState {
         encoder.write_insn(X86Instruction::new(
             X86Opcode::MovMR,
             vec![
-                X86Operand::ModRM(ModRM::Direct(X86Register::Rsp)),
-                X86Operand::Register(X86Register::Rbp),
+                X86Operand::ModRM(ModRM::Direct(X86Register::Rbp)),
+                X86Operand::Register(X86Register::Rsp),
             ],
         ))?;
         for item in self.insns {
@@ -493,6 +493,14 @@ impl X86CodegenPlugin {
         };
 
         let mut syms = Vec::new();
+
+        syms.push(X86TempSymbol(
+            "_GLOBAL_OFFSET_TABLE_".into(),
+            None,
+            None,
+            SymbolType::Null,
+            SymbolKind::Global,
+        ));
 
         for (enc, sym, str) in self.strings.borrow().symbols() {
             let sym = X86TempSymbol(
