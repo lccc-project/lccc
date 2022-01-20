@@ -476,7 +476,7 @@ impl X86CodegenPlugin {
         let mut file = fmt.create_file(FileType::Relocatable);
         let mut text = Section {
             name: String::from(".text"),
-            align: 1204,
+            align: 1024,
             ty: SectionType::ProgBits,
             content: Vec::new(),
             relocs: Vec::new(),
