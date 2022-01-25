@@ -1,4 +1,4 @@
-#![deny(missing_docs)]
+#![deny(missing_docs, warnings)] // No clippy::nursery
 //! A helper crate for implementing [`xlang::plugin::XLangCodegen`]s without duplicating code (also can be used to evaluate constant expressions)
 //! the `xlang_backend` crate provides a general interface for writing expressions to an output.
 use std::{collections::VecDeque, fmt::Debug};
@@ -26,6 +26,9 @@ pub mod ty;
 
 /// Module for handling xlang/language intrinsics
 pub mod intrinsic;
+
+/// Module for handling calling convention, and calling functions
+pub mod callconv;
 
 ///
 /// Basic Trait for creating the code generator
@@ -247,12 +250,12 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                             [PathComponent::Text(name)]
                             | [PathComponent::Root, PathComponent::Text(name)] => {
                                 if let Some(ret) =
-                                    self.inner.call_direct(StringView::new(name), &ty, params)
+                                    self.inner.call_direct(StringView::new(name), ty, params)
                                 {
                                     self.vstack.push_back(ret)
                                 }
                             }
-                            [..] => intrinsic::call_intrinsic(&item, self, &ty),
+                            [..] => intrinsic::call_intrinsic(&item, self, ty),
                         }
                     }
                     VStackValue::Constant(Value::Uninitialized(_))

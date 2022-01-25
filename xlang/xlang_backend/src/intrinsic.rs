@@ -6,6 +6,7 @@ macro_rules! define_xlang_intrinsics{
     } => {
         ///
         /// Calls an intrinsic function defined
+        #[allow(clippy::redundant_closure_call)] // needed for hygine
         pub fn call_intrinsic<F: $crate::FunctionRawCodegen>(path: &::xlang::ir::Path, codegen: &mut $crate::FunctionCodegen<F>, fnty: &::xlang::ir::FnType){
             match &*path.components{
                 [::xlang::ir::PathComponent::Root,rest @ ..]

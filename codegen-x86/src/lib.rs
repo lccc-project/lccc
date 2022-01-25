@@ -492,7 +492,7 @@ impl X86CodegenPlugin {
             ..Section::default()
         };
 
-        let mut syms = Vec::new();
+        let mut syms = Vec::with_capacity(16);
 
         syms.push(X86TempSymbol(
             "_GLOBAL_OFFSET_TABLE_".into(),

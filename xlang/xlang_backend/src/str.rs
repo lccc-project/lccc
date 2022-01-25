@@ -1,7 +1,4 @@
-use std::{
-    fmt::Write,
-    hash::{Hash, Hasher},
-};
+use std::hash::{Hash, Hasher};
 
 use xlang::{
     abi::hash::XLangHasher,
@@ -76,6 +73,12 @@ impl std::fmt::Display for Encoding {
 #[derive(Clone, Debug)]
 pub struct StringMap {
     inner: HashMap<Encoding, StringInterner>,
+}
+
+impl Default for StringMap {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StringMap {

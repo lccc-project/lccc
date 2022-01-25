@@ -1,11 +1,9 @@
 use xlang::{
     ir::{Path, ScalarType, Value},
     prelude::v1::*,
-    targets::Target,
 };
 
 use core::{fmt::Debug, hash::Hash};
-use std::collections::HashSet;
 
 /// Represents the location of opaque values both as locals and on the value stack
 pub trait ValLocation: Eq + Hash + Debug + Clone {
