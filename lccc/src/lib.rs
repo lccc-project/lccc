@@ -9,7 +9,7 @@ use xlang::{
     prelude::v1::*,
 };
 
-pub static FRONTENDS: [&str; 1] = ["c"];
+pub static FRONTENDS: [&str; 2] = ["c", "rust"];
 pub static CODEGENS: [&str; 1] = ["x86"];
 pub type FrontendInit = rustcall!(extern "rustcall" fn() -> DynBox<dyn XLangFrontend>);
 pub type CodegenInit = rustcall!(extern "rustcall" fn() -> DynBox<dyn XLangCodegen>);

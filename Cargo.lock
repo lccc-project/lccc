@@ -75,6 +75,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "frontend-rust"
+version = "0.1.0"
+dependencies = [
+ "unicode-xid",
+ "xlang",
+ "xlang_struct",
+]
+
+[[package]]
 name = "frontend-xir"
 version = "0.1.0"
 dependencies = [
