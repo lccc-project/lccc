@@ -350,7 +350,7 @@ pub fn parse_expr<I: Iterator<Item = Lexeme>>(mut _it: &mut Peekable<I>) -> Expr
 pub fn parse_crate<I: Iterator<Item = Lexeme>>(mut it: I) -> Vec<Item> {
     let mut items = Vec::new();
     while let Some(x) = parse_item(&mut it) {
-        items.push(x)
+        items.push(x);
     }
 
     items
