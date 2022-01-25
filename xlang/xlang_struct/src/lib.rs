@@ -269,6 +269,14 @@ pub enum BranchCondition {
     Never,
 }
 
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum ConversionStrength {
+    Strong,
+    Weak,
+    Reinterpret,
+}
+
 #[repr(u16)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Expr {
@@ -279,6 +287,8 @@ pub enum Expr {
     UnaryOp(UnaryOp),
     CallFunction(FnType),
     Branch { cond: BranchCondition, target: u32 },
+    Convert(ConversionStrength, Type),
+    Derive(PointerType, Box<Self>),
 }
 
 fake_enum::fake_enum! {

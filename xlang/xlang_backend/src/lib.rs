@@ -269,6 +269,16 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 }
             }
             Expr::Branch { cond, target } => todo!("branch {:?} @{}", cond, target),
+            Expr::Convert(.., ty) => {
+                let val = self.vstack.pop_back().unwrap();
+                match (val, ty) {
+                    (VStackValue::Pointer(lvalue), Type::Pointer(_)) => {
+                        self.vstack.push_back(VStackValue::LValue(lvalue))
+                    }
+                    _ => todo!(),
+                }
+            }
+            Expr::Derive(_, expr) => self.write_expr(expr),
         }
     }
 
