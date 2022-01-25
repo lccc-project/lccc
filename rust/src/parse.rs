@@ -63,6 +63,7 @@ pub enum Expr {
     FunctionCall { func: Box<Self>, params: Vec<Self> },
     Cast(Box<Self>, Type),
     StringLiteral(StrType, String),
+    Parentheses(Box<Self>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -317,6 +318,7 @@ pub fn parse_block<I: Iterator<Item = Lexeme>>(it: I) -> Vec<BlockItem> {
                     }) = peek.peek()
                     {
                         if tok == ";" {
+                            peek.next();
                             ret.push(BlockItem::Discard(expr));
                         } else {
                             ret.push(BlockItem::Expr(expr));
@@ -332,19 +334,137 @@ pub fn parse_block<I: Iterator<Item = Lexeme>>(it: I) -> Vec<BlockItem> {
                 }) = peek.peek()
                 {
                     if tok == ";" {
+                        peek.next();
                         ret.push(BlockItem::Discard(expr));
                     } else {
                         ret.push(BlockItem::Expr(expr));
                     }
                 }
             }
-            None => break ret,
+            None => break,
+        }
+    }
+    ret
+}
+
+pub fn parse_expr<I: Iterator<Item = Lexeme>>(it: &mut Peekable<I>) -> Expr {
+    parse_expr_with_block(it)
+}
+
+pub fn parse_expr_with_block<I: Iterator<Item = Lexeme>>(it: &mut Peekable<I>) -> Expr {
+    match it.peek().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+        } if tok == "unsafe" => {
+            drop(it.next().unwrap());
+            match it.next().unwrap() {
+                Lexeme::Group {
+                    ty: GroupType::Braces,
+                    inner,
+                } => {
+                    let mut peek = inner.into_iter().peekable();
+                    let block = parse_block(&mut peek);
+                    Expr::UnsafeBlock(block)
+                }
+                _ => panic!("Invalid token"),
+            }
+        }
+        Lexeme::Group {
+            ty: GroupType::Braces,
+            ..
+        } => todo!("Block exprs"),
+        _ => parse_expr_without_block(it),
+    }
+}
+
+pub fn parse_expr_without_block<I: Iterator<Item = Lexeme>>(it: &mut Peekable<I>) -> Expr {
+    parse_as_cast(it)
+}
+
+pub fn parse_as_cast<I: Iterator<Item = Lexeme>>(mut it: &mut Peekable<I>) -> Expr {
+    let mut expr = parse_unary_expr(it);
+
+    loop {
+        match it.peek() {
+            Some(Lexeme::Token {
+                ty: TokenType::Keyword,
+                tok,
+            }) if tok == "as" => {
+                drop(it.next().unwrap());
+                let ty = parse_type(&mut it);
+                expr = Expr::Cast(Box::new(expr), ty);
+            }
+            _ => break expr,
         }
     }
 }
 
-pub fn parse_expr<I: Iterator<Item = Lexeme>>(mut _it: &mut Peekable<I>) -> Expr {
-    todo!()
+pub fn parse_unary_expr<I: Iterator<Item = Lexeme>>(it: &mut Peekable<I>) -> Expr {
+    parse_function_call(it)
+}
+
+pub fn parse_function_call<I: Iterator<Item = Lexeme>>(it: &mut Peekable<I>) -> Expr {
+    let expr = parse_simple_expr(it);
+
+    match it.peek() {
+        Some(Lexeme::Group {
+            ty: GroupType::Parentheses,
+            ..
+        }) => {
+            let inner = if let Lexeme::Group {
+                ty: GroupType::Parentheses,
+                inner,
+            } = it.next().unwrap()
+            {
+                inner
+            } else {
+                panic!("Invalid token")
+            };
+            let mut iter = inner.into_iter().peekable();
+            let mut params = Vec::new();
+            if iter.peek().is_some() {
+                loop {
+                    let param = parse_expr(&mut iter);
+                    params.push(param);
+                    match iter.next() {
+                        Some(Lexeme::Token {
+                            ty: TokenType::Symbol,
+                            tok,
+                        }) if tok == "," => {}
+                        Some(_) => panic!("Invalid token"),
+                        None => break,
+                    }
+                }
+            }
+            Expr::FunctionCall {
+                func: Box::new(expr),
+                params,
+            }
+        }
+        _ => expr,
+    }
+}
+
+pub fn parse_simple_expr<I: Iterator<Item = Lexeme>>(it: &mut Peekable<I>) -> Expr {
+    match it.next().unwrap() {
+        Lexeme::Group {
+            ty: GroupType::Parentheses,
+            inner,
+        } => {
+            let mut iter = inner.into_iter().peekable();
+            Expr::Parentheses(Box::new(parse_expr(&mut iter)))
+        }
+        Lexeme::Token {
+            ty: TokenType::Identifier,
+            tok,
+        } => Expr::Id(tok),
+        Lexeme::Token {
+            ty: TokenType::String(ty),
+            tok,
+        } => Expr::StringLiteral(ty, tok),
+        tok => panic!("Invalid Token: {:?}", tok),
+    }
 }
 
 pub fn parse_crate<I: Iterator<Item = Lexeme>>(mut it: I) -> Vec<Item> {
