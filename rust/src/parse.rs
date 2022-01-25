@@ -323,6 +323,8 @@ pub fn parse_block<I: Iterator<Item = Lexeme>>(it: I) -> Vec<BlockItem> {
                         } else {
                             ret.push(BlockItem::Expr(expr));
                         }
+                    } else {
+                        ret.push(BlockItem::Expr(expr))
                     }
                 }
             },
