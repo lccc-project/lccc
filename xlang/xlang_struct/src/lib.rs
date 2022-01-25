@@ -131,6 +131,14 @@ pub enum Type {
     Void,
     FnType(Box<FnType>),
     Pointer(PointerType),
+    Array(Box<ArrayType>),
+}
+
+#[repr(C)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ArrayType {
+    pub ty: Type,
+    pub len: Value,
 }
 
 fake_enum::fake_enum! {

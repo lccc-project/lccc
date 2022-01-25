@@ -20,7 +20,6 @@ use target_tuples::Target;
 use xlang::{
     plugin::{XLangCodegen, XLangPlugin},
     prelude::v1::{Box, DynBox, Option as XLangOption, Pair},
-    targets::properties::TargetProperties,
 };
 use xlang_backend::{
     expr::{LValue, VStackValue},
@@ -28,36 +27,8 @@ use xlang_backend::{
     FunctionCodegen, FunctionRawCodegen,
 };
 use xlang_struct::{
-    AccessClass, BranchCondition, FnType, FunctionDeclaration, ScalarType, ScalarTypeHeader, Type,
-    UnaryOp,
+    AccessClass, BranchCondition, FnType, FunctionDeclaration, ScalarType, Type, UnaryOp,
 };
-
-#[must_use]
-pub const fn get_type_size(ty: &Type, properties: &'static TargetProperties) -> Option<usize> {
-    match ty {
-        Type::Scalar(ScalarType {
-            header:
-                ScalarTypeHeader {
-                    bitsize,
-                    vectorsize,
-                    ..
-                },
-            ..
-        }) => {
-            let bits = (*bitsize).next_power_of_two();
-            let bits = bits + (8 - (bits % 8)) % 8;
-            let bytes = (bits / 8) as usize;
-            let vec = if *vectorsize == 0 {
-                1
-            } else {
-                *vectorsize as usize
-            };
-            Some(bytes * vec)
-        }
-        Type::Void | Type::FnType(_) => None,
-        Type::Pointer(_) => Some((properties.ptrbits / 8) as usize),
-    }
-}
 
 #[allow(dead_code)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

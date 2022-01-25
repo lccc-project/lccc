@@ -1,5 +1,5 @@
 use xlang::{
-    ir::{PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type},
+    ir::{ArrayType, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type, Value},
     targets::properties::TargetProperties,
 };
 
@@ -44,6 +44,13 @@ pub fn type_size(ty: &Type, properties: &TargetProperties) -> Option<u64> {
             ((properties.ptrbits as u64) + 7) >> 3,
             properties.ptralign as u64,
         )),
+        Type::Array(ty) => match &**ty {
+            ArrayType {
+                ty,
+                len: Value::Integer { val, .. },
+            } => Some(type_size(ty, properties)? * (*val as u64)),
+            _ => panic!("Invalid array type {:?}", ty),
+        },
     }
 }
 
@@ -75,5 +82,9 @@ pub fn type_align(ty: &Type, properties: &TargetProperties) -> Option<u64> {
         }
         Type::Pointer(_) => Some(properties.ptralign as u64),
         Type::Void | Type::FnType(_) => None,
+        Type::Array(ty) => {
+            let ArrayType { ty, .. } = &**ty;
+            type_align(ty, properties)
+        }
     }
 }
