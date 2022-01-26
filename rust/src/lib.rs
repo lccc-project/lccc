@@ -1,9 +1,12 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
-mod lex;
 
+mod lex;
 mod parse;
+mod sema;
 
 use lex::lex;
+use parse::parse_crate;
+use sema::convert;
 
 use xlang::abi::io::{self, IntoChars, Read};
 use xlang::abi::prelude::v1::*;
@@ -12,8 +15,6 @@ use xlang::abi::string::StringView;
 use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 use xlang::targets::Target;
-
-use crate::parse::parse_crate;
 
 struct RustFrontend {
     filename: Option<String>,
@@ -41,6 +42,8 @@ impl XLangFrontend for RustFrontend {
         println!("{:#?}", lexed);
         let items = parse_crate(lexed.into_iter());
         println!("{:#?}", items);
+        let converted = convert(&items);
+        println!("{:#?}", converted);
         io::Result::Ok(())
     }
 }

@@ -3,7 +3,7 @@ use std::iter::Peekable;
 
 use crate::lex::{GroupType, Lexeme, StrType, TokenType};
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Visibility {
     None,
     Pub,
