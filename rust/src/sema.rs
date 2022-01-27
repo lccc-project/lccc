@@ -1,5 +1,5 @@
 use crate::parse::{FnParam, Item};
-pub use crate::parse::{Safety, Visibility};
+pub use crate::parse::{Mutability, Safety, Visibility};
 
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub enum Identifier {
@@ -31,22 +31,49 @@ pub enum IntType {
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum Mutability {
-    Const,
-    Mut,
-}
-
-#[allow(dead_code)]
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Type {
     Boolean,
-    Character,
+    Char,
     Float(FloatType),
     Integer(IntType),
-    Pointer(Box<Self>),
+    Pointer {
+        mutability: Mutability,
+        underlying: Box<Self>
+    },
     Str,
     Tuple(Vec<Self>),
+}
+
+impl Type {
+    #[must_use]
+    pub fn name(&self) -> String {
+        match self {
+            Self::Boolean => String::from("bool"),
+            Self::Char => String::from("char"),
+            Self::Float(ty) => String::from(match ty {
+                FloatType::F32 => "f32",
+                FloatType::F64 => "f64",
+            }),
+            Self::Integer(ty) => String::from(match ty {
+                IntType::I8 => "i8",
+                IntType::I16 => "i16",
+                IntType::I32 => "i32",
+                IntType::I64 => "i64",
+                IntType::I128 => "i128",
+                IntType::Iptr => "iptr",
+                IntType::Isize => "isize",
+                IntType::U8 => "u8",
+                IntType::U16 => "u16",
+                IntType::U32 => "u32",
+                IntType::U64 => "u64",
+                IntType::U128 => "u128",
+                IntType::Uptr => "uptr",
+                IntType::Usize => "usize",
+            }),
+            _ => todo!("{:?}", self),
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -98,14 +125,30 @@ pub struct Program {
     declarations: Vec<Declaration>,
 }
 
-fn iter_in_scope<F: FnMut(&Item, Option<&str>)>(items: &[Item], _abi: Option<&str>, _func: F) {
-    for item in items {
-        todo!("{:?}", item);
+pub fn convert_ty(named_types: &[Type], orig: &crate::parse::Type) -> Type {
+    match orig {
+        crate::parse::Type::Name(name) => {
+            for ty in named_types {
+                if *name == ty.name() {
+                    return ty.clone();
+                }
+            }
+            panic!("Unknown type {}", name);
+        }
+        crate::parse::Type::Pointer { mutability, underlying } => Type::Pointer { mutability: *mutability, underlying: Box::new(convert_ty(named_types, &**underlying)) },
     }
 }
 
-pub fn convert_ty(_named_types: &[Type], _orig: &crate::parse::Type) -> Type {
-    todo!()
+fn iter_in_scope<F: FnMut(&Item, Option<&str>)>(items: &[Item], abi: Option<&str>, func: &mut F) {
+    for item in items {
+        match item {
+            Item::ExternBlock { abi: new_abi, items } => {
+                assert!(abi.is_none(), "`extern` blocks can't be nested");
+                iter_in_scope(items, Some(new_abi.as_deref().unwrap_or("C")), func);
+            }
+            _ => func(item, abi),
+        }
+    }
 }
 
 pub fn convert(items: &[Item]) -> Program {
@@ -114,7 +157,7 @@ pub fn convert(items: &[Item]) -> Program {
     // inline.
     let named_types = vec![
         Type::Boolean,
-        Type::Character,
+        Type::Char,
         Type::Float(FloatType::F32),
         Type::Float(FloatType::F64),
         Type::Integer(IntType::I8),
@@ -135,7 +178,7 @@ pub fn convert(items: &[Item]) -> Program {
     ];
     // Pass 2: list declarations
     let mut declarations = Vec::new();
-    iter_in_scope(items, None, |item, abi| match item {
+    iter_in_scope(items, None, &mut |item, abi| match item {
         Item::FnDeclaration {
             visibility,
             safety,
