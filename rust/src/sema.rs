@@ -39,7 +39,7 @@ pub enum Type {
     Integer(IntType),
     Pointer {
         mutability: Mutability,
-        underlying: Box<Self>
+        underlying: Box<Self>,
     },
     Str,
     Tuple(Vec<Self>),
@@ -135,18 +135,27 @@ pub fn convert_ty(named_types: &[Type], orig: &crate::parse::Type) -> Type {
             }
             panic!("Unknown type {}", name);
         }
-        crate::parse::Type::Pointer { mutability, underlying } => Type::Pointer { mutability: *mutability, underlying: Box::new(convert_ty(named_types, &**underlying)) },
+        crate::parse::Type::Pointer {
+            mutability,
+            underlying,
+        } => Type::Pointer {
+            mutability: *mutability,
+            underlying: Box::new(convert_ty(named_types, &**underlying)),
+        },
     }
 }
 
 fn iter_in_scope<F: FnMut(&Item, Option<&str>)>(items: &[Item], abi: Option<&str>, func: &mut F) {
     for item in items {
         match item {
-            Item::ExternBlock { abi: new_abi, items } => {
+            Item::ExternBlock {
+                abi: new_abi,
+                items,
+            } => {
                 assert!(abi.is_none(), "`extern` blocks can't be nested");
                 iter_in_scope(items, Some(new_abi.as_deref().unwrap_or("C")), func);
             }
-            _ => func(item, abi),
+            Item::FnDeclaration { .. } => func(item, abi),
         }
     }
 }
