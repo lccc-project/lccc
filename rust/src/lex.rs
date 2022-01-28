@@ -94,14 +94,12 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     file.next();
                 }
                 match &id as &str {
-                    "b" => {
-                        if file.peek() == Some(&'"') {
-                            file.next();
-                            result.push(Lexeme::Token {
-                                ty: TokenType::String(StrType::Byte),
-                                tok: lex_string(file),
-                            });
-                        }
+                    "b" if file.peek() == Some(&'"') => {
+                        file.next();
+                        result.push(Lexeme::Token {
+                            ty: TokenType::String(StrType::Byte),
+                            tok: lex_string(file),
+                        });
                     }
                     "r" => todo!(),
                     _ => result.push(Lexeme::Token {
