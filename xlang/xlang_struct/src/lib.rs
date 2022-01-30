@@ -244,7 +244,7 @@ pub enum BinaryOp {
     CmpEq,
     CmpNe,
     CmpGe,
-    GmpLe,
+    CmpLe,
     Cmp,
 }
 
@@ -277,18 +277,51 @@ pub enum ConversionStrength {
     Reinterpret,
 }
 
+///
+/// An xir expression/instruction
 #[repr(u16)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Expr {
+    /// No operation
+    ///
+    /// # Stack
+    /// Type checking: [..]=>[..]
+    ///
     Null,
+    /// Pushes a constant value.
+    ///
+    /// # Stack
+    ///
+    /// Type checking: [..]=>[..,T]
+    ///
+    /// Operands: [..]=>[..,Value]
     Const(Value),
-    ExitBlock { blk: u32, values: u16 },
+
+    /// Exits the `blk`th nested block with the given number of values
+    ///
+    /// # Stack
+    ///
+    /// Type Checking: [..,T1,T2,...,Tn]=>diverged
+    ///
+    /// Operands: [..,v1,v2,...,vn]=>divereged
+    ExitBlock {
+        blk: u32,
+        values: u16,
+    },
+
     BinaryOp(BinaryOp),
     UnaryOp(UnaryOp),
     CallFunction(FnType),
-    Branch { cond: BranchCondition, target: u32 },
+    Branch {
+        cond: BranchCondition,
+        target: u32,
+    },
     Convert(ConversionStrength, Type),
     Derive(PointerType, Box<Self>),
+    Local(u32),
+    Pop(u32),
+    Dup(u32),
+    Swap(u32),
 }
 
 fake_enum::fake_enum! {

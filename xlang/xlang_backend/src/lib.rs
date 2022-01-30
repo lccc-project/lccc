@@ -9,7 +9,7 @@ use xlang::{
     abi::string::StringView,
     ir::{
         AccessClass, BinaryOp, Block, BranchCondition, Expr, FnType, Path, PathComponent,
-        ScalarType, Type, UnaryOp, Value,
+        ScalarType, StackItem, Type, UnaryOp, Value,
     },
     prelude::v1::*,
     targets::properties::TargetProperties,
@@ -159,6 +159,9 @@ pub struct FunctionCodegen<F: FunctionRawCodegen> {
     inner: F,
     vstack: VecDeque<VStackValue<F::Loc>>,
     properties: &'static TargetProperties,
+    targets: HashMap<u32, Vec<(F::Loc, StackItem)>>,
+    unassigned_count: usize,
+    diverged: bool,
 }
 
 impl<F: FunctionRawCodegen> FunctionCodegen<F> {
@@ -173,6 +176,9 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             inner,
             properties,
             vstack: VecDeque::new(),
+            targets: HashMap::new(),
+            diverged: false,
+            unassigned_count: 0,
         }
     }
 
@@ -221,6 +227,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             Expr::Null => {}
             Expr::Const(v) => self.vstack.push_back(VStackValue::Constant(v.clone())),
             Expr::ExitBlock { blk, values } => {
+                self.diverged = true;
                 if *blk == 0 {
                     assert!(*values <= 1);
                     if *values == 0 {
@@ -268,8 +275,8 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     v => panic!("invalid value {:?}", v),
                 }
             }
-            Expr::Branch { cond, target } => todo!("branch {:?} @{}", cond, target),
-            Expr::Convert(.., ty) => {
+            Expr::Branch { .. } => {}
+            Expr::Convert(_, ty) => {
                 let val = self.vstack.pop_back().unwrap();
                 match (val, ty) {
                     (VStackValue::Pointer(lvalue), Type::Pointer(_)) => {
@@ -279,25 +286,42 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 }
             }
             Expr::Derive(_, expr) => self.write_expr(expr),
+            Expr::Local(n) => todo!("local _{}", n),
+            Expr::Pop(n) => drop(self.pop_values(*n as usize).unwrap()),
+            Expr::Dup(n) => {
+                let stack = self.pop_values(*n as usize).unwrap();
+                self.vstack.extend(stack.iter().cloned());
+                self.vstack.extend(stack);
+            }
+            Expr::Swap(n) => {
+                let s1 = self.pop_values(*n as usize).unwrap();
+                let s2 = self.pop_values(*n as usize).unwrap();
+                self.vstack.extend(s2);
+                self.vstack.extend(s1);
+            }
         }
-    }
-
-    fn clear_stack(&mut self) {
-        self.vstack.clear(); // TODO: Free values stored in registers/memory
     }
 
     /// Writes the elements of a block to the codegen, usually the top level block of a function
     pub fn write_block(&mut self, block: &Block) {
         for item in &block.items {
+            if let xlang::ir::BlockItem::Target { num, stack } = item {
+                let values = core::iter::repeat_with(|| {
+                    let x = self.unassigned_count;
+                    self.unassigned_count += 1;
+                    x
+                })
+                .map(F::Loc::unassigned)
+                .zip(stack.iter().cloned())
+                .collect::<Vec<_>>();
+                self.targets.insert(*num, values);
+            }
+        }
+        for item in &block.items {
             match item {
                 xlang::ir::BlockItem::Expr(expr) => self.write_expr(expr),
-                xlang::ir::BlockItem::Target { num, stack } => {
+                xlang::ir::BlockItem::Target { num, .. } => {
                     self.inner.write_target(*num);
-                    if stack.len() != 0 {
-                        todo!("target @{} {:?}", num, stack)
-                    } else {
-                        self.clear_stack()
-                    }
                 }
             }
         }
