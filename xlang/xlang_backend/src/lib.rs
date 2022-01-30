@@ -293,11 +293,11 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 self.vstack.extend(stack.iter().cloned());
                 self.vstack.extend(stack);
             }
-            Expr::Swap(n) => {
-                let s1 = self.pop_values(*n as usize).unwrap();
+            Expr::Pivot(n, m) => {
+                let s1 = self.pop_values(*m as usize).unwrap();
                 let s2 = self.pop_values(*n as usize).unwrap();
-                self.vstack.extend(s2);
                 self.vstack.extend(s1);
+                self.vstack.extend(s2);
             }
         }
     }

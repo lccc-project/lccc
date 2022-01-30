@@ -321,7 +321,7 @@ pub enum Expr {
     Local(u32),
     Pop(u32),
     Dup(u32),
-    Swap(u32),
+    Pivot(u32, u32),
 }
 
 fake_enum::fake_enum! {
