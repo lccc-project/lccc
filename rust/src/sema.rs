@@ -202,11 +202,14 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
                 .collect(),
         },
         crate::parse::Expr::Id(id) => Expression::Identifier(Identifier::Basic(id.clone())),
-        crate::parse::Expr::StringLiteral(kind, val) => Expression::StringLiteral { kind: *kind, val: val.clone() },
+        crate::parse::Expr::Parentheses(inner) => convert_expr(named_types, inner), // I assume this only exists for lints
+        crate::parse::Expr::StringLiteral(kind, val) => Expression::StringLiteral {
+            kind: *kind,
+            val: val.clone(),
+        },
         crate::parse::Expr::UnsafeBlock(inner) => {
             Expression::UnsafeBlock(convert_block(named_types, inner))
         }
-        x => todo!("{:?}", x),
     }
 }
 
@@ -215,13 +218,13 @@ pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> 
     for statement in orig {
         match statement {
             crate::parse::BlockItem::Discard(expr) => {
-                result.push(Statement::Discard(convert_expr(named_types, expr)))
+                result.push(Statement::Discard(convert_expr(named_types, expr)));
             }
             crate::parse::BlockItem::Expr(expr) => {
-                result.push(Statement::Expression(convert_expr(named_types, expr)))
+                result.push(Statement::Expression(convert_expr(named_types, expr)));
             }
             crate::parse::BlockItem::Item(_) => {
-                todo!("items in code blocks are currently unsupported")
+                todo!("items in code blocks are currently unsupported");
             }
         }
     }
@@ -319,15 +322,16 @@ pub fn convert(items: &[Item]) -> Program {
     });
     // Pass 3: convert functions
     let mut definitions = Vec::new();
-    iter_in_scope(items, None, &mut |item, _| match item {
-        Item::FnDeclaration {
+    iter_in_scope(items, None, &mut |item, _| {
+        if let Item::FnDeclaration {
             safety,
             name,
             params,
             return_ty,
             block: Some(block),
             ..
-        } => {
+        } = item
+        {
             let mut body = Vec::new();
             for param in params {
                 todo!(); // TODO: Support functions with parameters
@@ -344,7 +348,6 @@ pub fn convert(items: &[Item]) -> Program {
                 body,
             });
         }
-        _ => (),
     });
     Program {
         named_types,
