@@ -1,3 +1,4 @@
+pub use crate::lex::StrType; // TODO: `pub use` this in `crate::parse`
 use crate::parse::{FnParam, Item};
 pub use crate::parse::{Mutability, Safety, Visibility};
 
@@ -119,10 +120,48 @@ pub enum Declaration {
     },
 }
 
+#[allow(dead_code)]
+#[derive(Clone, Debug, Hash, PartialEq)]
+pub enum Expression {
+    Cast {
+        expr: Box<Expression>,
+        target: Type,
+    },
+    FunctionArg(usize),
+    FunctionCall {
+        func: Box<Expression>,
+        args: Vec<Expression>,
+    },
+    Identifier(Identifier),
+    StringLiteral {
+        kind: StrType,
+        val: String,
+    },
+    UnsafeBlock(Vec<Statement>),
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, Hash, PartialEq)]
+pub enum Statement {
+    Bind { target: String, value: Expression },
+    Discard(Expression),
+    Expression(Expression),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq)]
+pub enum Definition {
+    Function {
+        name: Identifier,
+        return_ty: Type,
+        body: Vec<Statement>,
+    },
+}
+
 #[derive(Clone, Debug, Hash)]
 pub struct Program {
     named_types: Vec<Type>,
     declarations: Vec<Declaration>,
+    definitions: Vec<Definition>,
 }
 
 pub fn convert_ty(named_types: &[Type], orig: &crate::parse::Type) -> Type {
@@ -145,6 +184,50 @@ pub fn convert_ty(named_types: &[Type], orig: &crate::parse::Type) -> Type {
     }
 }
 
+#[allow(unused_variables)]
+pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expression {
+    match orig {
+        crate::parse::Expr::Cast(expr, target) => Expression::Cast {
+            expr: Box::new(convert_expr(named_types, expr)),
+            target: convert_ty(named_types, target),
+        },
+        crate::parse::Expr::FunctionCall {
+            func,
+            params, /* TODO: params is erroneously named */
+        } => Expression::FunctionCall {
+            func: Box::new(convert_expr(named_types, func)),
+            args: params
+                .iter()
+                .map(|arg| convert_expr(named_types, arg))
+                .collect(),
+        },
+        crate::parse::Expr::Id(id) => Expression::Identifier(Identifier::Basic(id.clone())),
+        crate::parse::Expr::StringLiteral(kind, val) => Expression::StringLiteral { kind: *kind, val: val.clone() },
+        crate::parse::Expr::UnsafeBlock(inner) => {
+            Expression::UnsafeBlock(convert_block(named_types, inner))
+        }
+        x => todo!("{:?}", x),
+    }
+}
+
+pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> Vec<Statement> {
+    let mut result = Vec::new();
+    for statement in orig {
+        match statement {
+            crate::parse::BlockItem::Discard(expr) => {
+                result.push(Statement::Discard(convert_expr(named_types, expr)))
+            }
+            crate::parse::BlockItem::Expr(expr) => {
+                result.push(Statement::Expression(convert_expr(named_types, expr)))
+            }
+            crate::parse::BlockItem::Item(_) => {
+                todo!("items in code blocks are currently unsupported")
+            }
+        }
+    }
+    result
+}
+
 fn iter_in_scope<F: FnMut(&Item, Option<&str>)>(items: &[Item], abi: Option<&str>, func: &mut F) {
     for item in items {
         match item {
@@ -160,6 +243,9 @@ fn iter_in_scope<F: FnMut(&Item, Option<&str>)>(items: &[Item], abi: Option<&str
     }
 }
 
+#[allow(clippy::too_many_lines)] // TODO: refactor
+#[allow(unused_mut)]
+#[allow(unused_variables)]
 pub fn convert(items: &[Item]) -> Program {
     // Pass 1: list types
     // Since we don't have a prelude to give us standard types yet, we list them
@@ -218,7 +304,11 @@ pub fn convert(items: &[Item]) -> Program {
                         || Type::Tuple(Vec::new()),
                         |ty| convert_ty(&named_types, ty),
                     ),
-                    safety: *safety,
+                    safety: if abi.is_some() {
+                        Safety::Unsafe
+                    } else {
+                        *safety
+                    },
                     visibility: *visibility,
                 },
             });
@@ -227,8 +317,38 @@ pub fn convert(items: &[Item]) -> Program {
             unreachable!("Should have been descended into by calling function");
         }
     });
+    // Pass 3: convert functions
+    let mut definitions = Vec::new();
+    iter_in_scope(items, None, &mut |item, _| match item {
+        Item::FnDeclaration {
+            safety,
+            name,
+            params,
+            return_ty,
+            block: Some(block),
+            ..
+        } => {
+            let mut body = Vec::new();
+            for param in params {
+                todo!(); // TODO: Support functions with parameters
+            }
+            body.append(&mut convert_block(&named_types, block));
+            if *safety == Safety::Unsafe {
+                body = vec![Statement::Expression(Expression::UnsafeBlock(body))];
+            }
+            definitions.push(Definition::Function {
+                name: Identifier::Basic(name.clone()),
+                return_ty: return_ty
+                    .as_ref()
+                    .map_or_else(|| Type::Tuple(Vec::new()), |x| convert_ty(&named_types, x)),
+                body,
+            });
+        }
+        _ => (),
+    });
     Program {
         named_types,
         declarations,
+        definitions,
     }
 }
