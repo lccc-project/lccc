@@ -37,6 +37,7 @@ pub enum Type {
     Boolean,
     Char,
     Float(FloatType),
+    Function(FunctionSignature),
     Integer(IntType),
     Pointer {
         mutability: Mutability,
@@ -100,12 +101,12 @@ pub enum Mangling {
     Rust,
 }
 
-#[derive(Clone, Debug, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct FunctionSignature {
     abi: Abi,
     mangling: Mangling,
     params: Vec<Type>,
-    return_ty: Type,
+    return_ty: Box<Type>,
     safety: Safety,
     visibility: Visibility,
 }
@@ -118,6 +119,18 @@ pub enum Declaration {
         name: Identifier,
         sig: FunctionSignature,
     },
+}
+
+impl Declaration {
+    pub fn name(&self) -> &Identifier {
+        let Declaration::Function { name, .. } = self;
+        name
+    }
+
+    pub fn ty(&self) -> Type {
+        let Declaration::Function { sig, .. } = self;
+        Type::Function(sig.clone())
+    }
 }
 
 #[allow(dead_code)]
@@ -303,10 +316,10 @@ pub fn convert(items: &[Item]) -> Program {
                         .iter()
                         .map(|FnParam { ty, .. }| convert_ty(&named_types, ty))
                         .collect(),
-                    return_ty: return_ty.as_ref().map_or_else(
+                    return_ty: Box::new(return_ty.as_ref().map_or_else(
                         || Type::Tuple(Vec::new()),
                         |ty| convert_ty(&named_types, ty),
-                    ),
+                    )),
                     safety: if abi.is_some() {
                         Safety::Unsafe
                     } else {
@@ -353,5 +366,91 @@ pub fn convert(items: &[Item]) -> Program {
         named_types,
         declarations,
         definitions,
+    }
+}
+
+#[allow(unused_variables)]
+fn typeck_expr(declarations: &[Declaration], expr: &mut Expression, safety: Safety, ty: Option<&Type>, return_ty: Option<&Type>) -> Type {
+    match expr {
+        Expression::FunctionCall { func, args } => {
+            let func_ty = typeck_expr(declarations, func, safety, None, return_ty);
+            if let Type::Function(func_sig) = func_ty {
+                if func_sig.safety == Safety::Unsafe && safety == Safety::Safe {
+                    panic!("unsafe function called in safe context");
+                }
+                if func_sig.params.len() != args.len() {
+                    panic!("provided {} args to a function expecting {}", args.len(), func_sig.params.len());
+                }
+                for (arg, param) in args.iter_mut().zip(func_sig.params.iter()) {
+                    typeck_expr(declarations, arg, safety, Some(param), return_ty);
+                }
+                if let Some(ty) = ty {
+                    assert!(*func_sig.return_ty == *ty, "expected {:?}, got {:?}", ty, func_sig.return_ty);
+                }
+                *func_sig.return_ty.clone()
+            } else {
+                panic!("tried to call a {:?} as a function", func_ty)
+            }
+        }
+        Expression::Identifier(id) => {
+            for decl in declarations {
+                if decl.name() == id {
+                    return decl.ty();
+                }
+            }
+            panic!("could not resolve identifier {:?}", id)
+        }
+        Expression::UnsafeBlock(inner) => {
+            if safety == Safety::Unsafe {
+                println!("warning: unsafe block used already unsafe section");
+            }
+            typeck_block(declarations, inner, Safety::Unsafe, ty, return_ty)
+        }
+        x => todo!("{:?}", x),
+    }
+}
+
+fn typeck_statement(declarations: &[Declaration], statement: &mut Statement, safety: Safety, ty: Option<&Type>, return_ty: Option<&Type>) -> Type {
+    match statement {
+        Statement::Bind { .. } => todo!(),
+        Statement::Discard(expr) => {
+            typeck_expr(declarations, expr, safety, None, return_ty);
+            Type::Tuple(Vec::new())
+        }
+        Statement::Expression(expr) => {
+            let result_ty = typeck_expr(declarations, expr, safety, ty, return_ty);
+            if let Some(ty) = ty {
+                assert!(result_ty == *ty, "expected {:?}, got {:?}", ty, result_ty);
+            }
+            result_ty
+        }
+    }
+}
+
+fn typeck_block(declarations: &[Declaration], block: &mut [Statement], safety: Safety, ty: Option<&Type>, return_ty: Option<&Type>) -> Type {
+    let result_ty = if block.is_empty() {
+        Type::Tuple(Vec::new())
+    } else {
+        let (result, bulk) = block.split_last_mut().unwrap(); // Will not panic because we verified that the block is not empty
+        for statement in bulk {
+            let result = typeck_statement(declarations, statement, safety, Some(&Type::Tuple(Vec::new())), return_ty);
+            assert!(result == Type::Tuple(Vec::new()), "expected (), got {:?}", result);
+        }
+        typeck_statement(declarations, result, safety, ty, return_ty)
+    };
+    if let Some(ty) = ty {
+        assert!(result_ty == *ty, "expected {:?}, got {:?}", ty, result_ty);
+    }
+    result_ty
+}
+
+fn typeck_definition(declarations: &[Declaration], definition: &mut Definition) {
+    let Definition::Function { return_ty, ref mut body, .. } = definition;
+    typeck_block(declarations, body, Safety::Safe, Some(&return_ty), Some(&return_ty));
+}
+
+pub fn typeck_program(program: &mut Program) {
+    for definition in &mut program.definitions {
+        typeck_definition(&program.declarations, definition);
     }
 }

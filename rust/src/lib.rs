@@ -6,7 +6,7 @@ mod sema;
 
 use lex::lex;
 use parse::parse_crate;
-use sema::convert;
+use sema::{convert, typeck_program};
 
 use xlang::abi::io::{self, IntoChars, Read};
 use xlang::abi::prelude::v1::*;
@@ -42,7 +42,9 @@ impl XLangFrontend for RustFrontend {
         println!("{:#?}", lexed);
         let items = parse_crate(lexed.into_iter());
         println!("{:#?}", items);
-        let converted = convert(&items);
+        let mut converted = convert(&items);
+        println!("{:#?}", converted);
+        typeck_program(&mut converted);
         println!("{:#?}", converted);
         io::Result::Ok(())
     }
