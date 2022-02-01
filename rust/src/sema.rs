@@ -34,12 +34,17 @@ pub enum IntType {
 #[allow(dead_code)]
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Type {
+    Array(Box<Self>, usize),
     Boolean,
     Char,
     Float(FloatType),
     Function(FunctionSignature),
     Integer(IntType),
     Pointer {
+        mutability: Mutability,
+        underlying: Box<Self>,
+    },
+    Reference {
         mutability: Mutability,
         underlying: Box<Self>,
     },
@@ -380,6 +385,27 @@ fn typeck_expr(
     return_ty: Option<&Type>,
 ) -> Type {
     match expr {
+        Expression::Cast { expr, target } => {
+            let expr_ty = typeck_expr(declarations, expr, safety, None, return_ty);
+            match (expr_ty.clone(), &target) {
+                (
+                    Type::Reference {
+                        mutability: m1,
+                        underlying: ty1,
+                    },
+                    Type::Pointer {
+                        mutability: m2,
+                        underlying: ty2,
+                    },
+                ) if (m1 == Mutability::Mut || *m2 == Mutability::Const) => match *ty1 {
+                    // Needed b/c no deref patterns
+                    Type::Array(ty1, _) if ty1 == *ty2 => target.clone(),
+                    ty1 if ty1 == **ty2 => target.clone(),
+                    _ => panic!("can not cast from {:?} to {:?}", expr_ty, target),
+                },
+                (x, y) => todo!("{:?} to {:?}", x, y),
+            }
+        }
         Expression::FunctionCall { func, args } => {
             let func_ty = typeck_expr(declarations, func, safety, None, return_ty);
             if let Type::Function(func_sig) = func_ty {
