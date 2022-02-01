@@ -456,7 +456,7 @@ fn typeck_expr(
             }
             typeck_block(declarations, inner, Safety::Unsafe, ty, return_ty)
         }
-        x => todo!("{:?}", x),
+        x @ Expression::FunctionArg(_) => todo!("{:?}", x),
     }
 }
 
