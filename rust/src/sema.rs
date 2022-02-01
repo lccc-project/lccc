@@ -443,6 +443,13 @@ fn typeck_expr(
             }
             panic!("could not resolve identifier {:?}", id)
         }
+        Expression::StringLiteral { kind, val } => Type::Reference {
+            mutability: Mutability::Const,
+            underlying: Box::new(match kind {
+                StrType::Byte => Type::Array(Box::new(Type::Integer(IntType::U8)), val.len()),
+                StrType::Default => Type::Str,
+            }),
+        },
         Expression::UnsafeBlock(inner) => {
             if safety == Safety::Unsafe {
                 println!("warning: unsafe block used already unsafe section");
