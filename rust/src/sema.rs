@@ -152,12 +152,48 @@ pub enum Expression {
         func: Box<Expression>,
         args: Vec<Expression>,
     },
-    Identifier(Identifier),
+    Identifier {
+        id: Identifier,
+        ty: Option<Type>,
+    },
     StringLiteral {
         kind: StrType,
         val: String,
     },
-    UnsafeBlock(Vec<Statement>),
+    UnsafeBlock {
+        block: Vec<Statement>,
+        ty: Option<Type>,
+    },
+}
+
+impl Expression {
+    #[allow(dead_code)]
+    pub fn ty(&self) -> Type {
+        match self {
+            Expression::Cast { target, .. } => target.clone(),
+            Expression::FunctionArg(_) => {
+                todo!("Expression::FunctionArg(_).ty() currently unsopported")
+            }
+            Expression::FunctionCall { func, .. } => {
+                if let Type::Function(sig) = func.ty() {
+                    *sig.return_ty
+                } else {
+                    panic!("attempted to call a value that isn't a function, uncaught by typeck; this is an ICE");
+                }
+            }
+            Expression::Identifier { ty, .. } | Expression::UnsafeBlock { ty, .. } => ty
+                .as_ref()
+                .expect("typeck forgot to resolve type of expression; this is an ICE")
+                .clone(),
+            Expression::StringLiteral { kind, val } => Type::Reference {
+                mutability: Mutability::Const,
+                underlying: Box::new(match kind {
+                    StrType::Byte => Type::Array(Box::new(Type::Integer(IntType::U8)), val.len()),
+                    StrType::Default => Type::Str,
+                }),
+            },
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -221,15 +257,19 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
                 .map(|arg| convert_expr(named_types, arg))
                 .collect(),
         },
-        crate::parse::Expr::Id(id) => Expression::Identifier(Identifier::Basic(id.clone())),
+        crate::parse::Expr::Id(id) => Expression::Identifier {
+            id: Identifier::Basic(id.clone()),
+            ty: None,
+        },
         crate::parse::Expr::Parentheses(inner) => convert_expr(named_types, inner), // I assume this only exists for lints
         crate::parse::Expr::StringLiteral(kind, val) => Expression::StringLiteral {
             kind: *kind,
             val: val.clone(),
         },
-        crate::parse::Expr::UnsafeBlock(inner) => {
-            Expression::UnsafeBlock(convert_block(named_types, inner))
-        }
+        crate::parse::Expr::UnsafeBlock(inner) => Expression::UnsafeBlock {
+            block: convert_block(named_types, inner),
+            ty: None,
+        },
     }
 }
 
@@ -358,7 +398,10 @@ pub fn convert(items: &[Item]) -> Program {
             }
             body.append(&mut convert_block(&named_types, block));
             if *safety == Safety::Unsafe {
-                body = vec![Statement::Expression(Expression::UnsafeBlock(body))];
+                body = vec![Statement::Expression(Expression::UnsafeBlock {
+                    block: body,
+                    ty: None,
+                })];
             }
             definitions.push(Definition::Function {
                 name: Identifier::Basic(name.clone()),
@@ -435,13 +478,20 @@ fn typeck_expr(
                 panic!("tried to call a {:?} as a function", func_ty)
             }
         }
-        Expression::Identifier(id) => {
+        Expression::Identifier { id, ty: id_ty } => {
+            let mut result = None;
             for decl in declarations {
                 if decl.name() == id {
-                    return decl.ty();
+                    result = Some(decl.ty());
                 }
             }
-            panic!("could not resolve identifier {:?}", id)
+            result.map_or_else(
+                || panic!("could not resolve identifier {:?}", id),
+                |result| {
+                    *id_ty = Some(result.clone());
+                    result
+                },
+            )
         }
         Expression::StringLiteral { kind, val } => Type::Reference {
             mutability: Mutability::Const,
@@ -450,11 +500,16 @@ fn typeck_expr(
                 StrType::Default => Type::Str,
             }),
         },
-        Expression::UnsafeBlock(inner) => {
+        Expression::UnsafeBlock {
+            block,
+            ty: block_ty,
+        } => {
             if safety == Safety::Unsafe {
                 println!("warning: unsafe block used already unsafe section");
             }
-            typeck_block(declarations, inner, Safety::Unsafe, ty, return_ty)
+            let new_ty = typeck_block(declarations, block, Safety::Unsafe, ty, return_ty);
+            *block_ty = Some(new_ty.clone());
+            new_ty
         }
         x @ Expression::FunctionArg(_) => todo!("{:?}", x),
     }
