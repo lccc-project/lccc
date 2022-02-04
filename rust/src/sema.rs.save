@@ -91,25 +91,8 @@ impl Type {
                 underlying,
             } => {
                 let mut result = String::from("*");
-                result.push_str(if *mutability == Mutability::Mut {
-                    "mut "
-                } else {
-                    "const "
-                });
+                result.push_str(if *mutability == Mutability::Mut { "mut " } else { "const " });
                 result.push_str(&underlying.name());
-                result
-            }
-            Self::Tuple(types) => {
-                let mut result = String::from("(");
-                let mut comma = false;
-                for ty in types {
-                    if comma {
-                        result.push_str(", ");
-                    }
-                    result.push_str(&ty.name());
-                    comma = true;
-                }
-                result.push(')');
                 result
             }
             _ => todo!("{:?}", self),
@@ -161,9 +144,7 @@ impl Display for FunctionSignature {
         write!(f, "(")?;
         let comma = false;
         for param in &self.params {
-            if comma {
-                write!(f, ", ")?
-            }
+            if comma { write!(f, ", ")? }
             param.fmt(f)?;
         }
         write!(f, ") -> {}", self.return_ty)
@@ -272,59 +253,12 @@ impl Expression {
     }
 }
 
-impl Display for Expression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Expression::Cast { expr, target } => {
-                write!(f, "{} as {}", expr, target)
-            }
-            Expression::FunctionCall { func, args } => {
-                write!(f, "{}(", func)?;
-                let mut comma = false;
-                for arg in args {
-                    if comma { write!(f, ", ")?; }
-                    arg.fmt(f)?;
-                    comma = true;
-                }
-                write!(f, ")")
-            }
-            Expression::Identifier { id, .. } => {
-                id.fmt(f)
-            }
-            Expression::StringLiteral { kind, val } => {
-                if *kind == StrType::Byte {
-                    write!(f, "b")?;
-                }
-                write!(f, "\"{}\"", val)
-            }
-            Expression::UnsafeBlock { block, .. } => {
-                writeln!(f, "unsafe {{")?;
-                for statement in block {
-                    writeln!(f, "{}", statement)?;
-                }
-                write!(f, "}}")
-            }
-            x => todo!("{:?}", x),
-        }
-    }
-}
-
 #[allow(dead_code)]
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub enum Statement {
     Bind { target: String, value: Expression },
     Discard(Expression),
     Expression(Expression),
-}
-
-impl Display for Statement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Statement::Bind { .. } => todo!(),
-            Statement::Discard(expr) => write!(f, "{};", expr),
-            Statement::Expression(expr) => write!(f, "{}", expr),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq)]
@@ -342,19 +276,6 @@ impl Definition {
     pub fn name(&self) -> Identifier {
         let Definition::Function { name, .. } = self;
         name.clone()
-    }
-}
-
-impl Display for Definition {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let Definition::Function {
-            name, return_ty, body
-        } = self;
-        writeln!(f, "fn {}() -> {} {{", name, return_ty)?;
-        for statement in body {
-            writeln!(f, "{}", statement)?;
-        }
-        write!(f, "}}")
     }
 }
 
@@ -397,7 +318,7 @@ impl Display for Program {
             }
             writeln!(f, "}}")?;
         }
-        for definition in &self.definitions {
+        for definition in self.definitions {
             definition.fmt(f)?;
             writeln!(f)?;
         }

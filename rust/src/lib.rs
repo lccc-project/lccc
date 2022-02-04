@@ -1,12 +1,14 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
 
+mod irgen;
 mod lex;
 mod parse;
 mod sema;
 
+use irgen::irgen;
 use lex::lex;
 use parse::parse_crate;
-use sema::{convert, typeck_program};
+use sema::{convert, typeck_program, Program};
 
 use xlang::abi::io::{self, IntoChars, Read};
 use xlang::abi::prelude::v1::*;
@@ -18,12 +20,13 @@ use xlang::targets::Target;
 
 struct RustFrontend {
     filename: Option<String>,
+    program: Option<Program>,
 }
 
 impl RustFrontend {
     #[must_use]
     pub const fn new() -> Self {
-        Self { filename: None }
+        Self { filename: None, program: None }
     }
 }
 
@@ -45,14 +48,16 @@ impl XLangFrontend for RustFrontend {
         let mut converted = convert(&items);
         println!("{:#?}", converted);
         typeck_program(&mut converted);
-        println!("{:#?}", converted);
+        println!("{}", converted);
+        self.program = Some(converted);
         io::Result::Ok(())
     }
 }
 
 impl XLangPlugin for RustFrontend {
-    fn accept_ir(&mut self, _file: &mut ir::File) -> Result<(), Error> {
-        todo!()
+    fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
+        irgen(self.program.as_ref().unwrap(), file);
+        Result::Ok(())
     }
 
     fn set_target(&mut self, _: Target) {}
