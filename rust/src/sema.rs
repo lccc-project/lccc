@@ -162,7 +162,7 @@ impl Display for FunctionSignature {
         let comma = false;
         for param in &self.params {
             if comma {
-                write!(f, ", ")?
+                write!(f, ", ")?;
             }
             param.fmt(f)?;
         }
@@ -278,19 +278,22 @@ impl Display for Expression {
             Expression::Cast { expr, target } => {
                 write!(f, "{} as {}", expr, target)
             }
+            Expression::FunctionArg(id) => {
+                write!(f, "<function arg {}>", id)
+            }
             Expression::FunctionCall { func, args } => {
                 write!(f, "{}(", func)?;
                 let mut comma = false;
                 for arg in args {
-                    if comma { write!(f, ", ")?; }
+                    if comma {
+                        write!(f, ", ")?;
+                    }
                     arg.fmt(f)?;
                     comma = true;
                 }
                 write!(f, ")")
             }
-            Expression::Identifier { id, .. } => {
-                id.fmt(f)
-            }
+            Expression::Identifier { id, .. } => id.fmt(f),
             Expression::StringLiteral { kind, val } => {
                 if *kind == StrType::Byte {
                     write!(f, "b")?;
@@ -304,7 +307,6 @@ impl Display for Expression {
                 }
                 write!(f, "}}")
             }
-            x => todo!("{:?}", x),
         }
     }
 }
@@ -348,7 +350,9 @@ impl Definition {
 impl Display for Definition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let Definition::Function {
-            name, return_ty, body
+            name,
+            return_ty,
+            body,
         } = self;
         writeln!(f, "fn {}() -> {} {{", name, return_ty)?;
         for statement in body {
@@ -383,14 +387,14 @@ impl Display for Program {
                 "// Warning: Some function ABIs may be incorrectly printed"
             )?;
         }
-        if c_declarations.len() > 0 {
+        if !c_declarations.is_empty() {
             writeln!(f, "extern \"C\" {{")?;
             for declaration in c_declarations {
                 declaration.fmt(f)?;
             }
             writeln!(f, "}}")?;
         }
-        if other_declarations.len() > 0 {
+        if !other_declarations.is_empty() {
             writeln!(f, "extern \"Rust\" {{")?;
             for declaration in other_declarations {
                 declaration.fmt(f)?;

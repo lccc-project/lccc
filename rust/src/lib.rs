@@ -26,7 +26,10 @@ struct RustFrontend {
 impl RustFrontend {
     #[must_use]
     pub const fn new() -> Self {
-        Self { filename: None, program: None }
+        Self {
+            filename: None,
+            program: None,
+        }
     }
 }
 
