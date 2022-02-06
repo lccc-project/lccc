@@ -88,9 +88,8 @@ impl XLangPlugin for CFrontend {
                     todo!()
                 } else {
                     ir::Type::Pointer(ir::PointerType {
-                        alias: ir::PointerAliasingRule::None,
-                        valid_range: xlang::abi::pair::Pair(ir::ValidRangeType::None, 0),
                         inner: Box::new(inner),
+                        ..ir::PointerType::default()
                     })
                 }
             } else {

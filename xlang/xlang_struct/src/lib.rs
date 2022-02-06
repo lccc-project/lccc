@@ -99,6 +99,13 @@ pub struct ScalarTypeHeader {
     pub vectorsize: u16,
     pub validity: ScalarValidity,
 }
+bitflags::bitflags! {
+    #[repr(transparent)]
+    pub struct CharFlags: u8{
+        const SIGNED = 1;
+        const UNICODE = 2;
+    }
+}
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -109,6 +116,7 @@ pub enum ScalarTypeKind {
     // long double
     LongFloat,
     Fixed { fractbits: u16 },
+    Char { flags: CharFlags },
 }
 
 impl Default for ScalarTypeKind {
@@ -127,11 +135,19 @@ pub struct ScalarType {
 #[repr(u16)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Type {
+    Null,
     Scalar(ScalarType),
     Void,
     FnType(Box<FnType>),
     Pointer(PointerType),
     Array(Box<ArrayType>),
+    TaggedType(u16, Box<Type>),
+}
+
+impl Default for Type {
+    fn default() -> Self {
+        Self::Null
+    }
 }
 
 #[repr(C)]
@@ -141,24 +157,23 @@ pub struct ArrayType {
     pub len: Value,
 }
 
-fake_enum::fake_enum! {
-    #[repr(u8)]
-    #[derive(Default,Hash)]
-    pub enum struct PointerAliasingRule{
-        None = 0,
-        Unique = 1,
-        ReadOnly = 2,
-        ReadShallow = 3,
-        Invalid = 4,
-        Nonnull = 5,
-        Volatile = 6,
-        VolatileWrite = 7,
-        NullOrInvalid = 8,
+bitflags::bitflags! {
+    #[repr(transparent)]
+    #[derive(Default)]
+    pub struct PointerAliasingRule : u32{
+        const UNIQUE = 2;
+        const READ_ONLY = 4;
+        const READ_SHALLOW = 8;
+        const INVALID = 16;
+        const NONNULL = 32;
+        const VOLATILE = 64;
+        const VOLATILE_WRITE = 128;
+        const NULL_OR_INVALID = 256;
     }
 }
 
 fake_enum::fake_enum! {
-    #[repr(u8)]
+    #[repr(u16)]
     #[derive(Default,Hash)]
     pub enum struct ValidRangeType{
         None = 0,
@@ -171,11 +186,22 @@ fake_enum::fake_enum! {
     }
 }
 
+bitflags::bitflags! {
+    #[repr(transparent)]
+    #[derive(Default)]
+    pub struct PointerDeclarationType : u16{
+        const REF = 1;
+        const CONST = 2;
+        const VOLATILE = 4;
+    }
+}
+
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
 pub struct PointerType {
     pub alias: PointerAliasingRule,
     pub valid_range: Pair<ValidRangeType, u64>,
+    pub decl: PointerDeclarationType,
     pub inner: Box<Type>,
 }
 

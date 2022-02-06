@@ -1,6 +1,6 @@
 /// An abi safe type that contains an ordered pair (2-tuple) of `T` and `U`
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Pair<T, U>(pub T, pub U);
 
 impl<T, U> From<(T, U)> for Pair<T, U> {

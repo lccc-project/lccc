@@ -38,8 +38,7 @@ pub fn type_size(ty: &Type, properties: &TargetProperties) -> Option<u64> {
             let align = scalar_align(size, properties);
             Some(align_size(size, align))
         }
-        Type::Void => None,
-        Type::FnType(_) => None,
+        Type::Void | Type::FnType(_) | Type::Null => None,
         Type::Pointer(PointerType { .. }) => Some(align_size(
             ((properties.ptrbits as u64) + 7) >> 3,
             properties.ptralign as u64,
@@ -51,6 +50,7 @@ pub fn type_size(ty: &Type, properties: &TargetProperties) -> Option<u64> {
             } => Some(type_size(ty, properties)? * (*val as u64)),
             _ => panic!("Invalid array type {:?}", ty),
         },
+        Type::TaggedType(_, ty) => type_size(ty, properties),
     }
 }
 
@@ -81,10 +81,11 @@ pub fn type_align(ty: &Type, properties: &TargetProperties) -> Option<u64> {
             Some(scalar_align(size, properties))
         }
         Type::Pointer(_) => Some(properties.ptralign as u64),
-        Type::Void | Type::FnType(_) => None,
+        Type::Void | Type::FnType(_) | Type::Null => None,
         Type::Array(ty) => {
             let ArrayType { ty, .. } = &**ty;
             type_align(ty, properties)
         }
+        Type::TaggedType(_, ty) => type_size(ty, properties),
     }
 }
