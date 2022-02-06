@@ -39,6 +39,12 @@ pub enum IntType {
     Usize,
 }
 
+impl IntType {
+    pub fn is_signed(&self) -> bool {
+        matches!(self, IntType::I8 | IntType::I16 | IntType::I32 | IntType::I64 | IntType::Iptr | IntType::Isize)
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Type {
@@ -148,12 +154,12 @@ pub enum Mangling {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct FunctionSignature {
-    abi: Abi,
-    mangling: Mangling,
-    params: Vec<Type>,
-    return_ty: Box<Type>,
-    safety: Safety,
-    visibility: Visibility,
+    pub abi: Abi,
+    pub mangling: Mangling,
+    pub params: Vec<Type>,
+    pub return_ty: Box<Type>,
+    pub safety: Safety,
+    pub visibility: Visibility,
 }
 
 impl Display for FunctionSignature {
@@ -364,9 +370,9 @@ impl Display for Definition {
 
 #[derive(Clone, Debug, Hash)]
 pub struct Program {
-    named_types: Vec<Type>,
-    declarations: Vec<Declaration>,
-    definitions: Vec<Definition>,
+    pub named_types: Vec<Type>,
+    pub declarations: Vec<Declaration>,
+    pub definitions: Vec<Definition>,
 }
 
 impl Display for Program {
