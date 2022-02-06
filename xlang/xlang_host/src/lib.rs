@@ -1,7 +1,7 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery, missing_docs)]
 
 //!
-//! The [`xlang_host`] crate provides access to the host target's apis, depending on the interfaces available from the OS
+//! The `xlang_host` crate provides access to the host target's apis, depending on the interfaces available from the OS
 //! The definition is such that unknown operating systems that provide the required interfaces will function properly on xlang.
 
 ///

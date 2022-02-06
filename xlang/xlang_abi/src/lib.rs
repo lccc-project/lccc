@@ -24,7 +24,7 @@ mod internal;
 pub mod io;
 /// Defines a Pair type, which is an ABI safe two-tuple
 pub mod pair;
-/// prelude for [`xlang_abi`]
+/// prelude for `xlang_abi`
 pub mod prelude;
 /// Defines pointer types and interfaces that are abi safe.
 pub mod ptr;

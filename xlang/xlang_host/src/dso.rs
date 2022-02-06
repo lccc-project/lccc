@@ -139,7 +139,7 @@ impl Handle {
     ///
     /// This function does *not* statically bound the lifetime of the function (as rust has no native mechanism for that).
     /// Thus, the caller is responsible for ensuring that the returned pointer (which may be a safe function pointer) is not called after dropping the Handle.
-    /// Further, certain types may call functions within the defining modules (such as [`DynBox`] or other abi-safe trait object wrappers),
+    /// Further, certain types may call functions within the defining modules (such as `DynBox`]or other abi-safe trait object wrappers),
     ///  and such types cannot be soundly used after dropping the handle.
     ///
     /// In addition to lifetime concerns, the following restrictions are placed on the symbol, and apply when calling the function pointer:

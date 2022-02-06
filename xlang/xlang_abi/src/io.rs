@@ -333,7 +333,7 @@ impl<R: Read> IntoChars for R {
 pub struct ReadAdapter<R>(R);
 
 impl<R> ReadAdapter<R> {
-    /// Produces a new [`ReadAdaptor`] over `r`
+    /// Produces a new [`ReadAdapter`] over `r`
     pub const fn new(r: R) -> Self {
         Self(r)
     }

@@ -30,7 +30,7 @@
 //! by calling the `unsize_*` methods of those types on concrete pointers/references to types implementing the trait (note, this does not work if you have already unsize the type to a language trait object, like `&dyn Foo`).
 //! You can then use these types with the methods of the trait
 //!
-//! ## Manually Implementing [`AbiSafeTrait`]
+//! ## Manually Implementing `AbiSafeTrait`
 //! While it is recommend to use the attribute to implement the various `AbiSafe` traits, it is possible to implement them manually.
 //! All of these traits are unsafe and impose numerous preconditions on implmenetors, any of which will result in very unsound code if violated.
 //! That being said, if you accept the Nasal Demons you are invoking, it can be fairly simple, and, in some cases, advantageous to implement the traits manually.
@@ -42,7 +42,7 @@
 //!
 //! ### Vtables
 //! The first requirement is to create a trait's abi safe `VTable`. This must be a `#[repr(C)]` type,
-//! and the first four (non 1-ZST) members must be the members of the [`AbiSafeVTableHead`] type (size, alignment, destructor, reserved dellocation function)
+//! and the first four (non 1-ZST) members must be the members of the `AbiSafeVTableHead` type (size, alignment, destructor, reserved dellocation function)
 //! The remainder of the members should typically be the virtual functions of the trait (the methods not bound on Self: Sized). Each member should be public
 //!
 
