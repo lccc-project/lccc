@@ -46,6 +46,8 @@
 //! The remainder of the members should typically be the virtual functions of the trait (the methods not bound on Self: Sized). Each member should be public
 //!
 
+#![allow(clippy::borrow_as_ptr)]
+
 use core::marker::{PhantomData, Send, Sync};
 use std::{
     marker::PhantomPinned,

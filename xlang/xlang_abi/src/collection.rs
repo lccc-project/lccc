@@ -416,6 +416,7 @@ impl<'a, K, V> Iter<'a, K, V> {
     }
 }
 
+#[allow(clippy::borrow_as_ptr)]
 impl<'a, K, V> Iterator for Iter<'a, K, V> {
     type Item = &'a Pair<K, V>;
 
