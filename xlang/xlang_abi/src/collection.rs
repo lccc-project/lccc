@@ -500,6 +500,80 @@ where
     }
 }
 
+impl<K: Eq + Hash, V: PartialEq, H: BuildHasher, A: Allocator> PartialEq for HashMap<K, V, H, A> {
+    fn eq(&self, other: &Self) -> bool {
+        if core::ptr::eq(self, other) {
+            return true;
+        }
+        for Pair(k, v) in self {
+            if other.get(k).map(|v2| v.eq(v2)).unwrap_or(false) {
+                return false;
+            }
+        }
+        for Pair(k, v) in other {
+            if self.get(k).map(|v2| v.eq(v2)).unwrap_or(false) {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+impl<K: Eq + Hash, V: Eq, H: BuildHasher, A: Allocator> Eq for HashMap<K, V, H, A> {}
+
+impl<K: Eq + Hash, V, H: BuildHasher + Default, A: Allocator + Default> FromIterator<Pair<K, V>>
+    for HashMap<K, V, H, A>
+{
+    fn from_iter<I>(it: I) -> Self
+    where
+        I: IntoIterator<Item = Pair<K, V>>,
+    {
+        let mut ret = HashMap::new();
+        for Pair(k, v) in it {
+            ret.insert(k, v);
+        }
+        ret
+    }
+}
+
+impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> Extend<Pair<K, V>> for HashMap<K, V, H, A> {
+    fn extend<I>(&mut self, it: I)
+    where
+        I: IntoIterator<Item = Pair<K, V>>,
+    {
+        for Pair(k, v) in it {
+            self.insert(k, v);
+        }
+    }
+}
+
+impl<K: Eq + Hash, V, H: BuildHasher + Default, A: Allocator + Default> FromIterator<(K, V)>
+    for HashMap<K, V, H, A>
+{
+    fn from_iter<I>(it: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+    {
+        let mut ret = HashMap::new();
+        for (k, v) in it {
+            ret.insert(k, v);
+        }
+        ret
+    }
+}
+
+impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> Extend<(K, V)> for HashMap<K, V, H, A> {
+    fn extend<I>(&mut self, it: I)
+    where
+        I: IntoIterator<Item = (K, V)>,
+    {
+        for (k, v) in it {
+            self.insert(k, v);
+        }
+    }
+}
+
 ///
 /// A [`HashSet`] that has a stable ABI and obtains storage backed by an [`Allocator`]
 #[derive(
@@ -510,6 +584,14 @@ where
 pub struct HashSet<K, H: BuildHasher = BuildHasherDefault<XLangHasher>, A: Allocator = XLangAlloc> {
     inner: HashMap<K, (), H, A>,
 }
+
+impl<K: Eq + Hash, H: BuildHasher, A: Allocator> PartialEq for HashSet<K, H, A> {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl<K: Eq + Hash, H: BuildHasher, A: Allocator> Eq for HashSet<K, H, A> {}
 
 impl<K, H: BuildHasher + Default, A: Allocator + Default> HashSet<K, H, A> {
     /// Constructs a new [`HashSet`] with a [`Default`] allocator and [`Default`] hasher

@@ -1,5 +1,5 @@
 use xlang::{
-    ir::{Path, ScalarType, Value},
+    ir::{Path, PointerType, ScalarType, Type, Value},
     prelude::v1::*,
 };
 
@@ -27,6 +27,8 @@ pub enum LValue<Loc: ValLocation> {
     GlobalAddress(Path),
     /// A pointer to a Label
     Label(u32),
+    /// Aggregate Element Field
+    Field(Type, Box<LValue<Loc>>, String),
 }
 
 /// Represents a value on the stack for codegen
@@ -35,11 +37,17 @@ pub enum VStackValue<Loc: ValLocation> {
     /// Represents a Constant (statically known) value
     Constant(Value),
     /// Represents an LValue that can be read from/written to
-    LValue(LValue<Loc>),
+    LValue(Type, LValue<Loc>),
     /// Represents a pointer to the given LValue
-    Pointer(LValue<Loc>),
+    Pointer(PointerType, LValue<Loc>),
     /// Represents a scalar value which is stored in memory
     OpaqueScalar(ScalarType, Loc),
+
+    /// Represents an aggregate type that is stored piecewise
+    AggregatePieced(Type, HashMap<String, VStackValue<Loc>>),
+
+    /// Represents an aggregate which is stored in memory
+    OpaqueAggregate(Type, Loc),
 
     /// Placeholder for a value that's already caused a `ud2`
     Trapped,

@@ -5,7 +5,7 @@ use crate::Target;
 ///
 /// Structure containing properties about individual machines (selected by `-march` or `-C target-cpu`) used by the architectures
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MachineProperties {
     /// Features enabled by default on the Machine
     pub default_features: Span<'static, StringView<'static>>,
@@ -54,7 +54,7 @@ pub enum LongDoubleFormat {
 ///
 /// Properties about the architecture, shared between targets that use this architecture
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ArchProperties {
     /// A bitmask of sizes (in bytes) of the atomic types that the architecture always supports lock free access on
     /// The first bit is size 1, the second is size 2, fourth is size 4, etc. Bits between powers of two should typically be set if the next power of two is set
@@ -74,7 +74,7 @@ pub struct ArchProperties {
 ///
 /// Properties about the operating system (the sys component), shared between targets that use the same system
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct OperatingSystemProperties {
     /// Set if the operating system is unix like (IE. linux or bsd)
     pub is_unix_like: bool,
@@ -112,7 +112,7 @@ pub struct OperatingSystemProperties {
 ///
 /// It further assumes that all pointer types, except fn pointers are compatible
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct TargetProperties {
     /// The size (in bits) used by the C `int` type
     pub intbits: u16,

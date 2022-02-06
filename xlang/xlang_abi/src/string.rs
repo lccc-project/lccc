@@ -366,6 +366,17 @@ impl<'a> StringView<'a> {
     pub fn is_empty(&self) -> bool {
         self.begin == self.end
     }
+
+    ///
+    /// Converts an owned [`StringView`] into  &[`str`] with the same lifetime
+    pub fn into_str(self) -> &'a str {
+        unsafe {
+            core::str::from_utf8_unchecked(core::slice::from_raw_parts(
+                self.begin.as_ptr(),
+                (self.end.as_ptr() as usize) - (self.begin.as_ptr() as usize), // This is really annoying that have to do this
+            ))
+        }
+    }
 }
 
 #[doc(hidden)]

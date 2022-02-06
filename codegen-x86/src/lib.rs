@@ -1,12 +1,15 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
 
-// mod callconv;
+pub mod callconv;
 
-use std::{cell::RefCell, convert::TryFrom, hash::Hash, rc::Rc};
+use std::{
+    cell::RefCell, collections::HashSet, convert::TryFrom, hash::Hash, rc::Rc, str::FromStr,
+};
 
 use arch_ops::{
     traits::{Address, InsnWrite},
     x86::{
+        features::X86Feature,
         insn::{ModRM, ModRMRegOrSib, X86Encoder, X86Instruction, X86Mode, X86Opcode, X86Operand},
         X86Register,
     },
@@ -16,10 +19,12 @@ use binfmt::{
     fmt::{FileType, Section, SectionType},
     sym::{SymbolKind, SymbolType},
 };
+use callconv::X86CallConv;
 use target_tuples::Target;
 use xlang::{
     plugin::{XLangCodegen, XLangPlugin},
     prelude::v1::{Box, DynBox, Option as XLangOption, Pair},
+    targets::properties::{MachineProperties, TargetProperties},
 };
 use xlang_backend::{
     expr::{LValue, VStackValue},
@@ -89,6 +94,8 @@ pub struct X86CodegenState {
     symbols: Vec<X86TempSymbol>,
     name: String,
     strings: Rc<RefCell<StringMap>>,
+    callconv: std::boxed::Box<dyn X86CallConv>,
+    fnty: FnType,
 }
 
 impl FunctionRawCodegen for X86CodegenState {
@@ -140,12 +147,14 @@ impl FunctionRawCodegen for X86CodegenState {
     }
 
     fn return_void(&mut self) {
-        todo!()
+        self.insns
+            .push(X86InstructionOrLabel::Insn(X86Instruction::Leave));
+        self.insns
+            .push(X86InstructionOrLabel::Insn(X86Instruction::Retn));
     }
 
     fn return_value(&mut self, val: xlang_backend::expr::VStackValue<Self::Loc>) {
-        // TODO: Adjust for size
-        self.move_value(val, ValLocation::Register(X86Register::Eax));
+        self.move_value(val, self.callconv.find_return_val(&self.fnty.ret).unwrap());
         self.insns
             .push(X86InstructionOrLabel::Insn(X86Instruction::Leave));
         self.insns
@@ -182,11 +191,9 @@ impl FunctionRawCodegen for X86CodegenState {
         let call_addr = Address::PltSym {
             name: value.to_string(),
         };
+        let cc = self.callconv.with_tag(ty.tag).unwrap();
         for (i, val) in params.into_iter().enumerate() {
-            match i {
-                0 => self.move_value(val, ValLocation::Register(X86Register::Rdi)),
-                n => todo!("cannot handle parameter {}", n),
-            }
+            self.move_value(val, cc.find_parameter(i as u32, ty));
         }
 
         self.insns
@@ -195,15 +202,17 @@ impl FunctionRawCodegen for X86CodegenState {
                 vec![X86Operand::RelAddr(call_addr)],
             )));
 
+        let retval = cc.find_return_val(&ty.ret);
         match &ty.ret {
             Type::Void => XLangOption::None,
-            Type::Scalar(ty) => XLangOption::Some(VStackValue::OpaqueScalar(
-                *ty,
-                ValLocation::Register(X86Register::Rax),
+            ty @ Type::Product(_) => {
+                XLangOption::Some(VStackValue::OpaqueAggregate(ty.clone(), retval.unwrap()))
+            }
+            Type::Scalar(ty) => XLangOption::Some(VStackValue::OpaqueScalar(*ty, retval.unwrap())),
+            Type::Pointer(pty) => XLangOption::Some(VStackValue::Pointer(
+                pty.clone(),
+                LValue::OpaquePointer(retval.unwrap()),
             )),
-            Type::Pointer(_) => XLangOption::Some(VStackValue::Pointer(LValue::OpaquePointer(
-                ValLocation::Register(X86Register::Rax),
-            ))),
             ty => todo!("{:?}", ty),
         }
     }
@@ -236,9 +245,7 @@ impl FunctionRawCodegen for X86CodegenState {
         todo!()
     }
 
-    fn branch_unconditional(&mut self, _target: u32) {
-        todo!()
-    }
+    fn branch_unconditional(&mut self, _target: u32) {}
 
     fn branch_indirect(&mut self, _target: Self::Loc) {
         todo!()
@@ -258,7 +265,7 @@ impl FunctionRawCodegen for X86CodegenState {
                                 X86Opcode::MovImm,
                                 vec![
                                     X86Operand::Register(r),
-                                    X86Operand::Immediate(u64::from(val)),
+                                    X86Operand::Immediate(u64::try_from(val).unwrap()),
                                 ],
                             )));
                     }
@@ -316,14 +323,18 @@ impl FunctionRawCodegen for X86CodegenState {
                                     ],
                                 )));
                         }
-                        _ => todo!(),
+                        loc => todo!("move_val({:?})", loc),
                     }
                 }
             },
-            VStackValue::LValue(_) | VStackValue::Pointer(_) | VStackValue::OpaqueScalar(_, _) => {
+            VStackValue::LValue(_, _)
+            | VStackValue::Pointer(_, _)
+            | VStackValue::OpaqueScalar(_, _) => {
                 todo!()
             }
             VStackValue::Trapped => {}
+            VStackValue::AggregatePieced(_, _) => todo!(),
+            VStackValue::OpaqueAggregate(_, _) => todo!(),
         }
     }
 
@@ -439,6 +450,7 @@ pub struct X86CodegenPlugin {
     target: Option<Target>,
     fns: Option<std::collections::HashMap<String, FunctionCodegen<X86CodegenState>>>,
     strings: Rc<RefCell<StringMap>>,
+    properties: Option<&'static TargetProperties>,
 }
 
 impl X86CodegenPlugin {
@@ -538,6 +550,9 @@ impl XLangPlugin for X86CodegenPlugin {
                     ty,
                     body: xlang::abi::option::Some(body),
                 }) => {
+                    let properties = self.properties.unwrap();
+                    let features =
+                        get_features_from_properties(properties, properties.arch.default_machine);
                     let mut state = FunctionCodegen::new(
                         X86CodegenState {
                             insns: Vec::new(),
@@ -545,6 +560,13 @@ impl XLangPlugin for X86CodegenPlugin {
                             symbols: Vec::new(),
                             name: name.clone(),
                             strings: self.strings.clone(),
+                            fnty: ty.clone(),
+                            callconv: callconv::get_callconv(
+                                ty.tag,
+                                self.target.clone().unwrap(),
+                                features.clone(),
+                            )
+                            .unwrap(),
                         },
                         path.clone(),
                         ty.clone(),
@@ -569,8 +591,35 @@ impl XLangPlugin for X86CodegenPlugin {
     }
 
     fn set_target(&mut self, targ: xlang::targets::Target) {
-        self.target = Some(targ.into());
+        self.target = Some((&targ).into());
+        self.properties = xlang::targets::properties::get_properties(targ);
     }
+}
+
+fn get_features_from_properties(
+    properties: &'static TargetProperties,
+    machine: &'static MachineProperties,
+) -> HashSet<X86Feature> {
+    let mut names = HashSet::new();
+    for &f in machine.default_features {
+        names.insert(f);
+    }
+    for &Pair(name, val) in properties.enabled_features {
+        if val {
+            names.insert(name);
+        } else {
+            names.remove(&name);
+        }
+    }
+
+    eprintln!("Features: {:?}", names);
+
+    names
+        .into_iter()
+        .map(|s| s.into_str())
+        .map(X86Feature::from_str)
+        .collect::<Result<_, _>>()
+        .unwrap()
 }
 
 impl XLangCodegen for X86CodegenPlugin {
@@ -609,5 +658,6 @@ pub extern "rustcall" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
         fns: Some(std::collections::HashMap::new()),
         target: None,
         strings: Rc::new(RefCell::new(StringMap::new())),
+        properties: None
     }))
 }}

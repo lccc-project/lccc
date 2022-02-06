@@ -142,6 +142,8 @@ pub enum Type {
     Pointer(PointerType),
     Array(Box<ArrayType>),
     TaggedType(u16, Box<Self>),
+    Product(Vec<Type>),
+    Aligned(Box<Value>, Box<Type>),
 }
 
 impl Default for Type {
@@ -234,7 +236,7 @@ pub enum Value {
     GenericParameter(u32),
     Integer {
         ty: ScalarType,
-        val: u32,
+        val: u128,
     },
     GlobalAddress {
         ty: Type,
@@ -303,6 +305,13 @@ pub enum ConversionStrength {
     Reinterpret,
 }
 
+#[repr(C)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct AggregateCtor {
+    pub ty: Type,
+    pub fields: Vec<String>,
+}
+
 ///
 /// An xir expression/instruction
 #[repr(u16)]
@@ -348,6 +357,9 @@ pub enum Expr {
     Pop(u32),
     Dup(u32),
     Pivot(u32, u32),
+    Aggregate(AggregateCtor),
+    Member(String),
+    MemberIndirect(String),
 }
 
 fake_enum::fake_enum! {

@@ -8,8 +8,8 @@ use expr::{LValue, Trap, VStackValue, ValLocation};
 use xlang::{
     abi::string::StringView,
     ir::{
-        AccessClass, BinaryOp, Block, BranchCondition, Expr, FnType, Path, PathComponent,
-        ScalarType, StackItem, Type, UnaryOp, Value,
+        AccessClass, AggregateCtor, BinaryOp, Block, BranchCondition, Expr, FnType, Path,
+        PathComponent, PointerType, ScalarType, StackItem, Type, UnaryOp, Value,
     },
     prelude::v1::*,
     targets::properties::TargetProperties,
@@ -270,8 +270,8 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         self.inner.write_trap(Trap::Unreachable);
                         self.vstack.push_back(VStackValue::Trapped)
                     }
-                    VStackValue::LValue(_) => todo!(),
-                    VStackValue::Pointer(_) => todo!(),
+                    VStackValue::LValue(_, _) => todo!(),
+                    VStackValue::Pointer(_, _) => todo!(),
                     v => panic!("invalid value {:?}", v),
                 }
             }
@@ -279,9 +279,9 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             Expr::Convert(_, ty) => {
                 let val = self.vstack.pop_back().unwrap();
                 match (val, ty) {
-                    (VStackValue::Pointer(lvalue), Type::Pointer(_)) => {
-                        self.vstack.push_back(VStackValue::LValue(lvalue))
-                    }
+                    (VStackValue::Pointer(_, lvalue), Type::Pointer(pty)) => self
+                        .vstack
+                        .push_back(VStackValue::Pointer(pty.clone(), lvalue)),
                     _ => todo!(),
                 }
             }
@@ -298,6 +298,44 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 let s2 = self.pop_values(*n as usize).unwrap();
                 self.vstack.extend(s1);
                 self.vstack.extend(s2);
+            }
+            Expr::Aggregate(AggregateCtor { ty, fields }) => {
+                let ctor_values = self.pop_values(fields.len()).unwrap();
+                self.vstack.push_back(VStackValue::AggregatePieced(
+                    ty.clone(),
+                    fields.iter().cloned().zip(ctor_values).collect(),
+                ))
+            }
+            Expr::Member(name) => {
+                let value = self.vstack.pop_back().unwrap();
+                match value {
+                    VStackValue::LValue(ty, val) => {
+                        let fty = ty::field_type(&ty, name).unwrap();
+                        self.vstack.push_back(VStackValue::LValue(
+                            fty,
+                            LValue::Field(ty, Box::new(val), name.clone()),
+                        ));
+                    }
+                    val => panic!("Cannot apply member {} to {:?}", name, val),
+                }
+            }
+            Expr::MemberIndirect(name) => {
+                let value = self.vstack.pop_back().unwrap();
+                match value {
+                    VStackValue::Pointer(ty, val) => {
+                        let fty = ty::field_type(&ty.inner, name).unwrap();
+                        let inner = ty.inner;
+                        let pty = PointerType {
+                            inner: Box::new(fty),
+                            ..ty
+                        };
+                        self.vstack.push_back(VStackValue::Pointer(
+                            pty,
+                            LValue::Field(Box::into_inner(inner), Box::new(val), name.clone()),
+                        ));
+                    }
+                    val => panic!("Cannot apply member {} to {:?}", name, val),
+                }
             }
         }
     }

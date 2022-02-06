@@ -60,6 +60,12 @@ pub fn parse_args(argspecs: &Vec<ArgSpec>) -> (Vec<Arg>, Vec<String>) {
                                     name: spec.name,
                                     value: None,
                                 });
+                            } else if spec.takes_arg == TakesArg::Always {
+                                let opt = args.next().unwrap();
+                                result.push(Arg {
+                                    name: spec.name,
+                                    value: Some((&opt).into()),
+                                })
                             } else {
                                 todo!();
                             }

@@ -23,8 +23,8 @@ pub static X86_64_LINUX_GNU: TargetProperties = TargetProperties {
     longbits: 64,
     llongbits: 64,
     ptrbits: 64,
-    max_align: 128,
-    ptralign: 64,
+    max_align: 16,
+    ptralign: 8,
     intmaxbits: 64,
     lock_free_atomic_mask: 0xff,
     sizebits: 64,
@@ -46,8 +46,8 @@ pub static X86_64_LINUX_GNUX32: TargetProperties = TargetProperties {
     longbits: 32,
     llongbits: 64,
     ptrbits: 32,
-    max_align: 128,
-    ptralign: 32,
+    max_align: 16,
+    ptralign: 4,
     intmaxbits: 64,
     lock_free_atomic_mask: 0xff,
     sizebits: 64,
@@ -61,7 +61,7 @@ pub static X86_64_LINUX_GNUX32: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib64/ld-linux-x32.so.2"),
+    interp: const_sv!("ld-linux-x32.so.2"),
 };
 
 pub static X86_64V2_LINUX_GNU: TargetProperties = TargetProperties {
@@ -70,7 +70,7 @@ pub static X86_64V2_LINUX_GNU: TargetProperties = TargetProperties {
     llongbits: 64,
     ptrbits: 64,
     max_align: 16,
-    ptralign: 64,
+    ptralign: 8,
     intmaxbits: 64,
     lock_free_atomic_mask: 0xffff,
     sizebits: 64,
@@ -84,7 +84,7 @@ pub static X86_64V2_LINUX_GNU: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib64/ld-linux-x86-64.so.2"),
+    interp: const_sv!("ld-linux-x86-64.so.2"),
 };
 
 pub static X86_64V2_LINUX_GNUX32: TargetProperties = TargetProperties {
@@ -93,7 +93,7 @@ pub static X86_64V2_LINUX_GNUX32: TargetProperties = TargetProperties {
     llongbits: 64,
     ptrbits: 32,
     max_align: 16,
-    ptralign: 32,
+    ptralign: 4,
     intmaxbits: 64,
     lock_free_atomic_mask: 0xffff,
     sizebits: 64,
@@ -107,7 +107,7 @@ pub static X86_64V2_LINUX_GNUX32: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib64/ld-linux-x32.so.2"),
+    interp: const_sv!("ld-linux-x32.so.2"),
 };
 
 pub static X86_64V3_LINUX_GNU: TargetProperties = TargetProperties {
@@ -116,7 +116,7 @@ pub static X86_64V3_LINUX_GNU: TargetProperties = TargetProperties {
     llongbits: 64,
     ptrbits: 64,
     max_align: 16,
-    ptralign: 64,
+    ptralign: 8,
     intmaxbits: 64,
     lock_free_atomic_mask: 0xffff,
     sizebits: 64,
@@ -130,7 +130,7 @@ pub static X86_64V3_LINUX_GNU: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib64/ld-linux-x86-64.so.2"),
+    interp: const_sv!("ld-linux-x86-64.so.2"),
 };
 
 pub static X86_64V3_LINUX_GNUX32: TargetProperties = TargetProperties {
@@ -139,7 +139,7 @@ pub static X86_64V3_LINUX_GNUX32: TargetProperties = TargetProperties {
     llongbits: 64,
     ptrbits: 32,
     max_align: 16,
-    ptralign: 32,
+    ptralign: 4,
     intmaxbits: 64,
     lock_free_atomic_mask: 0xffff,
     sizebits: 64,
@@ -153,7 +153,7 @@ pub static X86_64V3_LINUX_GNUX32: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib64/ld-linux-x32.so.2"),
+    interp: const_sv!("ld-linux-x32.so.2"),
 };
 
 pub static X86_64V4_LINUX_GNU: TargetProperties = TargetProperties {
@@ -162,7 +162,7 @@ pub static X86_64V4_LINUX_GNU: TargetProperties = TargetProperties {
     llongbits: 64,
     ptrbits: 64,
     max_align: 16,
-    ptralign: 64,
+    ptralign: 8,
     intmaxbits: 64,
     lock_free_atomic_mask: 0xffff,
     sizebits: 64,
@@ -176,7 +176,7 @@ pub static X86_64V4_LINUX_GNU: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib64/ld-linux-x86-64.so.2"),
+    interp: const_sv!("ld-linux-x86-64.so.2"),
 };
 
 pub static X86_64V4_LINUX_GNUX32: TargetProperties = TargetProperties {
@@ -185,7 +185,7 @@ pub static X86_64V4_LINUX_GNUX32: TargetProperties = TargetProperties {
     llongbits: 64,
     ptrbits: 32,
     max_align: 16,
-    ptralign: 32,
+    ptralign: 4,
     intmaxbits: 64,
     lock_free_atomic_mask: 0xffff,
     sizebits: 64,
@@ -199,7 +199,7 @@ pub static X86_64V4_LINUX_GNUX32: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/libx32/ld-linux-x32.so.2"),
+    interp: const_sv!("ld-linux-x32.so.2"),
 };
 
 pub static I386_LINUX_GNU: TargetProperties = TargetProperties {
@@ -208,7 +208,7 @@ pub static I386_LINUX_GNU: TargetProperties = TargetProperties {
     llongbits: 64,
     ptrbits: 32,
     max_align: 32,
-    ptralign: 32,
+    ptralign: 4,
     intmaxbits: 64,
     lock_free_atomic_mask: 0xf,
     sizebits: 32,
@@ -222,7 +222,7 @@ pub static I386_LINUX_GNU: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib32/ld-linux.so.2"),
+    interp: const_sv!("ld-linux.so.2"),
 };
 
 pub static I486_LINUX_GNU: TargetProperties = TargetProperties {
@@ -231,7 +231,7 @@ pub static I486_LINUX_GNU: TargetProperties = TargetProperties {
     llongbits: 64,
     ptrbits: 32,
     max_align: 32,
-    ptralign: 32,
+    ptralign: 4,
     intmaxbits: 64,
     lock_free_atomic_mask: 0xf,
     sizebits: 32,
@@ -245,7 +245,7 @@ pub static I486_LINUX_GNU: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib32/ld-linux.so.2"),
+    interp: const_sv!("ld-linux.so.2"),
 };
 
 pub static I586_LINUX_GNU: TargetProperties = TargetProperties {
@@ -254,7 +254,7 @@ pub static I586_LINUX_GNU: TargetProperties = TargetProperties {
     llongbits: 64,
     ptrbits: 32,
     max_align: 32,
-    ptralign: 32,
+    ptralign: 4,
     intmaxbits: 64,
     lock_free_atomic_mask: 0xf,
     sizebits: 32,
@@ -268,7 +268,7 @@ pub static I586_LINUX_GNU: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib32/ld-linux.so.2"),
+    interp: const_sv!("ld-linux.so.2"),
 };
 
 pub static I686_LINUX_GNU: TargetProperties = TargetProperties {
@@ -277,7 +277,7 @@ pub static I686_LINUX_GNU: TargetProperties = TargetProperties {
     llongbits: 64,
     ptrbits: 32,
     max_align: 32,
-    ptralign: 32,
+    ptralign: 4,
     intmaxbits: 64,
     lock_free_atomic_mask: 0xf,
     sizebits: 32,
@@ -291,5 +291,5 @@ pub static I686_LINUX_GNU: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("/lib32/ld-linux.so.2"),
+    interp: const_sv!("ld-linux.so.2"),
 };
