@@ -1,7 +1,7 @@
-use crate::sema::{Declaration, FunctionSignature, Identifier, IntType, Mutability, Program, Type};
+use crate::sema::{Declaration, Definition, FunctionSignature, Identifier, IntType, Mutability, Program, Statement, Type};
 
 use xlang::{
-    abi::{self, option::Option::None as AbiNone},
+    abi::{self, option::Option::{None as AbiNone, Some as AbiSome}},
     ir,
 };
 
@@ -47,6 +47,16 @@ fn irgen_type(ty: Type) -> ir::Type {
     }
 }
 
+fn irgen_block(block: Vec<Statement>) -> ir::Block {
+    let result = abi::vec::Vec::new();
+    for statement in block {
+        todo!("{:?}", statement);
+    }
+    ir::Block {
+        items: result,
+    }
+}
+
 fn sig_to_fn_type(sig: FunctionSignature) -> ir::FnType {
     ir::FnType {
         ret: irgen_type(*sig.return_ty),
@@ -81,13 +91,17 @@ pub fn irgen(program: &Program, file: &mut ir::File) {
             },
         );
     }
-    for _definition in &program.definitions { /*
-         let Declaration::Function { sig, .. } = program.declarations.iter().filter(|x| *x.name() == definition.name()).next().unwrap();
-         file.root.members.insert(identifier_to_path(declaration.name().clone()), ir::ScopeMember {
+    for definition in &program.definitions {
+         let Definition::Function { name, body, .. } = definition;
+         let Declaration::Function { sig, .. } = program.declarations.iter().filter(|x| x.name() == name).next().unwrap();
+         file.root.members.insert(identifier_to_path(name.clone()), ir::ScopeMember {
              vis: ir::Visibility::Public,
-             member_decl: ir::MemberDeclaration::Function(),
+             member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration {
+                 ty: sig_to_fn_type(sig.clone()),
+                 body: AbiSome(irgen_block(body.clone())),
+             }),
              ..ir::ScopeMember::default()
-         });*/
+         });
     }
     println!("{:#?}", file);
 }
