@@ -1,5 +1,5 @@
-int puts(const char *str);
+int printf(const char *format, ...);
 
 int main() {
-    puts("Hello, world!");
+    printf("Hello, world!\n");
 }
