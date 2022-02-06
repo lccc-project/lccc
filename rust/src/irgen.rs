@@ -1,7 +1,13 @@
-use crate::sema::{Declaration, Definition, FunctionSignature, Identifier, IntType, Mutability, Program, Statement, Type};
+use crate::sema::{
+    Declaration, Definition, FunctionSignature, Identifier, IntType, Mutability, Program,
+    Statement, Type,
+};
 
 use xlang::{
-    abi::{self, option::Option::{None as AbiNone, Some as AbiSome}},
+    abi::{
+        self,
+        option::Option::{None as AbiNone, Some as AbiSome},
+    },
     ir,
 };
 
@@ -52,9 +58,7 @@ fn irgen_block(block: Vec<Statement>) -> ir::Block {
     for statement in block {
         todo!("{:?}", statement);
     }
-    ir::Block {
-        items: result,
-    }
+    ir::Block { items: result }
 }
 
 fn sig_to_fn_type(sig: FunctionSignature) -> ir::FnType {
@@ -92,16 +96,24 @@ pub fn irgen(program: &Program, file: &mut ir::File) {
         );
     }
     for definition in &program.definitions {
-         let Definition::Function { name, body, .. } = definition;
-         let Declaration::Function { sig, .. } = program.declarations.iter().filter(|x| x.name() == name).next().unwrap();
-         file.root.members.insert(identifier_to_path(name.clone()), ir::ScopeMember {
-             vis: ir::Visibility::Public,
-             member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration {
-                 ty: sig_to_fn_type(sig.clone()),
-                 body: AbiSome(irgen_block(body.clone())),
-             }),
-             ..ir::ScopeMember::default()
-         });
+        let Definition::Function { name, body, .. } = definition;
+        let Declaration::Function { sig, .. } = program
+            .declarations
+            .iter()
+            .filter(|x| x.name() == name)
+            .next()
+            .unwrap();
+        file.root.members.insert(
+            identifier_to_path(name.clone()),
+            ir::ScopeMember {
+                vis: ir::Visibility::Public,
+                member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration {
+                    ty: sig_to_fn_type(sig.clone()),
+                    body: AbiSome(irgen_block(body.clone())),
+                }),
+                ..ir::ScopeMember::default()
+            },
+        );
     }
     println!("{:#?}", file);
 }
