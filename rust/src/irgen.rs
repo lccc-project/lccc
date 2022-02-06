@@ -25,9 +25,13 @@ fn irgen_type(ty: Type) -> ir::Type {
         Type::Array(ty, size) => ir::Type::Array(abi::boxed::Box::new(ir::ArrayType {
             ty: irgen_type(*ty),
             len: ir::Value::Integer {
-                ty: if let ir::Type::Scalar(ty) = irgen_type(Type::Integer(IntType::Usize)) { ty } else { unreachable!() },
+                ty: if let ir::Type::Scalar(ty) = irgen_type(Type::Integer(IntType::Usize)) {
+                    ty
+                } else {
+                    unreachable!()
+                },
                 val: size.try_into().unwrap(),
-            }
+            },
         })),
         Type::Function(sig) => ir::Type::FnType(abi::boxed::Box::new(sig_to_fn_type(sig))),
         Type::Integer(ty) => ir::Type::Scalar(ir::ScalarType {
@@ -66,7 +70,9 @@ fn irgen_type(ty: Type) -> ir::Type {
             alias: ir::PointerAliasingRule::READ_ONLY,
             valid_range: abi::pair::Pair(ir::ValidRangeType::Dereference, 0),
             decl: match mutability {
-                Mutability::Const => ir::PointerDeclarationType::CONST | ir::PointerDeclarationType::REF,
+                Mutability::Const => {
+                    ir::PointerDeclarationType::CONST | ir::PointerDeclarationType::REF
+                }
                 Mutability::Mut => ir::PointerDeclarationType::REF,
             },
             inner: abi::boxed::Box::new(irgen_type((&*underlying).clone())),
