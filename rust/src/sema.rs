@@ -129,6 +129,14 @@ impl Type {
             _ => todo!("{:?}", self),
         }
     }
+
+    pub fn is_unit(&self) -> bool {
+        if let Self::Tuple(types) = self {
+            types.is_empty()
+        } else {
+            false
+        }
+    }
 }
 
 impl Display for Type {
