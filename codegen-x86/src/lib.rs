@@ -75,7 +75,7 @@ enum RegisterStatus {
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 enum X86InstructionOrLabel {
-    Label(u32),
+    Label(String),
     Insn(X86Instruction),
 }
 
@@ -169,8 +169,11 @@ impl FunctionRawCodegen for X86CodegenState {
         todo!()
     }
 
-    fn write_target(&mut self, _target: u32) {
-        todo!()
+    fn write_target(&mut self, n: u32) {
+        self.insns.push(X86InstructionOrLabel::Label(format!(
+            "{}._T{}",
+            self.name, n
+        )))
     }
 
     #[allow(clippy::match_wildcard_for_single_variants)]
@@ -245,7 +248,17 @@ impl FunctionRawCodegen for X86CodegenState {
         todo!()
     }
 
-    fn branch_unconditional(&mut self, _target: u32) {}
+    fn branch_unconditional(&mut self, n: u32) {
+        let addr = Address::Symbol {
+            name: format!("{}._T{}", self.name, n),
+            disp: 0,
+        };
+        self.insns
+            .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                X86Opcode::Jmp,
+                vec![X86Operand::RelAddr(addr)],
+            )));
+    }
 
     fn branch_indirect(&mut self, _target: Self::Loc) {
         todo!()
@@ -405,6 +418,33 @@ impl FunctionRawCodegen for X86CodegenState {
         _out: Self::Loc,
     ) {
         todo!()
+    }
+
+    fn write_block_entry_point(&mut self, n: u32) {
+        self.insns.push(X86InstructionOrLabel::Label(format!(
+            "{}._BE{}",
+            self.name, n
+        )));
+    }
+
+    fn write_block_exit_point(&mut self, n: u32) {
+        self.insns.push(X86InstructionOrLabel::Label(format!(
+            "{}._BX{}",
+            self.name, n
+        )));
+    }
+
+    fn write_block_exit(&mut self, n: u32) {
+        let addr = Address::Symbol {
+            name: format!("{}._BX{}", self.name, n),
+            disp: 0,
+        };
+
+        self.insns
+            .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                X86Opcode::Jmp,
+                vec![X86Operand::RelAddr(addr)],
+            )));
     }
 }
 

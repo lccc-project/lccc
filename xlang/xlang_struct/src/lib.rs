@@ -360,6 +360,10 @@ pub enum Expr {
     Aggregate(AggregateCtor),
     Member(String),
     MemberIndirect(String),
+    Block {
+        n: u32,
+        block: Block,
+    },
 }
 
 fake_enum::fake_enum! {

@@ -145,6 +145,13 @@ pub trait FunctionRawCodegen {
         out: Self::Loc,
     );
 
+    /// Writes a branch point for the entry of block n
+    fn write_block_entry_point(&mut self, n: u32);
+    /// Writes a branch point for the exit of block n
+    fn write_block_exit_point(&mut self, n: u32);
+    /// Writes an branch to the exit of block n
+    fn write_block_exit(&mut self, n: u32);
+
     /// Writes the result of some unary operator applied to v1 and v2 to the location given by `out`
     /// Implementations should be prepared to handle constant values, as well as opaque values
     fn write_unary_op(&mut self, v1: VStackValue<Self::Loc>, op: UnaryOp, out: Self::Loc);
@@ -241,7 +248,11 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         }
                     }
                 } else {
-                    todo!("exit block ${} {}", blk, values)
+                    if *values == 0 {
+                        self.inner.write_block_exit(*blk);
+                    } else {
+                        todo!("exit block ${} {}", blk, values);
+                    }
                 }
             }
             Expr::BinaryOp(op) => todo!("binary op {:?}", op),
@@ -336,6 +347,11 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     }
                     val => panic!("Cannot apply member {} to {:?}", name, val),
                 }
+            }
+            Expr::Block { n, block } => {
+                self.inner.write_block_entry_point(*n);
+                self.write_block(block);
+                self.inner.write_block_exit_point(*n);
             }
         }
     }
