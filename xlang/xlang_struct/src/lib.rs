@@ -141,7 +141,7 @@ pub enum Type {
     FnType(Box<FnType>),
     Pointer(PointerType),
     Array(Box<ArrayType>),
-    TaggedType(u16, Box<Type>),
+    TaggedType(u16, Box<Self>),
 }
 
 impl Default for Type {
