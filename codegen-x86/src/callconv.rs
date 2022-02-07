@@ -79,7 +79,6 @@ impl X86CallConv for SysV64CC {
     }
 
     fn find_parameter(&self, off: u32, ty: &FnType) -> ValLocation {
-        println!("Find parameter: {:?}(_{})", ty, off);
         let mut int_regs: &[X86Register] = &[
             X86Register::Rdi,
             X86Register::Rsi,
@@ -103,12 +102,6 @@ impl X86CallConv for SysV64CC {
         }
         let mut last_val = ValLocation::Unassigned(0);
         for ty in ty.params.iter().take(off as usize + 1) {
-            eprintln!(
-                "Classification of {:?}: ({:?},{})",
-                ty,
-                classify_type(ty).unwrap(),
-                type_size(ty, self.0).unwrap()
-            );
             match (classify_type(ty).unwrap(), type_size(ty, self.0).unwrap()) {
                 (TypeClass::Zero, 0) => last_val = ValLocation::Null,
                 (TypeClass::Integer, 0) => last_val = ValLocation::Null,

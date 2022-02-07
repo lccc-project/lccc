@@ -45,13 +45,9 @@ impl XLangFrontend for RustFrontend {
     fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
         let mut file = file.into_chars();
         let lexed = lex(&mut file);
-        println!("{:#?}", lexed);
         let items = parse_crate(lexed.into_iter());
-        println!("{:#?}", items);
         let mut converted = convert(&items);
-        println!("{:#?}", converted);
         typeck_program(&mut converted);
-        println!("{}", converted);
         self.program = Some(converted);
         io::Result::Ok(())
     }

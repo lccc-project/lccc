@@ -220,5 +220,4 @@ pub fn irgen(program: &Program, file: &mut ir::File) {
             },
         );
     }
-    println!("{:#?}", file);
 }

@@ -674,8 +674,6 @@ fn get_features_from_properties(
         }
     }
 
-    eprintln!("Features: {:?}", names);
-
     names
         .into_iter()
         .map(|s| s.into_str())
