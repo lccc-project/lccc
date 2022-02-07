@@ -87,6 +87,7 @@ dependencies = [
 name = "frontend-xir"
 version = "0.1.0"
 dependencies = [
+ "unicode-xid",
  "xlang",
  "xlang_struct",
 ]

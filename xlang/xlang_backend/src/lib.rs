@@ -383,6 +383,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             }
         }
         for item in &block.items {
+            self.diverged = false;
             match item {
                 xlang::ir::BlockItem::Expr(expr) => self.write_expr(expr),
                 xlang::ir::BlockItem::Target { num, .. } => {

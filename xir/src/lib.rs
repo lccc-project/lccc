@@ -1,10 +1,14 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
-use xlang::abi::io::{self, Read};
+use xlang::abi::io::{self, IntoChars, Read};
 use xlang::abi::prelude::v1::*;
 use xlang::abi::result::Result;
 use xlang::abi::string::StringView;
 use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
+
+mod lexer;
+
+use lexer::lex;
 
 struct XirFrontend {
     filename: Option<String>,
@@ -26,8 +30,10 @@ impl XLangFrontend for XirFrontend {
         self.filename = Some(String::from(&*name));
     }
 
-    fn read_source(&mut self, _file: DynMut<dyn Read>) -> io::Result<()> {
-        io::Result::Ok(())
+    fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
+        let lexed = lex(file.into_chars());
+        println!("lexed: {:?}", lexed.collect::<Vec<_>>());
+        todo!()
     }
 }
 

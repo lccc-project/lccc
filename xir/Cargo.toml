@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 xlang = {path="../xlang"}
 xlang_struct = {path="../xlang/xlang_struct"}
+unicode-xid = "0.2.2"
 
 [lib]
 crate-type = ["cdylib"]
