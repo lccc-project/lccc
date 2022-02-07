@@ -293,7 +293,18 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     (VStackValue::Pointer(_, lvalue), Type::Pointer(pty)) => self
                         .vstack
                         .push_back(VStackValue::Pointer(pty.clone(), lvalue)),
-                    _ => todo!(),
+                    (
+                        VStackValue::Constant(Value::String {
+                            encoding,
+                            utf8,
+                            ty: Type::Pointer(_),
+                        }),
+                        Type::Pointer(pty),
+                    ) => self.vstack.push_back(VStackValue::Pointer(
+                        pty.clone(),
+                        LValue::StringLiteral(Encoding::XLang(encoding), utf8.into_bytes()),
+                    )),
+                    (val, ty) => todo!("convert _ {:?}: {:?}", ty, val),
                 }
             }
             Expr::Derive(_, expr) => self.write_expr(expr),
@@ -350,14 +361,14 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             }
             Expr::Block { n, block } => {
                 self.inner.write_block_entry_point(*n);
-                self.write_block(block);
+                self.write_block(block, *n);
                 self.inner.write_block_exit_point(*n);
             }
         }
     }
 
     /// Writes the elements of a block to the codegen, usually the top level block of a function
-    pub fn write_block(&mut self, block: &Block) {
+    pub fn write_block(&mut self, block: &Block, n: u32) {
         for item in &block.items {
             if let xlang::ir::BlockItem::Target { num, stack } = item {
                 let values = core::iter::repeat_with(|| {
@@ -378,6 +389,9 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     self.inner.write_target(*num);
                 }
             }
+        }
+        if n == 0 && !self.diverged {
+            self.inner.return_void();
         }
     }
 }

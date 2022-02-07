@@ -5,6 +5,8 @@ use xlang::{
 
 use core::{fmt::Debug, hash::Hash};
 
+use crate::str::Encoding;
+
 /// Represents the location of opaque values both as locals and on the value stack
 pub trait ValLocation: Eq + Hash + Debug + Clone {
     /// Checks if this location is addressable (is not a register)
@@ -29,6 +31,8 @@ pub enum LValue<Loc: ValLocation> {
     Label(u32),
     /// Aggregate Element Field
     Field(Type, Box<LValue<Loc>>, String),
+    /// A pointer to a string literal
+    StringLiteral(Encoding, Vec<u8>),
 }
 
 /// Represents a value on the stack for codegen

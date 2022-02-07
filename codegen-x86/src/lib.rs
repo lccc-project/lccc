@@ -340,6 +340,28 @@ impl FunctionRawCodegen for X86CodegenState {
                     }
                 }
             },
+            VStackValue::Pointer(_, LValue::StringLiteral(encoding, utf8)) => {
+                let sym = self.strings.borrow_mut().get_string_symbol(utf8, encoding);
+                let addr = Address::Symbol {
+                    name: sym.to_string(),
+                    disp: 0,
+                };
+                match loc {
+                    ValLocation::Register(r) => {
+                        self.insns
+                            .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                                X86Opcode::Lea,
+                                vec![
+                                    X86Operand::Register(r),
+                                    X86Operand::ModRM(ModRM::Indirect {
+                                        mode: ModRMRegOrSib::RipRel(addr),
+                                    }),
+                                ],
+                            )));
+                    }
+                    loc => todo!("move_val({:?})", loc),
+                }
+            }
             VStackValue::LValue(_, _)
             | VStackValue::Pointer(_, _)
             | VStackValue::OpaqueScalar(_, _) => {
@@ -615,7 +637,7 @@ impl XLangPlugin for X86CodegenPlugin {
                         )
                         .unwrap(),
                     );
-                    state.write_block(body);
+                    state.write_block(body, 0);
                     self.fns.as_mut().unwrap().insert(name.clone(), state);
                 }
                 xlang_struct::MemberDeclaration::Function(FunctionDeclaration {
