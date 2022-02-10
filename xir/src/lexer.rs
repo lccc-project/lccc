@@ -1,5 +1,7 @@
 use std::iter::Peekable;
 
+use xlang::abi::{string::String, vec::Vec};
+
 use unicode_xid::UnicodeXID;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -21,14 +23,23 @@ pub enum Group {
 fn lex_group<I: Iterator<Item = char>>(stream: &mut Peekable<I>, term_char: char) -> Vec<Token> {
     stream.next();
     let mut ret = Vec::new();
-    while let Some(v) = stream.peek() {
+    loop {
+        let v = stream.peek().unwrap();
         match v {
             ']' | ')' | '}' if *v == term_char => {
                 stream.next();
                 break;
             }
             ']' | ')' | '}' => panic!("Unmatched group end token {}", v),
-            _ => ret.push(lex_one(stream).unwrap()),
+            _ => match lex_one(stream) {
+                Some(tok) => ret.push(tok),
+                None => {
+                    if let Some('}' | ')' | ']') = stream.peek() {
+                        stream.next();
+                        break;
+                    }
+                }
+            },
         }
     }
 
@@ -105,7 +116,10 @@ fn lex_one<I: Iterator<Item = char>>(stream: &mut Peekable<I>) -> Option<Token> 
                         string.push(stream.next().unwrap());
                         string.push(stream.next().unwrap());
                     }
-                    '\"' => break Some(Token::StringLiteral(string)),
+                    '\"' => {
+                        stream.next().unwrap();
+                        break Some(Token::StringLiteral(string));
+                    }
                     _ => string.push(stream.next().unwrap()),
                 }
             }
@@ -116,6 +130,7 @@ fn lex_one<I: Iterator<Item = char>>(stream: &mut Peekable<I>) -> Option<Token> 
             }
             lex_one(stream)
         }
+        ')' | ']' | '}' => None,
         c => panic!("unknown character {}", c),
     }
 }

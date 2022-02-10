@@ -87,6 +87,7 @@ dependencies = [
 name = "frontend-xir"
 version = "0.1.0"
 dependencies = [
+ "target-tuples 0.5.3",
  "unicode-xid",
  "xlang",
  "xlang_struct",

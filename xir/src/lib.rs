@@ -1,4 +1,5 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+use ir::File;
 use xlang::abi::io::{self, IntoChars, Read};
 use xlang::abi::prelude::v1::*;
 use xlang::abi::result::Result;
@@ -7,17 +8,27 @@ use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 
 mod lexer;
+mod parser;
 
 use lexer::lex;
+use xlang::targets::Target;
+
+use crate::parser::parse_file;
 
 struct XirFrontend {
     filename: Option<String>,
+    target: Option<Target>,
+    file: Option<File>,
 }
 
 impl XirFrontend {
     #[must_use]
     pub const fn new() -> Self {
-        Self { filename: None }
+        Self {
+            filename: None,
+            target: None,
+            file: None,
+        }
     }
 }
 
@@ -31,8 +42,10 @@ impl XLangFrontend for XirFrontend {
     }
 
     fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
-        let lexed = lex(file.into_chars());
-        println!("lexed: {:?}", lexed.collect::<Vec<_>>());
+        let lexed = lex(file.into_chars()).collect::<Vec<_>>();
+        println!("lexed: {:?}", lexed);
+        self.file = Some(parse_file(lexed.into_iter(), self.target.clone().unwrap()));
+
         todo!()
     }
 }
@@ -43,7 +56,9 @@ impl XLangPlugin for XirFrontend {
         Result::Ok(())
     }
 
-    fn set_target(&mut self, _targ: xlang::targets::Target) {}
+    fn set_target(&mut self, targ: xlang::targets::Target) {
+        self.target = Some(targ);
+    }
 }
 
 xlang::host::rustcall! {

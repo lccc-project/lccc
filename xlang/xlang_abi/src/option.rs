@@ -71,6 +71,7 @@ impl<T> Option<T> {
     /// # Panics
     /// panics if self is `None`
     #[allow(clippy::missing_const_for_fn)]
+    #[track_caller]
     pub fn unwrap(self) -> T {
         match self {
             Some(val) => val,
@@ -83,6 +84,7 @@ impl<T> Option<T> {
     ///
     /// # Panics
     /// panics if with a message containing `diag` if self is `None`.
+    #[track_caller]
     pub fn expect(self, diag: &str) -> T {
         match self {
             Some(val) => val,

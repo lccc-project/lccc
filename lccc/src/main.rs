@@ -212,6 +212,7 @@ fn main() {
             };
             file_pairs.push((file.clone(), outputfile.clone()));
             frontend.set_file_path(file_view);
+            frontend.set_target(xtarget.clone());
             let mut read_adapter =
                 ReadAdapter::new(File::open(&file).expect("can't read input file"));
             frontend
@@ -221,7 +222,7 @@ fn main() {
                 target: xtarget.clone(),
                 root: xlang::ir::Scope::default(),
             };
-            frontend.set_target(xtarget.clone());
+
             frontend.accept_ir(&mut file).unwrap();
             if mode >= Mode::Asm {
                 codegen.set_target(xtarget.clone());
@@ -280,18 +281,18 @@ fn main() {
                             let env = target.environment().map(|o| o.canonical_name());
                             let of = target.object_format().map(|o| o.canonical_name());
                             let mut name = String::from(arch);
-                            name.push("-");
+                            name.push_str("-");
                             if let std::option::Option::Some(os) = os {
-                                name.push(os);
-                                name.push("-"); // Assume, for now, there's at least one more component
+                                name.push_str(os);
+                                name.push_str("-"); // Assume, for now, there's at least one more component
                             }
 
                             if let std::option::Option::Some(env) = env {
-                                name.push(env);
+                                name.push_str(env);
                             }
 
                             if let std::option::Option::Some(of) = of {
-                                name.push(of);
+                                name.push_str(of);
                             }
 
                             name

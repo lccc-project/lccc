@@ -126,8 +126,13 @@ impl<A: Allocator> String<A> {
     }
 
     /// Appends the contents of `st` to self.
-    pub fn push(&mut self, st: &str) {
+    pub fn push_str(&mut self, st: &str) {
         self.0.extend_from_slice(st.as_bytes());
+    }
+
+    /// Pushes a character
+    pub fn push(&mut self, c: char) {
+        self.push_str(c.encode_utf8(&mut [0u8; 4]))
     }
 
     /// Converts a [`String`] into a [`crate::vec::Vec`] of UTF-8 bytes
@@ -147,7 +152,7 @@ impl<A: Allocator, S: AsRef<str>> Add<S> for String<A> {
 
 impl<A: Allocator, S: AsRef<str>> AddAssign<S> for String<A> {
     fn add_assign(&mut self, rhs: S) {
-        self.push(rhs.as_ref());
+        self.push_str(rhs.as_ref());
     }
 }
 
@@ -169,9 +174,9 @@ impl<A: Allocator> core::fmt::Display for String<A> {
     }
 }
 
-impl<A: Allocator, A1: Allocator> PartialEq<String<A1>> for String<A> {
-    fn eq(&self, other: &String<A1>) -> bool {
-        self.0 == other.0
+impl<A: Allocator, S: AsRef<str> + ?Sized> PartialEq<S> for String<A> {
+    fn eq(&self, other: &S) -> bool {
+        self.deref() == other.as_ref()
     }
 }
 
