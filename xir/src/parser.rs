@@ -426,10 +426,13 @@ pub fn parse_const<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Value {
                 tok => panic!("Unexpected token {:?}", tok),
             }
         }
-        Token::Ident(id) if id == "global_address" => Value::GlobalAddress {
-            ty: Type::Null,
-            item: parse_path(it),
-        },
+        Token::Ident(id) if id == "global_address" => {
+            it.next();
+            Value::GlobalAddress {
+                ty: Type::Null,
+                item: parse_path(it),
+            }
+        }
         _ => {
             let ty = parse_type(it).unwrap();
             match it.next().unwrap() {
