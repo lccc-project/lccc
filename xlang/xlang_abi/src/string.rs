@@ -139,6 +139,26 @@ impl<A: Allocator> String<A> {
     pub fn into_bytes(self) -> crate::vec::Vec<u8, A> {
         self.0
     }
+
+    ///
+    /// Converts a [`Vec`] of `u8` into a [`String`], validating that it contains Utf8
+    ///
+    /// # Errors
+    /// Returns [`FromUtf8Error`] if `bytes` does not contain valid UTF-8
+    pub fn from_utf8(bytes: crate::vec::Vec<u8, A>) -> Result<Self, FromUtf8Error<A>> {
+        match core::str::from_utf8(&bytes).map(drop) {
+            Ok(()) => Ok(Self(bytes)),
+            Err(err) => Err(FromUtf8Error { err, bytes }),
+        }
+    }
+
+    /// Converts a [`Vec`] of `u8` into a [`String`], without validating the contents of the vec
+    ///
+    /// # Safety
+    /// Shall not be called with a [`Vec`] that contains invalid UTF-8 sequences
+    pub unsafe fn from_utf8_unchecked(bytes: crate::vec::Vec<u8, A>) -> Self {
+        Self(bytes)
+    }
 }
 
 impl<A: Allocator, S: AsRef<str>> Add<S> for String<A> {
