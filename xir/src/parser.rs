@@ -1,19 +1,64 @@
 #![allow(dead_code)]
 
-use std::{convert::TryFrom, iter::Peekable};
+use std::{
+    convert::{TryFrom, TryInto},
+    iter::Peekable,
+};
 
 use xlang::abi::string::FromUtf8Error;
 use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
 
 use xlang::targets::Target;
 use xlang_struct::{
-    Abi, AnnotatedElement, Block, BlockItem, CharFlags, Expr, File, FunctionDeclaration,
+    Abi, AnnotatedElement, Block, BlockItem, CharFlags, Expr, File, FnType, FunctionDeclaration,
     MemberDeclaration, Path, PathComponent, PointerAliasingRule, PointerDeclarationType,
     PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Scope, ScopeMember,
     StringEncoding, Type, ValidRangeType, Value, Visibility,
 };
 
 use crate::lexer::{Group, Token};
+
+pub fn parse_function_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> FnType {
+    match stream.next().unwrap() {
+        Token::Ident(id) if id == "function" => match stream.next().unwrap() {
+            Token::Group(Group::Parenthesis(tok)) => {
+                let mut params = Vec::new();
+                let mut it = tok.into_iter().peekable();
+                loop {
+                    if let Some(ty) = parse_type(&mut it) {
+                        params.push(ty);
+                        match it.peek() {
+                            Some(Token::Sigil(',')) => continue,
+                            Some(tok) => panic!("Unexpected token {:?}", tok),
+                            None => break,
+                        }
+                    }
+                }
+                match stream.peek() {
+                    Some(Token::Sigil('-')) => {
+                        stream.next();
+                        match stream.next().unwrap() {
+                            Token::Sigil('>') => FnType {
+                                ret: parse_type(stream).unwrap(),
+                                params,
+                                tag: Abi::C,
+                            },
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+                    }
+                    _ => FnType {
+                        ret: Type::Null,
+                        params,
+                        tag: Abi::C,
+                    },
+                }
+            }
+            tok => panic!("Unexpected Token {:?}", tok),
+        },
+        Token::Ident(id) if id == "extern" => todo!("extern"),
+        tok => panic!("Unexpected token {:?}", tok),
+    }
+}
 
 pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option<Type> {
     match stream.peek() {
@@ -27,6 +72,9 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
             Some(parse_type(&mut inner).unwrap())
         }
         Some(Token::Ident(id)) => match &**id {
+            "function" | "extern" => Some(Type::FnType(xlang::abi::boxed::Box::new(
+                parse_function_type(stream),
+            ))),
             "uint" | "int" => {
                 let signed = id == "int";
                 stream.next().unwrap();
@@ -524,6 +572,40 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
         Token::Ident(id) if id == "const" => {
             it.next();
             Expr::Const(parse_const(it))
+        }
+        Token::Ident(id) if id == "call" => {
+            it.next();
+            Expr::CallFunction(parse_function_type(it))
+        }
+        Token::Ident(id) if id == "pop" => {
+            it.next();
+            match it.peek() {
+                Some(Token::IntLiteral(i)) => {
+                    let val = *i;
+                    it.next();
+                    Expr::Pop(val.try_into().unwrap())
+                }
+                _ => Expr::Pop(1),
+            }
+        }
+        Token::Ident(id) if id == "exit" => {
+            it.next();
+            match it.next().unwrap() {
+                Token::Ident(id) if id == "block" => match it.next().unwrap() {
+                    Token::Ident(id) if id.starts_with('$') => {
+                        let blk = id[1..].parse::<u32>().unwrap();
+                        match it.next().unwrap() {
+                            Token::IntLiteral(values) => Expr::ExitBlock {
+                                blk,
+                                values: values.try_into().unwrap(),
+                            },
+                            tok => panic!("Unexpected Token {:?}", tok),
+                        }
+                    }
+                    tok => panic!("Unexpected Token {:?}", tok),
+                },
+                tok => panic!("Unexpected Token {:?}", tok),
+            }
         }
         tok => todo!("{:?}", tok),
     }

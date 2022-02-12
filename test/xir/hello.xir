@@ -1,8 +1,8 @@
-function gets(_0: *const char(8)) -> int(32);
+function puts(_0: *const char(8)) -> int(32);
 
 function main() -> int(32){
-    const global_address gets
-    const *const char(8) "Hello, world!\n"
+    const global_address puts
+    const *const char(8) "Hello, world!"
     call function(*const char(8))->int(32)
     pop
     const int(32) 0

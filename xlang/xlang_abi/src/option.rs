@@ -175,6 +175,11 @@ impl<T> Option<T> {
             None => None,
         }
     }
+
+    /// Takes the contained value outside of this [`Option`], leaving it as [`None`]
+    pub fn take(&mut self) -> Option<T> {
+        core::mem::take(self)
+    }
 }
 
 impl<T> Option<Option<T>> {
@@ -185,5 +190,11 @@ impl<T> Option<Option<T>> {
             Some(x) => x,
             None => None,
         }
+    }
+}
+
+impl<T> Default for Option<T> {
+    fn default() -> Self {
+        Self::None
     }
 }

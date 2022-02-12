@@ -9,6 +9,7 @@ use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 
 mod lexer;
 mod parser;
+mod validate;
 
 use lexer::lex;
 use xlang::targets::Target;
@@ -43,16 +44,15 @@ impl XLangFrontend for XirFrontend {
 
     fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
         let lexed = lex(file.into_chars()).collect::<Vec<_>>();
-        println!("lexed: {:?}", lexed);
         self.file = Some(parse_file(lexed.into_iter(), self.target.clone().unwrap()));
-
-        todo!()
+        Result::Ok(())
     }
 }
 
 impl XLangPlugin for XirFrontend {
     #[allow(clippy::too_many_lines)]
-    fn accept_ir(&mut self, _file: &mut ir::File) -> Result<(), Error> {
+    fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
+        *file = self.file.take().unwrap();
         Result::Ok(())
     }
 
