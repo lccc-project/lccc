@@ -1,10 +1,7 @@
 use std::{
     ffi::{c_void, CString, OsStr},
     io::ErrorKind,
-    os::{
-        raw::c_char,
-        windows::ffi::OsStrExt,
-    },
+    os::{raw::c_char, windows::ffi::OsStrExt},
 };
 
 extern "C" {
