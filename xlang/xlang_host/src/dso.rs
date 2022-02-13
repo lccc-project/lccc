@@ -6,6 +6,12 @@ mod dlcfn;
 #[cfg(unix)]
 use dlcfn as sys;
 
+#[cfg(windows)] // TODO: Replace with proper host feature detection
+mod libloaderapi;
+
+#[cfg(windows)]
+use libloaderapi as sys;
+
 ///
 /// An unsafe helper trait used by [`Handle::function_sym`]
 ///
