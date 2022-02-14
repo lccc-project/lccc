@@ -10,10 +10,11 @@ use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
 
 use xlang::targets::Target;
 use xlang_struct::{
-    Abi, AnnotatedElement, Block, BlockItem, CharFlags, Expr, File, FnType, FunctionDeclaration,
-    MemberDeclaration, Path, PathComponent, PointerAliasingRule, PointerDeclarationType,
-    PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Scope, ScopeMember,
-    StringEncoding, Type, ValidRangeType, Value, Visibility,
+    Abi, AnnotatedElement, Block, BlockItem, BranchCondition, CharFlags, Expr, File, FnType,
+    FunctionDeclaration, MemberDeclaration, Path, PathComponent, PointerAliasingRule,
+    PointerDeclarationType, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind,
+    ScalarValidity, Scope, ScopeMember, StackItem, StringEncoding, Type, ValidRangeType, Value,
+    Visibility,
 };
 
 use crate::lexer::{Group, Token};
@@ -397,6 +398,34 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
     }
 }
 
+pub fn parse_stack_items<I: Iterator<Item = Token>>(it: I) -> Vec<StackItem> {
+    let mut peekable = it.peekable();
+    let mut ret = Vec::new();
+    loop {
+        match peekable.peek() {
+            Some(Token::Ident(id)) if id == "lvalue" => {
+                peekable.next();
+                ret.push(StackItem {
+                    ty: parse_type(&mut peekable).unwrap(),
+                    kind: xlang_struct::StackValueKind::LValue,
+                });
+            }
+            Some(_) => {
+                ret.push(StackItem {
+                    ty: parse_type(&mut peekable).unwrap(),
+                    kind: xlang_struct::StackValueKind::LValue,
+                });
+            }
+            None => break ret,
+        }
+        match peekable.next() {
+            Some(Token::Sigil(',')) => continue,
+            None => break ret,
+            Some(tok) => panic!("Unexpected token {:?}", tok),
+        }
+    }
+}
+
 pub fn parse_block<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Block {
     let mut items = Vec::new();
     loop {
@@ -412,7 +441,24 @@ pub fn parse_block<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Block {
                 }
             }
             None => break Block { items },
-            Some(Token::Ident(id)) if id == "target" => todo!("target"),
+            Some(Token::Ident(id)) if id == "target" => {
+                it.next();
+                let target: u32 = match it.next().unwrap() {
+                    Token::Sigil('@') => match it.next().unwrap() {
+                        Token::IntLiteral(branch) => branch.try_into().unwrap(),
+                        tok => panic!("Unexpected token {:?}", tok),
+                    },
+                    tok => panic!("Unexpected token {:?}", tok),
+                };
+
+                match it.next().unwrap() {
+                    Token::Group(Group::Bracket(group)) => items.push(BlockItem::Target {
+                        num: target,
+                        stack: parse_stack_items(group.into_iter()),
+                    }),
+                    tok => panic!("Unexpected token {:?}", tok),
+                }
+            }
             Some(_) => items.push(BlockItem::Expr(parse_expr(it))),
         }
     }
@@ -605,6 +651,30 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
                     tok => panic!("Unexpected Token {:?}", tok),
                 },
                 tok => panic!("Unexpected Token {:?}", tok),
+            }
+        }
+        Token::Ident(id) if id == "branch" => {
+            it.next();
+            let cond = match it.next().unwrap() {
+                Token::Ident(id) if id == "always" => BranchCondition::Always,
+                Token::Ident(id) if id == "never" => BranchCondition::Never,
+                Token::Ident(id) if id == "equal" => BranchCondition::Equal,
+                Token::Ident(id) if id == "not_equal" => BranchCondition::NotEqual,
+                Token::Ident(id) if id == "less" => BranchCondition::Less,
+                Token::Ident(id) if id == "greater" => BranchCondition::Greater,
+                Token::Ident(id) if id == "less_equal" => BranchCondition::LessEqual,
+                Token::Ident(id) if id == "greater_equal" => BranchCondition::GreaterEqual,
+                tok => panic!("Unexpected token {:?}", tok),
+            };
+            match it.next().unwrap() {
+                Token::Sigil('@') => match it.next().unwrap() {
+                    Token::IntLiteral(target) => Expr::Branch {
+                        cond,
+                        target: target.try_into().unwrap(),
+                    },
+                    tok => panic!("Unexpected token {:?}", tok),
+                },
+                tok => panic!("Unexpected token {:?}", tok),
             }
         }
         tok => todo!("{:?}", tok),
