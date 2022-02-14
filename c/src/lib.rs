@@ -97,7 +97,7 @@ impl XLangPlugin for CFrontend {
             }
         }
 
-        #[allow(clippy::match_wildcard_for_single_variants)]
+        #[allow(clippy::match_wildcard_for_single_variants, clippy::needless_borrow)]
         fn codegen_expr_real(
             char_type: &ir::ScalarType,
             int_type: &ir::ScalarType,

@@ -132,7 +132,7 @@ impl<A: Allocator> String<A> {
 
     /// Pushes a character
     pub fn push(&mut self, c: char) {
-        self.push_str(c.encode_utf8(&mut [0u8; 4]))
+        self.push_str(c.encode_utf8(&mut [0u8; 4]));
     }
 
     /// Converts a [`String`] into a [`crate::vec::Vec`] of UTF-8 bytes
@@ -196,7 +196,7 @@ impl<A: Allocator> core::fmt::Display for String<A> {
 
 impl<A: Allocator, S: AsRef<str> + ?Sized> PartialEq<S> for String<A> {
     fn eq(&self, other: &S) -> bool {
-        self.deref() == other.as_ref()
+        &**self == other.as_ref()
     }
 }
 
@@ -394,6 +394,7 @@ impl<'a> StringView<'a> {
 
     ///
     /// Converts an owned [`StringView`] into  &[`str`] with the same lifetime
+    #[must_use]
     pub fn into_str(self) -> &'a str {
         unsafe {
             core::str::from_utf8_unchecked(core::slice::from_raw_parts(

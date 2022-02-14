@@ -177,7 +177,8 @@ impl<T> Option<T> {
     }
 
     /// Takes the contained value outside of this [`Option`], leaving it as [`None`]
-    pub fn take(&mut self) -> Option<T> {
+    #[must_use]
+    pub fn take(&mut self) -> Self {
         core::mem::take(self)
     }
 }

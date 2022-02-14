@@ -205,8 +205,7 @@ pub fn irgen(program: &Program, file: &mut ir::File) {
         let Declaration::Function { sig, .. } = program
             .declarations
             .iter()
-            .filter(|x| x.name() == name)
-            .next()
+            .find(|x| x.name() == name)
             .unwrap();
         file.root.members.insert(
             identifier_to_path(name.clone()),

@@ -506,12 +506,12 @@ impl<K: Eq + Hash, V: PartialEq, H: BuildHasher, A: Allocator> PartialEq for Has
             return true;
         }
         for Pair(k, v) in self {
-            if other.get(k).map(|v2| v.eq(v2)).unwrap_or(false) {
+            if other.get(k).map_or(false, |v2| v.eq(v2)) {
                 return false;
             }
         }
         for Pair(k, v) in other {
-            if self.get(k).map(|v2| v.eq(v2)).unwrap_or(false) {
+            if self.get(k).map_or(false, |v2| v.eq(v2)) {
                 return false;
             }
         }
@@ -529,7 +529,7 @@ impl<K: Eq + Hash, V, H: BuildHasher + Default, A: Allocator + Default> FromIter
     where
         I: IntoIterator<Item = Pair<K, V>>,
     {
-        let mut ret = HashMap::new();
+        let mut ret = Self::new();
         for Pair(k, v) in it {
             ret.insert(k, v);
         }
@@ -555,7 +555,7 @@ impl<K: Eq + Hash, V, H: BuildHasher + Default, A: Allocator + Default> FromIter
     where
         I: IntoIterator<Item = (K, V)>,
     {
-        let mut ret = HashMap::new();
+        let mut ret = Self::new();
         for (k, v) in it {
             ret.insert(k, v);
         }
@@ -576,6 +576,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> Extend<(K, V)> for HashMap<K
 
 ///
 /// A [`HashSet`] that has a stable ABI and obtains storage backed by an [`Allocator`]
+#[allow(clippy::derive_hash_xor_eq)]
 #[derive(
     Clone,
     Debug, /* may not be good to derive(Debug) here. Maybe should provide impl instead */

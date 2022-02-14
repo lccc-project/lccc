@@ -40,7 +40,7 @@ pub enum IntType {
 }
 
 impl IntType {
-    pub fn is_signed(&self) -> bool {
+    pub const fn is_signed(self) -> bool {
         matches!(
             self,
             IntType::I8

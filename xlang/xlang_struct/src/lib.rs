@@ -142,8 +142,8 @@ pub enum Type {
     Pointer(PointerType),
     Array(Box<ArrayType>),
     TaggedType(u16, Box<Self>),
-    Product(Vec<Type>),
-    Aligned(Box<Value>, Box<Type>),
+    Product(Vec<Self>),
+    Aligned(Box<Value>, Box<Self>),
 }
 
 impl Default for Type {
