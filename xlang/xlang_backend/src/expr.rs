@@ -53,6 +53,9 @@ pub enum VStackValue<Loc: ValLocation> {
     /// Represents an aggregate which is stored in memory
     OpaqueAggregate(Type, Loc),
 
+    /// The result of the `cmp` instruction
+    CompareResult(Box<VStackValue<Loc>>, Box<VStackValue<Loc>>),
+
     /// Placeholder for a value that's already caused a `ud2`
     Trapped,
 }

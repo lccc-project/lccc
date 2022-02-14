@@ -370,6 +370,7 @@ impl FunctionRawCodegen for X86CodegenState {
             VStackValue::Trapped => {}
             VStackValue::AggregatePieced(_, _) => todo!(),
             VStackValue::OpaqueAggregate(_, _) => todo!(),
+            VStackValue::CompareResult(_, _) => todo!(),
         }
     }
 

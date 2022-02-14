@@ -87,18 +87,17 @@ stage2_CC = @stage2_CC@
 stage2_CFLAGS = @stage2_CFLAGS@
 stage2_RUSTFLAGS = @stage2_RUSTFLAGS@
 
-main = lccc xlang
-languages = @languages@
-codegens = @codegens@
-
 
 ##
 # Do not Edit past this point
 
 .DEFAULT_GOAL = all
 
-stage0_builddir = ${builddir}
+stage0_builddir = ${builddir}/build
 stage0_abs_builddir = ${abs_builddir}/build
+
+stage1_builddir = ${builddir}/
+stage1_abs_builddir = ${abs_builddir}/
 
 vendor_STEM = vendor
 vendor_SRCDIR = ${srcdir}/vendor
@@ -107,7 +106,7 @@ vendor_STAGE1_GOAL = all
 vendor_STAGE2_GOAL = 
 vendor_DEPS = 
 
-
+steps = vendor @steps@
 
 [+ foreach main +]
 
@@ -139,22 +138,31 @@ vendor_DEPS =
 
 [+name+]_STEM = [+subdir+]
 [+name+]_STAGE0_GOAL = all
-[+name+]_STAGE1_GOAL = all
+[+name+]_STAGE1_GOAL = @stage1_libs@ all
 [+name+]_STAGE2_GOAL = libraries
 [+name+]_DEPS = vendor [+deps+]
 
 [+ endfor +]
 
-COMMON_EXPORTS = export INSTALL=$(INSTALL); 
+COMMON_EXPORTS = export INSTALL=$(INSTALL)
 
-STAGE0_EXPORTS = CC=$(stage0_CC); CFLAGS=$(stage0_CFLAGS); RUSTC=$(stage0_RUSTC); RUSTFLAGS=$(stage0_RUSTFLAGS); \
-    CC_FOR_BUILD=$(stage0_CC); CFLAGS_FOR_BUILD=$(stage0_CFLAGS); RUSTC=$(stage0_RUSTC); RUSTFLAGS=$(stage0_RUSTFLAGS); 
+STAGE0_EXPORTS = $(COMMON_EXPORTS); export CC=$(stage0_CC); export CFLAGS=$(stage0_CFLAGS); export RUSTC=$(stage0_RUSTC); export RUSTFLAGS=$(stage0_RUSTFLAGS); \
+    export CC_FOR_BUILD=$(stage0_CC); export CFLAGS_FOR_BUILD=$(stage0_CFLAGS); export RUSTC_FOR_BUILD=$(stage0_RUSTC); export RUSTFLAGS_FOR_BUILD=$(stage0_RUSTFLAGS)
+
+STAGE0_CONFIGURE = --prefix=$(prefix) --exec-prefix=$(exec_prefix) --bindir=$(bindir) --sbindir=$(sbindir) --libdir=$(libdir) --libexecdir=$(libexecdir) 
 
 [+ define gen_goals +]
 
-.PHONY: $([+name+]_[+builddir+])/configure $([+name+]_[+builddir+])/
+.PHONY: [+name+]_[+builddir+]-configure [+name+]_[+builddir+]/all [+name+]_[+builddir+]/install [+name+]_[+builddir+]/install-strip [+name+]_[+builddir+]/clean [+name+]_[+builddir+]/libraries
 
-${[+builddir+]/configure: [+srcdir+]/configure
-    @+$(MKDIR_P) [+builddir+]; cd [+builddir+]; [+exports+]; [+extra_exports+]; 
+[+name+]_[+builddir+]-configure: [+srcdir+]/configure $(foreach dep,[+deps], $($(dep)_DEPS)_[+builddir+]/stamp)
+    @+$(MKDIR_P) $([+name+]_[+builddir+]); cd [+builddir+]; [+exports+]; [+extra_exports+]; ../[+srcdir+]/configure [+configure+] [+extra_configure+]
+
+$([+name+]_[+builddir+])/: 
+    @+[+exports+]; [+extra_exports+]; $(MAKE) [+name+]_[+builddir+]-configure
+
+$([+name+]_[+builddir+])/%: $([+name+]_[+builddir+])/ $(foreach dep,[+deps], $($(dep)_DEPS)_[+builddir+]/stamp)
+    @+[+exports+]; [+extra_exports+]; $(MAKE) -C [+name+]_[+builddir+] $*
+
 
 [+ enddef +]

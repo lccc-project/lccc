@@ -228,6 +228,11 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         }
     }
 
+    /// Clears the expression stack
+    pub fn clear_stack(&mut self) {
+        self.vstack.clear()
+    }
+
     /// Writes an expression in linear order into the codegen
     pub fn write_expr(&mut self, expr: &Expr) {
         match expr {
@@ -254,6 +259,14 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         todo!("exit block ${} {}", blk, values);
                     }
                 }
+            }
+            Expr::BinaryOp(BinaryOp::Cmp) => {
+                let [val1, val2] = [
+                    self.vstack.pop_back().unwrap(),
+                    self.vstack.pop_back().unwrap(),
+                ];
+                self.vstack
+                    .push_back(VStackValue::CompareResult(Box::new(val1), Box::new(val2)))
             }
             Expr::BinaryOp(op) => todo!("binary op {:?}", op),
             Expr::UnaryOp(op) => todo!("unary op {:?}", op),
@@ -286,7 +299,25 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     v => panic!("invalid value {:?}", v),
                 }
             }
-            Expr::Branch { .. } => {}
+            Expr::Branch { cond, target } => {
+                match cond {
+                    BranchCondition::Always => {
+                        let locs = self.targets[target].clone();
+                        let vals = self.pop_values(locs.len()).unwrap();
+                        for (val, (loc, _)) in vals.into_iter().zip(locs) {
+                            self.inner.move_value(val, loc); // This will break if the branch target uses any values rn.
+                        }
+                        self.clear_stack()
+                    }
+                    BranchCondition::Less => todo!(),
+                    BranchCondition::LessEqual => todo!(),
+                    BranchCondition::Equal => todo!(),
+                    BranchCondition::NotEqual => todo!(),
+                    BranchCondition::Greater => todo!(),
+                    BranchCondition::GreaterEqual => todo!(),
+                    BranchCondition::Never => {}
+                }
+            }
             Expr::Convert(_, ty) => {
                 let val = self.vstack.pop_back().unwrap();
                 match (val, ty) {
@@ -382,6 +413,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 self.targets.insert(*num, values);
             }
         }
+
         for item in &block.items {
             self.diverged = false;
             match item {

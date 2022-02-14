@@ -82,6 +82,13 @@ fn main() {
             TakesArg::Never,
             true
         ),
+        ArgSpec::new(
+            "version",
+            xlang::vec!["version"],
+            xlang::vec!['V'],
+            TakesArg::Never,
+            true
+        )
     ];
 
     let (args, files) = parse_args(&argspecs);
@@ -109,6 +116,12 @@ fn main() {
                     Some(val) => panic!("Invalid or unknown type {}", val),
                     None => unreachable!(),
                 };
+            }
+            "version" => {
+                println!("lccc {}", std::env!("CARGO_PKG_VERSION"));
+                println!("Copyright (C) 2021-2022 Lightning Creations");
+                println!("Released under the Terms of the 2 Clause BSD license, with explicit patent grant");
+                return;
             }
             _ => panic!(),
         }
