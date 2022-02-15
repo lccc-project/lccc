@@ -61,6 +61,8 @@ pub fn parse_function_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) 
     }
 }
 
+#[allow(clippy::cognitive_complexity)] // TODO: refactor
+#[allow(clippy::too_many_lines)] // TODO: refactor
 pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option<Type> {
     match stream.peek() {
         Some(Token::Group(Group::Parenthesis(_))) => {
@@ -84,7 +86,7 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
                 let mut header = ScalarTypeHeader {
                     bitsize: 0,
                     vectorsize: 0,
-                    ..Default::default()
+                    ..ScalarTypeHeader::default()
                 };
                 loop {
                     match stream.next() {
@@ -94,27 +96,37 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
                         Some(Token::Ident(s)) if s == "min" => {
                             if let Some(Token::Group(Group::Parenthesis(toks))) = stream.next() {
                                 match &*toks {
-                                    [Token::IntLiteral(n)] => min = *n as i128,
+                                    [Token::IntLiteral(n)] => {
+                                        min = i128::try_from(*n).expect(
+                                            "oversized integer literals currently unsupported",
+                                        );
+                                    }
                                     [Token::Sigil('-'), Token::IntLiteral(n)] => {
-                                        min = -(*n as i128)
+                                        min = -i128::try_from(*n)
+                                            .expect("integer literal too far negative");
                                     }
                                     toks => panic!("Unexpected tokens: {:?}", toks),
                                 }
                             } else {
-                                panic!("Unexpected Token")
+                                panic!("Unexpected Token");
                             }
                         }
                         Some(Token::Ident(s)) if s == "max" => {
                             if let Some(Token::Group(Group::Parenthesis(toks))) = stream.next() {
                                 match &*toks {
-                                    [Token::IntLiteral(n)] => max = *n as i128,
+                                    [Token::IntLiteral(n)] => {
+                                        max = i128::try_from(*n).expect(
+                                            "oversized integer literals currently unsupported",
+                                        );
+                                    }
                                     [Token::Sigil('-'), Token::IntLiteral(n)] => {
-                                        max = -(*n as i128)
+                                        max = -i128::try_from(*n)
+                                            .expect("integer literal too far negative");
                                     }
                                     toks => panic!("Unexpected tokens: {:?}", toks),
                                 }
                             } else {
-                                panic!("Unexpected Token")
+                                panic!("Unexpected Token");
                             }
                         }
                         Some(Token::Ident(s)) if s == "vector" => {
@@ -126,7 +138,7 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
                                     toks => panic!("Unexpected tokens: {:?}", toks),
                                 }
                             } else {
-                                panic!("Unexpected Token")
+                                panic!("Unexpected Token");
                             }
                         }
                         Some(Token::Group(Group::Parenthesis(toks))) => match &*toks {
@@ -147,13 +159,13 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
             "char" | "schar" => {
                 let mut flags = CharFlags::empty();
                 if id == "schar" {
-                    flags |= CharFlags::SIGNED
+                    flags |= CharFlags::SIGNED;
                 }
                 stream.next().unwrap();
                 let mut header = ScalarTypeHeader {
                     bitsize: 0,
                     vectorsize: 0,
-                    ..Default::default()
+                    ..ScalarTypeHeader::default()
                 };
                 loop {
                     match stream.next() {
@@ -172,7 +184,7 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
                                     toks => panic!("Unexpected tokens: {:?}", toks),
                                 }
                             } else {
-                                panic!("Unexpected Token")
+                                panic!("Unexpected Token");
                             }
                         }
                         Some(Token::Group(Group::Parenthesis(toks))) => match &*toks {
@@ -201,20 +213,20 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
                 match stream.peek().unwrap() {
                     Token::Ident(id) if id == "const" => decl |= PointerDeclarationType::CONST,
                     Token::Ident(id) if id == "volatile" => {
-                        decl |= PointerDeclarationType::VOLATILE
+                        decl |= PointerDeclarationType::VOLATILE;
                     }
                     Token::Ident(id) if id == "ref" => decl |= PointerDeclarationType::REF,
                     Token::Ident(id) if id == "nonnull" => alias |= PointerAliasingRule::NONNULL,
                     Token::Ident(id) if id == "invalid" => alias |= PointerAliasingRule::INVALID,
                     Token::Ident(id) if id == "null_or_invalid" => {
-                        alias |= PointerAliasingRule::NULL_OR_INVALID
+                        alias |= PointerAliasingRule::NULL_OR_INVALID;
                     }
                     Token::Ident(id) if id == "unique" => alias |= PointerAliasingRule::UNIQUE,
                     Token::Ident(id) if id == "read_only" => {
-                        alias |= PointerAliasingRule::READ_ONLY
+                        alias |= PointerAliasingRule::READ_ONLY;
                     }
                     Token::Ident(id) if id == "read_shallow" => {
-                        alias |= PointerAliasingRule::READ_SHALLOW
+                        alias |= PointerAliasingRule::READ_SHALLOW;
                     }
                     Token::Ident(id) if id == "dereferenceable" => todo!("*dereferenceable"),
                     Token::Ident(id) if id == "dereference_write" => todo!("*dereference_write"),
@@ -248,7 +260,7 @@ pub fn parse_attr_list<I: Iterator<Item = Token>>(_it: &mut Peekable<I>) -> Anno
 
 pub fn parse_path<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Path {
     let mut path = Vec::new();
-    if let Some(Token::Sigil(':')) = it.peek() {
+    if it.peek() == Some(&Token::Sigil(':')) {
         it.next();
         path.push(PathComponent::Root);
         assert_eq!(it.next(), Some(Token::Sigil(':')));
@@ -265,7 +277,7 @@ pub fn parse_path<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Path {
             tok => panic!("Unexpected token {:?}", tok),
         }
 
-        if let Some(Token::Sigil(':')) = it.peek() {
+        if it.peek() == Some(&Token::Sigil(':')) {
             it.next();
             assert_eq!(it.next(), Some(Token::Sigil(':')));
         } else {
@@ -274,6 +286,7 @@ pub fn parse_path<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Path {
     }
 }
 
+#[allow(clippy::too_many_lines)] // TODO: refactor
 pub fn parse_scope_member<I: Iterator<Item = Token>>(
     it: &mut Peekable<I>,
 ) -> Option<(Path, ScopeMember)> {
@@ -362,7 +375,7 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
                                     },
                                     body: xlang::abi::option::None,
                                 }),
-                                ..Default::default()
+                                ..ScopeMember::default()
                             },
                         )),
                         Token::Group(Group::Braces(toks)) => {
@@ -378,7 +391,7 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
                                         },
                                         body: xlang::abi::option::Some(parse_block(&mut peekable)),
                                     }),
-                                    ..Default::default()
+                                    ..ScopeMember::default()
                                 },
                             ))
                         }
@@ -482,7 +495,7 @@ fn literal_to_xir_bytes(s: &str) -> Result<String, Vec<u8>> {
                     let a2 = chars.next().unwrap();
                     assert!(a1.is_digit(16) && a2.is_digit(16));
                     let val = (a1.to_digit(16).unwrap() << 4) | (a2.to_digit(16).unwrap());
-                    buf.push(val as u8);
+                    buf.push(val.try_into().unwrap());
                 }
                 'u' => {
                     todo!("Unicode escapes")
@@ -493,21 +506,25 @@ fn literal_to_xir_bytes(s: &str) -> Result<String, Vec<u8>> {
                 c => panic!("Invalid escape sequence \\{}", c),
             }
         } else {
-            buf.extend_from_slice(c.encode_utf8(&mut [0u8; 4]).as_bytes())
+            buf.extend_from_slice(c.encode_utf8(&mut [0u8; 4]).as_bytes());
         }
     }
 
-    if !has_hex_escapes {
+    if has_hex_escapes {
+        // Validate the UTF-8
+        String::from_utf8(buf).map_err(FromUtf8Error::into_bytes)
+    } else {
+        // Else, we have to use unsafe
         // SAFETY:
         // The bytes have come from a string, and are UTF-8 validated
         // As no hex escapes are included, arbitrary bytes couldn't have found there way in
         Ok(unsafe { String::from_utf8_unchecked(buf) })
-    } else {
-        // Else, validate the UTF-8
-        String::from_utf8(buf).map_err(FromUtf8Error::into_bytes)
     }
 }
 
+#[allow(clippy::cognitive_complexity)] // TODO: refactor
+#[allow(clippy::match_wild_err_arm)] // TODO: find a better solution
+#[allow(clippy::too_many_lines)] // TODO: refactor
 pub fn parse_const<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Value {
     match it.peek().unwrap() {
         Token::Ident(id) if id == "undef" => {
@@ -688,7 +705,7 @@ pub fn parse_file<I: Iterator<Item = Token>>(it: I, deftarg: Target) -> File {
             peekable.next();
             match peekable.next() {
                 Some(Token::StringLiteral(s)) => {
-                    assert_eq!(deftarg, Target::from(target_tuples::Target::parse(&s)))
+                    assert_eq!(deftarg, Target::from(target_tuples::Target::parse(&s)));
                 }
                 Some(tok) => panic!("Unexpected Token {:?}", tok),
                 None => panic!("Unexpected End of File"),
@@ -702,7 +719,7 @@ pub fn parse_file<I: Iterator<Item = Token>>(it: I, deftarg: Target) -> File {
     File {
         target: deftarg,
         root: Scope {
-            annotations: Default::default(),
+            annotations: AnnotatedElement::default(),
             members: core::iter::from_fn(move || parse_scope_member(&mut peekable)).collect(),
         },
     }

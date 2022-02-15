@@ -252,12 +252,10 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                             self.inner.return_value(val);
                         }
                     }
+                } else if *values == 0 {
+                    self.inner.write_block_exit(*blk);
                 } else {
-                    if *values == 0 {
-                        self.inner.write_block_exit(*blk);
-                    } else {
-                        todo!("exit block ${} {}", blk, values);
-                    }
+                    todo!("exit block ${} {}", blk, values);
                 }
             }
             Expr::BinaryOp(BinaryOp::Cmp) => {

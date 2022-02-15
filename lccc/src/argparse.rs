@@ -41,6 +41,7 @@ pub struct Arg {
     pub value: Option<String>,
 }
 
+#[allow(clippy::needless_borrow)] // Incorrect lint
 pub fn parse_args(argspecs: &Vec<ArgSpec>) -> (Vec<Arg>, Vec<String>) {
     let mut result = Vec::new();
     let mut files = Vec::new();
@@ -65,7 +66,7 @@ pub fn parse_args(argspecs: &Vec<ArgSpec>) -> (Vec<Arg>, Vec<String>) {
                                 result.push(Arg {
                                     name: spec.name,
                                     value: Some((&opt).into()),
-                                })
+                                });
                             } else {
                                 todo!();
                             }

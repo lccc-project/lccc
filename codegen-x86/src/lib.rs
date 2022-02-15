@@ -2,6 +2,7 @@
 
 pub mod callconv;
 
+use std::convert::TryInto;
 use std::{
     cell::RefCell, collections::HashSet, convert::TryFrom, hash::Hash, rc::Rc, str::FromStr,
 };
@@ -173,7 +174,7 @@ impl FunctionRawCodegen for X86CodegenState {
         self.insns.push(X86InstructionOrLabel::Label(format!(
             "{}._T{}",
             self.name, n
-        )))
+        )));
     }
 
     #[allow(clippy::match_wildcard_for_single_variants)]
@@ -196,7 +197,7 @@ impl FunctionRawCodegen for X86CodegenState {
         };
         let cc = self.callconv.with_tag(ty.tag).unwrap();
         for (i, val) in params.into_iter().enumerate() {
-            self.move_value(val, cc.find_parameter(i as u32, ty));
+            self.move_value(val, cc.find_parameter(i.try_into().unwrap(), ty));
         }
 
         self.insns
@@ -264,6 +265,7 @@ impl FunctionRawCodegen for X86CodegenState {
         todo!()
     }
 
+    #[allow(clippy::too_many_lines)]
     fn move_value(&mut self, val: xlang_backend::expr::VStackValue<Self::Loc>, loc: Self::Loc) {
         match val {
             VStackValue::Constant(val) => match val {
@@ -368,9 +370,9 @@ impl FunctionRawCodegen for X86CodegenState {
                 todo!()
             }
             VStackValue::Trapped => {}
-            VStackValue::AggregatePieced(_, _) => todo!(),
-            VStackValue::OpaqueAggregate(_, _) => todo!(),
-            VStackValue::CompareResult(_, _) => todo!(),
+            VStackValue::AggregatePieced(_, _)
+            | VStackValue::OpaqueAggregate(_, _)
+            | VStackValue::CompareResult(_, _) => todo!(),
         }
     }
 
@@ -653,6 +655,7 @@ impl XLangPlugin for X86CodegenPlugin {
         xlang::abi::result::Ok(())
     }
 
+    #[allow(clippy::needless_borrow)] // Incorrect lint
     fn set_target(&mut self, targ: xlang::targets::Target) {
         self.target = Some((&targ).into());
         self.properties = xlang::targets::properties::get_properties(targ);
@@ -677,7 +680,7 @@ fn get_features_from_properties(
 
     names
         .into_iter()
-        .map(|s| s.into_str())
+        .map(xlang::abi::string::StringView::into_str)
         .map(X86Feature::from_str)
         .collect::<Result<_, _>>()
         .unwrap()

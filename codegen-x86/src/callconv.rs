@@ -20,6 +20,8 @@ pub enum TypeClass {
     Zero,
 }
 
+#[allow(clippy::missing_panics_doc)] // TODO: remove todo!()
+#[must_use]
 pub fn classify_type(ty: &Type) -> Option<TypeClass> {
     match ty {
         Type::Scalar(ScalarType {
@@ -40,8 +42,7 @@ pub fn classify_type(ty: &Type) -> Option<TypeClass> {
             ..
         }) => Some(TypeClass::Float),
         Type::Scalar(_) | Type::Pointer(_) => Some(TypeClass::Integer),
-        Type::Void | Type::FnType(_) => None,
-        Type::Null => None,
+        Type::Void | Type::FnType(_) | Type::Null => None,
         Type::Array(ty) => classify_type(&ty.ty),
         Type::TaggedType(_, ty) => classify_type(ty),
         Type::Product(tys) => {
@@ -71,13 +72,17 @@ pub trait X86CallConv {
 }
 
 #[derive(Clone, Debug)]
-pub struct SysV64CC(&'static TargetProperties, HashSet<X86Feature>);
+pub struct SysV64CC<S: std::hash::BuildHasher + Clone = std::collections::hash_map::RandomState>(
+    &'static TargetProperties,
+    HashSet<X86Feature, S>,
+);
 
-impl X86CallConv for SysV64CC {
+impl<S: std::hash::BuildHasher + Clone + 'static> X86CallConv for SysV64CC<S> {
     fn prepare_stack(&self, _ty: &FnType, _frame_size: usize) -> usize {
         todo!()
     }
 
+    #[allow(clippy::no_effect_underscore_binding)] // TODO: use xmm_regs
     fn find_parameter(&self, off: u32, ty: &FnType) -> ValLocation {
         let mut int_regs: &[X86Register] = &[
             X86Register::Rdi,
@@ -103,69 +108,77 @@ impl X86CallConv for SysV64CC {
         let mut last_val = ValLocation::Unassigned(0);
         for ty in ty.params.iter().take(off as usize + 1) {
             match (classify_type(ty).unwrap(), type_size(ty, self.0).unwrap()) {
-                (TypeClass::Zero, 0) => last_val = ValLocation::Null,
-                (TypeClass::Integer, 0) => last_val = ValLocation::Null,
+                (TypeClass::Zero | TypeClass::Integer, 0) => last_val = ValLocation::Null,
                 (TypeClass::Integer, 1) => {
-                    if let Some(reg) = int_regs.get(0) {
-                        int_regs = &int_regs[1..];
-                        let reg = X86Register::from_class(X86RegisterClass::ByteRex, reg.regnum())
-                            .unwrap();
-                        last_val = ValLocation::Register(reg);
-                    } else {
-                        todo!()
-                    }
+                    int_regs.get(0).map_or_else(
+                        || todo!(),
+                        |reg| {
+                            int_regs = &int_regs[1..];
+                            let reg =
+                                X86Register::from_class(X86RegisterClass::ByteRex, reg.regnum())
+                                    .unwrap();
+                            last_val = ValLocation::Register(reg);
+                        },
+                    );
                 }
                 (TypeClass::Integer, 2) => {
-                    if let Some(reg) = int_regs.get(0) {
-                        int_regs = &int_regs[1..];
-                        let reg =
-                            X86Register::from_class(X86RegisterClass::Word, reg.regnum()).unwrap();
-                        last_val = ValLocation::Register(reg);
-                    } else {
-                        todo!()
-                    }
+                    int_regs.get(0).map_or_else(
+                        || todo!(),
+                        |reg| {
+                            int_regs = &int_regs[1..];
+                            let reg = X86Register::from_class(X86RegisterClass::Word, reg.regnum())
+                                .unwrap();
+                            last_val = ValLocation::Register(reg);
+                        },
+                    );
                 }
-                (TypeClass::Integer, 4) | (TypeClass::Integer, 3) => {
-                    if let Some(reg) = int_regs.get(0) {
-                        int_regs = &int_regs[1..];
-                        let reg = X86Register::from_class(X86RegisterClass::Double, reg.regnum())
-                            .unwrap();
-                        last_val = ValLocation::Register(reg);
-                    } else {
-                        todo!()
-                    }
+                (TypeClass::Integer, 3 | 4) => {
+                    int_regs.get(0).map_or_else(
+                        || todo!(),
+                        |reg| {
+                            int_regs = &int_regs[1..];
+                            let reg =
+                                X86Register::from_class(X86RegisterClass::Double, reg.regnum())
+                                    .unwrap();
+                            last_val = ValLocation::Register(reg);
+                        },
+                    );
                 }
                 (TypeClass::Integer, 5..=8) => {
-                    if let Some(reg) = int_regs.get(0) {
-                        int_regs = &int_regs[1..];
-                        last_val = ValLocation::Register(*reg);
-                    } else {
-                        todo!()
-                    }
+                    int_regs.get(0).map_or_else(
+                        || todo!(),
+                        |reg| {
+                            int_regs = &int_regs[1..];
+                            last_val = ValLocation::Register(*reg);
+                        },
+                    );
                 }
                 (TypeClass::Integer, 9..=16) => {
-                    if let Some(reg) = int_regs.get(0..2) {
-                        int_regs = &int_regs[2..];
-                        last_val = ValLocation::Regs(reg.to_owned());
-                    } else {
-                        todo!()
-                    }
+                    int_regs.get(0..2).map_or_else(
+                        || todo!(),
+                        |reg| {
+                            int_regs = &int_regs[2..];
+                            last_val = ValLocation::Regs(reg.to_owned());
+                        },
+                    );
                 }
                 (TypeClass::Integer, 17..=24) => {
-                    if let Some(reg) = int_regs.get(0..3) {
-                        int_regs = &int_regs[3..];
-                        last_val = ValLocation::Regs(reg.to_owned());
-                    } else {
-                        todo!()
-                    }
+                    int_regs.get(0..3).map_or_else(
+                        || todo!(),
+                        |reg| {
+                            int_regs = &int_regs[3..];
+                            last_val = ValLocation::Regs(reg.to_owned());
+                        },
+                    );
                 }
                 (TypeClass::Integer, 25..=32) => {
-                    if let Some(reg) = int_regs.get(0..4) {
-                        int_regs = &int_regs[4..];
-                        last_val = ValLocation::Regs(reg.to_owned());
-                    } else {
-                        todo!()
-                    }
+                    int_regs.get(0..4).map_or_else(
+                        || todo!(),
+                        |reg| {
+                            int_regs = &int_regs[4..];
+                            last_val = ValLocation::Regs(reg.to_owned());
+                        },
+                    );
                 }
                 _ => todo!(),
             }
@@ -218,10 +231,11 @@ impl X86CallConv for SysV64CC {
     }
 }
 
-pub fn get_callconv(
+#[allow(clippy::module_name_repetitions)]
+pub fn get_callconv<S: std::hash::BuildHasher + Clone + 'static>(
     _tag: Abi,
     target: Target,
-    features: HashSet<X86Feature>,
+    features: HashSet<X86Feature, S>,
 ) -> Option<Box<dyn X86CallConv>> {
     target_tuples::match_targets! {
         match (target){

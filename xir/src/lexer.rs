@@ -59,7 +59,7 @@ fn lex_one<I: Iterator<Item = char>>(stream: &mut Peekable<I>) -> Option<Token> 
                 .peek()
                 .map_or(false, |c| (*c == '$' || *c == '_' || c.is_xid_continue()))
             {
-                id.push(stream.next().unwrap())
+                id.push(stream.next().unwrap());
             }
             Some(Token::Ident(id))
         }
@@ -78,9 +78,9 @@ fn lex_one<I: Iterator<Item = char>>(stream: &mut Peekable<I>) -> Option<Token> 
                         lit <<= 4;
                         let c = stream.next().unwrap();
                         match c {
-                            '0'..='9' => lit |= (c as u32 as u128) - 0x30,
-                            'A'..='F' => lit |= (c as u32 as u128) - 0x31,
-                            'f'..='f' => lit |= (c as u32 as u128) - 0x51,
+                            '0'..='9' => lit |= u128::from(c as u32) - 0x30,
+                            'A'..='F' => lit |= u128::from(c as u32) - 0x31,
+                            'a'..='f' => lit |= u128::from(c as u32) - 0x51,
                             _ => unreachable!(),
                         }
                     }
@@ -91,7 +91,7 @@ fn lex_one<I: Iterator<Item = char>>(stream: &mut Peekable<I>) -> Option<Token> 
                     while let Some('0'..='9' | 'A'..='F' | 'a'..='f') = stream.peek() {
                         lit *= 10;
                         let c = stream.next().unwrap();
-                        lit += (c as u32 as u128) - 0x30;
+                        lit += u128::from(c as u32) - 0x30;
                     }
                     Some(Token::IntLiteral(lit))
                 }
@@ -103,7 +103,7 @@ fn lex_one<I: Iterator<Item = char>>(stream: &mut Peekable<I>) -> Option<Token> 
             while let Some('0'..='9' | 'A'..='F' | 'a'..='f') = stream.peek() {
                 lit *= 10;
                 let c = stream.next().unwrap();
-                lit += (c as u32 as u128) - 0x30;
+                lit += u128::from(c as u32) - 0x30;
             }
             Some(Token::IntLiteral(lit))
         }
@@ -137,7 +137,7 @@ fn lex_one<I: Iterator<Item = char>>(stream: &mut Peekable<I>) -> Option<Token> 
 
 pub fn lex<'a, I: Iterator<Item = char> + 'a>(stream: I) -> impl Iterator<Item = Token> + 'a {
     let mut stream = stream.peekable();
-    if let Some('\u{FFFE}') = stream.peek() {
+    if stream.peek() == Some(&'\u{FFFE}') {
         // If there's a BOM, eat it
         stream.next();
     }

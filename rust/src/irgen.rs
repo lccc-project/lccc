@@ -61,7 +61,7 @@ fn irgen_type(ty: Type) -> ir::Type {
                 Mutability::Const => ir::PointerDeclarationType::CONST,
                 Mutability::Mut => ir::PointerDeclarationType::empty(),
             },
-            inner: abi::boxed::Box::new(irgen_type((&*underlying).clone())),
+            inner: abi::boxed::Box::new(irgen_type((*underlying).clone())),
         }),
         Type::Reference {
             mutability,
@@ -75,7 +75,7 @@ fn irgen_type(ty: Type) -> ir::Type {
                 }
                 Mutability::Mut => ir::PointerDeclarationType::REF,
             },
-            inner: abi::boxed::Box::new(irgen_type((&*underlying).clone())),
+            inner: abi::boxed::Box::new(irgen_type((*underlying).clone())),
         }),
         Type::Tuple(list) => ir::Type::Product(
             list.into_iter()
