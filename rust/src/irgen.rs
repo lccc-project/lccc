@@ -119,13 +119,17 @@ fn irgen_expr(expr: Expression, n: u32) -> Vec<ir::BlockItem> {
                 },
             ))]
         }
-        ref x @ Expression::StringLiteral { ref val, .. } => {
+        ref x @ Expression::StringLiteral { .. } => {
             let ty = irgen_type(x.ty());
-            vec![ir::BlockItem::Expr(ir::Expr::Const(ir::Value::String {
-                encoding: ir::StringEncoding::Utf8,
-                utf8: val.into(),
-                ty,
-            }))]
+            if let Expression::StringLiteral { val, .. } = x {
+                vec![ir::BlockItem::Expr(ir::Expr::Const(ir::Value::String {
+                    encoding: ir::StringEncoding::Utf8,
+                    utf8: val.into(),
+                    ty,
+                }))]
+            } else {
+                unreachable!()
+            }
         }
         Expression::UnsafeBlock {
             block,
