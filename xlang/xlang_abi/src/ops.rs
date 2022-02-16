@@ -65,7 +65,7 @@ impl<T, E> Try for crate::result::Result<T, E> {
 
 impl<T, E> FromResidual for Result<T, E> {
     // use `core:;convert::Infallible` instead of `Empty`
-    fn from_residual(x: Result<core::convert::Infallible, E>) -> Result<T, E> {
+    fn from_residual(x: Result<core::convert::Infallible, E>) -> Self {
         match x {
             Ok(v) => match v {},
             Err(e) => Err(e),
@@ -75,7 +75,7 @@ impl<T, E> FromResidual for Result<T, E> {
 
 impl<T, E> FromResidual<crate::result::Result<Empty, E>> for Result<T, E> {
     // use `core:;convert::Infallible` instead of `Empty`
-    fn from_residual(x: crate::result::Result<Empty, E>) -> Result<T, E> {
+    fn from_residual(x: crate::result::Result<Empty, E>) -> Self {
         match x {
             crate::result::Ok(v) => match v {},
             crate::result::Err(e) => Err(e),
