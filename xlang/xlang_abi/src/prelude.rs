@@ -11,5 +11,6 @@ pub mod v1 {
     pub use crate::const_sv;
     pub use crate::format;
     pub use crate::span;
+    pub use crate::try_;
     pub use crate::vec;
 }
