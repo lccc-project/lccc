@@ -90,6 +90,24 @@ pub trait FunctionRawCodegen {
         params: Vec<VStackValue<Self::Loc>>,
     ) -> Option<VStackValue<Self::Loc>>;
 
+    /// Performs a guaranteed tail call to the target
+    /// Note: The signature is assumed to be compatible with the current function
+    fn tailcall_direct(
+        &mut self,
+        value: StringView,
+        ty: &FnType,
+        params: Vec<VStackValue<Self::Loc>>,
+    );
+
+    /// Performs a guaranteed tail call to the target
+    /// Note: The signature is assumed to be compatible with the current function
+    fn tailcall_indirect(
+        &mut self,
+        value: Self::Loc,
+        ty: &FnType,
+        params: Vec<VStackValue<Self::Loc>>,
+    );
+
     /// Performs a conditional branch to `target` based on `condition` and `val`
     fn branch(&mut self, target: u32, condition: BranchCondition, val: VStackValue<Self::Loc>);
     /// Performs a conditional branch based on comparing `v1` and `v2` according to `condition`

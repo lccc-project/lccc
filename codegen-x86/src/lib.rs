@@ -471,6 +471,47 @@ impl FunctionRawCodegen for X86CodegenState {
                 vec![X86Operand::RelAddr(addr)],
             )));
     }
+
+    fn tailcall_direct(
+        &mut self,
+        value: xlang::abi::string::StringView,
+        ty: &FnType,
+        params: xlang::vec::Vec<VStackValue<Self::Loc>>,
+    ) {
+        let sym = X86TempSymbol(
+            value.to_string(),
+            None,
+            None,
+            SymbolType::Null,
+            SymbolKind::Global,
+        );
+        self.symbols.push(sym);
+        let call_addr = Address::PltSym {
+            name: value.to_string(),
+        };
+        let cc = self.callconv.with_tag(ty.tag).unwrap();
+        for (i, val) in params.into_iter().enumerate() {
+            self.move_value(val, cc.find_parameter(i.try_into().unwrap(), ty));
+        }
+
+        self.insns
+            .push(X86InstructionOrLabel::Insn(X86Instruction::Leave));
+
+        self.insns
+            .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                X86Opcode::Jmp,
+                vec![X86Operand::RelAddr(call_addr)],
+            )));
+    }
+
+    fn tailcall_indirect(
+        &mut self,
+        _value: Self::Loc,
+        _ty: &FnType,
+        _params: xlang::vec::Vec<VStackValue<Self::Loc>>,
+    ) {
+        todo!()
+    }
 }
 
 impl X86CodegenState {

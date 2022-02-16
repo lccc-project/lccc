@@ -52,6 +52,19 @@ pub enum LongDoubleFormat {
 }
 
 ///
+/// The types of shared libraries available
+#[repr(i32)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum SharedLibraryStyle {
+    /// Indicates no shared libraries are available by default on the platform
+    None,
+    /// Indicates that shared libraries cannot be directly linked and need an import library (like windows dlls)
+    Import,
+    /// Indicates that shared libraries can be directly linked (like ELF shared objects)
+    Linkable,
+}
+
+///
 /// Properties about the architecture, shared between targets that use this architecture
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -103,6 +116,9 @@ pub struct OperatingSystemProperties {
     /// This does not include the Microsoft Visual Studio Prefixes on windows.
     /// These directories should start with the unix directory separator (`/`), reguardless of the host target
     pub base_dirs: Span<'static, StringView<'static>>,
+
+    /// The type of shared libraries on the system, if any
+    pub so_kind: SharedLibraryStyle,
 }
 
 /// Properties about a particular target, which includes an architecture and an operating system

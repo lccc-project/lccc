@@ -16,6 +16,7 @@ pub static LINUX: OperatingSystemProperties = OperatingSystemProperties {
     ld_flavour: super::LinkerFlavor::Ld,
     ar_flavour: super::ArchiverFlavor::Ar,
     base_dirs: span![const_sv!("/"), const_sv!("/usr"), const_sv!("/usr/local")],
+    so_kind: super::SharedLibraryStyle::Linkable,
 };
 
 pub static X86_64_LINUX_GNU: TargetProperties = TargetProperties {
