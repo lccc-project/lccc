@@ -14,6 +14,7 @@ pub struct RManifestHeader {
 }
 
 impl RManifestHeader {
+    #[must_use]
     pub const fn swap_bytes(self) -> Self {
         Self {
             magic: self.magic,
@@ -33,77 +34,80 @@ pub const ORDER_SWAPPED: u16 = 0xBBAA;
 
 pub mod file_contents {
     /// Target-specific Object Files
-    pub const OBJECT: u32 = 0x00000001;
+    pub const OBJECT: u32 = 0x0000_0001;
 
     /// Macro Definition Files
-    pub const MACRO: u32 = 0x00000002;
+    pub const MACRO: u32 = 0x0000_0002;
 
     /// Additional Manifest files
-    pub const MANIFEST: u32 = 0x00000004;
+    pub const MANIFEST: u32 = 0x0000_0004;
 
     /// Rust Source Files
-    pub const RSRC: u32 = 0x00000008;
+    pub const RSRC: u32 = 0x0000_0008;
 
     /// Embedded rlib files
-    pub const RLIB: u32 = 0x00000010;
+    pub const RLIB: u32 = 0x0000_0010;
 
     /// Implementation-specific file type 1
-    pub const IMPLSPEC1: u32 = 0x00000100;
+    pub const IMPLSPEC1: u32 = 0x0000_0100;
 
     /// Implementation-specific file type 2
-    pub const IMPLSPEC2: u32 = 0x00000200;
+    pub const IMPLSPEC2: u32 = 0x0000_0200;
 
     /// Implementation-specific file type 3
-    pub const IMPLSPEC3: u32 = 0x00000400;
+    pub const IMPLSPEC3: u32 = 0x0000_0400;
 
     /// Implementation-specific file type 4
-    pub const IMPLSPEC4: u32 = 0x00000800;
+    pub const IMPLSPEC4: u32 = 0x0000_0800;
 
     /// Implementation-specific file type 5
-    pub const IMPLSPEC5: u32 = 0x00001000;
+    pub const IMPLSPEC5: u32 = 0x0000_1000;
 
     /// Implementation-specific file type 6
-    pub const IMPLSPEC6: u32 = 0x00002000;
+    pub const IMPLSPEC6: u32 = 0x0000_2000;
 
     /// Implementation-specific file type 7
-    pub const IMPLSPEC7: u32 = 0x00004000;
+    pub const IMPLSPEC7: u32 = 0x0000_4000;
 
     /// Implementation-specific file type 8
-    pub const IMPLSPEC8: u32 = 0x00008000;
+    pub const IMPLSPEC8: u32 = 0x0000_8000;
 
     /// Implementation-specific file type 9
-    pub const IMPLSPEC9: u32 = 0x00010000;
+    pub const IMPLSPEC9: u32 = 0x0001_0000;
 
     /// Implementation-specific file type 10
-    pub const IMPLSPEC10: u32 = 0x00020000;
+    pub const IMPLSPEC10: u32 = 0x0002_0000;
 
     /// Implementation-specific file type 11
-    pub const IMPLSPEC11: u32 = 0x00040000;
+    pub const IMPLSPEC11: u32 = 0x0004_0000;
 
     /// Implementation-specific file type 12
-    pub const IMPLSPEC12: u32 = 0x00080000;
+    pub const IMPLSPEC12: u32 = 0x0008_0000;
 
     /// Implementation-specific file type 13
-    pub const IMPLSPEC13: u32 = 0x00100000;
+    pub const IMPLSPEC13: u32 = 0x0010_0000;
 
     /// Implemenation-specific file type 14
-    pub const IMPLSPEC14: u32 = 0x00200000;
+    pub const IMPLSPEC14: u32 = 0x0020_0000;
 
     /// Implementation-specific file type 15
-    pub const IMPLSPEC15: u32 = 0x00400000;
+    pub const IMPLSPEC15: u32 = 0x0040_0000;
 
     /// Implementation-specific file type 16
-    pub const IMPLSPEC16: u32 = 0x00800000;
+    pub const IMPLSPEC16: u32 = 0x0080_0000;
 
     /// GZip Compressed Files
-    pub const COMPGZ: u32 = 0x10000000;
+    #[allow(clippy::doc_markdown)]
+    pub const COMPGZ: u32 = 0x1000_0000;
 
     /// XZip Compressed Files
-    pub const COMPXZ: u32 = 0x20000000;
+    #[allow(clippy::doc_markdown)]
+    pub const COMPXZ: u32 = 0x2000_0000;
 
     /// LZMA Compressed Files
-    pub const COMPLZMA: u32 = 0x40000000;
+    pub const COMPLZMA: u32 = 0x4000_0000;
 
     /// ZStd Compressed Files
-    pub const COMPZSTD: u32 = 0x80000000;
+    #[allow(clippy::doc_markdown)]
+    pub const COMPZSTD: u32 = 0x8000_0000;
 }
