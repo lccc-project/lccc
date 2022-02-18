@@ -65,10 +65,10 @@ file_contents shall be set as a bitfield, to indicate the kinds of files present
 - 0x00000100-0x00800000: The rlib contains other, compiler specific files. The compiler producing the rlib may assign an arbitrary meaning to these bits and to the contents of such files. 
     - It is RECOMMENDED that compilers producing such files define a manifest file containing information about these compiler-specific files, and refuse to interpret rlib files that set any of these bits and do not have a proper manifest present. 
     - [Note: The lccc compiler uses bits 0x00000100 and 0x00000200 to indicate the presence of xir bytecode and manifest files respectively, this is used for generic and inlineable functions, and when LTO is produced. Additionally, the lccc compiler uses bits 0x00001000 to indicate the presence of the language item table in the rlib, under a file called `.rlang`]
-- 0x1000000: The rlib contains gzip compressed files. Those files, and their content types, are described in an archive file called `.gz.rmanifest`.
-- 0x2000000: The rlib contains xz compressed files. Those files, and their content types, are described in an archive file called `.xz.rmanifest`.
-- 0x4000000: The rlib contains lzma compressed files. Those files, and their content types, are described in an archive file called `.lzma.rmanifest`.
-- 0x8000000: The rlib contains zstd compressed files. Those files, and their content types, are described in an archive file called `.zstd.rmanifest`.
+- 0x10000000: The rlib contains gzip compressed files. Those files, and their content types, are described in an archive file called `.gz.rmanifest`.
+- 0x20000000: The rlib contains xz compressed files. Those files, and their content types, are described in an archive file called `.xz.rmanifest`.
+- 0x40000000: The rlib contains lzma compressed files. Those files, and their content types, are described in an archive file called `.lzma.rmanifest`.
+- 0x80000000: The rlib contains zstd compressed files. Those files, and their content types, are described in an archive file called `.zstd.rmanifest`.
 
 Other bits have undefined meanings, and implementations should not set those bits and should ignore them if they are present. They may be assigned meaning in a future version.
 
