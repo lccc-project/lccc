@@ -689,7 +689,9 @@ impl XLangPlugin for X86CodegenPlugin {
                     body: xlang::abi::option::None,
                 })
                 | xlang_struct::MemberDeclaration::Scope(_)
-                | xlang_struct::MemberDeclaration::Empty => {}
+                | xlang_struct::MemberDeclaration::Empty
+                | xlang_struct::MemberDeclaration::OpaqueAggregate(_)
+                | xlang_struct::MemberDeclaration::AggregateDefinition(_) => {}
             }
         }
 

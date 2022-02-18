@@ -23,6 +23,7 @@ pub struct Path {
 pub enum AnnotationItem {
     Meta(Box<Annotation>),
     Identifier(Path),
+    Value(Value),
 }
 
 #[repr(C)]
@@ -74,6 +75,8 @@ pub enum MemberDeclaration {
     Empty,
     Scope(Scope),
     Function(FunctionDeclaration),
+    OpaqueAggregate(AggregateKind),
+    AggregateDefinition(AggregateDefinition),
 }
 
 impl Default for MemberDeclaration {
