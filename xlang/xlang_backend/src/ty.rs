@@ -1,5 +1,9 @@
 use xlang::{
-    ir::{ArrayType, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type, Value},
+    ir::{
+        AggregateDefinition, AggregateKind, ArrayType, PointerType, ScalarType, ScalarTypeHeader,
+        ScalarTypeKind, Type, Value,
+    },
+    prelude::v1::Pair,
     targets::properties::TargetProperties,
 };
 
@@ -69,6 +73,38 @@ pub fn type_size(ty: &Type, properties: &TargetProperties) -> Option<u64> {
             let acc_size = type_size(bty, properties)?;
             Some((acc_size.wrapping_neg() & !(align - 1)).wrapping_neg())
         }
+        Type::Aggregate(AggregateDefinition {
+            kind: AggregateKind::Struct,
+            fields,
+            ..
+        }) => {
+            let total_align = type_align(ty, properties)?;
+            let mut acc_size: u64 = 0;
+            for ty in fields.iter().map(|Pair(_, ty)| ty) {
+                let align = type_align(ty, properties)?;
+                acc_size = (acc_size.wrapping_neg() & !(align - 1)).wrapping_neg();
+                acc_size += type_size(ty, properties)?;
+            }
+            Some((acc_size.wrapping_neg() & !(total_align - 1)).wrapping_neg())
+        }
+        Type::Aggregate(AggregateDefinition {
+            kind: AggregateKind::Union,
+            fields,
+            ..
+        }) => {
+            let total_align = type_align(ty, properties)?;
+            fields
+                .iter()
+                .map(|Pair(_, ty)| ty)
+                .map(|ty| type_align(ty, properties))
+                .reduce(|a, b| match (a, b) {
+                    (None, _) => None,
+                    (_, None) => None,
+                    (Some(a), Some(b)) => Some(a.max(b)),
+                })
+                .flatten()
+                .map(|v| (v.wrapping_neg() & !(total_align - 1)).wrapping_neg())
+        }
     }
 }
 
@@ -105,10 +141,15 @@ pub fn type_align(ty: &Type, properties: &TargetProperties) -> Option<u64> {
             type_align(ty, properties)
         }
         Type::TaggedType(_, ty) => type_align(ty, properties),
-        Type::Product(tys) => tys
-            .iter()
-            .map(|ty| type_align(ty, properties))
-            .fold(Some(1), |a, b| a.zip(b).map(|(a, b)| a.max(b))),
+        Type::Product(tys) => {
+            tys.iter()
+                .map(|ty| type_align(ty, properties))
+                .fold(Some(1), |a, b| match (a, b) {
+                    (None, _) => None,
+                    (_, None) => None,
+                    (Some(a), Some(b)) => Some(a.max(b)),
+                })
+        }
         Type::Aligned(val, ty) => {
             let base_align = type_align(ty, properties)?;
             match &**val {
@@ -123,6 +164,15 @@ pub fn type_align(ty: &Type, properties: &TargetProperties) -> Option<u64> {
                 Value::Integer { val, .. } => Some((*val as u64).max(base_align)),
             }
         }
+        Type::Aggregate(AggregateDefinition { fields, .. }) => fields
+            .iter()
+            .map(|Pair(_, ty)| ty)
+            .map(|ty| type_align(ty, properties))
+            .fold(Some(1), |a, b| match (a, b) {
+                (None, _) => None,
+                (_, None) => None,
+                (Some(a), Some(b)) => Some(a.max(b)),
+            }),
     }
 }
 
@@ -141,5 +191,9 @@ pub fn field_type(ty: &Type, name: &str) -> Option<Type> {
             tys.get(id as usize).cloned()
         }
         Type::Aligned(_, ty) => field_type(ty, name),
+        Type::Aggregate(AggregateDefinition { fields, .. }) => fields
+            .iter()
+            .find(|Pair(n, _)| n == name)
+            .map(|Pair(_, ty)| ty.clone()),
     }
 }

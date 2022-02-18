@@ -144,6 +144,22 @@ pub enum Type {
     TaggedType(u16, Box<Self>),
     Product(Vec<Self>),
     Aligned(Box<Value>, Box<Self>),
+    Aggregate(AggregateDefinition),
+}
+
+#[repr(u16)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum AggregateKind {
+    Struct,
+    Union,
+}
+
+#[repr(C)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct AggregateDefinition {
+    pub anotations: AnnotatedElement,
+    pub kind: AggregateKind,
+    pub fields: Vec<Pair<String, Type>>,
 }
 
 impl Default for Type {

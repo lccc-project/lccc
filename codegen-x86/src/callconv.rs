@@ -2,8 +2,10 @@ use std::collections::HashSet;
 
 use arch_ops::x86::{features::X86Feature, X86Register, X86RegisterClass};
 use target_tuples::Target;
-use xlang::targets::properties::TargetProperties;
-use xlang_struct::{Abi, FnType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type};
+use xlang::{prelude::v1::Pair, targets::properties::TargetProperties};
+use xlang_struct::{
+    Abi, AggregateDefinition, FnType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type,
+};
 
 use xlang_backend::ty::type_size;
 
@@ -60,6 +62,20 @@ pub fn classify_type(ty: &Type) -> Option<TypeClass> {
             Some(infected)
         }
         Type::Aligned(_, _) => todo!(),
+        Type::Aggregate(AggregateDefinition { fields, .. }) => {
+            let mut infected = TypeClass::Zero;
+            for ty in fields.iter().map(|Pair(_, ty)| ty) {
+                infected = match (classify_type(ty)?, infected) {
+                    (a, TypeClass::Zero) => a,
+                    (_, TypeClass::Memory) => TypeClass::Memory,
+                    (TypeClass::Float, TypeClass::Sse) => TypeClass::Sse,
+                    (TypeClass::Float, TypeClass::X87) => TypeClass::X87,
+                    (a, b) if a == b => a,
+                    _ => TypeClass::Memory,
+                };
+            }
+            Some(infected)
+        }
     }
 }
 
