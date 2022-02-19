@@ -537,7 +537,7 @@ impl X86CodegenState {
             match item {
                 X86InstructionOrLabel::Label(num) => {
                     symbols.push(X86TempSymbol(
-                        format!("{}", num),
+                        num.to_string(),
                         Some(".text"),
                         Some(encoder.offset()),
                         SymbolType::Function,
