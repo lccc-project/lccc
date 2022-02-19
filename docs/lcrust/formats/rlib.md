@@ -74,7 +74,7 @@ Other bits have undefined meanings, and implementations should not set those bit
 
 stroff specifies the offset in the file to the string table header, or 0 if the file contains no string table
 croff specifies the offset in the file to the crate header, or 0 if the file contains no crate header.
-rettaboff specifies the offset in the file to the reference table header, or 0 if the file contains no reference table.
+reftaboff specifies the offset in the file to the reference table header, or 0 if the file contains no reference table.
 
 There may be bytes in the file that are not part of any structure defined by this format (for example, padding inserted between structures to correctly align headers within the file). The content of these bytes is undefined, and programs reading rmanifest files shall ignore these bytes. 
 
