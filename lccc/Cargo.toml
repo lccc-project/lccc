@@ -12,6 +12,7 @@ xlang = {path="../xlang"}
 xlang_host = {path="../xlang/xlang_host"}
 target-tuples = "0.5.3"
 temp-file = "0.1"
+which = "4.2.4"
 
 [build-dependencies]
 install-dirs = {version="0.2.1", features=["serde"]}

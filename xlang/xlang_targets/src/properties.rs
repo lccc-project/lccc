@@ -180,6 +180,8 @@ pub struct TargetProperties {
     pub interp: StringView<'static>,
 }
 
+mod clever;
+mod elf;
 mod linux;
 mod x86;
 
@@ -192,6 +194,7 @@ pub fn __get_properties(targ: Target) -> Option<&'static TargetProperties> {
     target_tuples::match_targets! {
         match (targ.into()){
             x86_64-*-linux-gnu => Some(&linux::X86_64_LINUX_GNU),
+            x86_64-*-elf => Some(&elf::X86_64_ELF),
             x86_64-*-linux-gnux32 => Some(&linux::X86_64_LINUX_GNUX32),
             x86_64v2-*-linux-gnu => Some(&linux::X86_64V2_LINUX_GNU),
             x86_64v2-*-linux-gnux32 => Some(&linux::X86_64V2_LINUX_GNUX32),
@@ -199,6 +202,7 @@ pub fn __get_properties(targ: Target) -> Option<&'static TargetProperties> {
             x86_64v3-*-linux-gnux32 => Some(&linux::X86_64V3_LINUX_GNUX32),
             x86_64v4-*-linux-gnu => Some(&linux::X86_64V4_LINUX_GNU),
             x86_64v4-*-linux-gnux32 => Some(&linux::X86_64V4_LINUX_GNUX32),
+            clever-*-elf => Some(&elf::CLEVER_ELF),
             i386-*-linux-gnu => Some(&linux::I386_LINUX_GNU),
             i486-*-linux-gnu => Some(&linux::I486_LINUX_GNU),
             i586-*-linux-gnu => Some(&linux::I586_LINUX_GNU),

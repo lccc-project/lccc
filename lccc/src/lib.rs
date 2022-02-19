@@ -3,7 +3,9 @@
 
 use std::path::PathBuf;
 
+use target_tuples::Target;
 use xlang::{
+    abi::string::StringView,
     host::rustcall,
     plugin::{XLangCodegen, XLangFrontend, XLangPlugin},
     prelude::v1::*,
@@ -70,3 +72,21 @@ pub fn find_libraries(search_paths: &[PathBuf], names: &[&str], prefix: &str) ->
 }
 
 pub const XLANG_PLUGIN_DIR: &str = std::env!("xlang_plugin_dir");
+
+pub fn find_tool(target: &Target, name: StringView) -> Option<PathBuf> {
+    let s = {
+        let mut s = String::new();
+        s += target.get_name();
+        s += "-";
+        s += name;
+        s
+    };
+
+    if let Ok(s) = which::which(s) {
+        Some(s)
+    } else if target.get_name() == std::env!("host") {
+        Some((&name).into())
+    } else {
+        None
+    }
+}

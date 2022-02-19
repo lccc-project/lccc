@@ -260,13 +260,15 @@ fn main() {
             LinkOutput::Static => {
                 let outputs = file_pairs.iter().map(|(_, output)| output);
 
-                match Command::new("ar")
-                    .arg("r")
-                    .arg("c")
-                    .arg("s")
-                    .arg(output.as_ref().unwrap())
-                    .args(outputs)
-                    .status()
+                match Command::new(
+                    lccc::find_tool(&target, const_sv!("ar")).expect("Could not find program `ar`"),
+                )
+                .arg("r")
+                .arg("c")
+                .arg("s")
+                .arg(output.as_ref().unwrap())
+                .args(outputs)
+                .status()
                 {
                     Ok(_) => todo!(),
                     Err(e) => panic!(
