@@ -2,5 +2,6 @@ target/
 autom4te.cache/
 config.toml
 *.o
+*.a
 a.out
 testfile

@@ -79,7 +79,7 @@ fn main() {
             "ldout",
             xlang::vec!["linker-output"],
             Vec::new(),
-            TakesArg::Never,
+            TakesArg::Always,
             true
         ),
         ArgSpec::new(
@@ -263,14 +263,12 @@ fn main() {
                 match Command::new(
                     lccc::find_tool(&target, const_sv!("ar")).expect("Could not find program `ar`"),
                 )
-                .arg("r")
-                .arg("c")
-                .arg("s")
+                .arg("-rcs")
                 .arg(output.as_ref().unwrap())
                 .args(outputs)
                 .status()
                 {
-                    Ok(_) => todo!(),
+                    Ok(_) => {}
                     Err(e) => panic!(
                         "Could not run command ar rcs {}: {}",
                         file_pairs
