@@ -2,6 +2,7 @@
 
 pub mod callconv;
 
+use std::cmp::Ordering;
 use std::convert::TryInto;
 use std::{
     cell::RefCell, collections::HashSet, convert::TryFrom, hash::Hash, rc::Rc, str::FromStr,
@@ -12,7 +13,7 @@ use arch_ops::{
     x86::{
         features::X86Feature,
         insn::{ModRM, ModRMRegOrSib, X86Encoder, X86Instruction, X86Mode, X86Opcode, X86Operand},
-        X86Register,
+        X86Register, X86RegisterClass,
     },
 };
 
@@ -22,11 +23,13 @@ use binfmt::{
 };
 use callconv::X86CallConv;
 use target_tuples::Target;
+use xlang::prelude::v1::HashMap;
 use xlang::{
     plugin::{XLangCodegen, XLangPlugin},
     prelude::v1::{Box, DynBox, Option as XLangOption, Pair},
     targets::properties::{MachineProperties, TargetProperties},
 };
+use xlang_backend::ty::type_size;
 use xlang_backend::{
     expr::{LValue, VStackValue},
     str::{Encoding, StringMap},
@@ -68,8 +71,7 @@ enum RegisterStatus {
     Free,
     ToClobber,
     MustSave,
-    StackVal { off: usize, hash: u64 },
-    LocalVariable(usize),
+    InUse,
     Saved { loc: ValLocation, next: Box<Self> },
 }
 
@@ -97,6 +99,10 @@ pub struct X86CodegenState {
     strings: Rc<RefCell<StringMap>>,
     callconv: std::boxed::Box<dyn X86CallConv>,
     fnty: FnType,
+    frame_size: i32,
+    properties: &'static TargetProperties,
+    gpr_status: HashMap<u8, RegisterStatus>,
+    _xmm_status: HashMap<u8, RegisterStatus>,
 }
 
 impl FunctionRawCodegen for X86CodegenState {
@@ -275,14 +281,25 @@ impl FunctionRawCodegen for X86CodegenState {
                     ValLocation::BpDisp(disp) => todo!("[bp{:+}]", disp),
                     ValLocation::SpDisp(disp) => todo!("[sp{:+}]", disp),
                     ValLocation::Register(r) => {
-                        self.insns
-                            .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                X86Opcode::MovImm,
-                                vec![
-                                    X86Operand::Register(r),
-                                    X86Operand::Immediate(u64::try_from(val).unwrap()),
-                                ],
-                            )));
+                        if val == 0 {
+                            self.insns
+                                .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                                    X86Opcode::XorRM,
+                                    vec![
+                                        X86Operand::Register(r),
+                                        X86Operand::ModRM(ModRM::Direct(r)),
+                                    ],
+                                )));
+                        } else {
+                            self.insns
+                                .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                                    X86Opcode::MovImm,
+                                    vec![
+                                        X86Operand::Register(r),
+                                        X86Operand::Immediate(u64::try_from(val).unwrap()),
+                                    ],
+                                )));
+                        }
                     }
                     _ => todo!(),
                 },
@@ -364,9 +381,59 @@ impl FunctionRawCodegen for X86CodegenState {
                     loc => todo!("move_val({:?})", loc),
                 }
             }
-            VStackValue::LValue(_, _)
-            | VStackValue::Pointer(_, _)
-            | VStackValue::OpaqueScalar(_, _) => {
+            VStackValue::OpaqueScalar(_, l2) => match (loc, l2) {
+                (_, ValLocation::Null) | (ValLocation::Null, _) => {}
+                (ValLocation::Unassigned(_), _) | (_, ValLocation::Unassigned(_)) => {
+                    panic!("Unassigned location");
+                }
+                (ValLocation::Register(r), ValLocation::BpDisp(disp)) => {
+                    todo!("mov rbp{:+#x},{}", disp, r);
+                }
+                (ValLocation::Register(r), ValLocation::SpDisp(disp)) => {
+                    todo!("mov rsp{:+#x},{}", disp, r);
+                }
+                (ValLocation::Register(r1), ValLocation::Register(r2)) => {
+                    if r1 == r2 {
+                        // Already done
+                    } else {
+                        match r1.class().size(self.mode).cmp(&r2.class().size(self.mode)) {
+                            Ordering::Equal => {
+                                if r1.class().size(self.mode) == 1 {
+                                    self.insns.push(X86InstructionOrLabel::Insn(
+                                        X86Instruction::new(
+                                            X86Opcode::MovRM8,
+                                            vec![
+                                                X86Operand::Register(r1),
+                                                X86Operand::ModRM(ModRM::Direct(r2)),
+                                            ],
+                                        ),
+                                    ));
+                                } else {
+                                    self.insns.push(X86InstructionOrLabel::Insn(
+                                        X86Instruction::new(
+                                            X86Opcode::MovRM,
+                                            vec![
+                                                X86Operand::Register(r1),
+                                                X86Operand::ModRM(ModRM::Direct(r2)),
+                                            ],
+                                        ),
+                                    ));
+                                }
+                            }
+                            _ => todo!(),
+                        }
+                    }
+                }
+                (ValLocation::Register(_), ValLocation::Regs(_) | ValLocation::ImpliedPtr(_))
+                | (
+                    ValLocation::Regs(_)
+                    | ValLocation::ImpliedPtr(_)
+                    | ValLocation::BpDisp(_)
+                    | ValLocation::SpDisp(_),
+                    _,
+                ) => todo!("mem"),
+            },
+            VStackValue::LValue(_, _) | VStackValue::Pointer(_, _) => {
                 todo!()
             }
             VStackValue::Trapped => {}
@@ -409,12 +476,55 @@ impl FunctionRawCodegen for X86CodegenState {
         todo!()
     }
 
-    fn assign_value(&mut self, _ty: &Type, _needs_addr: bool) -> Self::Loc {
-        todo!()
+    fn allocate(&mut self, ty: &Type, needs_addr: bool) -> Self::Loc {
+        let size = type_size(ty, self.properties).unwrap();
+        if !(size > 8 || needs_addr) {
+            for i in 0..(if self.mode == X86Mode::Long { 16 } else { 8 }) {
+                let class = X86RegisterClass::gpr_size(
+                    size.next_power_of_two().try_into().unwrap(),
+                    self.mode,
+                )
+                .unwrap();
+                let mode = self.gpr_status.get_or_insert_mut(i, RegisterStatus::Free);
+                match mode {
+                    RegisterStatus::Free => {
+                        let reg = X86Register::from_class(class, i).unwrap();
+                        *mode = RegisterStatus::InUse;
+                        return ValLocation::Register(reg);
+                    }
+                    _ => continue,
+                }
+            }
+        }
+        let offset = self.frame_size;
+
+        self.frame_size += i32::try_from(size).unwrap(); // A pointer could be 16, 32, or 64 bits
+                                                         // TODO: Alignment
+        ValLocation::BpDisp(offset)
     }
 
-    fn prepare_stack_frame(&mut self, _to_assign: &[Type]) -> xlang::prelude::v1::Option<usize> {
-        todo!()
+    fn allocate_lvalue(&mut self, needs_addr: bool) -> Self::Loc {
+        if !needs_addr {
+            for i in 0..(if self.mode == X86Mode::Long { 16 } else { 8 }) {
+                let class =
+                    X86RegisterClass::gpr_size((self.properties.ptrbits / 8) as usize, self.mode)
+                        .unwrap();
+                let mode = self.gpr_status.get_or_insert_mut(i, RegisterStatus::Free);
+                match mode {
+                    RegisterStatus::Free => {
+                        let reg = X86Register::from_class(class, i).unwrap();
+                        *mode = RegisterStatus::InUse;
+                        return ValLocation::Register(reg);
+                    }
+                    _ => continue,
+                }
+            }
+        }
+        let offset = self.frame_size;
+
+        self.frame_size += i32::from(self.properties.ptrbits / 8); // A pointer could be 16, 32, or 64 bits
+                                                                   // TODO: Alignment
+        ValLocation::BpDisp(offset)
     }
 
     fn write_binary_op(
@@ -516,6 +626,7 @@ impl FunctionRawCodegen for X86CodegenState {
 
 impl X86CodegenState {
     #[allow(clippy::missing_errors_doc)]
+    #[allow(clippy::missing_panics_doc)]
     pub fn write_output(
         self,
         text: &mut Section,
@@ -531,6 +642,13 @@ impl X86CodegenState {
             vec![
                 X86Operand::ModRM(ModRM::Direct(X86Register::Rbp)),
                 X86Operand::Register(X86Register::Rsp),
+            ],
+        ))?;
+        encoder.write_insn(X86Instruction::new(
+            X86Opcode::SubImm,
+            vec![
+                X86Operand::ModRM(ModRM::Direct(X86Register::Rsp)),
+                X86Operand::Immediate(self.frame_size.try_into().unwrap()),
             ],
         ))?;
         for item in self.insns {
@@ -673,6 +791,10 @@ impl XLangPlugin for X86CodegenPlugin {
                                 features.clone(),
                             )
                             .unwrap(),
+                            properties,
+                            _xmm_status: HashMap::new(),
+                            gpr_status: HashMap::new(),
+                            frame_size: 0,
                         },
                         path.clone(),
                         ty.clone(),

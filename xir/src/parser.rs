@@ -426,7 +426,7 @@ pub fn parse_stack_items<I: Iterator<Item = Token>>(it: I) -> Vec<StackItem> {
             Some(_) => {
                 ret.push(StackItem {
                     ty: parse_type(&mut peekable).unwrap(),
-                    kind: xlang_struct::StackValueKind::LValue,
+                    kind: xlang_struct::StackValueKind::RValue,
                 });
             }
             None => break ret,

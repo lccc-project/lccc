@@ -9,7 +9,7 @@ use xlang::{
     abi::string::StringView,
     ir::{
         AccessClass, AggregateCtor, BinaryOp, Block, BranchCondition, Expr, FnType, Path,
-        PathComponent, PointerType, ScalarType, StackItem, Type, UnaryOp, Value,
+        PathComponent, PointerType, ScalarType, StackItem, StackValueKind, Type, UnaryOp, Value,
     },
     prelude::v1::*,
     targets::properties::TargetProperties,
@@ -148,11 +148,12 @@ pub trait FunctionRawCodegen {
     /// Clobbers the given location, saving the value and then freeing it.
     fn clobber(&mut self, loc: Self::Loc);
 
-    /// Assigns space in the prepared stack frame or a register to store a local variable of type `Type`
-    fn assign_value(&mut self, ty: &Type, needs_addr: bool) -> Self::Loc;
-    /// Prepares a stack frame for use.
-    /// This should be called before any other operations
-    fn prepare_stack_frame(&mut self, to_assign: &[Type]) -> Option<usize>;
+    /// Allocates space to store a local variable or stack value of type `Type`
+    fn allocate(&mut self, ty: &Type, needs_addr: bool) -> Self::Loc;
+
+    /// Allocates space to store an lvalue
+    fn allocate_lvalue(&mut self, needs_addr: bool) -> Self::Loc;
+
     /// Writes the result of some binary operator applied to v1 and v2 to the location given by `out`
     /// Implementations should be prepared to handle constant values, as well as opaque values
     fn write_binary_op(
@@ -185,7 +186,6 @@ pub struct FunctionCodegen<F: FunctionRawCodegen> {
     vstack: VecDeque<VStackValue<F::Loc>>,
     properties: &'static TargetProperties,
     targets: HashMap<u32, Vec<(F::Loc, StackItem)>>,
-    unassigned_count: usize,
     diverged: bool,
 }
 
@@ -203,7 +203,6 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             vstack: VecDeque::new(),
             targets: HashMap::new(),
             diverged: false,
-            unassigned_count: 0,
         }
     }
 
@@ -323,7 +322,9 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         for (val, (loc, _)) in vals.into_iter().zip(locs) {
                             self.inner.move_value(val, loc); // This will break if the branch target uses any values rn.
                         }
-                        self.clear_stack()
+                        self.inner.branch_unconditional(*target);
+                        self.clear_stack();
+                        self.diverged = true;
                     }
                     BranchCondition::Less => todo!(),
                     BranchCondition::LessEqual => todo!(),
@@ -414,33 +415,82 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         }
     }
 
+    /// Pushes an opaque value of the given type
+    pub fn push_opaque(&mut self, ty: &Type, loc: F::Loc) {
+        match ty {
+            Type::Scalar(st) => self.vstack.push_back(VStackValue::OpaqueScalar(*st, loc)),
+            Type::Void | Type::Null | Type::FnType(_) => {
+                self.vstack.push_back(VStackValue::Trapped)
+            }
+            Type::Pointer(pty) => self.vstack.push_back(VStackValue::Pointer(
+                pty.clone(),
+                LValue::OpaquePointer(loc),
+            )),
+            Type::Array(_) => todo!(),
+            Type::TaggedType(_, ty) | Type::Aligned(_, ty) => self.push_opaque(ty, loc),
+            Type::Product(_) | Type::Aggregate(_) => self
+                .vstack
+                .push_back(VStackValue::OpaqueAggregate(ty.clone(), loc)),
+        }
+    }
+
     /// Writes the elements of a block to the codegen, usually the top level block of a function
     pub fn write_block(&mut self, block: &Block, n: u32) {
         for item in &block.items {
             if let xlang::ir::BlockItem::Target { num, stack } = item {
-                let values = core::iter::repeat_with(|| {
-                    let x = self.unassigned_count;
-                    self.unassigned_count += 1;
-                    x
-                })
-                .map(F::Loc::unassigned)
-                .zip(stack.iter().cloned())
-                .collect::<Vec<_>>();
+                let values = stack
+                    .iter()
+                    .map(|item| match item {
+                        StackItem {
+                            kind: StackValueKind::LValue,
+                            ..
+                        } => (self.inner.allocate_lvalue(false), item.clone()),
+                        StackItem {
+                            kind: StackValueKind::RValue,
+                            ty,
+                        } => (self.inner.allocate(ty, false), item.clone()),
+                    })
+                    .collect();
                 self.targets.insert(*num, values);
             }
         }
 
         for item in &block.items {
-            self.diverged = false;
             match item {
                 xlang::ir::BlockItem::Expr(expr) => self.write_expr(expr),
                 xlang::ir::BlockItem::Target { num, .. } => {
+                    if !self.diverged {
+                        let locs = self.targets[num].clone();
+                        let vals = self.pop_values(locs.len()).unwrap();
+                        for (val, (loc, _)) in vals.into_iter().zip(locs) {
+                            self.inner.move_value(val, loc); // This will break if the branch target uses any values rn.
+                        }
+                        self.clear_stack();
+                    }
+                    for (loc, item) in self.targets[num].clone() {
+                        match item {
+                            StackItem {
+                                kind: StackValueKind::LValue,
+                                ty,
+                            } => self.vstack.push_back(VStackValue::LValue(
+                                ty.clone(),
+                                LValue::OpaquePointer(loc),
+                            )),
+                            StackItem {
+                                kind: StackValueKind::RValue,
+                                ty,
+                            } => self.push_opaque(&ty, loc),
+                        }
+                    }
                     self.inner.write_target(*num);
+                    self.diverged = false;
                 }
             }
         }
         if n == 0 && !self.diverged {
             self.inner.return_void();
+        } else {
+            self.diverged = false;
         }
     }
 }

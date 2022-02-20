@@ -1,0 +1,6 @@
+function main() -> int(32){
+    const int(32) 0
+    branch always @0
+    target @0 [int(32)]
+    exit block $0 1
+}
