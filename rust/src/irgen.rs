@@ -14,9 +14,9 @@ use xlang::{
 };
 
 fn identifier_to_path(id: Identifier) -> ir::Path {
-    let Identifier::Basic(id) = id;
+    let Identifier::Basic { name, .. } = id;
     ir::Path {
-        components: abi::vec![ir::PathComponent::Text(abi::string::String::from(&id))],
+        components: abi::vec![ir::PathComponent::Text(abi::string::String::from(&name))],
     }
 }
 

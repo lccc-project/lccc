@@ -5,13 +5,24 @@ use std::fmt::{self, Display, Formatter};
 
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub enum Identifier {
-    Basic(String),
+    Basic {
+        mangling: Option<Mangling>,
+        name: String
+    },
+}
+
+impl Identifier {
+    pub fn matches(&self, other: &Self) -> bool {
+        let Self::Basic { name, .. } = self;
+        let Self::Basic { name: other_name, .. } = other;
+        name == other_name
+    }
 }
 
 impl Display for Identifier {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let Identifier::Basic(id) = self;
-        write!(f, "{}", id)
+        let Identifier::Basic { name, .. } = self;
+        write!(f, "{}", name)
     }
 }
 
@@ -171,7 +182,6 @@ pub enum Mangling {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct FunctionSignature {
     pub abi: Abi,
-    pub mangling: Mangling,
     pub params: Vec<Type>,
     pub return_ty: Box<Type>,
     pub safety: Safety,
@@ -469,7 +479,7 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
                 .collect(),
         },
         crate::parse::Expr::Id(id) => Expression::Identifier {
-            id: Identifier::Basic(id.clone()),
+            id: Identifier::Basic { mangling: None, name: id.clone() },
             ty: None,
         },
         crate::parse::Expr::Parentheses(inner) => convert_expr(named_types, inner), // I assume this only exists for lints
@@ -558,18 +568,17 @@ pub fn convert(items: &[Item]) -> Program {
         } => {
             declarations.push(Declaration::Function {
                 has_definition: block.is_some(),
-                name: Identifier::Basic(name.clone()),
+                name: Identifier::Basic { name: name.clone(), mangling: Some(if abi.is_some() {
+                    Mangling::Rust
+                } else {
+                    Mangling::C
+                })},
                 sig: FunctionSignature {
                     abi: abi.map_or(Abi::Rust, |x| match x {
                         "C" => Abi::C,
                         "Rust" => Abi::Rust,
                         _ => todo!(),
                     }),
-                    mangling: if abi.is_some() {
-                        Mangling::Rust
-                    } else {
-                        Mangling::C
-                    },
                     params: params
                         .iter()
                         .map(|FnParam { ty, .. }| convert_ty(&named_types, ty))
@@ -593,7 +602,7 @@ pub fn convert(items: &[Item]) -> Program {
     });
     // Pass 3: convert functions
     let mut definitions = Vec::new();
-    iter_in_scope(items, None, &mut |item, _| {
+    iter_in_scope(items, None, &mut |item, abi| {
         if let Item::FnDeclaration {
             safety,
             name,
@@ -615,7 +624,11 @@ pub fn convert(items: &[Item]) -> Program {
                 })];
             }
             definitions.push(Definition::Function {
-                name: Identifier::Basic(name.clone()),
+                name: Identifier::Basic { name: name.clone(), mangling: Some(if abi.is_some() {
+                    Mangling::Rust
+                } else {
+                    Mangling::C
+                })},
                 return_ty: return_ty
                     .as_ref()
                     .map_or_else(|| Type::Tuple(Vec::new()), |x| convert_ty(&named_types, x)),
@@ -692,7 +705,7 @@ fn typeck_expr(
         Expression::Identifier { id, ty: id_ty } => {
             let mut result = None;
             for decl in declarations {
-                if decl.name() == id {
+                if decl.name().matches(&id) {
                     result = Some(decl.ty());
                 }
             }
