@@ -19,7 +19,8 @@ fn identifier_to_path(id: Identifier) -> ir::Path {
         Some(Mangling::C) => ir::Path {
             components: abi::vec![ir::PathComponent::Text(abi::string::String::from(&name))],
         },
-        _ => ir::Path { // Assume None == Mangling::Rust
+        _ => ir::Path {
+            // Assume None == Mangling::Rust
             components: abi::vec![
                 ir::PathComponent::Text(abi::string::String::from("__crate_name_placeholder__")),
                 ir::PathComponent::Text(abi::string::String::from(&name))
