@@ -13,19 +13,39 @@ use xlang::{
     ir,
 };
 
-fn identifier_to_path(id: Identifier) -> ir::Path {
+fn signature_component(signature: &FunctionSignature) -> ir::PathComponent {
+    let mut result = abi::string::String::new();
+    result.push_str("signature(");
+    if signature.params.is_empty() {
+        result.push_str("void");
+    } else {
+        todo!()
+    }
+    result.push(')');
+    if !signature.return_ty.is_unit() {
+        todo!()
+    }
+    ir::PathComponent::SpecialComponent(result)
+}
+
+#[allow(clippy::single_match_else)]
+fn identifier_to_path(id: Identifier, signature: Option<&FunctionSignature>) -> ir::Path {
     let Identifier::Basic { mangling, name } = id;
     match mangling {
         Some(Mangling::C) => ir::Path {
             components: abi::vec![ir::PathComponent::Text(abi::string::String::from(&name))],
         },
-        _ => ir::Path {
+        _ => {
             // Assume None == Mangling::Rust
-            components: abi::vec![
+            let mut components = abi::vec![
                 ir::PathComponent::Text(abi::string::String::from("__crate_name_placeholder__")),
                 ir::PathComponent::Text(abi::string::String::from(&name))
-            ],
-        },
+            ];
+            if let Some(signature) = signature {
+                components.push(signature_component(signature));
+            }
+            ir::Path { components }
+        }
     }
 }
 
@@ -123,8 +143,14 @@ fn irgen_expr(expr: Expression, n: u32) -> Vec<ir::BlockItem> {
         Expression::Identifier { id, ty: Some(ty) } => {
             vec![ir::BlockItem::Expr(ir::Expr::Const(
                 ir::Value::GlobalAddress {
-                    ty: irgen_type(ty),
-                    item: identifier_to_path(id),
+                    ty: irgen_type(ty.clone()),
+                    item: identifier_to_path(
+                        id,
+                        match &ty {
+                            Type::Function(sig) => Some(sig),
+                            _ => None,
+                        },
+                    ),
                 },
             ))]
         }
@@ -198,7 +224,12 @@ pub fn irgen(program: &Program, file: &mut ir::File) {
             continue;
         }
         file.root.members.insert(
-            identifier_to_path(declaration.name().clone()),
+            identifier_to_path(
+                declaration.name().clone(),
+                match declaration {
+                    Declaration::Function { sig, .. } => Some(sig),
+                },
+            ),
             ir::ScopeMember {
                 vis: ir::Visibility::Public, // TODO: support other visibilities
                 member_decl: match declaration {
@@ -221,7 +252,7 @@ pub fn irgen(program: &Program, file: &mut ir::File) {
             .find(|x| x.name().matches(name))
             .unwrap();
         file.root.members.insert(
-            identifier_to_path(name.clone()),
+            identifier_to_path(name.clone(), Some(sig)),
             ir::ScopeMember {
                 vis: ir::Visibility::Public,
                 member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration {
