@@ -927,6 +927,7 @@ impl XLangPlugin for X86CodegenPlugin {
         &mut self,
         ir: &mut xlang_struct::File,
     ) -> xlang::abi::result::Result<(), xlang::plugin::Error> {
+        self.fns = Some(std::collections::HashMap::new());
         for Pair(path, member) in &ir.root.members {
             let name = &*path.components;
             let name = match name {
