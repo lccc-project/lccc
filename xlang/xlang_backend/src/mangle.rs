@@ -99,14 +99,8 @@ pub fn mangle_itanium(path: &[PathComponent]) -> String {
                     match tokens.next().unwrap() {
                         Token::Parens(g) => {
                             let mut iter = g.into_iter().peekable();
-                            loop {
-                                match parse_type(&mut iter) {
-                                    Some(s) => {
-                                        name.push_str(&s);
-                                        iter.next(); // Todo: Ensure this is a comma or nothing
-                                    }
-                                    None => break,
-                                }
+                            while let Some(s) = parse_type(&mut iter) {
+                                name.push_str(&s);
                             }
                             match tokens.next() {
                                 Some(Token::Sigil('-')) => match tokens.next().unwrap() {
