@@ -1,3 +1,5 @@
+#![allow(clippy::module_name_repetitions)]
+
 use crate::sema::{
     Abi, Declaration, Definition, Expression, FunctionSignature, Identifier, IntType, LangItem,
     Mangling, Mutability, Program, Safety, Statement, Type, Visibility,
@@ -225,7 +227,7 @@ pub fn irgen_definition(
 ) {
     let Definition::Function { name, body, .. } = definition;
     let Declaration::Function { sig, .. } = declarations
-        .into_iter()
+        .iter()
         .find(|x| x.name().matches(name))
         .unwrap();
     file.root.members.insert(
@@ -243,18 +245,16 @@ pub fn irgen_definition(
 
 pub fn irgen_main(main: &Identifier, declarations: &[Declaration], file: &mut ir::File) {
     let Declaration::Function { sig: main_sig, .. } = declarations
-        .into_iter()
+        .iter()
         .find(|x| x.name().matches(main))
         .unwrap();
-    let body = vec![
-        Statement::Discard(Expression::FunctionCall {
-            func: Box::new(Expression::Identifier {
-                id: main.clone(),
-                ty: Some(Type::Function(main_sig.clone())),
-            }),
-            args: Vec::new(),
+    let body = vec![Statement::Discard(Expression::FunctionCall {
+        func: Box::new(Expression::Identifier {
+            id: main.clone(),
+            ty: Some(Type::Function(main_sig.clone())),
         }),
-    ];
+        args: Vec::new(),
+    })];
     let name = Identifier::Basic {
         mangling: Some(Mangling::C),
         name: String::from("__lccc_main"),
