@@ -1,6 +1,6 @@
 use crate::sema::{
-    Declaration, Definition, Expression, FunctionSignature, Identifier, IntType, Mangling,
-    Mutability, Program, Statement, Type,
+    Abi, Declaration, Definition, Expression, FunctionSignature, Identifier, IntType, LangItem,
+    Mangling, Mutability, Program, Safety, Statement, Type, Visibility,
 };
 
 use std::convert::TryInto; // TODO: Remove when we move to edition 2021
@@ -218,6 +218,69 @@ fn sig_to_fn_type(sig: FunctionSignature) -> ir::FnType {
     }
 }
 
+pub fn irgen_definition(
+    definition: &Definition,
+    declarations: &[Declaration],
+    file: &mut ir::File,
+) {
+    let Definition::Function { name, body, .. } = definition;
+    let Declaration::Function { sig, .. } = declarations
+        .into_iter()
+        .find(|x| x.name().matches(name))
+        .unwrap();
+    file.root.members.insert(
+        identifier_to_path(name.clone(), Some(sig)),
+        ir::ScopeMember {
+            vis: ir::Visibility::Public,
+            member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration {
+                ty: sig_to_fn_type(sig.clone()),
+                body: AbiSome(irgen_block(body.clone(), 0)),
+            }),
+            ..ir::ScopeMember::default()
+        },
+    );
+}
+
+pub fn irgen_main(main: &Identifier, declarations: &[Declaration], file: &mut ir::File) {
+    let Declaration::Function { sig: main_sig, .. } = declarations
+        .into_iter()
+        .find(|x| x.name().matches(main))
+        .unwrap();
+    let body = vec![
+        Statement::Discard(Expression::FunctionCall {
+            func: Box::new(Expression::Identifier {
+                id: main.clone(),
+                ty: Some(Type::Function(main_sig.clone())),
+            }),
+            args: Vec::new(),
+        }),
+    ];
+    let name = Identifier::Basic {
+        mangling: Some(Mangling::C),
+        name: String::from("__lccc_main"),
+    };
+    let sig = FunctionSignature {
+        abi: Abi::Rust,
+        params: Vec::new(),
+        return_ty: Box::new(Type::Integer(IntType::I32)),
+        safety: Safety::Safe,
+        visibility: Visibility::Pub,
+    };
+    irgen_definition(
+        &Definition::Function {
+            name: name.clone(),
+            return_ty: (*sig.return_ty).clone(),
+            body,
+        },
+        &[Declaration::Function {
+            has_definition: true,
+            name,
+            sig,
+        }],
+        file,
+    );
+}
+
 pub fn irgen(program: &Program, file: &mut ir::File) {
     for declaration in &program.declarations {
         if declaration.has_definition() {
@@ -245,22 +308,9 @@ pub fn irgen(program: &Program, file: &mut ir::File) {
         );
     }
     for definition in &program.definitions {
-        let Definition::Function { name, body, .. } = definition;
-        let Declaration::Function { sig, .. } = program
-            .declarations
-            .iter()
-            .find(|x| x.name().matches(name))
-            .unwrap();
-        file.root.members.insert(
-            identifier_to_path(name.clone(), Some(sig)),
-            ir::ScopeMember {
-                vis: ir::Visibility::Public,
-                member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration {
-                    ty: sig_to_fn_type(sig.clone()),
-                    body: AbiSome(irgen_block(body.clone(), 0)),
-                }),
-                ..ir::ScopeMember::default()
-            },
-        );
+        irgen_definition(definition, &program.declarations, file);
+    }
+    if let Some(main) = program.lang_items.get(&LangItem::Main) {
+        irgen_main(main, &program.declarations, file);
     }
 }
