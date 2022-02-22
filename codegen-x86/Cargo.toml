@@ -13,6 +13,7 @@ xlang = {path="../xlang"}
 xlang_struct = {path="../xlang/xlang_struct"}
 xlang_backend = {path="../xlang/xlang_backend"}
 target-tuples = "0.5.2"
+lccc-mangle = {path="../lccc-mangle"}
 
 [lib]
 crate-type = ["cdylib"]

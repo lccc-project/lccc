@@ -508,3 +508,26 @@ macro_rules! span{
         $crate::span::Span::new(&[$expr;$repeat])
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::{Span, SpanMut};
+    use crate::span;
+    #[test]
+    fn test_span_empty() {
+        let s = Span::<u8>::empty();
+        assert_eq!(s.len(), 0);
+    }
+
+    #[test]
+    fn test_span_mut_empty() {
+        let s = SpanMut::<u8>::empty();
+        assert_eq!(s.len(), 0);
+    }
+
+    #[test]
+    fn test_span_macro_empty() {
+        let s: Span<u8> = span![];
+        assert_eq!(s.len(), 0);
+    }
+}

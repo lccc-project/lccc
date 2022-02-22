@@ -30,6 +30,9 @@ pub mod intrinsic;
 /// Module for handling calling convention, and calling functions
 pub mod callconv;
 
+/// Module for name mangling
+pub mod mangle;
+
 ///
 /// Basic Trait for creating the code generator
 pub trait FunctionRawCodegen {
@@ -301,7 +304,24 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                     self.vstack.push_back(ret)
                                 }
                             }
-                            [..] => intrinsic::call_intrinsic(&item, self, ty),
+                            [PathComponent::Root, name @ ..] | [name @ ..] => match name.first() {
+                                std::option::Option::Some(PathComponent::Text(n))
+                                    if n == "__lccc" || n == "__lccc__" =>
+                                {
+                                    intrinsic::call_intrinsic(&item, self, ty)
+                                }
+                                std::option::Option::Some(_) => {
+                                    let name = mangle::mangle_itanium(name);
+                                    if let Some(ret) =
+                                        self.inner.call_direct(StringView::new(&name), ty, params)
+                                    {
+                                        self.vstack.push_back(ret)
+                                    }
+                                }
+                                std::option::Option::None => {
+                                    panic!("unexpected path without components")
+                                }
+                            },
                         }
                     }
                     VStackValue::Constant(Value::Uninitialized(_))

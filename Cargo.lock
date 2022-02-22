@@ -54,6 +54,7 @@ version = "0.1.0"
 dependencies = [
  "arch-ops",
  "binfmt",
+ "lccc-mangle",
  "target-tuples 0.5.4",
  "xlang",
  "xlang_backend",
@@ -127,6 +128,10 @@ dependencies = [
  "xlang",
  "xlang_host",
 ]
+
+[[package]]
+name = "lccc-mangle"
+version = "0.1.0"
 
 [[package]]
 name = "libc"

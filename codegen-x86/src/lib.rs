@@ -930,11 +930,12 @@ impl XLangPlugin for X86CodegenPlugin {
         for Pair(path, member) in &ir.root.members {
             let name = &*path.components;
             let name = match name {
-                [xlang_struct::PathComponent::Text(t)]
-                | [xlang_struct::PathComponent::Root, xlang_struct::PathComponent::Text(t)] => &**t,
-                _ => panic!("Cannot access name component"),
-            }
-            .to_string();
+                [xlang_struct::PathComponent::Root, xlang_struct::PathComponent::Text(t)]
+                | [xlang_struct::PathComponent::Text(t)] => t.to_string(),
+                [xlang_struct::PathComponent::Root, v @ ..] | [v @ ..] => {
+                    xlang_backend::mangle::mangle_itanium(v)
+                }
+            };
 
             match &member.member_decl {
                 xlang_struct::MemberDeclaration::Function(FunctionDeclaration {

@@ -1098,7 +1098,9 @@ pub fn handle_alloc_error(layout: Layout) -> ! {
 
 #[cfg(all(test, miri))]
 mod test {
-    use super::{xlang_allocate, xlang_deallocate};
+    use super::{
+        xlang_allocate, xlang_allocate_aligned, xlang_deallocate, xlang_deallocate_aligned,
+    };
     #[test]
     pub fn test_alloc() {
         let p = unsafe { xlang_allocate(4) } as *mut i32;
@@ -1109,5 +1111,19 @@ mod test {
             p.write(4i32);
         }
         unsafe { xlang_deallocate(p as *mut _, 4) }
+    }
+
+    #[test]
+    pub fn test_alloc_align() {
+        #[repr(align(256))]
+        struct Foo(u8);
+        let p = unsafe { xlang_allocate_aligned(256, 256) } as *mut Foo;
+        if p.is_null() {
+            return;
+        }
+        unsafe {
+            p.write(Foo(0));
+        }
+        unsafe { xlang_deallocate_aligned(p as *mut _, 256, 256) }
     }
 }

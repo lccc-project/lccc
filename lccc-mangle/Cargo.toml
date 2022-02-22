@@ -1,5 +1,5 @@
 [package]
-name = "xlang-mangle"
+name = "lccc-mangle"
 version = "0.1.0"
 authors = ["Connor Horman <chorman64@gmail.com>"]
 edition = "2018"

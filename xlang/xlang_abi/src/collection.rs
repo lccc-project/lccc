@@ -714,3 +714,48 @@ impl<'a, K> Iterator for SetIter<'a, K> {
         self.0.next()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn test_hash_map_get() {
+        let mut map = HashMap::<&str, i32>::new();
+        map.insert("Hi", 0);
+        assert_eq!(map.get("Hi"), Some(&0));
+    }
+    #[test]
+    fn test_hash_map_missing() {
+        let mut map = HashMap::<&str, i32>::new();
+        map.insert("Hi", 0);
+        assert_eq!(map.get("Bye"), None);
+    }
+
+    #[test]
+    fn test_hash_map_iter_count() {
+        let mut map = HashMap::<&str, i32>::new();
+        map.insert("Hi", 0);
+        map.insert("Hello", 1);
+        assert_eq!(map.iter().count(), 2);
+    }
+
+    #[test]
+    fn test_hash_map_iter_present() {
+        let mut map = HashMap::<&str, i32>::new();
+        map.insert("Hi", 0);
+        map.insert("Hello", 1);
+        let mut iter = map.iter();
+        assert!(iter.any(|Pair(s, _)| *s == "Hi"));
+        assert!(!iter.any(|Pair(s, _)| *s == "Hi"));
+    }
+
+    #[test]
+    fn test_hash_map_iter_present2() {
+        let mut map = HashMap::<&str, i32>::new();
+        map.insert("Hi", 0);
+        map.insert("Hello", 1);
+        let mut iter = map.iter();
+        assert!(iter.any(|Pair(s, _)| *s == "Hello"));
+        assert!(!iter.any(|Pair(s, _)| *s == "Hello"));
+    }
+}

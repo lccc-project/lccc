@@ -9,8 +9,6 @@ pub enum Encoding {
 pub enum Name {
     Nested(NestedName),
     Unscoped(UnscopedName),
-    UnscopedTemplate(UnscopedTemplateName, Vec<TemplateArg>),
-    Local(LocalName),
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -35,18 +33,14 @@ pub enum UnscopedName {
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum UnqualifiedName {
     OperatorName(Operator, Option<Vec<String>>),
-    CtorDtor(CtorDtor),
     Name(String),
-    UnamedType(UnamedType),
     StructuredBinding(Vec<String>),
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum Prefix {
     Name(Option<Box<Prefix>>, UnqualifiedName),
-    Template(TemplatePrefix, Vec<TemplateArg>),
     TemplateParam(Option<i64>),
-    DataMember(Box<Prefix>, DataMemberName),
     Substitution(Sub),
 }
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -59,7 +53,7 @@ pub enum TemplatePrefix {
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum NestedName {
     Name(Prefix, UnqualifiedName),
-    Template(TemplatePrefix, Vec<TemplateArgs>),
+    Template(TemplatePrefix, Vec<TemplateArg>),
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -147,13 +141,19 @@ pub enum Offset {
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub enum Qualifier {
+    Const,
+    Volatile,
+    Ref,
+    RValue,
+    VendorQualifier(String, Vec<TemplateArg>),
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum Type {
     BuiltinType(BuiltinType),
     QualifiedType(Vec<Qualifier>, Box<Type>),
-    FunctionType(FunctionType),
-    Decltype(Decltype),
-    ClassEnumType(ClassEnumType),
-    ArrayType(ArrayType),
+    FunctionType(Box<FunctionType>),
     PointerToMemberType { cl: Box<Type>, mem: Box<Type> },
     TemplateParam(Option<u64>),
     Pointer(Box<Type>),
@@ -162,6 +162,13 @@ pub enum Type {
     Complex(Box<Type>),
     Imaginary(Box<Type>),
     Substitution(Sub),
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub struct FunctionType {
+    pub extern_c: bool,
+    pub params: Vec<Type>,
+    pub ret: Option<Type>,
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -204,4 +211,9 @@ pub enum BuiltinType {
     UnboundLifetime,
     HTRB(u32, Box<Type>),
     VendorType(String, Vec<TemplateArg>),
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub enum TemplateArg {
+    Type(Type),
 }
