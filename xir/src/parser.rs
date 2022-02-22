@@ -33,6 +33,8 @@ pub fn parse_function_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) 
                             Some(tok) => panic!("Unexpected token {:?}", tok),
                             None => break,
                         }
+                    } else {
+                        break;
                     }
                 }
                 match stream.peek() {
@@ -78,6 +80,14 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
             "function" | "extern" => Some(Type::FnType(xlang::abi::boxed::Box::new(
                 parse_function_type(stream),
             ))),
+            "void" => {
+                stream.next();
+                match stream.next() {
+                    Some(Token::Group(Group::Parenthesis(v))) if v.is_empty() => Some(Type::Void),
+                    Some(tok) => panic!("Unexpected token {:?}", tok),
+                    None => panic!("Unexpected EOF"),
+                }
+            }
             "uint" | "int" => {
                 let signed = id == "int";
                 stream.next().unwrap();
@@ -250,7 +260,8 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
                 stream.next();
             }
         }
-        tok => todo!("{:?}", tok),
+        Some(tok) => todo!("{:?}", tok),
+        None => None,
     }
 }
 

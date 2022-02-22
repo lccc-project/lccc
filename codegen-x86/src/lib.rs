@@ -29,6 +29,7 @@ use xlang::{
     prelude::v1::{Box, DynBox, Option as XLangOption, Pair},
     targets::properties::{MachineProperties, TargetProperties},
 };
+use xlang_backend::expr::Trap;
 use xlang_backend::ty::type_size;
 use xlang_backend::{
     expr::{LValue, VStackValue},
@@ -36,7 +37,8 @@ use xlang_backend::{
     FunctionCodegen, FunctionRawCodegen,
 };
 use xlang_struct::{
-    AccessClass, BranchCondition, FnType, FunctionDeclaration, ScalarType, Type, UnaryOp,
+    AccessClass, BranchCondition, FnType, FunctionDeclaration, PathComponent, ScalarType, Type,
+    UnaryOp,
 };
 
 #[allow(dead_code)]
@@ -50,6 +52,35 @@ pub enum ValLocation {
     /// Value in no location (for ZSTs)
     Null,
     Unassigned(usize),
+}
+
+impl ValLocation {
+    fn as_modrm(&self, mode: X86Mode) -> Option<ModRM> {
+        let addrclass = match mode {
+            X86Mode::Real | X86Mode::Virtual8086 => X86RegisterClass::Word,
+            X86Mode::Protected | X86Mode::Compatibility => X86RegisterClass::Double,
+            X86Mode::Long => X86RegisterClass::Quad,
+        };
+        match self {
+            ValLocation::BpDisp(disp) => Some(ModRM::IndirectDisp32 {
+                mode: ModRMRegOrSib::Reg(X86Register::from_class(addrclass, 6).unwrap()),
+                disp32: *disp,
+            }),
+            ValLocation::SpDisp(disp) => Some(ModRM::IndirectDisp32 {
+                mode: ModRMRegOrSib::Reg(X86Register::from_class(addrclass, 6).unwrap()),
+                disp32: *disp,
+            }),
+            ValLocation::Register(r) => Some(ModRM::Direct(*r)),
+            ValLocation::Regs(_) => None,
+            ValLocation::ImpliedPtr(r) => Some(ModRM::Indirect {
+                mode: ModRMRegOrSib::Reg(*r),
+            }),
+            ValLocation::Null => Some(ModRM::Indirect {
+                mode: ModRMRegOrSib::Abs(Address::Abs(1)),
+            }),
+            ValLocation::Unassigned(_) => panic!("Unassigned"),
+        }
+    }
 }
 
 impl xlang_backend::expr::ValLocation for ValLocation {
@@ -101,6 +132,7 @@ pub struct X86CodegenState {
     fnty: FnType,
     frame_size: i32,
     properties: &'static TargetProperties,
+    scratch_reg: Option<X86Register>,
     gpr_status: HashMap<u8, RegisterStatus>,
     _xmm_status: HashMap<u8, RegisterStatus>,
 }
@@ -214,7 +246,7 @@ impl FunctionRawCodegen for X86CodegenState {
 
         let retval = cc.find_return_val(&ty.ret);
         match &ty.ret {
-            Type::Void => XLangOption::None,
+            Type::Void | Type::Null => XLangOption::None,
             ty @ Type::Product(_) => {
                 XLangOption::Some(VStackValue::OpaqueAggregate(ty.clone(), retval.unwrap()))
             }
@@ -267,8 +299,48 @@ impl FunctionRawCodegen for X86CodegenState {
             )));
     }
 
-    fn branch_indirect(&mut self, _target: Self::Loc) {
-        todo!()
+    fn branch_indirect(&mut self, target: Self::Loc) {
+        match target {
+            ValLocation::BpDisp(disp) => {
+                self.insns
+                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                        X86Opcode::JmpInd,
+                        vec![X86Operand::ModRM(ModRM::IndirectDisp32 {
+                            mode: ModRMRegOrSib::Reg(X86Register::Rbp),
+                            disp32: disp,
+                        })],
+                    )));
+            }
+            ValLocation::SpDisp(disp) => {
+                self.insns
+                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                        X86Opcode::JmpInd,
+                        vec![X86Operand::ModRM(ModRM::IndirectDisp32 {
+                            mode: ModRMRegOrSib::Reg(X86Register::Rsp),
+                            disp32: disp,
+                        })],
+                    )));
+            }
+            ValLocation::ImpliedPtr(p) => {
+                self.insns
+                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                        X86Opcode::JmpInd,
+                        vec![X86Operand::ModRM(ModRM::Indirect {
+                            mode: ModRMRegOrSib::Reg(p),
+                        })],
+                    )));
+            }
+            ValLocation::Register(r) => {
+                self.insns
+                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                        X86Opcode::JmpInd,
+                        vec![X86Operand::Register(r)],
+                    )));
+            }
+            ValLocation::Regs(r) => todo!("regs{:?}", r),
+            ValLocation::Null => self.write_trap(Trap::Unreachable),
+            ValLocation::Unassigned(_) => unreachable!("Unassigned Memory Location"),
+        }
     }
 
     #[allow(clippy::too_many_lines)]
@@ -443,12 +515,17 @@ impl FunctionRawCodegen for X86CodegenState {
         }
     }
 
-    fn compute_global_address(&mut self, _path: &xlang_struct::Path, _loc: Self::Loc) {
-        todo!()
+    fn compute_global_address(&mut self, path: &xlang_struct::Path, loc: Self::Loc) {
+        let addr = self.get_global_address(path);
+        self.load_address(addr, loc);
     }
 
-    fn compute_label_address(&mut self, _target: u32, _loc: Self::Loc) {
-        todo!()
+    fn compute_label_address(&mut self, target: u32, loc: Self::Loc) {
+        let addr = Address::Symbol {
+            name: format!("{}._T{}", self.name, target),
+            disp: 0,
+        };
+        self.load_address(addr, loc);
     }
 
     fn compute_parameter_address(&mut self, _param: u32, _loc: Self::Loc) {
@@ -625,6 +702,78 @@ impl FunctionRawCodegen for X86CodegenState {
 }
 
 impl X86CodegenState {
+    fn get_global_address(&self, path: &xlang::ir::Path) -> Address {
+        match &*path.components {
+            [PathComponent::Text(name)] | [PathComponent::Root, PathComponent::Text(name)] => {
+                Address::PltSym {
+                    name: name.to_string(),
+                }
+            }
+            [..] => todo!(),
+        }
+    }
+
+    fn load_address(&mut self, addr: Address, loc: ValLocation) {
+        match loc {
+            ValLocation::Register(r) => {
+                self.insns
+                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                        X86Opcode::Lea,
+                        vec![
+                            X86Operand::Register(r),
+                            X86Operand::ModRM(ModRM::Indirect {
+                                mode: ModRMRegOrSib::RipRel(addr),
+                            }),
+                        ],
+                    )));
+            }
+            loc => {
+                let reg = self.get_or_allocate_scratch_reg();
+                self.insns
+                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                        X86Opcode::Lea,
+                        vec![
+                            X86Operand::Register(reg),
+                            X86Operand::ModRM(ModRM::Indirect {
+                                mode: ModRMRegOrSib::RipRel(addr),
+                            }),
+                        ],
+                    )));
+                self.insns
+                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                        X86Opcode::MovRM,
+                        vec![
+                            X86Operand::ModRM(loc.as_modrm(self.mode).unwrap()),
+                            X86Operand::Register(reg),
+                        ],
+                    )));
+            }
+        }
+    }
+
+    fn get_or_allocate_scratch_reg(&mut self) -> X86Register {
+        if let Some(reg) = self.scratch_reg {
+            reg
+        } else {
+            for i in 0..(if self.mode == X86Mode::Long { 16 } else { 8 }) {
+                let class =
+                    X86RegisterClass::gpr_size((self.properties.ptrbits / 8) as usize, self.mode)
+                        .unwrap();
+                let mode = self.gpr_status.get_or_insert_mut(i, RegisterStatus::Free);
+                match mode {
+                    RegisterStatus::Free => {
+                        let reg = X86Register::from_class(class, i).unwrap();
+                        *mode = RegisterStatus::InUse;
+                        self.scratch_reg = Some(reg);
+                        return reg;
+                    }
+                    _ => continue,
+                }
+            }
+            todo!()
+        }
+    }
+
     #[allow(clippy::missing_errors_doc)]
     #[allow(clippy::missing_panics_doc)]
     pub fn write_output(
@@ -795,6 +944,7 @@ impl XLangPlugin for X86CodegenPlugin {
                             _xmm_status: HashMap::new(),
                             gpr_status: HashMap::new(),
                             frame_size: 0,
+                            scratch_reg: None,
                         },
                         path.clone(),
                         ty.clone(),
