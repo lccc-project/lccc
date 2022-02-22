@@ -1,6 +1,7 @@
 pub use crate::lex::StrType; // TODO: `pub use` this in `crate::parse`
 use crate::parse::{FnParam, Item};
 pub use crate::parse::{Mutability, Safety, Visibility};
+use std::collections::hash_map::{Entry, HashMap};
 use std::fmt::{self, Display, Formatter};
 
 #[derive(Clone, Debug, Hash, PartialEq)]
@@ -396,11 +397,18 @@ impl Display for Definition {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+#[repr(u32)]
+pub enum LangItem {
+    Main,
+}
+
+#[derive(Clone, Debug)]
 pub struct Program {
     pub named_types: Vec<Type>,
     pub declarations: Vec<Declaration>,
     pub definitions: Vec<Definition>,
+    pub lang_items: HashMap<LangItem, Identifier>,
 }
 
 impl Display for Program {
@@ -438,6 +446,9 @@ impl Display for Program {
         for definition in &self.definitions {
             definition.fmt(f)?;
             writeln!(f)?;
+        }
+        for (item, id) in &self.lang_items {
+            writeln!(f, "// Lang item {:?} = {}", item, id)?;
         }
         Ok(())
     }
@@ -560,25 +571,26 @@ pub fn convert(items: &[Item]) -> Program {
         Type::Integer(IntType::Usize),
         Type::Str,
     ];
-    // Pass 2: list declarations
+    // Pass 2: list declarations and initially fill lang item table
     let mut declarations = Vec::new();
-    iter_in_scope(items, None, &mut |item, abi| match item {
-        Item::FnDeclaration {
-            visibility,
-            safety,
-            name,
-            params,
-            return_ty,
-            block,
-        } => {
-            declarations.push(Declaration::Function {
+    let mut lang_items = HashMap::new();
+    iter_in_scope(items, None, &mut |item, abi| {
+        let declaration = match item {
+            Item::FnDeclaration {
+                visibility,
+                safety,
+                name,
+                params,
+                return_ty,
+                block,
+            } => Declaration::Function {
                 has_definition: block.is_some(),
                 name: Identifier::Basic {
                     name: name.clone(),
                     mangling: Some(if abi.is_some() {
-                        Mangling::Rust
-                    } else {
                         Mangling::C
+                    } else {
+                        Mangling::Rust
                     }),
                 },
                 sig: FunctionSignature {
@@ -602,12 +614,26 @@ pub fn convert(items: &[Item]) -> Program {
                     },
                     visibility: *visibility,
                 },
-            });
-        }
-        Item::ExternBlock { .. } => {
-            unreachable!("Should have been descended into by calling function");
-        }
+            },
+            Item::ExternBlock { .. } => {
+                unreachable!("Should have been descended into by calling function");
+            }
+        };
+        // TODO: Check attributes
+        declarations.push(declaration);
     });
+    if let Entry::Vacant(entry) = lang_items.entry(LangItem::Main) {
+        // Pass 2.5: locate `main`, if it exists
+        for declaration in &declarations {
+            if declaration.name().matches(&Identifier::Basic {
+                mangling: None,
+                name: String::from("main"),
+            }) {
+                entry.insert(declaration.name().clone());
+                break;
+            }
+        }
+    }
     // Pass 3: convert functions
     let mut definitions = Vec::new();
     iter_in_scope(items, None, &mut |item, abi| {
@@ -635,9 +661,9 @@ pub fn convert(items: &[Item]) -> Program {
                 name: Identifier::Basic {
                     name: name.clone(),
                     mangling: Some(if abi.is_some() {
-                        Mangling::Rust
-                    } else {
                         Mangling::C
+                    } else {
+                        Mangling::Rust
                     }),
                 },
                 return_ty: return_ty
@@ -651,6 +677,7 @@ pub fn convert(items: &[Item]) -> Program {
         named_types,
         declarations,
         definitions,
+        lang_items,
     }
 }
 
@@ -717,6 +744,7 @@ fn typeck_expr(
             let mut result = None;
             for decl in declarations {
                 if decl.name().matches(id) {
+                    *id = decl.name().clone();
                     result = Some(decl.ty());
                 }
             }

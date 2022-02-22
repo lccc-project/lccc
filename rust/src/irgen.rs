@@ -1,6 +1,6 @@
 use crate::sema::{
-    Declaration, Definition, Expression, FunctionSignature, Identifier, IntType, Mutability,
-    Program, Statement, Type,
+    Declaration, Definition, Expression, FunctionSignature, Identifier, IntType, Mangling,
+    Mutability, Program, Statement, Type,
 };
 
 use std::convert::TryInto; // TODO: Remove when we move to edition 2021
@@ -14,9 +14,17 @@ use xlang::{
 };
 
 fn identifier_to_path(id: Identifier) -> ir::Path {
-    let Identifier::Basic { name, .. } = id;
-    ir::Path {
-        components: abi::vec![ir::PathComponent::Text(abi::string::String::from(&name))],
+    let Identifier::Basic { mangling, name } = id;
+    match mangling {
+        Some(Mangling::C) => ir::Path {
+            components: abi::vec![ir::PathComponent::Text(abi::string::String::from(&name))],
+        },
+        _ => ir::Path { // Assume None == Mangling::Rust
+            components: abi::vec![
+                ir::PathComponent::Text(abi::string::String::from("__crate_name_placeholder__")),
+                ir::PathComponent::Text(abi::string::String::from(&name))
+            ],
+        },
     }
 }
 
@@ -209,7 +217,7 @@ pub fn irgen(program: &Program, file: &mut ir::File) {
         let Declaration::Function { sig, .. } = program
             .declarations
             .iter()
-            .find(|x| x.name() == name)
+            .find(|x| x.name().matches(name))
             .unwrap();
         file.root.members.insert(
             identifier_to_path(name.clone()),

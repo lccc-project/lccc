@@ -48,6 +48,7 @@ impl XLangFrontend for RustFrontend {
         let items = parse_crate(lexed.into_iter());
         let mut converted = convert(&items);
         typeck_program(&mut converted);
+        println!("{:#?}", converted);
         self.program = Some(converted);
         io::Result::Ok(())
     }
