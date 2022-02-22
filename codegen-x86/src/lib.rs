@@ -29,7 +29,7 @@ use xlang::{
     prelude::v1::{Box, DynBox, Option as XLangOption, Pair},
     targets::properties::{MachineProperties, TargetProperties},
 };
-use xlang_backend::expr::Trap;
+use xlang_backend::expr::{Trap, ValLocation as _};
 use xlang_backend::ty::type_size;
 use xlang_backend::{
     expr::{LValue, VStackValue},
@@ -458,16 +458,8 @@ impl FunctionRawCodegen for X86CodegenState {
                 (ValLocation::Unassigned(_), _) | (_, ValLocation::Unassigned(_)) => {
                     panic!("Unassigned location");
                 }
-                (ValLocation::Register(r), ValLocation::BpDisp(disp)) => {
-                    todo!("mov rbp{:+#x},{}", disp, r);
-                }
-                (ValLocation::Register(r), ValLocation::SpDisp(disp)) => {
-                    todo!("mov rsp{:+#x},{}", disp, r);
-                }
                 (ValLocation::Register(r1), ValLocation::Register(r2)) => {
-                    if r1 == r2 {
-                        // Already done
-                    } else {
+                    if !(r1 == r2) {
                         match r1.class().size(self.mode).cmp(&r2.class().size(self.mode)) {
                             Ordering::Equal => {
                                 if r1.class().size(self.mode) == 1 {
@@ -496,14 +488,39 @@ impl FunctionRawCodegen for X86CodegenState {
                         }
                     }
                 }
-                (ValLocation::Register(_), ValLocation::Regs(_) | ValLocation::ImpliedPtr(_))
-                | (
-                    ValLocation::Regs(_)
-                    | ValLocation::ImpliedPtr(_)
-                    | ValLocation::BpDisp(_)
-                    | ValLocation::SpDisp(_),
-                    _,
-                ) => todo!("mem"),
+                (ValLocation::Register(r), x) if x.addressible() => {
+                    let modrm = x.as_modrm(self.mode).unwrap();
+                    self.insns
+                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                            X86Opcode::MovMR,
+                            vec![X86Operand::ModRM(modrm), X86Operand::Register(r)],
+                        )));
+                }
+                (x, ValLocation::Register(r)) if x.addressible() => {
+                    let modrm = x.as_modrm(self.mode).unwrap();
+                    self.insns
+                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                            X86Opcode::MovRM,
+                            vec![X86Operand::Register(r), X86Operand::ModRM(modrm)],
+                        )));
+                }
+                (x, y) if x.addressible() && y.addressible() => {
+                    let modrm1 = x.as_modrm(self.mode).unwrap();
+                    let modrm2 = y.as_modrm(self.mode).unwrap();
+                    let r = self.get_or_allocate_scratch_reg();
+
+                    self.insns
+                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                            X86Opcode::MovRM,
+                            vec![X86Operand::Register(r), X86Operand::ModRM(modrm2)],
+                        )));
+                    self.insns
+                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                            X86Opcode::MovMR,
+                            vec![X86Operand::ModRM(modrm1), X86Operand::Register(r)],
+                        )));
+                }
+                (l1, l2) => todo!("move_val({:?},{:?})", l1, l2),
             },
             VStackValue::LValue(_, _) | VStackValue::Pointer(_, _) => {
                 todo!()
