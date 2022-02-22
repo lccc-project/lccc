@@ -67,7 +67,7 @@ impl ValLocation {
                 disp32: *disp,
             }),
             ValLocation::SpDisp(disp) => Some(ModRM::IndirectDisp32 {
-                mode: ModRMRegOrSib::Reg(X86Register::from_class(addrclass, 6).unwrap()),
+                mode: ModRMRegOrSib::Reg(X86Register::from_class(addrclass, 5).unwrap()),
                 disp32: *disp,
             }),
             ValLocation::Register(r) => Some(ModRM::Direct(*r)),
@@ -719,6 +719,7 @@ impl FunctionRawCodegen for X86CodegenState {
 }
 
 impl X86CodegenState {
+    #[allow(clippy::unused_self)] // Will be needed for mangling when MSVC mangling is supported
     fn get_global_address(&self, path: &xlang::ir::Path) -> Address {
         match &*path.components {
             [PathComponent::Text(name)] | [PathComponent::Root, PathComponent::Text(name)] => {
