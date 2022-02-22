@@ -25,16 +25,12 @@ pub fn parse_function_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) 
             Token::Group(Group::Parenthesis(tok)) => {
                 let mut params = Vec::new();
                 let mut it = tok.into_iter().peekable();
-                loop {
-                    if let Some(ty) = parse_type(&mut it) {
-                        params.push(ty);
-                        match it.peek() {
-                            Some(Token::Sigil(',')) => continue,
-                            Some(tok) => panic!("Unexpected token {:?}", tok),
-                            None => break,
-                        }
-                    } else {
-                        break;
+                while let Some(ty) = parse_type(&mut it) {
+                    params.push(ty);
+                    match it.peek() {
+                        Some(Token::Sigil(',')) => continue,
+                        Some(tok) => panic!("Unexpected token {:?}", tok),
+                        None => break,
                     }
                 }
                 match stream.peek() {

@@ -7,14 +7,16 @@ use std::fmt::{self, Display, Formatter};
 pub enum Identifier {
     Basic {
         mangling: Option<Mangling>,
-        name: String
+        name: String,
     },
 }
 
 impl Identifier {
     pub fn matches(&self, other: &Self) -> bool {
         let Self::Basic { name, .. } = self;
-        let Self::Basic { name: other_name, .. } = other;
+        let Self::Basic {
+            name: other_name, ..
+        } = other;
         name == other_name
     }
 }
@@ -479,7 +481,10 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
                 .collect(),
         },
         crate::parse::Expr::Id(id) => Expression::Identifier {
-            id: Identifier::Basic { mangling: None, name: id.clone() },
+            id: Identifier::Basic {
+                mangling: None,
+                name: id.clone(),
+            },
             ty: None,
         },
         crate::parse::Expr::Parentheses(inner) => convert_expr(named_types, inner), // I assume this only exists for lints
@@ -568,11 +573,14 @@ pub fn convert(items: &[Item]) -> Program {
         } => {
             declarations.push(Declaration::Function {
                 has_definition: block.is_some(),
-                name: Identifier::Basic { name: name.clone(), mangling: Some(if abi.is_some() {
-                    Mangling::Rust
-                } else {
-                    Mangling::C
-                })},
+                name: Identifier::Basic {
+                    name: name.clone(),
+                    mangling: Some(if abi.is_some() {
+                        Mangling::Rust
+                    } else {
+                        Mangling::C
+                    }),
+                },
                 sig: FunctionSignature {
                     abi: abi.map_or(Abi::Rust, |x| match x {
                         "C" => Abi::C,
@@ -624,11 +632,14 @@ pub fn convert(items: &[Item]) -> Program {
                 })];
             }
             definitions.push(Definition::Function {
-                name: Identifier::Basic { name: name.clone(), mangling: Some(if abi.is_some() {
-                    Mangling::Rust
-                } else {
-                    Mangling::C
-                })},
+                name: Identifier::Basic {
+                    name: name.clone(),
+                    mangling: Some(if abi.is_some() {
+                        Mangling::Rust
+                    } else {
+                        Mangling::C
+                    }),
+                },
                 return_ty: return_ty
                     .as_ref()
                     .map_or_else(|| Type::Tuple(Vec::new()), |x| convert_ty(&named_types, x)),
@@ -705,7 +716,7 @@ fn typeck_expr(
         Expression::Identifier { id, ty: id_ty } => {
             let mut result = None;
             for decl in declarations {
-                if decl.name().matches(&id) {
+                if decl.name().matches(id) {
                     result = Some(decl.ty());
                 }
             }
