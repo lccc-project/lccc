@@ -203,15 +203,31 @@ fn irgen_expr(expr: Expression, n: u32) -> Vec<ir::BlockItem> {
 
 fn irgen_block(block: Vec<Statement>, n: u32) -> ir::Block {
     let mut result = Vec::new();
+    let mut has_expr = false;
     for statement in block {
         match statement {
             Statement::Bind { .. } => todo!(),
             Statement::Discard(expr) => {
+                has_expr = false;
                 result.append(&mut irgen_expr(expr, n));
                 result.push(ir::BlockItem::Expr(ir::Expr::Pop(1)));
             }
-            Statement::Expression(expr) => result.append(&mut irgen_expr(expr, n)),
+            Statement::Expression(expr) => {
+                has_expr = true;
+                result.append(&mut irgen_expr(expr, n));
+            }
         }
+    }
+    if has_expr {
+        result.push(ir::BlockItem::Expr(ir::Expr::ExitBlock {
+            blk: n,
+            values: 1,
+        }));
+    } else {
+        result.push(ir::BlockItem::Expr(ir::Expr::ExitBlock {
+            blk: n,
+            values: 0,
+        }));
     }
     ir::Block {
         items: result.into(),
