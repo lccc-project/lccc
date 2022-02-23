@@ -1,4 +1,5 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+use std::convert::TryFrom;
 use std::ops::{BitAnd, BitOr};
 
 use xlang_abi::prelude::v1::*;
@@ -133,6 +134,17 @@ impl Default for ScalarTypeKind {
 pub struct ScalarType {
     pub header: ScalarTypeHeader,
     pub kind: ScalarTypeKind,
+}
+
+impl TryFrom<Type> for ScalarType {
+    type Error = ();
+    fn try_from(other: Type) -> std::result::Result<Self, ()> {
+        if let Type::Scalar(sty) = other {
+            Ok(sty)
+        } else {
+            Err(())
+        }
+    }
 }
 
 #[repr(u16)]

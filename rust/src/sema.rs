@@ -267,6 +267,10 @@ pub enum Expression {
         id: Identifier,
         ty: Option<Type>,
     },
+    IntegerLiteral {
+        val: u128,
+        ty: Option<IntType>,
+    },
     StringLiteral {
         kind: StrType,
         val: String,
@@ -296,6 +300,10 @@ impl Expression {
                 .as_ref()
                 .expect("typeck forgot to resolve type of expression; this is an ICE")
                 .clone(),
+            Expression::IntegerLiteral { ty, .. } => Type::Integer(
+                *ty.as_ref()
+                    .expect("typeck forgot to resolve type of expression; this is an ICE"),
+            ),
             Expression::StringLiteral { kind, val } => Type::Reference {
                 mutability: Mutability::Const,
                 underlying: Box::new(match kind {
@@ -329,6 +337,13 @@ impl Display for Expression {
                 write!(f, ")")
             }
             Expression::Identifier { id, .. } => id.fmt(f),
+            Expression::IntegerLiteral { val, ty } => {
+                if ty.unwrap().is_signed() {
+                    (*val as i128).fmt(f)
+                } else {
+                    val.fmt(f)
+                }
+            }
             Expression::StringLiteral { kind, val } => {
                 if *kind == StrType::Byte {
                     write!(f, "b")?;
@@ -756,6 +771,7 @@ fn typeck_expr(
                 },
             )
         }
+        Expression::IntegerLiteral { .. } => todo!(),
         Expression::StringLiteral { kind, val } => Type::Reference {
             mutability: Mutability::Const,
             underlying: Box::new(match kind {

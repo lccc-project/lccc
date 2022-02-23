@@ -156,6 +156,17 @@ fn irgen_expr(expr: Expression, n: u32) -> Vec<ir::BlockItem> {
                 },
             ))]
         }
+        ref x @ Expression::IntegerLiteral { .. } => {
+            let ty = irgen_type(x.ty());
+            if let Expression::IntegerLiteral { val, .. } = x {
+                vec![ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Integer {
+                    ty: ty.try_into().unwrap(),
+                    val: *val,
+                }))]
+            } else {
+                unreachable!()
+            }
+        }
         ref x @ Expression::StringLiteral { .. } => {
             let ty = irgen_type(x.ty());
             if let Expression::StringLiteral { val, .. } = x {
@@ -248,13 +259,19 @@ pub fn irgen_main(main: &Identifier, declarations: &[Declaration], file: &mut ir
         .iter()
         .find(|x| x.name().matches(main))
         .unwrap();
-    let body = vec![Statement::Discard(Expression::FunctionCall {
-        func: Box::new(Expression::Identifier {
-            id: main.clone(),
-            ty: Some(Type::Function(main_sig.clone())),
+    let body = vec![
+        Statement::Discard(Expression::FunctionCall {
+            func: Box::new(Expression::Identifier {
+                id: main.clone(),
+                ty: Some(Type::Function(main_sig.clone())),
+            }),
+            args: Vec::new(),
         }),
-        args: Vec::new(),
-    })];
+        Statement::Expression(Expression::IntegerLiteral {
+            val: 0,
+            ty: Some(IntType::I32),
+        }),
+    ];
     let name = Identifier::Basic {
         mangling: Some(Mangling::C),
         name: String::from("__lccc_main"),
