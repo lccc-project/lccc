@@ -316,6 +316,7 @@ impl Expression {
 }
 
 impl Display for Expression {
+    #[allow(clippy::cast_possible_wrap)] // u128 as i128, deliberate wrapping cast
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Expression::Cast { expr, target } => {
