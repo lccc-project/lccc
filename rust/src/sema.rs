@@ -1,5 +1,5 @@
 pub use crate::lex::StrType; // TODO: `pub use` this in `crate::parse`
-use crate::parse::{FnParam, Item};
+use crate::parse::{FnParam, Item, Mod};
 pub use crate::parse::{Mutability, Safety, Visibility};
 use std::collections::hash_map::{Entry, HashMap};
 use std::fmt::{self, Display, Formatter};
@@ -497,12 +497,9 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
             expr: Box::new(convert_expr(named_types, expr)),
             target: convert_ty(named_types, target),
         },
-        crate::parse::Expr::FunctionCall {
-            func,
-            params, /* TODO: params is erroneously named */
-        } => Expression::FunctionCall {
+        crate::parse::Expr::FunctionCall { func, args } => Expression::FunctionCall {
             func: Box::new(convert_expr(named_types, func)),
-            args: params
+            args: args
                 .iter()
                 .map(|arg| convert_expr(named_types, arg))
                 .collect(),
@@ -523,6 +520,7 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
             block: convert_block(named_types, inner),
             ty: None,
         },
+        crate::parse::Expr::MacroExpansion { .. } => unreachable!(),
     }
 }
 
@@ -539,6 +537,7 @@ pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> 
             crate::parse::BlockItem::Item(_) => {
                 todo!("items in code blocks are currently unsupported");
             }
+            crate::parse::BlockItem::MacroExpansion { .. } => unreachable!(),
         }
     }
     result
@@ -548,13 +547,19 @@ fn iter_in_scope<F: FnMut(&Item, Option<&str>)>(items: &[Item], abi: Option<&str
     for item in items {
         match item {
             Item::ExternBlock {
+                attrs,
                 abi: new_abi,
                 items,
             } => {
+                for attr in attrs {
+                    todo!("#[{:?}]", attr)
+                }
                 assert!(abi.is_none(), "`extern` blocks can't be nested");
                 iter_in_scope(items, Some(new_abi.as_deref().unwrap_or("C")), func);
             }
             Item::FnDeclaration { .. } => func(item, abi),
+            Item::MacroExpansion { .. } => unreachable!("Macros were already expanded"),
+            Item::MacroRules { .. } => todo!("macro_rules!"),
         }
     }
 }
@@ -562,7 +567,10 @@ fn iter_in_scope<F: FnMut(&Item, Option<&str>)>(items: &[Item], abi: Option<&str
 #[allow(clippy::too_many_lines)] // TODO: refactor
 #[allow(unused_mut)]
 #[allow(unused_variables)]
-pub fn convert(items: &[Item]) -> Program {
+pub fn convert(Mod { attrs, items }: &Mod) -> Program {
+    for attr in attrs {
+        todo!("#[{:?}]", attr)
+    }
     // Pass 1: list types
     // Since we don't have a prelude to give us standard types yet, we list them
     // inline.
@@ -602,7 +610,7 @@ pub fn convert(items: &[Item]) -> Program {
                 block,
             } => {
                 for attr in attrs {
-                    todo!("{:?}", attr)
+                    todo!("#[{:?}]", attr)
                 }
                 Declaration::Function {
                     has_definition: block.is_some(),
@@ -640,6 +648,8 @@ pub fn convert(items: &[Item]) -> Program {
             Item::ExternBlock { .. } => {
                 unreachable!("Should have been descended into by calling function");
             }
+            Item::MacroExpansion { .. } => unreachable!("Macros should already be expanded"),
+            Item::MacroRules { .. } => todo!("macro_rules!"),
         };
         // TODO: Check attributes
         declarations.push(declaration);

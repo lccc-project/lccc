@@ -40,7 +40,7 @@ pub enum TokenType {
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Debug, Hash, PartialEq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Lexeme {
     Group { ty: GroupType, inner: Vec<Lexeme> },
     Token { ty: TokenType, tok: String },
@@ -135,7 +135,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                 file.next();
                 break;
             }
-            ':' | ';' | '#' => {
+            ':' | ';' | '#' | '!' => {
                 file.next();
                 result.push(Lexeme::Token {
                     ty: TokenType::Symbol,

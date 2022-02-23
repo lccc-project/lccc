@@ -84,6 +84,7 @@ dependencies = [
 name = "frontend-rust"
 version = "0.1.0"
 dependencies = [
+ "peekmore",
  "unicode-xid",
  "xlang",
  "xlang_struct",
@@ -133,6 +134,12 @@ name = "libc"
 version = "0.2.118"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06e509672465a0504304aa87f9f176f2b2b716ed8fb105ebe5c02dc6dce96a94"
+
+[[package]]
+name = "peekmore"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca84ba11ed2de09f9a946e35be5efe5382bdd0621780b46ea8e24a7797b5be88"
 
 [[package]]
 name = "proc-macro2"
