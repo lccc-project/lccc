@@ -522,13 +522,8 @@ impl FunctionRawCodegen for X86CodegenState {
                 }
                 (l1, l2) => todo!("move_val({:?},{:?})", l1, l2),
             },
-            VStackValue::LValue(_, _) | VStackValue::Pointer(_, _) => {
-                todo!()
-            }
             VStackValue::Trapped => {}
-            VStackValue::AggregatePieced(_, _)
-            | VStackValue::OpaqueAggregate(_, _)
-            | VStackValue::CompareResult(_, _) => todo!(),
+            _ => todo!("{:?}", val),
         }
     }
 
