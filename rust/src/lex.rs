@@ -42,7 +42,7 @@ pub enum TokenType {
 #[allow(dead_code)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Lexeme {
-    Group { ty: GroupType, inner: Vec<Lexeme> },
+    Group { ty: GroupType, inner: Vec<Self> },
     Token { ty: TokenType, tok: String },
 }
 

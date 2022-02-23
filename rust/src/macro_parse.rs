@@ -19,13 +19,13 @@ pub struct MacroArm {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum MacroMatcher {
     RawToken(Lexeme),
-    Group(GroupType, Vec<MacroMatcher>),
+    Group(GroupType, Vec<Self>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum MacroOutput {
     RawToken(Lexeme),
-    Group(GroupType, Vec<MacroOutput>),
+    Group(GroupType, Vec<Self>),
 }
 
 #[derive(Clone, Debug)]

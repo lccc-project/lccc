@@ -271,7 +271,7 @@ fn parse_macro_output<I: Iterator<Item = Lexeme>>(
     }
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 pub fn parse_item<I: Iterator<Item = Lexeme>>(
     it: &mut PeekMoreIterator<I>,
     mut attrs: Vec<Meta>,
@@ -818,7 +818,7 @@ pub fn parse_mod<I: Iterator<Item = Lexeme>>(it: I, mut attrs: Vec<Meta>) -> Mod
                                 inner,
                             } => {
                                 let mut it = inner.into_iter().peekmore();
-                                attrs.push(parse_meta(&mut it))
+                                attrs.push(parse_meta(&mut it));
                             }
                             tok => panic!("Unexpected token {:?}", tok),
                         }
