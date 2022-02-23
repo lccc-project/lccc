@@ -22,12 +22,19 @@ pub enum Mutability {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct SimplePath {
+    pub root: bool,
+    pub idents: Vec<String>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Item {
     ExternBlock {
         abi: Option<String>,
         items: Vec<Self>,
     },
     FnDeclaration {
+        attrs: Vec<Meta>,
         visibility: Visibility,
         safety: Safety,
         name: String,
@@ -35,6 +42,15 @@ pub enum Item {
         return_ty: Option<Type>,
         block: Option<Vec<BlockItem>>,
     },
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Meta {
+    Ident(SimplePath),
+    String(String),
+    IntLit(i128),
+    Group(SimplePath, Vec<Meta>),
+    KeyValue(SimplePath, Box<Meta>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -75,8 +91,125 @@ pub enum Type {
     },
 }
 
+pub fn parse_simple_path<I: Iterator<Item = Lexeme>>(it: &mut Peekable<I>) -> SimplePath {
+    let mut root = false;
+    let mut path = Vec::new();
+    match it.peek().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+        } if tok == "::" => {
+            it.next();
+            root = true;
+        }
+        _ => {}
+    }
+    loop {
+        match it.next().unwrap() {
+            Lexeme::Token {
+                ty: TokenType::Identifier,
+                tok,
+            } => {
+                path.push(tok);
+                match it.peek() {
+                    Some(Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                    }) if tok == "::" => {
+                        it.next();
+                        continue;
+                    }
+                    _ => break SimplePath { root, idents: path },
+                }
+            }
+            tok => panic!("Unexpected Token {:?}", tok),
+        }
+    }
+}
+
+pub fn parse_meta<I: Iterator<Item = Lexeme>>(it: &mut Peekable<I>) -> Meta {
+    match it.peek().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Identifier,
+            ..
+        } => {
+            let path = parse_simple_path(it);
+            match it.peek() {
+                Some(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                }) if tok == "=" => {
+                    it.next();
+                    Meta::KeyValue(path, Box::new(parse_meta(it)))
+                }
+                Some(Lexeme::Group {
+                    ty: GroupType::Parentheses,
+                    ..
+                }) => match it.next().unwrap() {
+                    Lexeme::Group {
+                        ty: GroupType::Parentheses,
+                        inner,
+                    } => {
+                        let mut it = inner.into_iter().peekable();
+                        let mut group = Vec::new();
+                        loop {
+                            group.push(parse_meta(&mut it));
+                            match it.next() {
+                                Some(Lexeme::Token {
+                                    ty: TokenType::Symbol,
+                                    tok,
+                                }) if tok == "," => continue,
+                                Some(tok) => panic!("Unexpected token {:?}", tok),
+                                None => break,
+                            }
+                        }
+                        Meta::Group(path, group)
+                    }
+                    _ => unreachable!(),
+                },
+                _ => Meta::Ident(path),
+            }
+        }
+        Lexeme::Token {
+            ty: TokenType::Number,
+            tok,
+        } => {
+            let val = tok.parse().unwrap();
+            it.next();
+            Meta::IntLit(val)
+        }
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+        } if tok == "-" => {
+            it.next();
+            match it.next().unwrap() {
+                Lexeme::Token {
+                    ty: TokenType::Number,
+                    tok,
+                } => Meta::IntLit(-tok.parse::<i128>().unwrap()),
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+        }
+        Lexeme::Token {
+            ty: TokenType::String(_),
+            ..
+        } => match it.next().unwrap() {
+            Lexeme::Token {
+                ty: TokenType::String(_),
+                tok,
+            } => Meta::String(tok),
+            _ => unreachable!(),
+        },
+        tok => panic!("Unexpected Token {:?}", tok),
+    }
+}
+
 #[allow(clippy::too_many_lines)]
-pub fn parse_item<I: Iterator<Item = Lexeme>>(it: I) -> Option<Item> {
+pub fn parse_item<I: Iterator<Item = Lexeme>>(
+    it: &mut Peekable<I>,
+    mut attrs: Vec<Meta>,
+) -> Option<Item> {
     let mut peek = it.peekable();
     match peek.next()? {
         Lexeme::Token {
@@ -109,9 +242,9 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(it: I) -> Option<Item> {
                         ty: GroupType::Braces,
                         inner,
                     } => {
-                        let mut iter = inner.into_iter();
+                        let mut iter = inner.into_iter().peekable();
                         let mut items = Vec::new();
-                        while let Some(item) = parse_item(&mut iter) {
+                        while let Some(item) = parse_item(&mut iter, Vec::new()) {
                             items.push(item);
                         }
                         Some(Item::ExternBlock { abi, items })
@@ -124,20 +257,46 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(it: I) -> Option<Item> {
                     ty: TokenType::Keyword,
                     tok,
                 } => match &*tok {
-                    "fn" => Some(parse_fn_item(Visibility::Pub, &mut peek)),
+                    "fn" => Some(parse_fn_item(Visibility::Pub, attrs, &mut peek)),
                     _ => todo!(),
                 },
                 _ => panic!("Invalid Token"),
             },
-            "fn" => Some(parse_fn_item(Visibility::None, &mut peek)),
+            "fn" => Some(parse_fn_item(Visibility::None, attrs, &mut peek)),
             _ => todo!(),
         },
-        _ => todo!(),
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+        } if tok == "#" => loop {
+            match it.next().unwrap() {
+                Lexeme::Group {
+                    ty: GroupType::Brackets,
+                    inner,
+                } => {
+                    let mut iter = inner.into_iter().peekable();
+                    attrs.push(parse_meta(&mut iter))
+                }
+                tok => panic!("Unexpected Token {:?}", tok),
+            }
+            match it.peek().unwrap() {
+                Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                } if tok == "#" => {
+                    it.next();
+                    continue;
+                }
+                _ => break parse_item(it, attrs),
+            }
+        },
+        tok => todo!("{:?}", tok),
     }
 }
 
 pub fn parse_fn_item<I: Iterator<Item = Lexeme>>(
     visibility: Visibility,
+    attrs: Vec<Meta>,
     mut peek: &mut Peekable<I>,
 ) -> Item {
     let name = match peek.next().expect("Invalid Item") {
@@ -182,6 +341,7 @@ pub fn parse_fn_item<I: Iterator<Item = Lexeme>>(
             ty: TokenType::Symbol,
             tok,
         } if tok == ";" => Item::FnDeclaration {
+            attrs,
             visibility,
             safety: Safety::Safe,
             name,
@@ -200,6 +360,7 @@ pub fn parse_fn_item<I: Iterator<Item = Lexeme>>(
                     tok,
                 } if tok == ";" => Item::FnDeclaration {
                     visibility,
+                    attrs,
                     safety: Safety::Safe,
                     name,
                     params,
@@ -210,6 +371,7 @@ pub fn parse_fn_item<I: Iterator<Item = Lexeme>>(
                     ty: GroupType::Braces,
                     inner,
                 } => Item::FnDeclaration {
+                    attrs,
                     visibility,
                     safety: Safety::Safe,
                     name,
@@ -224,6 +386,7 @@ pub fn parse_fn_item<I: Iterator<Item = Lexeme>>(
             ty: GroupType::Braces,
             inner,
         } => Item::FnDeclaration {
+            attrs,
             visibility,
             safety: Safety::Safe,
             name,
@@ -307,7 +470,9 @@ pub fn parse_block<I: Iterator<Item = Lexeme>>(it: I) -> Vec<BlockItem> {
                 tok,
             }) => match &**tok {
                 "pub" | "fn" | "static" | "const" | "type" | "struct" | "union" | "extern" => {
-                    ret.push(BlockItem::Item(Box::new(parse_item(&mut peek).unwrap())));
+                    ret.push(BlockItem::Item(Box::new(
+                        parse_item(&mut peek, Vec::new()).unwrap(),
+                    )));
                 }
                 "let" => todo!("let"),
                 _ => {
@@ -471,9 +636,10 @@ pub fn parse_simple_expr<I: Iterator<Item = Lexeme>>(it: &mut Peekable<I>) -> Ex
     }
 }
 
-pub fn parse_crate<I: Iterator<Item = Lexeme>>(mut it: I) -> Vec<Item> {
+pub fn parse_crate<I: Iterator<Item = Lexeme>>(it: I) -> Vec<Item> {
+    let mut it = it.peekable();
     let mut items = Vec::new();
-    while let Some(x) = parse_item(&mut it) {
+    while let Some(x) = parse_item(&mut it, Vec::new()) {
         items.push(x);
     }
 

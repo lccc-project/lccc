@@ -593,44 +593,50 @@ pub fn convert(items: &[Item]) -> Program {
     iter_in_scope(items, None, &mut |item, abi| {
         let declaration = match item {
             Item::FnDeclaration {
+                attrs,
                 visibility,
                 safety,
                 name,
                 params,
                 return_ty,
                 block,
-            } => Declaration::Function {
-                has_definition: block.is_some(),
-                name: Identifier::Basic {
-                    name: name.clone(),
-                    mangling: Some(if abi.is_some() {
-                        Mangling::C
-                    } else {
-                        Mangling::Rust
-                    }),
-                },
-                sig: FunctionSignature {
-                    abi: abi.map_or(Abi::Rust, |x| match x {
-                        "C" => Abi::C,
-                        "Rust" => Abi::Rust,
-                        _ => todo!(),
-                    }),
-                    params: params
-                        .iter()
-                        .map(|FnParam { ty, .. }| convert_ty(&named_types, ty))
-                        .collect(),
-                    return_ty: Box::new(return_ty.as_ref().map_or_else(
-                        || Type::Tuple(Vec::new()),
-                        |ty| convert_ty(&named_types, ty),
-                    )),
-                    safety: if abi.is_some() {
-                        Safety::Unsafe
-                    } else {
-                        *safety
+            } => {
+                for attr in attrs {
+                    todo!("{:?}", attr)
+                }
+                Declaration::Function {
+                    has_definition: block.is_some(),
+                    name: Identifier::Basic {
+                        name: name.clone(),
+                        mangling: Some(if abi.is_some() {
+                            Mangling::C
+                        } else {
+                            Mangling::Rust
+                        }),
                     },
-                    visibility: *visibility,
-                },
-            },
+                    sig: FunctionSignature {
+                        abi: abi.map_or(Abi::Rust, |x| match x {
+                            "C" => Abi::C,
+                            "Rust" => Abi::Rust,
+                            _ => todo!(),
+                        }),
+                        params: params
+                            .iter()
+                            .map(|FnParam { ty, .. }| convert_ty(&named_types, ty))
+                            .collect(),
+                        return_ty: Box::new(return_ty.as_ref().map_or_else(
+                            || Type::Tuple(Vec::new()),
+                            |ty| convert_ty(&named_types, ty),
+                        )),
+                        safety: if abi.is_some() {
+                            Safety::Unsafe
+                        } else {
+                            *safety
+                        },
+                        visibility: *visibility,
+                    },
+                }
+            }
             Item::ExternBlock { .. } => {
                 unreachable!("Should have been descended into by calling function");
             }

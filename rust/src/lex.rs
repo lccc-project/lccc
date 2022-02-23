@@ -135,7 +135,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                 file.next();
                 break;
             }
-            ':' | ';' => {
+            ':' | ';' | '#' => {
                 file.next();
                 result.push(Lexeme::Token {
                     ty: TokenType::Symbol,
