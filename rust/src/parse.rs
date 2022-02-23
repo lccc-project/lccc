@@ -49,8 +49,8 @@ pub enum Meta {
     Ident(SimplePath),
     String(String),
     IntLit(i128),
-    Group(SimplePath, Vec<Meta>),
-    KeyValue(SimplePath, Box<Meta>),
+    Group(SimplePath, Vec<Self>),
+    KeyValue(SimplePath, Box<Self>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -275,7 +275,7 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                     inner,
                 } => {
                     let mut iter = inner.into_iter().peekable();
-                    attrs.push(parse_meta(&mut iter))
+                    attrs.push(parse_meta(&mut iter));
                 }
                 tok => panic!("Unexpected Token {:?}", tok),
             }
