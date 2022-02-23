@@ -788,7 +788,28 @@ fn typeck_expr(
                 },
             )
         }
-        Expression::IntegerLiteral { .. } => todo!(),
+        Expression::IntegerLiteral { val, ty: int_ty } => {
+            if let Some(ty) = ty {
+                if let Some(int_ty) = int_ty {
+                    assert!(Type::Integer(*int_ty) == *ty, "tried to infer an already-inferred integer as a different type");
+                } else if let Type::Integer(ty) = ty {
+                    *int_ty = Some(ty.clone());
+                } else {
+                    panic!("attempt to infer integer as non-integer type");
+                }
+            } else if *val <= 0xFF {
+                *int_ty = Some(IntType::U8);
+            } else if *val <= 0xFFFF {
+                *int_ty = Some(IntType::U16);
+            } else if *val <= 0xFFFFFFFF {
+                *int_ty = Some(IntType::U32);
+            } else if *val <= 0xFFFFFFFFFFFFFFFF {
+                *int_ty = Some(IntType::U64);
+            } else {
+                *int_ty = Some(IntType::U128);
+            }
+            Type::Integer(int_ty.unwrap())
+        }
         Expression::StringLiteral { kind, val } => Type::Reference {
             mutability: Mutability::Const,
             underlying: Box::new(match kind {
