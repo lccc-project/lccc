@@ -316,6 +316,7 @@ pub enum BranchCondition {
     Never,
 }
 
+
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ConversionStrength {

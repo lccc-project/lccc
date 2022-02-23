@@ -1,7 +1,7 @@
 #![deny(missing_docs, warnings)] // No clippy::nursery
 //! A helper crate for implementing [`xlang::plugin::XLangCodegen`]s without duplicating code (also can be used to evaluate constant expressions)
 //! the `xlang_backend` crate provides a general interface for writing expressions to an output.
-use std::{collections::VecDeque, fmt::Debug};
+use std::{cmp::Ordering, collections::VecDeque, fmt::Debug};
 
 use self::str::Encoding;
 use expr::{LValue, Trap, VStackValue, ValLocation};
@@ -9,7 +9,8 @@ use xlang::{
     abi::string::StringView,
     ir::{
         AccessClass, AggregateCtor, BinaryOp, Block, BranchCondition, Expr, FnType, Path,
-        PathComponent, PointerType, ScalarType, StackItem, StackValueKind, Type, UnaryOp, Value,
+        PathComponent, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, StackItem,
+        StackValueKind, Type, UnaryOp, Value,
     },
     prelude::v1::*,
     targets::properties::TargetProperties,
@@ -346,13 +347,145 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         self.clear_stack();
                         self.diverged = true;
                     }
-                    BranchCondition::Less => todo!(),
-                    BranchCondition::LessEqual => todo!(),
-                    BranchCondition::Equal => todo!(),
-                    BranchCondition::NotEqual => todo!(),
-                    BranchCondition::Greater => todo!(),
-                    BranchCondition::GreaterEqual => todo!(),
                     BranchCondition::Never => {}
+                    cond => {
+                        let val = self.vstack.pop_back().unwrap();
+                        let locs = self.targets[target].clone();
+                        let vals = self.pop_values(locs.len()).unwrap();
+
+                        match val {
+                            VStackValue::Constant(v) => match v {
+                                Value::Invalid(_) | Value::Uninitialized(_) => {
+                                    self.inner.write_trap(Trap::Unreachable);
+                                    self.vstack.push_back(VStackValue::Trapped)
+                                }
+                                Value::GenericParameter(u) => todo!("%{}", u),
+                                Value::Integer {
+                                    ty:
+                                        ScalarType {
+                                            kind: ScalarTypeKind::Integer { signed: true, .. },
+                                            ..
+                                        },
+                                    val,
+                                } => match ((val as i128).cmp(&0), cond) {
+                                    (_, BranchCondition::Always | BranchCondition::Never) => {
+                                        unreachable!()
+                                    }
+                                    (
+                                        Ordering::Less,
+                                        BranchCondition::Less
+                                        | BranchCondition::LessEqual
+                                        | BranchCondition::NotEqual,
+                                    ) => {
+                                        for (val, (loc, _)) in vals.into_iter().zip(locs) {
+                                            self.inner.move_value(val, loc);
+                                            // This will break if the branch target uses any values rn.
+                                        }
+                                        self.inner.branch_unconditional(*target);
+                                        self.clear_stack();
+                                        self.diverged = true;
+                                    }
+                                    (
+                                        Ordering::Equal,
+                                        BranchCondition::Equal
+                                        | BranchCondition::LessEqual
+                                        | BranchCondition::GreaterEqual,
+                                    ) => {
+                                        for (val, (loc, _)) in vals.into_iter().zip(locs) {
+                                            self.inner.move_value(val, loc);
+                                            // This will break if the branch target uses any values rn.
+                                        }
+                                        self.inner.branch_unconditional(*target);
+                                        self.clear_stack();
+                                        self.diverged = true;
+                                    }
+                                    (
+                                        Ordering::Greater,
+                                        BranchCondition::Greater
+                                        | BranchCondition::GreaterEqual
+                                        | BranchCondition::NotEqual,
+                                    ) => {
+                                        for (val, (loc, _)) in vals.into_iter().zip(locs) {
+                                            self.inner.move_value(val, loc);
+                                            // This will break if the branch target uses any values rn.
+                                        }
+                                        self.inner.branch_unconditional(*target);
+                                        self.clear_stack();
+                                        self.diverged = true;
+                                    }
+                                    _ => {}
+                                },
+                                Value::Integer {
+                                    ty:
+                                        ScalarType {
+                                            kind: ScalarTypeKind::Integer { signed: false, .. },
+                                            ..
+                                        },
+                                    val,
+                                } => {
+                                    match (val, cond) {
+                                        (
+                                            0,
+                                            BranchCondition::Equal
+                                            | BranchCondition::LessEqual
+                                            | BranchCondition::GreaterEqual,
+                                        ) => {
+                                            for (val, (loc, _)) in vals.into_iter().zip(locs) {
+                                                self.inner.move_value(val, loc);
+                                                // This will break if the branch target uses any values rn.
+                                            }
+                                            self.inner.branch_unconditional(*target);
+                                            self.clear_stack();
+                                            self.diverged = true;
+                                        }
+                                        (
+                                            x,
+                                            BranchCondition::Greater
+                                            | BranchCondition::GreaterEqual
+                                            | BranchCondition::NotEqual,
+                                        ) if x != 0 => {
+                                            for (val, (loc, _)) in vals.into_iter().zip(locs) {
+                                                self.inner.move_value(val, loc);
+                                                // This will break if the branch target uses any values rn.
+                                            }
+                                            self.inner.branch_unconditional(*target);
+                                            self.clear_stack();
+                                            self.diverged = true;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                v => panic!("Cannot branch on {:?}", v),
+                            },
+
+                            VStackValue::OpaqueScalar(
+                                sty @ ScalarType {
+                                    kind: ScalarTypeKind::Integer { .. },
+                                    ..
+                                },
+                                loc,
+                            ) => self.inner.branch_compare(
+                                *target,
+                                *cond,
+                                VStackValue::OpaqueScalar(sty, loc),
+                                VStackValue::Constant(Value::Integer { ty: sty, val: 0 }),
+                            ),
+
+                            VStackValue::CompareResult(c1, c2) => {
+                                for (val, (loc, _)) in vals.into_iter().zip(locs) {
+                                    self.opaqueify(val, loc) // This will break if the branch target uses any values rn.
+                                }
+                                self.inner.branch_compare(
+                                    *target,
+                                    *cond,
+                                    Box::into_inner(c1),
+                                    Box::into_inner(c2),
+                                );
+                            }
+                            VStackValue::Trapped => {}
+                            v => panic!("Cannot branch on {:?}", v),
+                        }
+                    }
                 }
             }
             Expr::Convert(_, ty) => {
@@ -452,6 +585,63 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 .vstack
                 .push_back(VStackValue::OpaqueAggregate(ty.clone(), loc)),
         }
+    }
+
+    ///
+    /// Moves val into loc and pushes the opaque version
+    pub fn opaqueify(&mut self, val: VStackValue<F::Loc>, loc: F::Loc) {
+        match &val {
+            VStackValue::Constant(v) => match v {
+                Value::Invalid(_) => {
+                    self.inner.write_trap(Trap::Unreachable);
+                    self.vstack.push_back(VStackValue::Trapped)
+                }
+                Value::Uninitialized(ty) => self.push_opaque(ty, loc.clone()),
+                Value::GenericParameter(n) => todo!("%{}", n),
+                Value::Integer { ty, .. } => self
+                    .vstack
+                    .push_back(VStackValue::OpaqueScalar(*ty, loc.clone())),
+                Value::GlobalAddress { ty, .. } => self.vstack.push_back(VStackValue::Pointer(
+                    PointerType {
+                        inner: Box::new(ty.clone()),
+                        ..Default::default()
+                    },
+                    LValue::OpaquePointer(loc.clone()),
+                )),
+                Value::ByteString { .. } => todo!(),
+                Value::String { ty, .. } => self.push_opaque(ty, loc.clone()),
+            },
+            VStackValue::LValue(ty, _) => self.vstack.push_back(VStackValue::LValue(
+                ty.clone(),
+                LValue::OpaquePointer(loc.clone()),
+            )),
+            VStackValue::Pointer(pty, _) => self.vstack.push_back(VStackValue::Pointer(
+                pty.clone(),
+                LValue::OpaquePointer(loc.clone()),
+            )),
+            VStackValue::OpaqueScalar(ty, _) => self
+                .vstack
+                .push_back(VStackValue::OpaqueScalar(*ty, loc.clone())),
+            VStackValue::AggregatePieced(ty, _) | VStackValue::OpaqueAggregate(ty, _) => self
+                .vstack
+                .push_back(VStackValue::OpaqueAggregate(ty.clone(), loc.clone())),
+            VStackValue::CompareResult(_, _) => self.vstack.push_back(VStackValue::OpaqueScalar(
+                ScalarType {
+                    header: ScalarTypeHeader {
+                        bitsize: 32,
+                        ..Default::default()
+                    },
+                    kind: ScalarTypeKind::Integer {
+                        signed: true,
+                        min: i32::MIN as i128,
+                        max: i32::MAX as i128,
+                    },
+                },
+                loc.clone(),
+            )),
+            VStackValue::Trapped => self.vstack.push_back(VStackValue::Trapped),
+        }
+        self.inner.move_value(val, loc);
     }
 
     /// Writes the elements of a block to the codegen, usually the top level block of a function

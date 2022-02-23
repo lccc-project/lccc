@@ -637,6 +637,7 @@ pub fn parse_const<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Value {
     }
 }
 
+#[allow(clippy::cognitive_complexity)]
 pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
     match it.peek().unwrap() {
         Token::Ident(id) if id == "const" => {
@@ -700,6 +701,34 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
                 },
                 tok => panic!("Unexpected token {:?}", tok),
             }
+        }
+        Token::Ident(id) if id == "dup" => {
+            it.next();
+            let n = match it.peek() {
+                Some(Token::IntLiteral(n)) => {
+                    let n = u32::try_from(*n).unwrap();
+                    it.next();
+                    n
+                }
+                _ => 1,
+            };
+            Expr::Dup(n)
+        }
+        Token::Ident(id) if id == "pivot" => {
+            it.next();
+            let n = match it.next().unwrap() {
+                Token::IntLiteral(n) => u32::try_from(n).unwrap(),
+                tok => panic!("Unexpected token {:?}", tok),
+            };
+            let m = match it.peek() {
+                Some(Token::IntLiteral(n)) => {
+                    let n = u32::try_from(*n).unwrap();
+                    it.next();
+                    n
+                }
+                _ => n,
+            };
+            Expr::Pivot(n, m)
         }
         tok => todo!("{:?}", tok),
     }
