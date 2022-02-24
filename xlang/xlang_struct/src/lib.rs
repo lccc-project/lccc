@@ -514,9 +514,16 @@ pub enum Abi {
 
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct FunctionBody {
+    pub locals: Vec<Type>,
+    pub block: Block,
+}
+
+#[repr(C)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct FunctionDeclaration {
     pub ty: FnType,
-    pub body: Option<Block>,
+    pub body: Option<FunctionBody>,
 }
 
 #[repr(C)]

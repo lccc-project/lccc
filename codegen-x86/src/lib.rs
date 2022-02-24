@@ -1013,7 +1013,7 @@ impl XLangPlugin for X86CodegenPlugin {
                         )
                         .unwrap(),
                     );
-                    state.write_block(body, 0);
+                    state.write_block(&body.block, 0);
                     self.fns.as_mut().unwrap().insert(name.clone(), state);
                 }
                 xlang_struct::MemberDeclaration::Function(FunctionDeclaration {
@@ -1111,8 +1111,8 @@ mod test {
     use xlang::{abi::vec, prelude::v1::HashMap};
     use xlang_backend::{str::StringMap, FunctionCodegen};
     use xlang_struct::{
-        Abi, Block, BlockItem, Expr, FunctionDeclaration, Path, ScalarType, ScalarTypeHeader,
-        ScalarTypeKind, Type, Value,
+        Abi, Block, BlockItem, Expr, FunctionBody, FunctionDeclaration, Path, ScalarType,
+        ScalarTypeHeader, ScalarTypeKind, Type, Value,
     };
 
     use crate::{callconv, X86CodegenState};
@@ -1130,7 +1130,10 @@ mod test {
                 params: xlang::abi::vec::Vec::new(),
                 tag: Abi::C,
             },
-            body: xlang::abi::option::Some(Block { items: vec![] }),
+            body: xlang::abi::option::Some(FunctionBody {
+                locals: vec![],
+                block: Block { items: vec![] },
+            }),
         };
         let mut state = FunctionCodegen::new(
             X86CodegenState {
@@ -1154,7 +1157,7 @@ mod test {
             ty.clone(),
             properties,
         );
-        state.write_block(body.as_ref().unwrap(), 0);
+        state.write_block(&body.as_ref().unwrap().block, 0);
         let mut sec = Section {
             align: 1024,
             ..Default::default()
@@ -1190,11 +1193,14 @@ mod test {
                 params: xlang::abi::vec::Vec::new(),
                 tag: Abi::C,
             },
-            body: xlang::abi::option::Some(Block {
-                items: vec![
-                    BlockItem::Expr(Expr::Const(Value::Integer { ty: intty, val: 0 })),
-                    BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
-                ],
+            body: xlang::abi::option::Some(FunctionBody {
+                locals: vec![],
+                block: Block {
+                    items: vec![
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: intty, val: 0 })),
+                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
+                    ],
+                },
             }),
         };
         let mut state = FunctionCodegen::new(
@@ -1219,7 +1225,7 @@ mod test {
             ty.clone(),
             properties,
         );
-        state.write_block(body.as_ref().unwrap(), 0);
+        state.write_block(&body.as_ref().unwrap().block, 0);
         let mut sec = Section {
             align: 1024,
             ..Default::default()
@@ -1255,11 +1261,14 @@ mod test {
                 params: xlang::abi::vec::Vec::new(),
                 tag: Abi::C,
             },
-            body: xlang::abi::option::Some(Block {
-                items: vec![
-                    BlockItem::Expr(Expr::Const(Value::Invalid(Type::Scalar(intty)))),
-                    BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
-                ],
+            body: xlang::abi::option::Some(FunctionBody {
+                locals: vec![],
+                block: Block {
+                    items: vec![
+                        BlockItem::Expr(Expr::Const(Value::Invalid(Type::Scalar(intty)))),
+                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
+                    ],
+                },
             }),
         };
         let mut state = FunctionCodegen::new(
@@ -1284,7 +1293,7 @@ mod test {
             ty.clone(),
             properties,
         );
-        state.write_block(body.as_ref().unwrap(), 0);
+        state.write_block(&body.as_ref().unwrap().block, 0);
         let mut sec = Section {
             align: 1024,
             ..Default::default()
@@ -1320,11 +1329,14 @@ mod test {
                 params: xlang::abi::vec::Vec::new(),
                 tag: Abi::C,
             },
-            body: xlang::abi::option::Some(Block {
-                items: vec![
-                    BlockItem::Expr(Expr::Const(Value::Invalid(Type::Scalar(intty)))),
-                    BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
-                ],
+            body: xlang::abi::option::Some(FunctionBody {
+                locals: vec![],
+                block: Block {
+                    items: vec![
+                        BlockItem::Expr(Expr::Const(Value::Invalid(Type::Scalar(intty)))),
+                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
+                    ],
+                },
             }),
         };
         let mut state = FunctionCodegen::new(
@@ -1349,7 +1361,7 @@ mod test {
             ty.clone(),
             properties,
         );
-        state.write_block(body.as_ref().unwrap(), 0);
+        state.write_block(&body.as_ref().unwrap().block, 0);
         let mut sec = Section {
             align: 1024,
             ..Default::default()

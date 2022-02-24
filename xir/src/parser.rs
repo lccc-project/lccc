@@ -5,16 +5,18 @@ use std::{
     iter::Peekable,
 };
 
+use xlang::abi::vec;
+
 use xlang::abi::string::FromUtf8Error;
 use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
 
 use xlang::targets::Target;
 use xlang_struct::{
     Abi, AnnotatedElement, BinaryOp, Block, BlockItem, BranchCondition, CharFlags, Expr, File,
-    FnType, FunctionDeclaration, MemberDeclaration, Path, PathComponent, PointerAliasingRule,
-    PointerDeclarationType, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind,
-    ScalarValidity, Scope, ScopeMember, StackItem, StringEncoding, Type, ValidRangeType, Value,
-    Visibility,
+    FnType, FunctionBody, FunctionDeclaration, MemberDeclaration, Path, PathComponent,
+    PointerAliasingRule, PointerDeclarationType, PointerType, ScalarType, ScalarTypeHeader,
+    ScalarTypeKind, ScalarValidity, Scope, ScopeMember, StackItem, StringEncoding, Type,
+    ValidRangeType, Value, Visibility,
 };
 
 use crate::lexer::{Group, Token};
@@ -396,7 +398,10 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
                                             params,
                                             tag: Abi::C,
                                         },
-                                        body: xlang::abi::option::Some(parse_block(&mut peekable)),
+                                        body: xlang::abi::option::Some(FunctionBody {
+                                            locals: vec![],
+                                            block: parse_block(&mut peekable),
+                                        }),
                                     }),
                                     ..ScopeMember::default()
                                 },

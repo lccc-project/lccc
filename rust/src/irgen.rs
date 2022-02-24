@@ -7,6 +7,7 @@ use crate::sema::{
 
 use std::convert::TryInto; // TODO: Remove when we move to edition 2021
 
+use ir::FunctionBody;
 use xlang::{
     abi::{
         self,
@@ -275,7 +276,10 @@ pub fn irgen_definition(
             vis: ir::Visibility::Public,
             member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration {
                 ty: sig_to_fn_type(sig.clone()),
-                body: AbiSome(irgen_block(body.clone(), 0)),
+                body: AbiSome(FunctionBody {
+                    locals: xlang::abi::vec![],
+                    block: irgen_block(body.clone(), 0),
+                }),
             }),
             ..ir::ScopeMember::default()
         },

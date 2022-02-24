@@ -1,4 +1,5 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+use ir::FunctionBody;
 use xlang::abi::io::{self, IntoChars, Read};
 use xlang::abi::prelude::v1::*;
 use xlang::abi::result::Result;
@@ -227,7 +228,12 @@ impl XLangPlugin for CFrontend {
                         ir::Type::FnType(x) => (*x).clone(),
                         x => todo!("{:?}", x),
                     },
-                    body: body.into(),
+                    body: body
+                        .map(|block| FunctionBody {
+                            locals: xlang::abi::vec![],
+                            block,
+                        })
+                        .into(),
                 };
                 ir::ScopeMember {
                     annotations: ir::AnnotatedElement {
