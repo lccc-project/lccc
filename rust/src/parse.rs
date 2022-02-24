@@ -108,6 +108,7 @@ pub enum Expr {
         target: SimplePath,
         args: Vec<Lexeme>,
     },
+    IntLiteral(i128),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -117,6 +118,7 @@ pub enum Type {
         mutability: Mutability,
         underlying: Box<Self>,
     },
+    Never,
 }
 
 pub fn parse_simple_path<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) -> SimplePath {
@@ -572,6 +574,10 @@ pub fn parse_type<I: Iterator<Item = Lexeme>>(mut it: I) -> Type {
         Lexeme::Token {
             ty: TokenType::Symbol,
             tok,
+        } if tok == "!" => Type::Never,
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
         } if tok == "*" => {
             let mutability = match it.next().unwrap() {
                 Lexeme::Token {
@@ -787,6 +793,27 @@ pub fn parse_simple_expr<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I
             ty: TokenType::String(ty),
             tok,
         } => Expr::StringLiteral(ty, tok),
+        Lexeme::Token {
+            ty: TokenType::Number,
+            tok,
+        } => {
+            let val = tok.parse().unwrap();
+            it.next();
+            Expr::IntLiteral(val)
+        }
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+        } if tok == "-" => {
+            it.next();
+            match it.next().unwrap() {
+                Lexeme::Token {
+                    ty: TokenType::Number,
+                    tok,
+                } => Expr::IntLiteral(-tok.parse::<i128>().unwrap()),
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+        }
         tok => panic!("Invalid Token: {:?}", tok),
     }
 }

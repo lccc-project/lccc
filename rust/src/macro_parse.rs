@@ -1,13 +1,22 @@
 #![allow(dead_code)] // For now
 
-use std::collections::HashMap;
+use xlang::abi::collection::HashMap;
 
 pub use crate::lex::GroupType;
-use crate::{lex::Lexeme, parse::SimplePath};
+use crate::{
+    lex::Lexeme,
+    parse::{Item, SimplePath, Visibility},
+};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum MacroDefn {
-    DeclMacro(Vec<MacroArm>),
+    DeclMacro(DeclMacro),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct DeclMacro {
+    pub exported: bool,
+    pub arms: Vec<MacroArm>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -30,5 +39,50 @@ pub enum MacroOutput {
 
 #[derive(Clone, Debug)]
 pub struct Macros {
-    _defns: HashMap<SimplePath, MacroDefn>,
+    defns: HashMap<SimplePath, MacroDefn>,
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct NoMoreMacros;
+
+pub fn find_macros(macros: &mut Macros, path: SimplePath, item: &Item) -> Result<(), NoMoreMacros> {
+    let mut ret = Err(NoMoreMacros);
+    match item {
+        Item::ExternBlock { .. } => {}
+        Item::FnDeclaration { .. } => {}
+        Item::MacroExpansion { .. } => {}
+        Item::MacroRules {
+            attrs,
+            visibility,
+            name,
+            arms,
+        } => {
+            let mut path = path;
+            let mut decl = DeclMacro {
+                exported: false,
+                arms: arms.clone(),
+            };
+            for attr in attrs {
+                match attr {
+                    crate::parse::Meta::Ident(SimplePath {
+                        idents,
+                        root: false,
+                    }) if &idents[..] == &["macro_export"] => {
+                        path.idents.truncate(1);
+                        decl.exported = true
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(Visibility::Pub) = visibility {
+                decl.exported = true;
+            }
+            path.idents.push(name.clone());
+            if !macros.defns.get(&path).is_some() {
+                macros.defns.insert(path, MacroDefn::DeclMacro(decl));
+                ret = Ok(())
+            }
+        }
+    }
+    ret
 }

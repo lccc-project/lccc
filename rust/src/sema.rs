@@ -487,6 +487,7 @@ pub fn convert_ty(named_types: &[Type], orig: &crate::parse::Type) -> Type {
             mutability: *mutability,
             underlying: Box::new(convert_ty(named_types, &**underlying)),
         },
+        crate::parse::Type::Never => todo!("!"),
     }
 }
 
@@ -521,6 +522,7 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
             ty: None,
         },
         crate::parse::Expr::MacroExpansion { .. } => unreachable!(),
+        crate::parse::Expr::IntLiteral(n) => todo!("{}", n),
     }
 }
 
