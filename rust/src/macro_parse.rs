@@ -48,9 +48,7 @@ pub struct NoMoreMacros;
 pub fn find_macros(macros: &mut Macros, path: SimplePath, item: &Item) -> Result<(), NoMoreMacros> {
     let mut ret = Err(NoMoreMacros);
     match item {
-        Item::ExternBlock { .. } => {}
-        Item::FnDeclaration { .. } => {}
-        Item::MacroExpansion { .. } => {}
+        Item::ExternBlock { .. } | Item::MacroExpansion { .. } | Item::FnDeclaration { .. } => {}
         Item::MacroRules {
             attrs,
             visibility,
@@ -67,9 +65,9 @@ pub fn find_macros(macros: &mut Macros, path: SimplePath, item: &Item) -> Result
                     crate::parse::Meta::Ident(SimplePath {
                         idents,
                         root: false,
-                    }) if &idents[..] == &["macro_export"] => {
+                    }) if idents[..] == ["macro_export"] => {
                         path.idents.truncate(1);
-                        decl.exported = true
+                        decl.exported = true;
                     }
                     _ => {}
                 }
@@ -80,7 +78,7 @@ pub fn find_macros(macros: &mut Macros, path: SimplePath, item: &Item) -> Result
             path.idents.push(name.clone());
             if !macros.defns.get(&path).is_some() {
                 macros.defns.insert(path, MacroDefn::DeclMacro(decl));
-                ret = Ok(())
+                ret = Ok(());
             }
         }
     }
