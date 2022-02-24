@@ -111,6 +111,7 @@ enum RegisterStatus {
 enum X86InstructionOrLabel {
     Label(String),
     Insn(X86Instruction),
+    FunctionEpilogue,
 }
 
 #[derive(Debug, Clone)]
@@ -188,10 +189,7 @@ impl FunctionRawCodegen for X86CodegenState {
     }
 
     fn return_void(&mut self) {
-        self.insns
-            .push(X86InstructionOrLabel::Insn(X86Instruction::Leave));
-        self.insns
-            .push(X86InstructionOrLabel::Insn(X86Instruction::Retn));
+        self.insns.push(X86InstructionOrLabel::FunctionEpilogue);
     }
 
     fn return_value(&mut self, val: xlang_backend::expr::VStackValue<Self::Loc>) {
@@ -202,10 +200,7 @@ impl FunctionRawCodegen for X86CodegenState {
             }
             val => {
                 self.move_value(val, self.callconv.find_return_val(&self.fnty.ret).unwrap());
-                self.insns
-                    .push(X86InstructionOrLabel::Insn(X86Instruction::Leave));
-                self.insns
-                    .push(X86InstructionOrLabel::Insn(X86Instruction::Retn));
+                self.insns.push(X86InstructionOrLabel::FunctionEpilogue);
             }
         }
     }
@@ -836,24 +831,26 @@ impl X86CodegenState {
         symbols: &mut Vec<X86TempSymbol>,
     ) -> std::io::Result<()> {
         let mut encoder = X86Encoder::new(text, self.mode);
-        encoder.write_insn(X86Instruction::new(
-            X86Opcode::Push,
-            vec![X86Operand::Register(X86Register::Rbp)],
-        ))?;
-        encoder.write_insn(X86Instruction::new(
-            X86Opcode::MovMR,
-            vec![
-                X86Operand::ModRM(ModRM::Direct(X86Register::Rbp)),
-                X86Operand::Register(X86Register::Rsp),
-            ],
-        ))?;
-        encoder.write_insn(X86Instruction::new(
-            X86Opcode::SubImm,
-            vec![
-                X86Operand::ModRM(ModRM::Direct(X86Register::Rsp)),
-                X86Operand::Immediate(self.frame_size.try_into().unwrap()),
-            ],
-        ))?;
+        if self.frame_size > 0 {
+            encoder.write_insn(X86Instruction::new(
+                X86Opcode::Push,
+                vec![X86Operand::Register(X86Register::Rbp)],
+            ))?;
+            encoder.write_insn(X86Instruction::new(
+                X86Opcode::MovMR,
+                vec![
+                    X86Operand::ModRM(ModRM::Direct(X86Register::Rbp)),
+                    X86Operand::Register(X86Register::Rsp),
+                ],
+            ))?;
+            encoder.write_insn(X86Instruction::new(
+                X86Opcode::SubImm,
+                vec![
+                    X86Operand::ModRM(ModRM::Direct(X86Register::Rsp)),
+                    X86Operand::Immediate(self.frame_size.try_into().unwrap()),
+                ],
+            ))?;
+        }
         for item in self.insns {
             match item {
                 X86InstructionOrLabel::Label(num) => {
@@ -866,6 +863,12 @@ impl X86CodegenState {
                     ));
                 }
                 X86InstructionOrLabel::Insn(insn) => encoder.write_insn(insn)?,
+                X86InstructionOrLabel::FunctionEpilogue => {
+                    if self.frame_size > 0 {
+                        encoder.write_insn(X86Instruction::Leave)?;
+                    }
+                    encoder.write_insn(X86Instruction::Retn)?;
+                }
             }
         }
 
@@ -1107,7 +1110,10 @@ mod test {
     use target_tuples::Target;
     use xlang::{abi::vec, prelude::v1::HashMap};
     use xlang_backend::{str::StringMap, FunctionCodegen};
-    use xlang_struct::{Abi, Block, FunctionDeclaration, Path, Type};
+    use xlang_struct::{
+        Abi, Block, BlockItem, Expr, FunctionDeclaration, Path, ScalarType, ScalarTypeHeader,
+        ScalarTypeKind, Type, Value,
+    };
 
     use crate::{callconv, X86CodegenState};
 
@@ -1157,9 +1163,201 @@ mod test {
             .into_inner()
             .write_output(&mut sec, &mut Vec::new())
             .unwrap();
-        assert_eq!(
-            *sec.content,
-            [0x55, 0x48, 0x89, 0xE5, 0x48, 0x81, 0xEC, 0x00, 0x00, 0x00, 0x00, 0xC9, 0xC3]
-        )
+        assert_eq!(*sec.content, [0xC3])
+    }
+
+    #[test]
+    fn test_return_value() {
+        let target = Target::parse("x86_64-pc-linux-gnu");
+        let properties = xlang::targets::properties::get_properties((&target).into()).unwrap();
+        let features =
+            super::get_features_from_properties(properties, &properties.arch.default_machine);
+        let name = "foo";
+        let intty = ScalarType {
+            header: ScalarTypeHeader {
+                bitsize: 32,
+                ..Default::default()
+            },
+            kind: ScalarTypeKind::Integer {
+                signed: true,
+                min: i32::MIN.into(),
+                max: i32::MAX.into(),
+            },
+        };
+        let FunctionDeclaration { ty, body } = FunctionDeclaration {
+            ty: xlang_struct::FnType {
+                ret: Type::Scalar(intty),
+                params: xlang::abi::vec::Vec::new(),
+                tag: Abi::C,
+            },
+            body: xlang::abi::option::Some(Block {
+                items: vec![
+                    BlockItem::Expr(Expr::Const(Value::Integer { ty: intty, val: 0 })),
+                    BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
+                ],
+            }),
+        };
+        let mut state = FunctionCodegen::new(
+            X86CodegenState {
+                insns: Vec::new(),
+                mode: X86Mode::default_mode_for(&target).unwrap(),
+                symbols: Vec::new(),
+                name: name.to_string(),
+                strings: Rc::new(RefCell::new(StringMap::new())),
+                fnty: ty.clone(),
+                callconv: callconv::get_callconv(ty.tag, target.clone(), features.clone()).unwrap(),
+                properties,
+                _xmm_status: HashMap::new(),
+                gpr_status: HashMap::new(),
+                frame_size: 0,
+                scratch_reg: None,
+                trap_unreachable: true,
+            },
+            Path {
+                components: vec![xlang_struct::PathComponent::Text(name.into())],
+            },
+            ty.clone(),
+            properties,
+        );
+        state.write_block(body.as_ref().unwrap(), 0);
+        let mut sec = Section {
+            align: 1024,
+            ..Default::default()
+        };
+        state
+            .into_inner()
+            .write_output(&mut sec, &mut Vec::new())
+            .unwrap();
+        assert_eq!(*sec.content, [0x33, 0xC0, 0xC3]);
+    }
+
+    #[test]
+    fn test_invalid() {
+        let target = Target::parse("x86_64-pc-linux-gnu");
+        let properties = xlang::targets::properties::get_properties((&target).into()).unwrap();
+        let features =
+            super::get_features_from_properties(properties, &properties.arch.default_machine);
+        let name = "foo";
+        let intty = ScalarType {
+            header: ScalarTypeHeader {
+                bitsize: 32,
+                ..Default::default()
+            },
+            kind: ScalarTypeKind::Integer {
+                signed: true,
+                min: i32::MIN.into(),
+                max: i32::MAX.into(),
+            },
+        };
+        let FunctionDeclaration { ty, body } = FunctionDeclaration {
+            ty: xlang_struct::FnType {
+                ret: Type::Scalar(intty),
+                params: xlang::abi::vec::Vec::new(),
+                tag: Abi::C,
+            },
+            body: xlang::abi::option::Some(Block {
+                items: vec![
+                    BlockItem::Expr(Expr::Const(Value::Invalid(Type::Scalar(intty)))),
+                    BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
+                ],
+            }),
+        };
+        let mut state = FunctionCodegen::new(
+            X86CodegenState {
+                insns: Vec::new(),
+                mode: X86Mode::default_mode_for(&target).unwrap(),
+                symbols: Vec::new(),
+                name: name.to_string(),
+                strings: Rc::new(RefCell::new(StringMap::new())),
+                fnty: ty.clone(),
+                callconv: callconv::get_callconv(ty.tag, target.clone(), features.clone()).unwrap(),
+                properties,
+                _xmm_status: HashMap::new(),
+                gpr_status: HashMap::new(),
+                frame_size: 0,
+                scratch_reg: None,
+                trap_unreachable: true,
+            },
+            Path {
+                components: vec![xlang_struct::PathComponent::Text(name.into())],
+            },
+            ty.clone(),
+            properties,
+        );
+        state.write_block(body.as_ref().unwrap(), 0);
+        let mut sec = Section {
+            align: 1024,
+            ..Default::default()
+        };
+        state
+            .into_inner()
+            .write_output(&mut sec, &mut Vec::new())
+            .unwrap();
+        assert_eq!(*sec.content, [0x0F, 0x0B])
+    }
+
+    #[test]
+    fn test_invalid_notrap() {
+        let target = Target::parse("x86_64-pc-linux-gnu");
+        let properties = xlang::targets::properties::get_properties((&target).into()).unwrap();
+        let features =
+            super::get_features_from_properties(properties, &properties.arch.default_machine);
+        let name = "foo";
+        let intty = ScalarType {
+            header: ScalarTypeHeader {
+                bitsize: 32,
+                ..Default::default()
+            },
+            kind: ScalarTypeKind::Integer {
+                signed: true,
+                min: i32::MIN.into(),
+                max: i32::MAX.into(),
+            },
+        };
+        let FunctionDeclaration { ty, body } = FunctionDeclaration {
+            ty: xlang_struct::FnType {
+                ret: Type::Scalar(intty),
+                params: xlang::abi::vec::Vec::new(),
+                tag: Abi::C,
+            },
+            body: xlang::abi::option::Some(Block {
+                items: vec![
+                    BlockItem::Expr(Expr::Const(Value::Invalid(Type::Scalar(intty)))),
+                    BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
+                ],
+            }),
+        };
+        let mut state = FunctionCodegen::new(
+            X86CodegenState {
+                insns: Vec::new(),
+                mode: X86Mode::default_mode_for(&target).unwrap(),
+                symbols: Vec::new(),
+                name: name.to_string(),
+                strings: Rc::new(RefCell::new(StringMap::new())),
+                fnty: ty.clone(),
+                callconv: callconv::get_callconv(ty.tag, target.clone(), features.clone()).unwrap(),
+                properties,
+                _xmm_status: HashMap::new(),
+                gpr_status: HashMap::new(),
+                frame_size: 0,
+                scratch_reg: None,
+                trap_unreachable: false,
+            },
+            Path {
+                components: vec![xlang_struct::PathComponent::Text(name.into())],
+            },
+            ty.clone(),
+            properties,
+        );
+        state.write_block(body.as_ref().unwrap(), 0);
+        let mut sec = Section {
+            align: 1024,
+            ..Default::default()
+        };
+        state
+            .into_inner()
+            .write_output(&mut sec, &mut Vec::new())
+            .unwrap();
+        assert_eq!(*sec.content, [])
     }
 }
