@@ -314,3 +314,10 @@ dependencies = [
  "target-tuples 0.5.4",
  "xlang_abi",
 ]
+
+[[package]]
+name = "xlangtransparent"
+version = "0.1.0"
+dependencies = [
+ "xlang",
+]

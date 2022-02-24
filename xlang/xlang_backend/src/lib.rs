@@ -287,7 +287,94 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 self.vstack
                     .push_back(VStackValue::CompareResult(Box::new(val1), Box::new(val2)))
             }
-            Expr::BinaryOp(op) => todo!("binary op {:?}", op),
+            Expr::BinaryOp(op) => {
+                let val1 = self.vstack.pop_back().unwrap();
+                let val2 = self.vstack.pop_back().unwrap();
+                match (val1, val2) {
+                    (VStackValue::Trapped, _) | (_, VStackValue::Trapped) => {
+                        self.vstack.push_back(VStackValue::Trapped);
+                    }
+                    (VStackValue::Constant(Value::Invalid(_)), _)
+                    | (_, VStackValue::Constant(Value::Invalid(_))) => {
+                        self.inner.write_trap(Trap::Unreachable);
+                        self.vstack.push_back(VStackValue::Trapped);
+                    }
+                    (VStackValue::Constant(Value::Uninitialized(ty)), _)
+                    | (_, VStackValue::Constant(Value::Uninitialized(ty))) => match op {
+                        BinaryOp::Cmp | BinaryOp::CmpInt => {
+                            self.vstack
+                                .push_back(VStackValue::Constant(Value::Uninitialized(
+                                    Type::Scalar(ScalarType {
+                                        header: ScalarTypeHeader {
+                                            bitsize: 32,
+                                            ..Default::default()
+                                        },
+                                        kind: ScalarTypeKind::Integer {
+                                            signed: true,
+                                            min: i32::MIN.into(),
+                                            max: i32::MAX.into(),
+                                        },
+                                    }),
+                                )));
+                        }
+                        BinaryOp::CmpLt
+                        | BinaryOp::CmpGt
+                        | BinaryOp::CmpEq
+                        | BinaryOp::CmpNe
+                        | BinaryOp::CmpGe
+                        | BinaryOp::CmpLe => {
+                            self.vstack
+                                .push_back(VStackValue::Constant(Value::Uninitialized(
+                                    Type::Scalar(ScalarType {
+                                        header: ScalarTypeHeader {
+                                            bitsize: 1,
+                                            ..Default::default()
+                                        },
+                                        kind: ScalarTypeKind::Integer {
+                                            signed: false,
+                                            min: 0,
+                                            max: 1,
+                                        },
+                                    }),
+                                )));
+                        }
+                        _ => self
+                            .vstack
+                            .push_back(VStackValue::Constant(Value::Uninitialized(ty))),
+                    },
+                    (VStackValue::LValue(_, _), _) | (_, VStackValue::LValue(_, _)) => {
+                        panic!("lvalues are not valid for {:?}", op)
+                    }
+                    (
+                        VStackValue::AggregatePieced(_, _) | VStackValue::OpaqueAggregate(_, _),
+                        _,
+                    )
+                    | (
+                        _,
+                        VStackValue::AggregatePieced(_, _) | VStackValue::OpaqueAggregate(_, _),
+                    ) => {
+                        panic!("aggregates are not valid for {:?}", op)
+                    }
+                    (VStackValue::Constant(_), VStackValue::Constant(_)) => todo!(),
+                    (VStackValue::Constant(_), VStackValue::Pointer(_, _)) => todo!(),
+                    (VStackValue::Constant(_), VStackValue::OpaqueScalar(_, _)) => todo!(),
+                    (VStackValue::Constant(_), VStackValue::CompareResult(_, _)) => todo!(),
+
+                    (VStackValue::Pointer(_, _), VStackValue::Constant(_)) => todo!(),
+                    (VStackValue::Pointer(_, _), VStackValue::Pointer(_, _)) => todo!(),
+                    (VStackValue::Pointer(_, _), VStackValue::OpaqueScalar(_, _)) => todo!(),
+                    (VStackValue::Pointer(_, _), VStackValue::CompareResult(_, _)) => todo!(),
+                    (VStackValue::OpaqueScalar(_, _), VStackValue::Constant(_)) => todo!(),
+
+                    (VStackValue::OpaqueScalar(_, _), VStackValue::Pointer(_, _)) => todo!(),
+                    (VStackValue::OpaqueScalar(_, _), VStackValue::OpaqueScalar(_, _)) => todo!(),
+                    (VStackValue::OpaqueScalar(_, _), VStackValue::CompareResult(_, _)) => todo!(),
+                    (VStackValue::CompareResult(_, _), VStackValue::Constant(_)) => todo!(),
+                    (VStackValue::CompareResult(_, _), VStackValue::Pointer(_, _)) => todo!(),
+                    (VStackValue::CompareResult(_, _), VStackValue::OpaqueScalar(_, _)) => todo!(),
+                    (VStackValue::CompareResult(_, _), VStackValue::CompareResult(_, _)) => todo!(),
+                }
+            }
             Expr::UnaryOp(op) => todo!("unary op {:?}", op),
             Expr::CallFunction(ty) => {
                 let start = self.vstack.len() - ty.params.len();

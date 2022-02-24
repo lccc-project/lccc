@@ -10,8 +10,8 @@ use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
 
 use xlang::targets::Target;
 use xlang_struct::{
-    Abi, AnnotatedElement, Block, BlockItem, BranchCondition, CharFlags, Expr, File, FnType,
-    FunctionDeclaration, MemberDeclaration, Path, PathComponent, PointerAliasingRule,
+    Abi, AnnotatedElement, BinaryOp, Block, BlockItem, BranchCondition, CharFlags, Expr, File,
+    FnType, FunctionDeclaration, MemberDeclaration, Path, PathComponent, PointerAliasingRule,
     PointerDeclarationType, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind,
     ScalarValidity, Scope, ScopeMember, StackItem, StringEncoding, Type, ValidRangeType, Value,
     Visibility,
@@ -729,6 +729,74 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
                 _ => n,
             };
             Expr::Pivot(n, m)
+        }
+        Token::Ident(id) if id == "add" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::Add)
+        }
+        Token::Ident(id) if id == "sub" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::Sub)
+        }
+        Token::Ident(id) if id == "mul" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::Mul)
+        }
+        Token::Ident(id) if id == "div" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::Div)
+        }
+        Token::Ident(id) if id == "mod" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::Mod)
+        }
+        Token::Ident(id) if id == "cmp" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::Cmp)
+        }
+        Token::Ident(id) if id == "lsh" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::Lsh)
+        }
+        Token::Ident(id) if id == "rsh" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::Rsh)
+        }
+        Token::Ident(id) if id == "band" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::BitAnd)
+        }
+        Token::Ident(id) if id == "bor" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::BitOr)
+        }
+        Token::Ident(id) if id == "bxor" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::BitXor)
+        }
+        Token::Ident(id) if id == "cmp_lt" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::CmpLt)
+        }
+        Token::Ident(id) if id == "cmp_gt" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::CmpGt)
+        }
+        Token::Ident(id) if id == "cmp_eq" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::CmpEq)
+        }
+        Token::Ident(id) if id == "cmp_ne" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::CmpNe)
+        }
+        Token::Ident(id) if id == "cmp_le" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::CmpLe)
+        }
+        Token::Ident(id) if id == "cmp_ge" => {
+            it.next();
+            Expr::BinaryOp(BinaryOp::CmpGe)
         }
         tok => todo!("{:?}", tok),
     }

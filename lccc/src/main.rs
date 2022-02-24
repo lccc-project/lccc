@@ -2,7 +2,7 @@
 mod argparse;
 
 use crate::argparse::{parse_args, ArgSpec, TakesArg};
-use lccc::{LinkOutput, Mode};
+use lccc::{LinkOutput, Mode, OptimizeLevel};
 use std::fs::File;
 use std::io::ErrorKind;
 use std::ops::Deref;
@@ -25,13 +25,23 @@ fn main() {
     let mut mode = Mode::Link;
     let mut link_output = LinkOutput::Executable;
 
+    let mut plugin_overrides = HashMap::<_, _>::new();
+    let mut userplugins = Vec::new();
+
     let argspecs = xlang::vec![
         ArgSpec::new(
             "output",
             Vec::new(),
             xlang::vec!['o'],
             TakesArg::Always,
-            true,
+            true
+        ),
+        ArgSpec::new(
+            "optimize",
+            Vec::new(),
+            xlang::vec!['O'],
+            TakesArg::Always,
+            true
         ),
         ArgSpec::new(
             "intree",
@@ -39,6 +49,20 @@ fn main() {
             Vec::new(),
             TakesArg::Never,
             true
+        ),
+        ArgSpec::new(
+            "pluginpath",
+            xlang::vec!["plugin-path"],
+            Vec::new(),
+            TakesArg::Always,
+            false
+        ),
+        ArgSpec::new(
+            "plugin",
+            xlang::vec!["plugin"],
+            Vec::new(),
+            TakesArg::Always,
+            false
         ),
         ArgSpec::new(
             "plugindirs",
@@ -98,6 +122,8 @@ fn main() {
 
     let mut intree = false;
 
+    let mut opt_mode = OptimizeLevel::Integer(0);
+
     for arg in &args {
         match arg.name {
             "intree" => intree = true,
@@ -106,6 +132,27 @@ fn main() {
             "output" => output = arg.value.clone(),
             "compile" => mode = Mode::CompileOnly,
             "typeck" => mode = Mode::TypeCheck,
+            "pluginpath" => {
+                let arg = arg.value.as_ref().unwrap();
+                let (name, path) = arg.split_once("=").unwrap();
+                let path = PathBuf::from(path);
+                plugin_overrides.insert(name.to_string(), path);
+            }
+            "plugin" => {
+                let arg = arg.value.as_ref().unwrap();
+                userplugins.push(arg.clone());
+            }
+            "optimize" => {
+                let arg = arg.value.as_ref().unwrap();
+                match &**arg {
+                    "s" => opt_mode = OptimizeLevel::Size,
+                    "z" => opt_mode = OptimizeLevel::Zize,
+                    "g" => opt_mode = OptimizeLevel::Debug,
+                    "fast" => opt_mode = OptimizeLevel::Fast,
+                    "extra" => opt_mode = OptimizeLevel::Extra,
+                    x => opt_mode = OptimizeLevel::Integer(x.parse().unwrap()),
+                }
+            }
             "ldout" => {
                 link_output = match arg.value.as_deref() {
                     Some("shared") => LinkOutput::Shared,
@@ -133,6 +180,14 @@ fn main() {
     }
 
     search_paths.push(lccc::XLANG_PLUGIN_DIR.into());
+    //let paths = userplugins.iter().map(Deref::deref).collect::<Vec<_>>();
+    match opt_mode {
+        OptimizeLevel::Integer(0) => {}
+        OptimizeLevel::Integer(n) => {
+            todo!("-O{}", n)
+        }
+        _ => todo!(),
+    }
 
     let frontend_paths = lccc::find_libraries(&search_paths, &lccc::FRONTENDS, "frontend");
 

@@ -1,6 +1,6 @@
 #![allow(dead_code)] // For now
 
-use xlang::abi::collection::HashMap;
+use xlang::abi::collection::{HashMap, HashSet};
 
 pub use crate::lex::GroupType;
 use crate::{
@@ -83,4 +83,10 @@ pub fn find_macros(macros: &mut Macros, path: SimplePath, item: &Item) -> Result
         }
     }
     ret
+}
+
+#[derive(Debug)]
+pub struct Cfg {
+    pub keys: HashSet<String>,
+    pub pairs: HashMap<String, String>,
 }

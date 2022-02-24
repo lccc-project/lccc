@@ -13,6 +13,9 @@ use xlang::{
 
 pub static FRONTENDS: [&str; 3] = ["c", "rust", "xir"];
 pub static CODEGENS: [&str; 1] = ["x86"];
+
+pub static OPTIMIZERS: [&[&str]; 3] = [&[], &[], &[]];
+
 pub type FrontendInit = rustcall!(extern "rustcall" fn() -> DynBox<dyn XLangFrontend>);
 pub type CodegenInit = rustcall!(extern "rustcall" fn() -> DynBox<dyn XLangCodegen>);
 pub type PluginInit = rustcall!(extern "rustcall" fn() -> DynBox<dyn XLangPlugin>);
@@ -34,6 +37,16 @@ pub enum LinkOutput {
     Executable,
     Pie,
     Manifest,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum OptimizeLevel {
+    Integer(u8),
+    Debug,
+    Size,
+    Zize,
+    Fast,
+    Extra,
 }
 
 pub fn find_libraries(search_paths: &[PathBuf], names: &[&str], prefix: &str) -> Vec<PathBuf> {
