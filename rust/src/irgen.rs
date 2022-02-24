@@ -114,6 +114,18 @@ fn irgen_type(ty: Type) -> ir::Type {
                 .collect::<Vec<ir::Type>>()
                 .into(),
         ),
+        Type::Never => ir::Type::Scalar(ir::ScalarType {
+            header: ir::ScalarTypeHeader {
+                bitsize: 0,
+                validity: ir::ScalarValidity::NONZERO,
+                ..ir::ScalarTypeHeader::default()
+            },
+            kind: ir::ScalarTypeKind::Integer {
+                signed: false,
+                min: 0,
+                max: 0,
+            },
+        }),
         x => todo!("{:?}", x),
     }
 }
