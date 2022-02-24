@@ -37,8 +37,8 @@ use xlang_backend::{
     FunctionCodegen, FunctionRawCodegen,
 };
 use xlang_struct::{
-    AccessClass, BranchCondition, FnType, FunctionDeclaration, PathComponent, ScalarType, Type,
-    UnaryOp,
+    AccessClass, BranchCondition, FnType, FunctionDeclaration, PathComponent, ScalarType,
+    ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type, UnaryOp, Value,
 };
 
 #[allow(dead_code)]
@@ -135,6 +135,7 @@ pub struct X86CodegenState {
     scratch_reg: Option<X86Register>,
     gpr_status: HashMap<u8, RegisterStatus>,
     _xmm_status: HashMap<u8, RegisterStatus>,
+    trap_unreachable: bool,
 }
 
 impl FunctionRawCodegen for X86CodegenState {
@@ -146,6 +147,7 @@ impl FunctionRawCodegen for X86CodegenState {
 
     fn write_trap(&mut self, trap: xlang_backend::expr::Trap) {
         match trap {
+            xlang_backend::expr::Trap::Unreachable if !self.trap_unreachable => {}
             xlang_backend::expr::Trap::Unreachable | xlang_backend::expr::Trap::Abort => self
                 .insns
                 .push(X86InstructionOrLabel::Insn(X86Instruction::Ud2)),
@@ -193,11 +195,19 @@ impl FunctionRawCodegen for X86CodegenState {
     }
 
     fn return_value(&mut self, val: xlang_backend::expr::VStackValue<Self::Loc>) {
-        self.move_value(val, self.callconv.find_return_val(&self.fnty.ret).unwrap());
-        self.insns
-            .push(X86InstructionOrLabel::Insn(X86Instruction::Leave));
-        self.insns
-            .push(X86InstructionOrLabel::Insn(X86Instruction::Retn));
+        match val {
+            VStackValue::Trapped => {}
+            VStackValue::Constant(Value::Invalid(_)) => {
+                self.write_trap(Trap::Unreachable);
+            }
+            val => {
+                self.move_value(val, self.callconv.find_return_val(&self.fnty.ret).unwrap());
+                self.insns
+                    .push(X86InstructionOrLabel::Insn(X86Instruction::Leave));
+                self.insns
+                    .push(X86InstructionOrLabel::Insn(X86Instruction::Retn));
+            }
+        }
     }
 
     fn write_intrinsic(
@@ -249,6 +259,20 @@ impl FunctionRawCodegen for X86CodegenState {
             Type::Void | Type::Null => XLangOption::None,
             ty @ Type::Product(_) => {
                 XLangOption::Some(VStackValue::OpaqueAggregate(ty.clone(), retval.unwrap()))
+            }
+            Type::Scalar(
+                ty @ ScalarType {
+                    header:
+                        ScalarTypeHeader {
+                            bitsize: 0,
+                            validity,
+                            ..
+                        },
+                    kind: ScalarTypeKind::Integer { .. },
+                },
+            ) if validity.contains(ScalarValidity::NONZERO) => {
+                // Special case uint nonzero(0)
+                XLangOption::Some(VStackValue::Constant(Value::Invalid(Type::Scalar(*ty))))
             }
             Type::Scalar(ty) => XLangOption::Some(VStackValue::OpaqueScalar(*ty, retval.unwrap())),
             Type::Pointer(pty) => XLangOption::Some(VStackValue::Pointer(
@@ -347,7 +371,10 @@ impl FunctionRawCodegen for X86CodegenState {
     fn move_value(&mut self, val: xlang_backend::expr::VStackValue<Self::Loc>, loc: Self::Loc) {
         match val {
             VStackValue::Constant(val) => match val {
-                xlang_struct::Value::Invalid(_) | xlang_struct::Value::Uninitialized(_) => {}
+                xlang_struct::Value::Invalid(_) => {
+                    self.write_trap(Trap::Unreachable);
+                }
+                xlang_struct::Value::Uninitialized(_) => {}
                 xlang_struct::Value::GenericParameter(n) => todo!("param %{}", n),
                 xlang_struct::Value::Integer { ty: _, val } => match loc {
                     ValLocation::BpDisp(disp) => todo!("[bp{:+}]", disp),
@@ -974,6 +1001,7 @@ impl XLangPlugin for X86CodegenPlugin {
                             gpr_status: HashMap::new(),
                             frame_size: 0,
                             scratch_reg: None,
+                            trap_unreachable: true,
                         },
                         path.clone(),
                         ty.clone(),

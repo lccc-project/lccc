@@ -124,7 +124,7 @@ impl<S: std::hash::BuildHasher + Clone + 'static> X86CallConv for SysV64CC<S> {
         let mut last_val = ValLocation::Unassigned(0);
         for ty in ty.params.iter().take(off as usize + 1) {
             match (classify_type(ty).unwrap(), type_size(ty, self.0).unwrap()) {
-                (TypeClass::Zero | TypeClass::Integer, 0) => last_val = ValLocation::Null,
+                (_, 0) => last_val = ValLocation::Null,
                 (TypeClass::Integer, 1) => {
                     int_regs.get(0).map_or_else(
                         || todo!(),

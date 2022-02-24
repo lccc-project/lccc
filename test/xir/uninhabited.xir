@@ -1,0 +1,9 @@
+
+function exit(int(32))->uint nonzero(0);
+
+function main()->int(32){
+    const global_address exit
+    const int(32) 0
+    call function(int(32))->uint nonzero(0)
+    exit block $0 1
+}
