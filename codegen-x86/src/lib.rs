@@ -1097,3 +1097,69 @@ pub extern "rustcall" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
         properties: None
     }))
 }}
+
+#[cfg(all(test, not(miri)))] // miri doesn't work because of FFI calls. This should be fixed
+mod test {
+    use std::{cell::RefCell, rc::Rc};
+
+    use arch_ops::x86::insn::X86Mode;
+    use binfmt::fmt::Section;
+    use target_tuples::Target;
+    use xlang::{abi::vec, prelude::v1::HashMap};
+    use xlang_backend::{str::StringMap, FunctionCodegen};
+    use xlang_struct::{Abi, Block, FunctionDeclaration, Path, Type};
+
+    use crate::{callconv, X86CodegenState};
+
+    #[test]
+    fn test_return_void() {
+        let target = Target::parse("x86_64-pc-linux-gnu");
+        let properties = xlang::targets::properties::get_properties((&target).into()).unwrap();
+        let features =
+            super::get_features_from_properties(properties, &properties.arch.default_machine);
+        let name = "foo";
+        let FunctionDeclaration { ty, body } = FunctionDeclaration {
+            ty: xlang_struct::FnType {
+                ret: Type::Void,
+                params: xlang::abi::vec::Vec::new(),
+                tag: Abi::C,
+            },
+            body: xlang::abi::option::Some(Block { items: vec![] }),
+        };
+        let mut state = FunctionCodegen::new(
+            X86CodegenState {
+                insns: Vec::new(),
+                mode: X86Mode::default_mode_for(&target).unwrap(),
+                symbols: Vec::new(),
+                name: name.to_string(),
+                strings: Rc::new(RefCell::new(StringMap::new())),
+                fnty: ty.clone(),
+                callconv: callconv::get_callconv(ty.tag, target.clone(), features.clone()).unwrap(),
+                properties,
+                _xmm_status: HashMap::new(),
+                gpr_status: HashMap::new(),
+                frame_size: 0,
+                scratch_reg: None,
+                trap_unreachable: true,
+            },
+            Path {
+                components: vec![xlang_struct::PathComponent::Text(name.into())],
+            },
+            ty.clone(),
+            properties,
+        );
+        state.write_block(body.as_ref().unwrap(), 0);
+        let mut sec = Section {
+            align: 1024,
+            ..Default::default()
+        };
+        state
+            .into_inner()
+            .write_output(&mut sec, &mut Vec::new())
+            .unwrap();
+        assert_eq!(
+            *sec.content,
+            [0x55, 0x48, 0x89, 0xE5, 0x48, 0x81, 0xEC, 0x00, 0x00, 0x00, 0x00, 0xC9, 0xC3]
+        )
+    }
+}
