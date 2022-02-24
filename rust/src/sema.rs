@@ -1,6 +1,6 @@
 pub use crate::lex::StrType; // TODO: `pub use` this in `crate::parse`
 use crate::parse::{FnParam, Item, Mod};
-pub use crate::parse::{Mutability, Safety, Visibility};
+pub use crate::parse::{Meta, Mutability, Safety, SimplePath, Visibility};
 use std::collections::hash_map::{Entry, HashMap};
 use std::fmt::{self, Display, Formatter};
 
@@ -616,19 +616,32 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                 return_ty,
                 block,
             } => {
+                let name = Identifier::Basic {
+                    name: name.clone(),
+                    mangling: Some(if abi.is_some() {
+                        Mangling::C
+                    } else {
+                        Mangling::Rust
+                    }),
+                };
                 for attr in attrs {
-                    todo!("#[{:?}]", attr)
+                    match attr {
+                        Meta::KeyValue(path, value) // For the record, deref patterns would make this a million times easier
+                            if *path
+                                == SimplePath {
+                                    root: false,
+                                    idents: vec![String::from("lang")],
+                                }
+                                && **value == Meta::String(String::from("main")) =>
+                        {
+                            lang_items.insert(LangItem::Main, name.clone());
+                        }
+                        x => todo!("#[{:?}]", attr),
+                    }
                 }
                 Declaration::Function {
                     has_definition: block.is_some(),
-                    name: Identifier::Basic {
-                        name: name.clone(),
-                        mangling: Some(if abi.is_some() {
-                            Mangling::C
-                        } else {
-                            Mangling::Rust
-                        }),
-                    },
+                    name,
                     sig: FunctionSignature {
                         abi: abi.map_or(Abi::Rust, |x| match x {
                             "C" => Abi::C,
