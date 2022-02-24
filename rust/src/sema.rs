@@ -715,7 +715,7 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
     }
 }
 
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::option_if_let_else)]
 fn typeck_expr(
     declarations: &[Declaration],
     expr: &mut Expression,
@@ -798,7 +798,7 @@ fn typeck_expr(
                         "tried to infer an already-inferred integer as a different type"
                     );
                 } else if let Type::Integer(ty) = ty {
-                    *int_ty = Some(ty.clone());
+                    *int_ty = Some(*ty);
                 } else {
                     panic!("attempt to infer integer as non-integer type");
                 }

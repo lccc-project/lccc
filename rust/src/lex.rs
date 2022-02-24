@@ -121,6 +121,18 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     }),
                 }
             }
+            x if x >= '0' && x <= '9' => {
+                let mut num = String::new();
+                file.next();
+                while let Some(&x) = file.peek() {
+                    if !x.is_xid_continue() { // Let parser do syntactic verification
+                        break;
+                    }
+                    num.push(x);
+                    file.next();
+                }
+                result.push(Lexeme::Token { ty: TokenType::Number, tok: num });
+            }
             '"' => {
                 file.next();
                 result.push(Lexeme::Token {
