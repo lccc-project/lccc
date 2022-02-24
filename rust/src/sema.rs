@@ -793,7 +793,10 @@ fn typeck_expr(
         Expression::IntegerLiteral { val, ty: int_ty } => {
             if let Some(ty) = ty {
                 if let Some(int_ty) = int_ty {
-                    assert!(Type::Integer(*int_ty) == *ty, "tried to infer an already-inferred integer as a different type");
+                    assert!(
+                        Type::Integer(*int_ty) == *ty,
+                        "tried to infer an already-inferred integer as a different type"
+                    );
                 } else if let Type::Integer(ty) = ty {
                     *int_ty = Some(ty.clone());
                 } else {
