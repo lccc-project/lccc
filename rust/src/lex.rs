@@ -122,7 +122,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                 }
             }
             x if x >= '0' && x <= '9' => {
-                let mut num = String::new();
+                let mut num = String::from(x);
                 file.next();
                 while let Some(&x) = file.peek() {
                     if !x.is_xid_continue() { // Let parser do syntactic verification

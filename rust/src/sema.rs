@@ -76,6 +76,7 @@ pub enum Type {
     Float(FloatType),
     Function(FunctionSignature),
     Integer(IntType),
+    Never,
     Pointer {
         mutability: Mutability,
         underlying: Box<Self>,
@@ -114,6 +115,7 @@ impl Type {
                 IntType::Uptr => "uptr",
                 IntType::Usize => "usize",
             }),
+            Self::Never => String::from("!"),
             Self::Pointer {
                 mutability,
                 underlying,
@@ -487,7 +489,7 @@ pub fn convert_ty(named_types: &[Type], orig: &crate::parse::Type) -> Type {
             mutability: *mutability,
             underlying: Box::new(convert_ty(named_types, &**underlying)),
         },
-        crate::parse::Type::Never => todo!("!"),
+        crate::parse::Type::Never => Type::Never,
     }
 }
 
@@ -512,6 +514,10 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
             },
             ty: None,
         },
+        crate::parse::Expr::IntLiteral(n) => Expression::IntegerLiteral {
+            val: *n as u128,
+            ty: None,
+        },
         crate::parse::Expr::Parentheses(inner) => convert_expr(named_types, inner), // I assume this only exists for lints
         crate::parse::Expr::StringLiteral(kind, val) => Expression::StringLiteral {
             kind: *kind,
@@ -522,7 +528,6 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
             ty: None,
         },
         crate::parse::Expr::MacroExpansion { .. } => unreachable!(),
-        crate::parse::Expr::IntLiteral(n) => todo!("{}", n),
     }
 }
 
