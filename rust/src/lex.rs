@@ -184,6 +184,30 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     tok,
                 });
             }
+            '/' => {
+                file.next();
+                if file.peek() == Some(&'=') {
+                    file.next();
+                    result.push(Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok: String::from("/="),
+                    });
+                } else if file.peek() == Some(&'/') {
+                    // SINGLE-LINE COMMENT
+                    file.next();
+                    while file.next() != Some('\n') {}
+                } else if file.peek() == Some(&'*') {
+                    // MULTI-LINE COMMENT
+                    file.next();
+                    while !(file.next() == Some('*') && file.peek() == Some(&'/')) {}
+                    file.next();
+                } else {
+                    result.push(Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok: String::from("/"),
+                    });
+                }
+            }
             '(' | '[' | '{' => {
                 file.next();
                 result.push(Lexeme::Group {
