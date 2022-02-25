@@ -1,5 +1,5 @@
 pub use crate::lex::StrType; // TODO: `pub use` this in `crate::parse`
-use crate::parse::{FnParam, Item, Mod};
+use crate::parse::{FnParam, Item, Mod, Pattern};
 pub use crate::parse::{Meta, Mutability, Safety, SimplePath, Visibility};
 use std::collections::hash_map::{Entry, HashMap};
 use std::fmt::{self, Display, Formatter};
@@ -169,6 +169,7 @@ pub enum Abi {
     CUnwind,        // "C-unwind"
     Fastcall,       // "fastcall"
     FastcallUnwind, // "fastcall-unwind"
+    Local,          // Used by local variables
     Rust,           // "Rust"
     RustCall,       // "rust-call"
     RustcallV0,     // "rustcall-v0", not to be confused with "rust-call"
@@ -215,41 +216,56 @@ pub enum Declaration {
         name: Identifier,
         sig: FunctionSignature,
     },
+    Local {
+        name: Identifier,
+        ty: Type,
+    },
 }
 
 impl Declaration {
     #[must_use]
     pub const fn abi(&self) -> Abi {
-        let Declaration::Function {
+        if let Declaration::Function {
             sig: FunctionSignature { abi, .. },
             ..
-        } = self;
-        *abi
+        } = self
+        {
+            *abi
+        } else {
+            Abi::Local
+        }
     }
 
     #[must_use]
     pub const fn has_definition(&self) -> bool {
-        let Declaration::Function { has_definition, .. } = self;
-        *has_definition
+        if let Declaration::Function { has_definition, .. } = self {
+            *has_definition
+        } else {
+            true
+        }
     }
 
     #[must_use]
     pub const fn name(&self) -> &Identifier {
-        let Declaration::Function { name, .. } = self;
+        let (Declaration::Function { name, .. } | Declaration::Local { name, .. }) = self;
         name
     }
 
     #[must_use]
     pub fn ty(&self) -> Type {
-        let Declaration::Function { sig, .. } = self;
-        Type::Function(sig.clone())
+        match self {
+            Declaration::Function { sig, .. } => Type::Function(sig.clone()),
+            Declaration::Local { ty, .. } => ty.clone(),
+        }
     }
 }
 
 impl Display for Declaration {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let Declaration::Function { name, sig, .. } = self;
-        writeln!(f, "fn {}{};", name, sig)
+        match self {
+            Declaration::Function { name, sig, .. } => writeln!(f, "fn {}{};", name, sig),
+            Declaration::Local { name, ty } => writeln!(f, "local {}: {}", name, ty),
+        }
     }
 }
 
@@ -367,7 +383,10 @@ impl Display for Expression {
 #[allow(dead_code)]
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub enum Statement {
-    Bind { target: String, value: Expression },
+    Bind {
+        target: Identifier,
+        value: Expression,
+    },
     Discard(Expression),
     Expression(Expression),
 }
@@ -375,7 +394,7 @@ pub enum Statement {
 impl Display for Statement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::Bind { .. } => todo!(),
+            Statement::Bind { target, value } => write!(f, "let {} = {};", target, value),
             Statement::Discard(expr) => write!(f, "{};", expr),
             Statement::Expression(expr) => write!(f, "{}", expr),
         }
@@ -544,7 +563,22 @@ pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> 
             crate::parse::BlockItem::Item(_) => {
                 todo!("items in code blocks are currently unsupported");
             }
-            crate::parse::BlockItem::Let { .. } => todo!("{:?}", statement),
+            crate::parse::BlockItem::Let { pattern, value } => match (pattern, value) {
+                (Pattern::Discard, None) => {}
+                (Pattern::Discard, Some(value)) => {
+                    result.push(Statement::Discard(convert_expr(named_types, value)))
+                }
+                (Pattern::Ident(_), None) => todo!(),
+                (Pattern::Ident(name), Some(value)) => {
+                    result.push(Statement::Bind {
+                        target: Identifier::Basic {
+                            mangling: None,
+                            name: name.clone(),
+                        },
+                        value: convert_expr(named_types, value),
+                    });
+                }
+            },
             crate::parse::BlockItem::MacroExpansion { .. } => unreachable!(),
         }
     }
@@ -857,14 +891,21 @@ fn typeck_expr(
 }
 
 fn typeck_statement(
-    declarations: &[Declaration],
+    declarations: &mut Vec<Declaration>,
     statement: &mut Statement,
     safety: Safety,
     ty: Option<&Type>,
     return_ty: Option<&Type>,
 ) -> Type {
     match statement {
-        Statement::Bind { .. } => todo!(),
+        Statement::Bind { target, value } => {
+            let result_ty = typeck_expr(declarations, value, safety, None, return_ty);
+            declarations.push(Declaration::Local {
+                name: target.clone(),
+                ty: result_ty,
+            });
+            Type::Tuple(Vec::new())
+        }
         Statement::Discard(expr) => {
             typeck_expr(declarations, expr, safety, None, return_ty);
             Type::Tuple(Vec::new())
@@ -886,13 +927,14 @@ fn typeck_block(
     ty: Option<&Type>,
     return_ty: Option<&Type>,
 ) -> Type {
+    let mut declarations = declarations.iter().map(Declaration::clone).collect();
     let result_ty = if block.is_empty() {
         Type::Tuple(Vec::new())
     } else {
         let (result, bulk) = block.split_last_mut().unwrap(); // Will not panic because we verified that the block is not empty
         for statement in bulk {
             let result = typeck_statement(
-                declarations,
+                &mut declarations,
                 statement,
                 safety,
                 Some(&Type::Tuple(Vec::new())),
@@ -904,7 +946,7 @@ fn typeck_block(
                 result
             );
         }
-        typeck_statement(declarations, result, safety, ty, return_ty)
+        typeck_statement(&mut declarations, result, safety, ty, return_ty)
     };
     if let Some(ty) = ty {
         assert!(result_ty == *ty, "expected {:?}, got {:?}", ty, result_ty);

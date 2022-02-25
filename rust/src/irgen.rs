@@ -266,68 +266,76 @@ pub fn irgen_definition(
     file: &mut ir::File,
 ) {
     let Definition::Function { name, body, .. } = definition;
-    let Declaration::Function { sig, .. } = declarations
+    if let Declaration::Function { sig, .. } = declarations
         .iter()
         .find(|x| x.name().matches(name))
-        .unwrap();
-    file.root.members.insert(
-        identifier_to_path(name.clone(), Some(sig)),
-        ir::ScopeMember {
-            vis: ir::Visibility::Public,
-            member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration {
-                ty: sig_to_fn_type(sig.clone()),
-                body: AbiSome(FunctionBody {
-                    locals: xlang::abi::vec![],
-                    block: irgen_block(body.clone(), 0),
+        .unwrap()
+    {
+        file.root.members.insert(
+            identifier_to_path(name.clone(), Some(sig)),
+            ir::ScopeMember {
+                vis: ir::Visibility::Public,
+                member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration {
+                    ty: sig_to_fn_type(sig.clone()),
+                    body: AbiSome(FunctionBody {
+                        locals: xlang::abi::vec![],
+                        block: irgen_block(body.clone(), 0),
+                    }),
                 }),
-            }),
-            ..ir::ScopeMember::default()
-        },
-    );
+                ..ir::ScopeMember::default()
+            },
+        );
+    } else {
+        panic!("found declaration of function, but declaration wasn't of a function");
+    }
 }
 
 pub fn irgen_main(main: &Identifier, declarations: &[Declaration], file: &mut ir::File) {
-    let Declaration::Function { sig: main_sig, .. } = declarations
+    if let Declaration::Function { sig: main_sig, .. } = declarations
         .iter()
         .find(|x| x.name().matches(main))
-        .unwrap();
-    let body = vec![
-        Statement::Discard(Expression::FunctionCall {
-            func: Box::new(Expression::Identifier {
-                id: main.clone(),
-                ty: Some(Type::Function(main_sig.clone())),
+        .unwrap()
+    {
+        let body = vec![
+            Statement::Discard(Expression::FunctionCall {
+                func: Box::new(Expression::Identifier {
+                    id: main.clone(),
+                    ty: Some(Type::Function(main_sig.clone())),
+                }),
+                args: Vec::new(),
             }),
-            args: Vec::new(),
-        }),
-        Statement::Expression(Expression::IntegerLiteral {
-            val: 0,
-            ty: Some(IntType::I32),
-        }),
-    ];
-    let name = Identifier::Basic {
-        mangling: Some(Mangling::C),
-        name: String::from("__lccc_main"),
-    };
-    let sig = FunctionSignature {
-        abi: Abi::Rust,
-        params: Vec::new(),
-        return_ty: Box::new(Type::Integer(IntType::I32)),
-        safety: Safety::Safe,
-        visibility: Visibility::Pub,
-    };
-    irgen_definition(
-        &Definition::Function {
-            name: name.clone(),
-            return_ty: (*sig.return_ty).clone(),
-            body,
-        },
-        &[Declaration::Function {
-            has_definition: true,
-            name,
-            sig,
-        }],
-        file,
-    );
+            Statement::Expression(Expression::IntegerLiteral {
+                val: 0,
+                ty: Some(IntType::I32),
+            }),
+        ];
+        let name = Identifier::Basic {
+            mangling: Some(Mangling::C),
+            name: String::from("__lccc_main"),
+        };
+        let sig = FunctionSignature {
+            abi: Abi::Rust,
+            params: Vec::new(),
+            return_ty: Box::new(Type::Integer(IntType::I32)),
+            safety: Safety::Safe,
+            visibility: Visibility::Pub,
+        };
+        irgen_definition(
+            &Definition::Function {
+                name: name.clone(),
+                return_ty: (*sig.return_ty).clone(),
+                body,
+            },
+            &[Declaration::Function {
+                has_definition: true,
+                name,
+                sig,
+            }],
+            file,
+        );
+    } else {
+        panic!("main is not a function?");
+    }
 }
 
 pub fn irgen(program: &Program, file: &mut ir::File) {
@@ -340,6 +348,9 @@ pub fn irgen(program: &Program, file: &mut ir::File) {
                 declaration.name().clone(),
                 match declaration {
                     Declaration::Function { sig, .. } => Some(sig),
+                    Declaration::Local { .. } => {
+                        unreachable!("Excuse me, why is there a local at global scope?")
+                    }
                 },
             ),
             ir::ScopeMember {
@@ -350,6 +361,9 @@ pub fn irgen(program: &Program, file: &mut ir::File) {
                             ty: sig_to_fn_type(sig.clone()),
                             body: AbiNone,
                         })
+                    }
+                    Declaration::Local { .. } => {
+                        unreachable!("Excuse me, why is there a local at global scope?")
                     }
                 },
                 ..ir::ScopeMember::default()
