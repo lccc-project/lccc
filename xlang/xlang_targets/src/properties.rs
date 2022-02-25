@@ -212,6 +212,7 @@ pub fn __get_properties(targ: Target) -> Option<&'static TargetProperties> {
     }
 }
 
+#[cfg(not(any(miri, test)))]
 extern "C" {
     /// Direct call to xlang_interface to get the target properties of the target (consistently)
     /// It is recommended to use the wrapper [`self::get_properties`] instead of this function
@@ -220,6 +221,12 @@ extern "C" {
     /// This function is always safe to call when xlang_interface is linked.
     /// No undefined behaviour is observed when calling this function
     pub fn xlang_get_target_properties(targ: Target) -> Option<&'static TargetProperties>;
+}
+
+#[cfg(any(miri, test))]
+#[allow(deprecated, missing_docs)]
+pub unsafe fn xlang_get_target_properties(targ: Target) -> Option<&'static TargetProperties> {
+    __get_properties(targ)
 }
 
 ///

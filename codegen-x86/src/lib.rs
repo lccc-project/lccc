@@ -1105,7 +1105,7 @@ pub extern "rustcall" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
     }))
 }}
 
-#[cfg(all(test, not(miri)))] // miri doesn't work because of FFI calls. This should be fixed
+#[cfg(test)] // miri doesn't work because of FFI calls. This should be fixed
 mod test {
     use std::{cell::RefCell, rc::Rc};
 

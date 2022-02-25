@@ -1,3 +1,5 @@
+#![cfg_attr(any(miri, test), allow(unused_unsafe, missing_docs))]
+
 pub use std::alloc::GlobalAlloc;
 use std::{
     convert::TryFrom,
@@ -10,7 +12,7 @@ use crate::{
     traits::{AbiSafeTrait, AbiSafeUnsize, AbiSafeVTable, DynPtrSafe},
 };
 
-#[cfg(not(test))]
+#[cfg(not(any(miri, test)))]
 extern "C" {
     /// Function that allocates memory suitable for storing an object of size `size`, with at least the maximum fundamental alignment for that size.
     ///
@@ -57,7 +59,7 @@ extern "C" {
     ) -> !;
 }
 
-#[cfg(test)]
+#[cfg(any(miri, test))]
 #[no_mangle]
 pub unsafe extern "C" fn xlang_allocate(
     size: xlang_host::primitives::size_t,
@@ -75,7 +77,7 @@ pub unsafe extern "C" fn xlang_allocate(
     )
 }
 
-#[cfg(test)]
+#[cfg(any(miri, test))]
 #[no_mangle]
 pub unsafe extern "C" fn xlang_allocate_aligned(
     size: xlang_host::primitives::size_t,
@@ -89,7 +91,7 @@ pub unsafe extern "C" fn xlang_allocate_aligned(
     std::alloc::alloc(layout).cast::<_>()
 }
 
-#[cfg(test)]
+#[cfg(any(miri, test))]
 #[no_mangle]
 pub unsafe extern "C" fn xlang_deallocate(
     ptr: *mut core::ffi::c_void,
@@ -112,7 +114,7 @@ pub unsafe extern "C" fn xlang_deallocate(
     }
 }
 
-#[cfg(test)]
+#[cfg(any(miri, test))]
 #[no_mangle]
 pub unsafe extern "C" fn xlang_deallocate_aligned(
     ptr: *mut core::ffi::c_void,
@@ -127,7 +129,7 @@ pub unsafe extern "C" fn xlang_deallocate_aligned(
     std::alloc::dealloc(ptr.cast::<_>(), layout);
 }
 
-#[cfg(test)]
+#[cfg(any(miri, test))]
 #[no_mangle]
 pub extern "C" fn xlang_on_allocation_failure(
     size: xlang_host::primitives::size_t,
