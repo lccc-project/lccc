@@ -651,7 +651,10 @@ pub fn parse_block<I: Iterator<Item = Lexeme>>(it: I) -> Vec<BlockItem> {
                         Some(Lexeme::Token { tok, .. }) if tok == "=" => {
                             peek.next();
                             value = Some(parse_expr(&mut peek));
-                            assert!(matches!(peek.next(), Some(Lexeme::Token { tok, .. }) if tok == ";"), "Expected semicolon");
+                            assert!(
+                                matches!(peek.next(), Some(Lexeme::Token { tok, .. }) if tok == ";"),
+                                "Expected semicolon"
+                            );
                         }
                         _ => panic!("Invalid Token"),
                     }
