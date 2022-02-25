@@ -1,6 +1,6 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
 use std::convert::TryFrom;
-use std::ops::{BitAnd, BitOr};
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
 use xlang_abi::prelude::v1::*;
 use xlang_targets::Target;
@@ -395,10 +395,13 @@ pub enum Expr {
         n: u32,
         block: Block,
     },
+    Assign(AccessClass),
+    AsRValue(AccessClass),
 }
 
 fake_enum::fake_enum! {
     #[repr(pub u8)]
+    #[derive(Hash)]
     pub enum struct AccessClass{
         Normal = 0,
         AtomicRelaxed = 1,
@@ -470,6 +473,17 @@ impl BitAnd for AccessClass {
 
     fn bitand(self, rhs: Self) -> Self {
         Self(self.0 & rhs.0)
+    }
+}
+
+impl BitOrAssign for AccessClass {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0
+    }
+}
+impl BitAndAssign for AccessClass {
+    fn bitand_assign(&mut self, rhs: Self) {
+        self.0 &= rhs.0
     }
 }
 

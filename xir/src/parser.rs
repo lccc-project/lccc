@@ -5,15 +5,13 @@ use std::{
     iter::Peekable,
 };
 
-use xlang::abi::vec;
-
 use xlang::abi::string::FromUtf8Error;
 use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
 
 use xlang::targets::Target;
 use xlang_struct::{
-    Abi, AnnotatedElement, BinaryOp, Block, BlockItem, BranchCondition, CharFlags, Expr, File,
-    FnType, FunctionBody, FunctionDeclaration, MemberDeclaration, Path, PathComponent,
+    Abi, AccessClass, AnnotatedElement, BinaryOp, Block, BlockItem, BranchCondition, CharFlags,
+    Expr, File, FnType, FunctionBody, FunctionDeclaration, MemberDeclaration, Path, PathComponent,
     PointerAliasingRule, PointerDeclarationType, PointerType, ScalarType, ScalarTypeHeader,
     ScalarTypeKind, ScalarValidity, Scope, ScopeMember, StackItem, StringEncoding, Type,
     ValidRangeType, Value, Visibility,
@@ -389,6 +387,30 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
                         )),
                         Token::Group(Group::Braces(toks)) => {
                             let mut peekable = toks.into_iter().peekable();
+                            let mut locals = Vec::new();
+                            loop {
+                                match peekable.peek() {
+                                    Some(Token::Ident(id)) if id == "declare" => {
+                                        peekable.next();
+                                        match peekable.next().unwrap() {
+                                            Token::Ident(id) if id.starts_with('_') => {
+                                                // Assume there's increasing indecies for now
+                                            }
+                                            tok => panic!("Unrecognized token {:?}", tok),
+                                        }
+                                        match peekable.next().unwrap() {
+                                            Token::Sigil(':') => {}
+                                            tok => panic!("Unrecognized token {:?}", tok),
+                                        }
+                                        locals.push(parse_type(&mut peekable).unwrap());
+                                        match peekable.next().unwrap() {
+                                            Token::Sigil(';') => {}
+                                            tok => panic!("Unrecognized token {:?}", tok),
+                                        }
+                                    }
+                                    _ => break,
+                                }
+                            }
                             Some((
                                 name,
                                 ScopeMember {
@@ -399,7 +421,7 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
                                             tag: Abi::C,
                                         },
                                         body: xlang::abi::option::Some(FunctionBody {
-                                            locals: vec![],
+                                            locals,
                                             block: parse_block(&mut peekable),
                                         }),
                                     }),
@@ -642,6 +664,61 @@ pub fn parse_const<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Value {
     }
 }
 
+pub fn parse_access_class<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> AccessClass {
+    let mut acc = AccessClass::Normal;
+    loop {
+        match it.peek() {
+            Some(Token::Ident(id)) if id == "atomic" => {
+                if acc & AccessClass::ATOMIC_MASK != AccessClass::Normal {
+                    panic!("Invalid access class, at most one atomic mode may be present");
+                }
+                it.next();
+                match it.next().unwrap() {
+                    Token::Ident(id) if id == "relaxed" => {
+                        acc |= AccessClass::AtomicRelaxed;
+                    }
+                    Token::Ident(id) if id == "release" => {
+                        acc |= AccessClass::AtomicRelease;
+                    }
+                    Token::Ident(id) if id == "acquire" => {
+                        acc |= AccessClass::AtomicAcquire;
+                    }
+                    Token::Ident(id) if id == "acq_rel" => {
+                        acc |= AccessClass::AtomicAcqRel;
+                    }
+                    Token::Ident(id) if id == "seq_cst" => {
+                        acc |= AccessClass::AtomicSeqCst;
+                    }
+                    tok => panic!("Unexpected token {:?}", tok),
+                }
+
+                match it.peek() {
+                    Some(Token::Ident(id)) if id == "fail" => {
+                        it.next();
+                        match it.next().unwrap() {
+                            Token::Ident(id) if id == "relaxed" => {
+                                acc |= AccessClass::AtomicFailRelaxed
+                            }
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Some(Token::Ident(id)) if id == "freeze" => {
+                acc |= AccessClass::Freeze;
+            }
+            Some(Token::Ident(id)) if id == "volatile" => {
+                acc |= AccessClass::Volatile;
+            }
+            Some(Token::Ident(id)) if id == "nontemporal" => {
+                acc |= AccessClass::Nontemporal;
+            }
+            _ => break acc,
+        }
+    }
+}
+
 #[allow(clippy::cognitive_complexity)]
 pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
     match it.peek().unwrap() {
@@ -802,6 +879,26 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
         Token::Ident(id) if id == "cmp_ge" => {
             it.next();
             Expr::BinaryOp(BinaryOp::CmpGe)
+        }
+        Token::Ident(id) if id == "local" => {
+            it.next();
+            match it.next().unwrap() {
+                Token::Ident(id) if id.starts_with('_') => {
+                    let n = id[1..].parse::<u32>().unwrap();
+                    Expr::Local(n)
+                }
+                tok => panic!("Unexpected Token {:?}", tok),
+            }
+        }
+        Token::Ident(id) if id == "assign" => {
+            it.next();
+            let acc = parse_access_class(it);
+            Expr::Assign(acc)
+        }
+        Token::Ident(id) if id == "as_rvalue" => {
+            it.next();
+            let acc = parse_access_class(it);
+            Expr::AsRValue(acc)
         }
         tok => todo!("{:?}", tok),
     }

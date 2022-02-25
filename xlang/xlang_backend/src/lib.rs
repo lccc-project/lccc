@@ -8,8 +8,8 @@ use expr::{LValue, Trap, VStackValue, ValLocation};
 use xlang::{
     abi::string::StringView,
     ir::{
-        AccessClass, AggregateCtor, BinaryOp, Block, BranchCondition, Expr, FnType, Path,
-        PathComponent, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, StackItem,
+        AccessClass, AggregateCtor, BinaryOp, Block, BranchCondition, Expr, FnType, FunctionBody,
+        Path, PathComponent, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, StackItem,
         StackValueKind, Type, UnaryOp, Value,
     },
     prelude::v1::*,
@@ -58,6 +58,9 @@ pub trait FunctionRawCodegen {
 
     /// Writes a given value into a given lvalue.
     fn store_val(&mut self, val: VStackValue<Self::Loc>, lvalue: LValue<Self::Loc>);
+
+    /// Loads a value into the given val location
+    fn load_val(&mut self, lvalue: LValue<Self::Loc>, loc: Self::Loc);
 
     /// Writes the exit routine for returning nothing
     fn return_void(&mut self);
@@ -191,6 +194,7 @@ pub struct FunctionCodegen<F: FunctionRawCodegen> {
     properties: &'static TargetProperties,
     targets: HashMap<u32, Vec<(F::Loc, StackItem)>>,
     diverged: bool,
+    locals: Vec<(F::Loc, Type)>,
 }
 
 impl<F: FunctionRawCodegen> FunctionCodegen<F> {
@@ -207,6 +211,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             vstack: VecDeque::new(),
             targets: HashMap::new(),
             diverged: false,
+            locals: Vec::new(),
         }
     }
 
@@ -596,7 +601,11 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 }
             }
             Expr::Derive(_, expr) => self.write_expr(expr),
-            Expr::Local(n) => todo!("local _{}", n),
+            Expr::Local(n) => {
+                let (loc, ty) = self.locals[*n as usize].clone();
+                self.vstack
+                    .push_back(VStackValue::LValue(ty, LValue::Local(loc)))
+            }
             Expr::Pop(n) => drop(self.pop_values(*n as usize).unwrap()),
             Expr::Dup(n) => {
                 let stack = self.pop_values(*n as usize).unwrap();
@@ -651,6 +660,24 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 self.inner.write_block_entry_point(*n);
                 self.write_block(block, *n);
                 self.inner.write_block_exit_point(*n);
+            }
+            Expr::Assign(_) => {
+                let value = self.vstack.pop_back().unwrap();
+                let destination = self.vstack.pop_back().unwrap();
+                match destination {
+                    VStackValue::LValue(_, lval) => self.inner.store_val(value, lval),
+                    val => panic!("Cannot assign to an rvalue {:?}", val),
+                }
+            }
+            Expr::AsRValue(_) => {
+                let destination = self.vstack.pop_back().unwrap();
+                match destination {
+                    VStackValue::LValue(ty, lval) => {
+                        let loc = self.inner.allocate(&ty, false);
+                        self.inner.load_val(lval, loc.clone());
+                    }
+                    val => panic!("Cannot assign to an rvalue {:?}", val),
+                }
             }
         }
     }
@@ -731,8 +758,21 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         self.inner.move_value(val, loc);
     }
 
+    /// Writes the body of a function to the codegen
+    pub fn write_function_body(&mut self, body: &FunctionBody) {
+        self.locals.reserve(body.locals.len());
+        for ty in &body.locals {
+            let loc = self.inner.allocate(ty, true);
+            self.locals.push((loc, ty.clone()))
+        }
+        self.write_block(&body.block, 0);
+        if !self.diverged {
+            self.inner.return_void();
+        }
+    }
+
     /// Writes the elements of a block to the codegen, usually the top level block of a function
-    pub fn write_block(&mut self, block: &Block, n: u32) {
+    pub fn write_block(&mut self, block: &Block, _: u32) {
         for item in &block.items {
             if let xlang::ir::BlockItem::Target { num, stack } = item {
                 let values = stack
@@ -783,11 +823,6 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     self.diverged = false;
                 }
             }
-        }
-        if n == 0 && !self.diverged {
-            self.inner.return_void();
-        } else {
-            self.diverged = false;
         }
     }
 }

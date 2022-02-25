@@ -182,10 +182,10 @@ impl FunctionRawCodegen for X86CodegenState {
 
     fn store_val(
         &mut self,
-        _val: xlang_backend::expr::VStackValue<Self::Loc>,
-        _lvalue: xlang_backend::expr::LValue<Self::Loc>,
+        val: xlang_backend::expr::VStackValue<Self::Loc>,
+        lvalue: xlang_backend::expr::LValue<Self::Loc>,
     ) {
-        todo!()
+        panic!("store_val {:?} {:?}", val, lvalue)
     }
 
     fn return_void(&mut self) {
@@ -747,6 +747,10 @@ impl FunctionRawCodegen for X86CodegenState {
     ) {
         todo!()
     }
+
+    fn load_val(&mut self, lvalue: LValue<Self::Loc>, loc: Self::Loc) {
+        todo!("load_val {:?} {:?}", lvalue, loc)
+    }
 }
 
 impl X86CodegenState {
@@ -1013,7 +1017,7 @@ impl XLangPlugin for X86CodegenPlugin {
                         )
                         .unwrap(),
                     );
-                    state.write_block(&body.block, 0);
+                    state.write_function_body(body);
                     self.fns.as_mut().unwrap().insert(name.clone(), state);
                 }
                 xlang_struct::MemberDeclaration::Function(FunctionDeclaration {
@@ -1157,7 +1161,7 @@ mod test {
             ty.clone(),
             properties,
         );
-        state.write_block(&body.as_ref().unwrap().block, 0);
+        state.write_function_body(&body.as_ref().unwrap());
         let mut sec = Section {
             align: 1024,
             ..Default::default()
@@ -1225,7 +1229,7 @@ mod test {
             ty.clone(),
             properties,
         );
-        state.write_block(&body.as_ref().unwrap().block, 0);
+        state.write_function_body(&body.as_ref().unwrap());
         let mut sec = Section {
             align: 1024,
             ..Default::default()
@@ -1293,7 +1297,7 @@ mod test {
             ty.clone(),
             properties,
         );
-        state.write_block(&body.as_ref().unwrap().block, 0);
+        state.write_function_body(&body.as_ref().unwrap());
         let mut sec = Section {
             align: 1024,
             ..Default::default()
@@ -1361,7 +1365,7 @@ mod test {
             ty.clone(),
             properties,
         );
-        state.write_block(&body.as_ref().unwrap().block, 0);
+        state.write_function_body(&body.as_ref().unwrap());
         let mut sec = Section {
             align: 1024,
             ..Default::default()
