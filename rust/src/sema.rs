@@ -13,6 +13,11 @@ pub enum Identifier {
 }
 
 impl Identifier {
+    pub fn mangling(&self) -> Option<Mangling> {
+        let Self::Basic { mangling, .. } = self;
+        mangling.as_ref().cloned()
+    }
+
     pub fn matches(&self, other: &Self) -> bool {
         let Self::Basic { name, .. } = self;
         let Self::Basic {
@@ -182,6 +187,7 @@ pub enum Abi {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Mangling {
     C,
+    Local,
     Rust,
 }
 
@@ -572,7 +578,7 @@ pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> 
                 (Pattern::Ident(name), Some(value)) => {
                     result.push(Statement::Bind {
                         target: Identifier::Basic {
-                            mangling: None,
+                            mangling: Some(Mangling::Local),
                             name: name.clone(),
                         },
                         value: convert_expr(named_types, value),

@@ -58,6 +58,7 @@ impl XLangFrontend for RustFrontend {
 impl XLangPlugin for RustFrontend {
     fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
         irgen(self.program.as_ref().unwrap(), file);
+        println!("{:#?}", file);
         Result::Ok(())
     }
 
