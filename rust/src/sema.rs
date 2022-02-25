@@ -544,6 +544,7 @@ pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> 
             crate::parse::BlockItem::Item(_) => {
                 todo!("items in code blocks are currently unsupported");
             }
+            crate::parse::BlockItem::Let { .. } => todo!("{:?}", statement),
             crate::parse::BlockItem::MacroExpansion { .. } => unreachable!(),
         }
     }

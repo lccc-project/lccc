@@ -87,6 +87,10 @@ pub enum BlockItem {
     Item(Box<Item>),
     Expr(Expr),
     Discard(Expr),
+    Let {
+        pattern: Pattern,
+        value: Option<Expr>,
+    },
     MacroExpansion {
         target: SimplePath,
         args: Vec<Lexeme>,
@@ -635,7 +639,24 @@ pub fn parse_block<I: Iterator<Item = Lexeme>>(it: I) -> Vec<BlockItem> {
                         parse_item(&mut peek, Vec::new()).unwrap(),
                     )));
                 }
-                "let" => todo!("let"),
+                "let" => {
+                    peek.next();
+                    let pattern = parse_pattern(&mut peek);
+                    let value;
+                    match peek.peek() {
+                        Some(Lexeme::Token { tok, .. }) if tok == ";" => {
+                            peek.next();
+                            value = None;
+                        }
+                        Some(Lexeme::Token { tok, .. }) if tok == "=" => {
+                            peek.next();
+                            value = Some(parse_expr(&mut peek));
+                            assert!(matches!(peek.next(), Some(Lexeme::Token { tok, .. }) if tok == ";"), "Expected semicolon");
+                        }
+                        _ => panic!("Invalid Token"),
+                    }
+                    ret.push(BlockItem::Let { pattern, value });
+                }
                 _ => {
                     let expr = parse_expr(&mut peek);
                     if let Some(Lexeme::Token {
