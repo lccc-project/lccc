@@ -675,6 +675,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     VStackValue::LValue(ty, lval) => {
                         let loc = self.inner.allocate(&ty, false);
                         self.inner.load_val(lval, loc.clone());
+                        self.push_opaque(&ty, loc);
                     }
                     val => panic!("Cannot assign to an rvalue {:?}", val),
                 }
