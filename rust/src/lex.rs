@@ -48,7 +48,7 @@ pub struct Position {
 
 impl Display for Position {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}:{}", self.col, self.row);
+        write!(f, "{}:{}", self.col, self.row)
     }
 }
 
@@ -74,6 +74,7 @@ pub enum Lexeme {
     },
 }
 
+#[allow(dead_code)]
 impl Lexeme {
     pub fn span(&self) -> &Span {
         let (Self::Group { span, .. } | Self::Token { span, .. }) = self;
@@ -81,7 +82,7 @@ impl Lexeme {
     }
 }
 
-struct LexerIterator<I: Iterator<Item = char>> {
+pub struct LexerIterator<I: Iterator<Item = char>> {
     iter: Peekable<I>,
     pub pos: Position,
 }
@@ -97,6 +98,7 @@ impl<I: Iterator<Item = char>> LexerIterator<I> {
             }
             Some(_) => self.pos.col += 1,
         }
+        next_char
     }
 
     fn peek(&mut self) -> Option<char> {
@@ -113,7 +115,7 @@ impl<I: Iterator<Item = char>> From<Peekable<I>> for LexerIterator<I> {
     }
 }
 
-pub fn lex_single_char<I: Iterator<Item = char>>(file: &mut Peekable<I>) -> char {
+pub fn lex_single_char<I: Iterator<Item = char>>(file: &mut LexerIterator<I>) -> char {
     let x = file.next().unwrap();
     if x == '\\' {
         match file.next().unwrap() {
@@ -170,6 +172,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                             span: Span {
                                 begin,
                                 end: file.pos,
+                                path: String::from("<todo>"),
                             },
                         });
                     }
@@ -186,6 +189,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                             span: Span {
                                 begin,
                                 end: file.pos,
+                                path: String::from("<todo>"),
                             },
                         });
                     }
@@ -209,6 +213,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                         span: Span {
                             begin,
                             end: file.pos,
+                            path: String::from("<todo>"),
                         },
                     }),
                 }
@@ -230,6 +235,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     span: Span {
                         begin,
                         end: file.pos,
+                        path: String::from("<todo>"),
                     },
                 });
             }
@@ -241,6 +247,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     span: Span {
                         begin,
                         end: file.pos,
+                        path: String::from("<todo>"),
                     },
                 });
             }
@@ -259,6 +266,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     span: Span {
                         begin,
                         end: file.pos,
+                        path: String::from("<todo>"),
                     },
                 });
             }
@@ -277,6 +285,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     span: Span {
                         begin,
                         end: file.pos,
+                        path: String::from("<todo>"),
                     },
                 });
             }
@@ -293,6 +302,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     span: Span {
                         begin,
                         end: file.pos,
+                        path: String::from("<todo>"),
                     },
                 });
             }
@@ -312,6 +322,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     span: Span {
                         begin,
                         end: file.pos,
+                        path: String::from("<todo>"),
                     },
                 });
             }
@@ -335,6 +346,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     span: Span {
                         begin,
                         end: file.pos,
+                        path: String::from("<todo>"),
                     },
                 });
             }
@@ -348,6 +360,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                         span: Span {
                             begin,
                             end: file.pos,
+                            path: String::from("<todo>"),
                         },
                     });
                 } else if file.peek() == Some('/') {
@@ -366,6 +379,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                         span: Span {
                             begin,
                             end: file.pos,
+                            path: String::from("<todo>"),
                         },
                     });
                 }
@@ -391,6 +405,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     span: Span {
                         begin,
                         end: file.pos,
+                        path: String::from("<todo>"),
                     },
                 });
             }
