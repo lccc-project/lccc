@@ -45,10 +45,17 @@ pub struct Macros {
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct NoMoreMacros;
 
-pub fn find_macros(macros: &mut Macros, path: SimplePath, item: &Item) -> Result<(), NoMoreMacros> {
+pub fn find_macros(
+    macros: &mut Macros,
+    mut path: SimplePath,
+    item: &Item,
+) -> Result<(), NoMoreMacros> {
     let mut ret = Err(NoMoreMacros);
     match item {
-        Item::ExternBlock { .. } | Item::MacroExpansion { .. } | Item::FnDeclaration { .. } => {}
+        Item::ExternBlock { .. }
+        | Item::MacroExpansion { .. }
+        | Item::FnDeclaration { .. }
+        | Item::Type(_) => {}
         Item::MacroRules {
             attrs,
             visibility,
@@ -79,6 +86,14 @@ pub fn find_macros(macros: &mut Macros, path: SimplePath, item: &Item) -> Result
             if !macros.defns.get(&path).is_some() {
                 macros.defns.insert(path, MacroDefn::DeclMacro(decl));
                 ret = Ok(());
+            }
+        }
+        Item::Mod { name, content, .. } => {
+            path.idents.push(name.clone());
+            for item in &content.items {
+                if let Ok(()) = find_macros(macros, path.clone(), item) {
+                    ret = Ok(())
+                }
             }
         }
     }

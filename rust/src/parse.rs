@@ -15,6 +15,12 @@ pub enum Visibility {
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum TypeTag {
+    Struct,
+    Union,
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Safety {
     Safe,
     Unsafe,
@@ -59,6 +65,43 @@ pub enum Item {
         name: String,
         arms: Vec<MacroArm>,
     },
+    Type(Struct),
+    Mod {
+        name: String,
+        vis: Visibility,
+        content: Mod,
+    },
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct StructField {
+    pub attrs: Vec<Meta>,
+    pub vis: Visibility,
+    pub name: String,
+    pub ty: Type,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct TupleField {
+    pub attrs: Vec<Meta>,
+    pub vis: Visibility,
+    pub ty: Type,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Struct {
+    pub attrs: Vec<Meta>,
+    pub vis: Visibility,
+    pub tag: TypeTag,
+    pub name: String,
+    pub body: StructBody,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum StructBody {
+    Struct(Vec<StructField>),
+    Tuple(Vec<TupleField>),
+    Unit,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -140,7 +183,7 @@ pub struct Path {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Expr {
     UnsafeBlock(Vec<BlockItem>),
-    Id(String),
+    Id(Path),
     FunctionCall {
         func: Box<Self>,
         args: Vec<Self>,
@@ -338,28 +381,71 @@ fn parse_macro_output<I: Iterator<Item = Lexeme>>(
     }
 }
 
+pub fn parse_visibility<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) -> Visibility {
+    match it.peek() {
+        Some(Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        }) if tok == "pub" => {
+            it.next();
+            match it.peek() {
+                Some(Lexeme::Group {
+                    ty: GroupType::Parentheses,
+                    ..
+                }) => todo!("pub(<path>)"),
+                _ => Visibility::Pub,
+            }
+        }
+        _ => Visibility::None,
+    }
+}
+
 #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 pub fn parse_item<I: Iterator<Item = Lexeme>>(
     it: &mut PeekMoreIterator<I>,
     mut attrs: Vec<Meta>,
 ) -> Option<Item> {
-    let mut peek = it.peekmore();
-    match peek.next()? {
+    loop {
+        match it.peek() {
+            Some(Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+                ..
+            }) if tok == "#" => {
+                it.next();
+                match it.next().unwrap() {
+                    Lexeme::Group {
+                        ty: GroupType::Brackets,
+                        inner,
+                        ..
+                    } => {
+                        let mut it = inner.into_iter().peekmore();
+                        attrs.push(parse_meta(&mut it));
+                    }
+                    tok => panic!("Unexpected token {:?}", tok),
+                }
+            }
+            _ => break,
+        }
+    }
+    let vis = parse_visibility(it);
+    match it.next()? {
         Lexeme::Token {
             ty: TokenType::Identifier,
             tok,
             ..
-        } if tok == "macro_rules" => match peek.next().unwrap() {
+        } if tok == "macro_rules" => match it.next().unwrap() {
             Lexeme::Token {
                 ty: TokenType::Symbol,
                 tok,
                 ..
-            } if tok == "!" => match peek.next().unwrap() {
+            } if tok == "!" => match it.next().unwrap() {
                 Lexeme::Token {
                     ty: TokenType::Identifier,
                     tok,
                     ..
-                } => match peek.next().unwrap() {
+                } => match it.next().unwrap() {
                     Lexeme::Group {
                         ty: GroupType::Braces,
                         inner,
@@ -447,7 +533,10 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
             ..
         } => match &*tok {
             "extern" => {
-                let abi = match peek.peek() {
+                if vis != Visibility::None {
+                    panic!("extern block with visibility is invalid");
+                }
+                let abi = match it.peek() {
                     Some(Lexeme::Token {
                         ty: TokenType::String(_),
                         ..
@@ -456,7 +545,7 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                             ty: TokenType::String(_),
                             tok,
                             ..
-                        }) = peek.next()
+                        }) = it.next()
                         {
                             Some(tok)
                         } else {
@@ -466,7 +555,7 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                     _ => None,
                 };
 
-                let block = peek.next().expect("Missing block");
+                let block = it.next().expect("Missing block");
 
                 match block {
                     Lexeme::Group {
@@ -484,49 +573,242 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                     _ => panic!("Invalid tokens for block"),
                 }
             }
-            "pub" => match peek.next().expect("Invalid Item") {
-                Lexeme::Token {
-                    ty: TokenType::Keyword,
-                    tok,
-                    ..
-                } => match &*tok {
-                    "fn" => Some(parse_fn_item(Visibility::Pub, attrs, &mut peek)),
-                    _ => todo!(),
-                },
-                _ => panic!("Invalid Token"),
-            },
-            "fn" => Some(parse_fn_item(Visibility::None, attrs, &mut peek)),
+            "fn" => Some(parse_fn_item(vis, attrs, it)),
+            "struct" => Some(Item::Type(parse_struct_or_union(
+                vis,
+                attrs,
+                it,
+                TypeTag::Struct,
+            ))),
+            "union" => Some(Item::Type(parse_struct_or_union(
+                vis,
+                attrs,
+                it,
+                TypeTag::Union,
+            ))),
+            "mod" => {
+                let name = match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Identifier,
+                        tok,
+                        ..
+                    } => tok,
+                    tok => panic!("Unexpected Token {:?}", tok),
+                };
+
+                match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    } if tok == ";" => todo!("Out of line modules"),
+                    Lexeme::Group {
+                        ty: GroupType::Braces,
+                        inner,
+                        ..
+                    } => Some(Item::Mod {
+                        name,
+                        vis,
+                        content: parse_mod(inner.into_iter(), attrs),
+                    }),
+                    tok => panic!("Unexpected Token {:?}", tok),
+                }
+            }
             _ => todo!(),
         },
+        tok => todo!("{:?}", tok),
+    }
+}
+
+pub fn parse_struct_or_union<I: Iterator<Item = Lexeme>>(
+    vis: Visibility,
+    attrs: Vec<Meta>,
+    it: &mut PeekMoreIterator<I>,
+    tag: TypeTag,
+) -> Struct {
+    let name = match it.next().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Identifier,
+            tok,
+            ..
+        } => tok,
+        tok => panic!("Unexpected Token {:?}", tok),
+    };
+    match it.peek().unwrap() {
         Lexeme::Token {
             ty: TokenType::Symbol,
             tok,
             ..
-        } if tok == "#" => loop {
-            match it.next().unwrap() {
-                Lexeme::Group {
-                    ty: GroupType::Brackets,
-                    inner,
-                    ..
-                } => {
-                    let mut iter = inner.into_iter().peekmore();
-                    attrs.push(parse_meta(&mut iter));
-                }
-                tok => panic!("Unexpected Token {:?}", tok),
-            }
-            match it.peek().unwrap() {
-                Lexeme::Token {
-                    ty: TokenType::Symbol,
-                    tok,
-                    ..
-                } if tok == "#" => {
-                    it.next();
-                    continue;
-                }
-                _ => break parse_item(it, attrs),
-            }
+        } if tok == "<" => todo!("generics"),
+        _ => {}
+    };
+
+    let body = parse_struct_body(it);
+
+    match body {
+        StructBody::Tuple(_) | StructBody::Unit => match it.next().unwrap() {
+            Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+                ..
+            } if tok == ";" => {}
+            tok => panic!("Unexpected token {:?}", tok),
         },
-        tok => todo!("{:?}", tok),
+        _ => {}
+    }
+
+    Struct {
+        attrs,
+        vis,
+        tag,
+        name,
+        body,
+    }
+}
+
+pub fn parse_struct_body<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) -> StructBody {
+    match it.peek().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        } if tok == ";" || tok == "," => return StructBody::Unit,
+        _ => {}
+    }
+
+    match it.next().unwrap() {
+        Lexeme::Group {
+            ty: GroupType::Parentheses,
+            inner,
+            ..
+        } => {
+            let mut it = inner.into_iter().peekmore();
+            // Tuple
+            let mut fields = Vec::new();
+            loop {
+                let mut attrs = Vec::new();
+                match it.peek() {
+                    None => break StructBody::Tuple(fields),
+                    Some(Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    }) if tok == "#" => loop {
+                        match it.peek() {
+                            Some(Lexeme::Token {
+                                ty: TokenType::Symbol,
+                                tok,
+                                ..
+                            }) if tok == "#" => {
+                                it.next();
+                                match it.next().unwrap() {
+                                    Lexeme::Group {
+                                        ty: GroupType::Brackets,
+                                        inner,
+                                        ..
+                                    } => {
+                                        let mut it = inner.into_iter().peekmore();
+                                        attrs.push(parse_meta(&mut it));
+                                    }
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                }
+                            }
+                            _ => break,
+                        }
+                    },
+                    Some(_) => {}
+                }
+                let vis = parse_visibility(&mut it);
+                let ty = parse_type(&mut it).unwrap();
+                fields.push(TupleField { attrs, vis, ty });
+                match it.next() {
+                    Some(Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    }) if tok == "," => continue,
+                    Some(tok) => panic!("Unexpected token {:?}", tok),
+                    None => break StructBody::Tuple(fields),
+                }
+            }
+        }
+        Lexeme::Group {
+            ty: GroupType::Braces,
+            inner,
+            ..
+        } => {
+            let mut it = inner.into_iter().peekmore();
+            // Tuple
+            let mut fields = Vec::new();
+            loop {
+                let mut attrs = Vec::new();
+                match it.peek() {
+                    None => break StructBody::Struct(fields),
+                    Some(Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    }) if tok == "#" => loop {
+                        match it.peek() {
+                            Some(Lexeme::Token {
+                                ty: TokenType::Symbol,
+                                tok,
+                                ..
+                            }) if tok == "#" => {
+                                it.next();
+                                match it.next().unwrap() {
+                                    Lexeme::Group {
+                                        ty: GroupType::Brackets,
+                                        inner,
+                                        ..
+                                    } => {
+                                        let mut it = inner.into_iter().peekmore();
+                                        attrs.push(parse_meta(&mut it));
+                                    }
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                }
+                            }
+                            _ => break,
+                        }
+                    },
+                    Some(_) => {}
+                }
+                let vis = parse_visibility(&mut it);
+                let name = match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Identifier,
+                        tok,
+                        ..
+                    } => tok,
+                    tok => panic!("Unexpected token {:?}", tok),
+                };
+                match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    } if tok == ":" => {}
+                    tok => panic!("Unexpected token {:?}", tok),
+                }
+                let ty = parse_type(&mut it).unwrap();
+                fields.push(StructField {
+                    attrs,
+                    vis,
+                    name,
+                    ty,
+                });
+                match it.next() {
+                    Some(Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    }) if tok == "," => continue,
+                    Some(tok) => panic!("Unexpected token {:?}", tok),
+                    None => break StructBody::Struct(fields),
+                }
+            }
+        }
+        tok => panic!("Unexpected token {:?}", tok),
     }
 }
 
@@ -1297,25 +1579,26 @@ pub fn parse_function_call<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator
 }
 
 pub fn parse_simple_expr<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) -> Expr {
-    match it.next().unwrap() {
+    match it.peek().unwrap() {
         Lexeme::Group {
             ty: GroupType::Parentheses,
             inner,
             ..
         } => {
-            let mut iter = inner.into_iter().peekmore();
+            let mut iter = inner.clone().into_iter().peekmore();
+            it.next();
             Expr::Parentheses(Box::new(parse_expr(&mut iter)))
         }
-        Lexeme::Token {
-            ty: TokenType::Identifier,
-            tok,
-            ..
-        } => Expr::Id(tok),
         Lexeme::Token {
             ty: TokenType::String(ty),
             tok,
             ..
-        } => Expr::StringLiteral(ty, tok),
+        } => {
+            let lit = tok.clone();
+            let ty = *ty;
+            it.next();
+            Expr::StringLiteral(ty, lit)
+        }
         Lexeme::Token {
             ty: TokenType::Number,
             tok,
@@ -1340,10 +1623,12 @@ pub fn parse_simple_expr<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I
                 tok => panic!("Unexpected token {:?}", tok),
             }
         }
-        tok => panic!("Invalid Token: {:?}", tok),
+
+        _ => Expr::Id(parse_path(it)),
     }
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Mod {
     pub attrs: Vec<Meta>,
     pub items: Vec<Item>,

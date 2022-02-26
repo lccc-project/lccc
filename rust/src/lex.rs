@@ -258,7 +258,24 @@ pub fn lex_group<I: Iterator<Item = char>>(
                 file.next();
                 break;
             }
-            ':' | ';' | '#' | ',' => {
+            ':' => {
+                let mut tok = String::from(x);
+                file.next();
+                if let Some(':') = file.peek() {
+                    file.next();
+                    tok.push(':');
+                }
+                result.push(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    span: Span {
+                        begin,
+                        end: file.pos,
+                        path: String::from("<todo>"),
+                    },
+                });
+            }
+            ';' | '#' | ',' => {
                 file.next();
                 result.push(Lexeme::Token {
                     ty: TokenType::Symbol,

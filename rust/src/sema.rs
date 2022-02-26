@@ -532,13 +532,7 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
                 .map(|arg| convert_expr(named_types, arg))
                 .collect(),
         },
-        crate::parse::Expr::Id(id) => Expression::Identifier {
-            id: Identifier::Basic {
-                mangling: None,
-                name: id.clone(),
-            },
-            ty: None,
-        },
+        crate::parse::Expr::Id(id) => todo!("id_expr {:?}", id),
         crate::parse::Expr::IntLiteral(n) => Expression::IntegerLiteral {
             val: *n as u128,
             ty: None,
@@ -612,6 +606,8 @@ fn iter_in_scope<F: FnMut(&Item, Option<&str>)>(items: &[Item], abi: Option<&str
             Item::FnDeclaration { .. } => func(item, abi),
             Item::MacroExpansion { .. } => unreachable!("Macros were already expanded"),
             Item::MacroRules { .. } => todo!("macro_rules!"),
+            Item::Type(_) => todo!("type"),
+            Item::Mod { .. } => todo!("mod"),
         }
     }
 }
@@ -715,6 +711,8 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
             }
             Item::MacroExpansion { .. } => unreachable!("Macros should already be expanded"),
             Item::MacroRules { .. } => todo!("macro_rules!"),
+            Item::Type(_) => todo!("type"),
+            Item::Mod { .. } => todo!("mod"),
         };
         // TODO: Check attributes
         declarations.push(declaration);
