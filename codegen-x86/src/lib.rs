@@ -55,7 +55,7 @@ pub enum ValLocation {
 }
 
 impl ValLocation {
-    fn as_modrm(&self, mode: X86Mode) -> Option<ModRM> {
+    fn as_modrm(&self, mode: X86Mode, size: X86RegisterClass) -> Option<ModRM> {
         let addrclass = match mode {
             X86Mode::Real | X86Mode::Virtual8086 => X86RegisterClass::Word,
             X86Mode::Protected | X86Mode::Compatibility => X86RegisterClass::Double,
@@ -63,19 +63,23 @@ impl ValLocation {
         };
         match self {
             ValLocation::BpDisp(disp) => Some(ModRM::IndirectDisp32 {
-                mode: ModRMRegOrSib::Reg(X86Register::from_class(addrclass, 6).unwrap()),
+                size,
+                mode: ModRMRegOrSib::Reg(X86Register::from_class(addrclass, 5).unwrap()),
                 disp32: *disp,
             }),
             ValLocation::SpDisp(disp) => Some(ModRM::IndirectDisp32 {
-                mode: ModRMRegOrSib::Reg(X86Register::from_class(addrclass, 5).unwrap()),
+                size,
+                mode: ModRMRegOrSib::Reg(X86Register::from_class(addrclass, 4).unwrap()),
                 disp32: *disp,
             }),
             ValLocation::Register(r) => Some(ModRM::Direct(*r)),
             ValLocation::Regs(_) => None,
             ValLocation::ImpliedPtr(r) => Some(ModRM::Indirect {
+                size: mode.largest_gpr(),
                 mode: ModRMRegOrSib::Reg(*r),
             }),
             ValLocation::Null => Some(ModRM::Indirect {
+                size: mode.largest_gpr(),
                 mode: ModRMRegOrSib::Abs(Address::Abs(1)),
             }),
             ValLocation::Unassigned(_) => panic!("Unassigned"),
@@ -343,6 +347,7 @@ impl FunctionRawCodegen for X86CodegenState {
                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                         X86Opcode::JmpInd,
                         vec![X86Operand::ModRM(ModRM::IndirectDisp32 {
+                            size: self.mode.largest_gpr(),
                             mode: ModRMRegOrSib::Reg(X86Register::Rbp),
                             disp32: disp,
                         })],
@@ -353,6 +358,7 @@ impl FunctionRawCodegen for X86CodegenState {
                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                         X86Opcode::JmpInd,
                         vec![X86Operand::ModRM(ModRM::IndirectDisp32 {
+                            size: self.mode.largest_gpr(),
                             mode: ModRMRegOrSib::Reg(X86Register::Rsp),
                             disp32: disp,
                         })],
@@ -363,6 +369,7 @@ impl FunctionRawCodegen for X86CodegenState {
                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                         X86Opcode::JmpInd,
                         vec![X86Operand::ModRM(ModRM::Indirect {
+                            size: self.mode.largest_gpr(),
                             mode: ModRMRegOrSib::Reg(p),
                         })],
                     )));
@@ -416,7 +423,8 @@ impl FunctionRawCodegen for X86CodegenState {
                         let size = type_size(&Type::Scalar(ty), self.properties).unwrap();
                         match size {
                             1 => {
-                                let modrm = loc.as_modrm(self.mode).unwrap();
+                                let modrm =
+                                    loc.as_modrm(self.mode, X86RegisterClass::Byte).unwrap();
                                 self.insns
                                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                                         X86Opcode::MovImmM8,
@@ -426,13 +434,40 @@ impl FunctionRawCodegen for X86CodegenState {
                                         ],
                                     )));
                             }
-                            2 | 4 | 8 => {
-                                let modrm = loc.as_modrm(self.mode).unwrap();
+                            2 | 4 => {
+                                let modrm = loc
+                                    .as_modrm(
+                                        self.mode,
+                                        X86RegisterClass::gpr_size(size as usize, self.mode)
+                                            .unwrap(),
+                                    )
+                                    .unwrap();
                                 self.insns
                                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                        X86Opcode::MovImmM8,
+                                        X86Opcode::MovImmM,
                                         vec![
                                             X86Operand::ModRM(modrm),
+                                            X86Operand::Immediate(u64::try_from(val).unwrap()),
+                                        ],
+                                    )));
+                            }
+                            8 => {
+                                let ptrreg = self.get_or_allocate_pointer_reg();
+                                let modrm =
+                                    loc.as_modrm(self.mode, X86RegisterClass::Quad).unwrap();
+                                self.insns
+                                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                                        X86Opcode::Lea,
+                                        vec![
+                                            X86Operand::Register(ptrreg),
+                                            X86Operand::ModRM(modrm),
+                                        ],
+                                    )));
+                                self.insns
+                                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                                        X86Opcode::MovImmM,
+                                        vec![
+                                            X86Operand::Register(ptrreg),
                                             X86Operand::Immediate(u64::try_from(val).unwrap()),
                                         ],
                                     )));
@@ -460,6 +495,7 @@ impl FunctionRawCodegen for X86CodegenState {
                                     vec![
                                         X86Operand::Register(r),
                                         X86Operand::ModRM(ModRM::Indirect {
+                                            size: X86RegisterClass::Byte,
                                             mode: ModRMRegOrSib::RipRel(addr),
                                         }),
                                     ],
@@ -489,6 +525,7 @@ impl FunctionRawCodegen for X86CodegenState {
                                     vec![
                                         X86Operand::Register(r),
                                         X86Operand::ModRM(ModRM::Indirect {
+                                            size: X86RegisterClass::Byte,
                                             mode: ModRMRegOrSib::RipRel(addr),
                                         }),
                                     ],
@@ -512,6 +549,7 @@ impl FunctionRawCodegen for X86CodegenState {
                                 vec![
                                     X86Operand::Register(r),
                                     X86Operand::ModRM(ModRM::Indirect {
+                                        size: X86RegisterClass::Byte,
                                         mode: ModRMRegOrSib::RipRel(addr),
                                     }),
                                 ],
@@ -520,7 +558,7 @@ impl FunctionRawCodegen for X86CodegenState {
                     loc => todo!("move_val({:?})", loc),
                 }
             }
-            VStackValue::OpaqueScalar(_, l2) => match (loc, l2) {
+            VStackValue::OpaqueScalar(ty, l2) => match (loc, l2) {
                 (_, ValLocation::Null) | (ValLocation::Null, _) => {}
                 (ValLocation::Unassigned(_), _) | (_, ValLocation::Unassigned(_)) => {
                     panic!("Unassigned location");
@@ -556,7 +594,7 @@ impl FunctionRawCodegen for X86CodegenState {
                     }
                 }
                 (ValLocation::Register(r), x) if x.addressible() => {
-                    let modrm = x.as_modrm(self.mode).unwrap();
+                    let modrm = x.as_modrm(self.mode, r.class()).unwrap();
                     self.insns
                         .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                             X86Opcode::MovMR,
@@ -564,7 +602,7 @@ impl FunctionRawCodegen for X86CodegenState {
                         )));
                 }
                 (x, ValLocation::Register(r)) if x.addressible() => {
-                    let modrm = x.as_modrm(self.mode).unwrap();
+                    let modrm = x.as_modrm(self.mode, r.class()).unwrap();
                     self.insns
                         .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                             X86Opcode::MovRM,
@@ -572,8 +610,19 @@ impl FunctionRawCodegen for X86CodegenState {
                         )));
                 }
                 (x, y) if x.addressible() && y.addressible() => {
-                    let modrm1 = x.as_modrm(self.mode).unwrap();
-                    let modrm2 = y.as_modrm(self.mode).unwrap();
+                    let size = type_size(&Type::Scalar(ty), self.properties).unwrap() as usize;
+                    let modrm1 = x
+                        .as_modrm(
+                            self.mode,
+                            X86RegisterClass::gpr_size(size, self.mode).unwrap(),
+                        )
+                        .unwrap();
+                    let modrm2 = y
+                        .as_modrm(
+                            self.mode,
+                            X86RegisterClass::gpr_size(size, self.mode).unwrap(),
+                        )
+                        .unwrap();
                     let r = self.get_or_allocate_scratch_reg();
 
                     self.insns
@@ -669,11 +718,9 @@ impl FunctionRawCodegen for X86CodegenState {
                 }
             }
         }
-        let offset = self.frame_size;
-
         self.frame_size += i32::try_from(size).unwrap(); // A pointer could be 16, 32, or 64 bits
                                                          // TODO: Alignment
-        ValLocation::BpDisp(offset)
+        ValLocation::BpDisp(-self.frame_size)
     }
 
     fn allocate_lvalue(&mut self, needs_addr: bool) -> Self::Loc {
@@ -693,11 +740,10 @@ impl FunctionRawCodegen for X86CodegenState {
                 }
             }
         }
-        let offset = self.frame_size;
 
         self.frame_size += i32::from(self.properties.ptrbits / 8); // A pointer could be 16, 32, or 64 bits
                                                                    // TODO: Alignment
-        ValLocation::BpDisp(offset)
+        ValLocation::BpDisp(-self.frame_size)
     }
 
     fn write_binary_op(
@@ -842,19 +888,21 @@ impl X86CodegenState {
                         vec![
                             X86Operand::Register(r),
                             X86Operand::ModRM(ModRM::Indirect {
+                                size: r.class(),
                                 mode: ModRMRegOrSib::RipRel(addr),
                             }),
                         ],
                     )));
             }
             loc => {
-                let reg = self.get_or_allocate_scratch_reg();
+                let reg = self.get_or_allocate_pointer_reg();
                 self.insns
                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                         X86Opcode::Lea,
                         vec![
                             X86Operand::Register(reg),
                             X86Operand::ModRM(ModRM::Indirect {
+                                size: reg.class(),
                                 mode: ModRMRegOrSib::RipRel(addr),
                             }),
                         ],
@@ -863,7 +911,7 @@ impl X86CodegenState {
                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                         X86Opcode::MovRM,
                         vec![
-                            X86Operand::ModRM(loc.as_modrm(self.mode).unwrap()),
+                            X86Operand::ModRM(loc.as_modrm(self.mode, reg.class()).unwrap()),
                             X86Operand::Register(reg),
                         ],
                     )));
@@ -876,7 +924,7 @@ impl X86CodegenState {
             reg
         } else {
             for i in 0..(if self.mode == X86Mode::Long { 16 } else { 8 }) {
-                let class = X86RegisterClass::gpr_size(self.mode.largest_gpr(), self.mode).unwrap();
+                let class = self.mode.largest_gpr();
                 let mode = self.gpr_status.get_or_insert_mut(i, RegisterStatus::Free);
                 match mode {
                     RegisterStatus::Free => {
@@ -967,7 +1015,7 @@ impl X86CodegenState {
 
     #[allow(dead_code)]
     fn move_reg2mem(&mut self, loc: ValLocation, reg: X86Register) {
-        let modrm = loc.as_modrm(self.mode).unwrap();
+        let modrm = loc.as_modrm(self.mode, reg.class()).unwrap();
         match reg.class() {
             X86RegisterClass::Byte | X86RegisterClass::ByteRex => {
                 self.insns
@@ -1025,27 +1073,27 @@ impl X86CodegenState {
     }
 
     fn move_mem2reg(&mut self, loc: ValLocation, reg: X86Register) {
-        let modrm = loc.as_modrm(self.mode).unwrap();
+        let modrm = loc.as_modrm(self.mode, reg.class()).unwrap();
         match reg.class() {
             X86RegisterClass::Byte | X86RegisterClass::ByteRex => {
                 self.insns
                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                         X86Opcode::MovMR8,
-                        vec![X86Operand::Register(reg), X86Operand::ModRM(modrm)],
+                        vec![X86Operand::ModRM(modrm), X86Operand::Register(reg)],
                     )));
             }
             X86RegisterClass::Word | X86RegisterClass::Double | X86RegisterClass::Quad => {
                 self.insns
                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                         X86Opcode::MovMR,
-                        vec![X86Operand::Register(reg), X86Operand::ModRM(modrm)],
+                        vec![X86Operand::ModRM(modrm), X86Operand::Register(reg)],
                     )));
             }
             X86RegisterClass::Mmx => {
                 self.insns
                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                         X86Opcode::MovQMR,
-                        vec![X86Operand::Register(reg), X86Operand::ModRM(modrm)],
+                        vec![X86Operand::ModRM(modrm), X86Operand::Register(reg)],
                     )));
             }
             X86RegisterClass::Xmm => {
@@ -1054,13 +1102,13 @@ impl X86CodegenState {
                     self.insns
                         .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                             X86Opcode::VMovUpsMR,
-                            vec![X86Operand::Register(reg), X86Operand::ModRM(modrm)],
+                            vec![X86Operand::ModRM(modrm), X86Operand::Register(reg)],
                         )));
                 } else {
                     self.insns
                         .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                             X86Opcode::MovUpsMR,
-                            vec![X86Operand::Register(reg), X86Operand::ModRM(modrm)],
+                            vec![X86Operand::ModRM(modrm), X86Operand::Register(reg)],
                         )));
                 }
             }
