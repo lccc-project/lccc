@@ -159,7 +159,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                 file.next();
                 break;
             }
-            ':' | ';' | '#' | '!' => {
+            ':' | ';' | '#' | ',' => {
                 file.next();
                 result.push(Lexeme::Token {
                     ty: TokenType::Symbol,
@@ -180,12 +180,46 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     tok,
                 });
             }
-            '*' => {
+            '*' | '!' => {
                 let mut tok = String::from(x);
                 file.next();
                 if file.peek() == Some(&'=') {
                     file.next();
                     tok.push('=');
+                }
+                result.push(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                });
+            }
+            '&' => {
+                let mut tok = String::from(x);
+                file.next();
+                if file.peek() == Some(&'&') {
+                    file.next();
+                    tok.push('&');
+                } else if file.peek() == Some(&'=') {
+                    file.next();
+                    tok.push('=');
+                }
+                result.push(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                });
+            }
+            '.' => {
+                let mut tok = String::from(x);
+                file.next();
+                if file.peek() == Some(&'.') {
+                    file.next();
+                    tok.push('.');
+                    if file.peek() == Some(&'.') {
+                        file.next();
+                        tok.push('.');
+                    } else if file.peek() == Some(&'=') {
+                        file.next();
+                        tok.push('=');
+                    }
                 }
                 result.push(Lexeme::Token {
                     ty: TokenType::Symbol,
