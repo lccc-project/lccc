@@ -159,9 +159,9 @@ fn irgen_expr(
             result.push(ir::BlockItem::Expr(ir::Expr::CallFunction(fn_type)));
             result
         }
-        Expression::Identifier { id, ty: Some(ty) } => {
-            vec![match id.mangling() {
-                Some(Mangling::Local) => ir::BlockItem::Expr(ir::Expr::Local(
+        Expression::Identifier { id, ty: Some(ty) } => match id.mangling() {
+            Some(Mangling::Local) => vec![
+                ir::BlockItem::Expr(ir::Expr::Local(
                     locals
                         .iter()
                         .enumerate()
@@ -172,7 +172,10 @@ fn irgen_expr(
                         .try_into()
                         .unwrap(),
                 )),
-                _ => ir::BlockItem::Expr(ir::Expr::Const(ir::Value::GlobalAddress {
+                ir::BlockItem::Expr(ir::Expr::AsRValue(ir::AccessClass::Normal)),
+            ],
+            _ => vec![ir::BlockItem::Expr(ir::Expr::Const(
+                ir::Value::GlobalAddress {
                     ty: irgen_type(ty.clone()),
                     item: identifier_to_path(
                         id,
@@ -181,9 +184,9 @@ fn irgen_expr(
                             _ => None,
                         },
                     ),
-                })),
-            }]
-        }
+                },
+            ))],
+        },
         ref x @ Expression::IntegerLiteral { .. } => {
             let ty = irgen_type(x.ty());
             if let Expression::IntegerLiteral { val, .. } = x {
