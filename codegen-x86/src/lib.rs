@@ -495,7 +495,7 @@ impl FunctionRawCodegen for X86CodegenState {
                                     vec![
                                         X86Operand::Register(r),
                                         X86Operand::ModRM(ModRM::Indirect {
-                                            size: X86RegisterClass::Byte,
+                                            size: r.class(),
                                             mode: ModRMRegOrSib::RipRel(addr),
                                         }),
                                     ],
@@ -532,15 +532,15 @@ impl FunctionRawCodegen for X86CodegenState {
                                 )));
                         }
                         x if x.addressible() => {
-                            let modrm = x.as_modrm(self.mode, X86RegisterClass::Byte).unwrap();
                             let ptrreg = self.get_or_allocate_pointer_reg();
+                            let modrm = x.as_modrm(self.mode, ptrreg.class()).unwrap();
                             self.insns
                                 .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                                     X86Opcode::Lea,
                                     vec![
                                         X86Operand::Register(ptrreg),
                                         X86Operand::ModRM(ModRM::Indirect {
-                                            size: X86RegisterClass::Byte,
+                                            size: ptrreg.class(),
                                             mode: ModRMRegOrSib::RipRel(addr),
                                         }),
                                     ],
@@ -1053,7 +1053,7 @@ impl X86CodegenState {
     }
 
     #[allow(dead_code)]
-    fn move_reg2mem(&mut self, loc: ValLocation, reg: X86Register) {
+    fn move_mem2reg(&mut self, loc: ValLocation, reg: X86Register) {
         let modrm = loc.as_modrm(self.mode, reg.class()).unwrap();
         match reg.class() {
             X86RegisterClass::Byte | X86RegisterClass::ByteRex => {
@@ -1111,7 +1111,7 @@ impl X86CodegenState {
         }
     }
 
-    fn move_mem2reg(&mut self, loc: ValLocation, reg: X86Register) {
+    fn move_reg2mem(&mut self, loc: ValLocation, reg: X86Register) {
         let modrm = loc.as_modrm(self.mode, reg.class()).unwrap();
         match reg.class() {
             X86RegisterClass::Byte | X86RegisterClass::ByteRex => {
