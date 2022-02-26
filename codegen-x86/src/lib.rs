@@ -658,6 +658,25 @@ impl FunctionRawCodegen for X86CodegenState {
                 }
                 (l1, l2) => todo!("move_val({:?},{:?})", l1, l2),
             },
+            VStackValue::Pointer(_, LValue::OpaquePointer(l2))
+            | VStackValue::LValue(_, LValue::OpaquePointer(l2)) => match (l2, loc) {
+                (ValLocation::Register(r1), ValLocation::Register(r2)) => {
+                    self.move_reg2reg(r2, r1);
+                }
+                (ValLocation::Register(r1), loc) if loc.addressible() => {
+                    self.move_reg2mem(loc, r1);
+                }
+                (loc, ValLocation::Register(r1)) if loc.addressible() => {
+                    self.move_mem2reg(loc, r1);
+                }
+                (l1, l2) if l1.addressible() && l2.addressible() => {
+                    let ptrreg = self.get_or_allocate_pointer_reg();
+                    self.move_mem2reg(l1, ptrreg);
+                    self.move_reg2mem(l2, ptrreg);
+                }
+                (ValLocation::Null, _) | (_, ValLocation::Null) => {}
+                (src, dest) => panic!("Cannot move pointer from {:?} to {:?}", src, dest),
+            },
             VStackValue::Trapped => {}
             VStackValue::AggregatePieced(_ty, _pieces) => match loc {
                 ValLocation::BpDisp(i) => todo!("[bp{:+#x}]", i),
