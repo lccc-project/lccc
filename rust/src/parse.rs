@@ -678,6 +678,12 @@ pub fn parse_block<I: Iterator<Item = Lexeme>>(it: I) -> Vec<BlockItem> {
                     }
                 }
             },
+            Some(Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+            }) if tok == ";" => {
+                peek.next();
+            }
             Some(_) => {
                 let expr = parse_expr(&mut peek);
                 if let Some(Lexeme::Token {
