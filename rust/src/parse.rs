@@ -1670,6 +1670,7 @@ pub fn parse_mod<I: Iterator<Item = Lexeme>>(it: I, mut attrs: Vec<Meta>) -> Mod
             _ => break,
         }
     }
+    it.reset_cursor();
     while let Some(x) = parse_item(&mut it, Vec::new()) {
         items.push(x);
     }
