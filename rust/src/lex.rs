@@ -62,8 +62,16 @@ pub struct Span {
 #[allow(dead_code)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Lexeme {
-    Group { ty: GroupType, inner: Vec<Self>, span: Span },
-    Token { ty: TokenType, tok: String, span: Span },
+    Group {
+        ty: GroupType,
+        inner: Vec<Self>,
+        span: Span,
+    },
+    Token {
+        ty: TokenType,
+        tok: String,
+        span: Span,
+    },
 }
 
 impl Lexeme {
@@ -100,10 +108,7 @@ impl<I: Iterator<Item = char>> From<Peekable<I>> for LexerIterator<I> {
     fn from(other: Peekable<I>) -> Self {
         Self {
             iter: other,
-            pos: Position {
-                row: 1,
-                col: 1,
-            }
+            pos: Position { row: 1, col: 1 },
         }
     }
 }
@@ -162,7 +167,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                         result.push(Lexeme::Token {
                             ty: TokenType::String(StrType::Byte),
                             tok: lex_string(file),
-                            span: Span { begin, end: file.pos }
+                            span: Span {
+                                begin,
+                                end: file.pos,
+                            },
                         });
                     }
                     "b" if file.peek() == Some('\'') => {
@@ -175,7 +183,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                         result.push(Lexeme::Token {
                             ty: TokenType::Character(CharType::Byte),
                             tok: String::from(single_char),
-                            span: Span { begin, end: file.pos }
+                            span: Span {
+                                begin,
+                                end: file.pos,
+                            },
                         });
                     }
                     "r" => todo!(),
@@ -195,7 +206,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                             _ => TokenType::Identifier,
                         },
                         tok: id,
-                        span: Span { begin, end: file.pos }
+                        span: Span {
+                            begin,
+                            end: file.pos,
+                        },
                     }),
                 }
             }
@@ -213,7 +227,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                 result.push(Lexeme::Token {
                     ty: TokenType::Number,
                     tok: num,
-                    span: Span { begin, end: file.pos }
+                    span: Span {
+                        begin,
+                        end: file.pos,
+                    },
                 });
             }
             '"' => {
@@ -221,7 +238,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                 result.push(Lexeme::Token {
                     ty: TokenType::String(StrType::Default),
                     tok: lex_string(file),
-                    span: Span { begin, end: file.pos }
+                    span: Span {
+                        begin,
+                        end: file.pos,
+                    },
                 });
             }
             x if x.is_whitespace() => {
@@ -236,7 +256,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                 result.push(Lexeme::Token {
                     ty: TokenType::Symbol,
                     tok: String::from(x),
-                    span: Span { begin, end: file.pos }
+                    span: Span {
+                        begin,
+                        end: file.pos,
+                    },
                 });
             }
             '-' | '=' => {
@@ -251,7 +274,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                 result.push(Lexeme::Token {
                     ty: TokenType::Symbol,
                     tok,
-                    span: Span { begin, end: file.pos }
+                    span: Span {
+                        begin,
+                        end: file.pos,
+                    },
                 });
             }
             '*' | '!' => {
@@ -264,7 +290,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                 result.push(Lexeme::Token {
                     ty: TokenType::Symbol,
                     tok,
-                    span: Span { begin, end: file.pos }
+                    span: Span {
+                        begin,
+                        end: file.pos,
+                    },
                 });
             }
             '&' => {
@@ -280,7 +309,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                 result.push(Lexeme::Token {
                     ty: TokenType::Symbol,
                     tok,
-                    span: Span { begin, end: file.pos }
+                    span: Span {
+                        begin,
+                        end: file.pos,
+                    },
                 });
             }
             '.' => {
@@ -300,7 +332,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                 result.push(Lexeme::Token {
                     ty: TokenType::Symbol,
                     tok,
-                    span: Span { begin, end: file.pos }
+                    span: Span {
+                        begin,
+                        end: file.pos,
+                    },
                 });
             }
             '/' => {
@@ -310,7 +345,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     result.push(Lexeme::Token {
                         ty: TokenType::Symbol,
                         tok: String::from("/="),
-                        span: Span { begin, end: file.pos }
+                        span: Span {
+                            begin,
+                            end: file.pos,
+                        },
                     });
                 } else if file.peek() == Some('/') {
                     // SINGLE-LINE COMMENT
@@ -325,7 +363,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     result.push(Lexeme::Token {
                         ty: TokenType::Symbol,
                         tok: String::from("/"),
-                        span: Span { begin, end: file.pos }
+                        span: Span {
+                            begin,
+                            end: file.pos,
+                        },
                     });
                 }
             }
@@ -347,7 +388,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                             _ => unreachable!(),
                         }),
                     ),
-                    span: Span { begin, end: file.pos }
+                    span: Span {
+                        begin,
+                        end: file.pos,
+                    },
                 });
             }
             _ => todo!("{}", x),
