@@ -49,7 +49,6 @@ impl XLangFrontend for RustFrontend {
         let items = parse_mod(lexed.into_iter(), std::vec::Vec::new());
         let mut converted = convert(&items);
         typeck_program(&mut converted);
-        println!("{}", converted);
         self.program = Some(converted);
         io::Result::Ok(())
     }

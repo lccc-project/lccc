@@ -499,13 +499,8 @@ impl Display for Program {
 
 pub fn convert_ty(named_types: &[Type], orig: &crate::parse::Type) -> Type {
     match orig {
-        crate::parse::Type::Name(name) => {
-            for ty in named_types {
-                if *name == ty.name() {
-                    return ty.clone();
-                }
-            }
-            panic!("Unknown type {}", name);
+        crate::parse::Type::Name(_) => {
+            todo!("Named Types")
         }
         crate::parse::Type::Pointer {
             mutability,
@@ -515,6 +510,11 @@ pub fn convert_ty(named_types: &[Type], orig: &crate::parse::Type) -> Type {
             underlying: Box::new(convert_ty(named_types, &**underlying)),
         },
         crate::parse::Type::Never => Type::Never,
+        crate::parse::Type::Tuple(_) => todo!("tuple"),
+        crate::parse::Type::Wildcard => todo!("_"),
+        crate::parse::Type::Reference { .. } => todo!("reference"),
+        crate::parse::Type::Slice(_) => todo!("slice"),
+        crate::parse::Type::Array(_, _) => todo!("array"),
     }
 }
 
@@ -584,6 +584,10 @@ pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> 
                         value: convert_expr(named_types, value),
                     });
                 }
+                (Pattern::Parentheses(_), None) | (Pattern::Parentheses(_), Some(_)) => {
+                    todo!("parenthesis patterns")
+                }
+                (Pattern::Tuple(_), None) | (Pattern::Tuple(_), Some(_)) => todo!("tuple patterns"),
             },
             crate::parse::BlockItem::MacroExpansion { .. } => unreachable!(),
         }
