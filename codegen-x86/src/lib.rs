@@ -531,6 +531,26 @@ impl FunctionRawCodegen for X86CodegenState {
                                     ],
                                 )));
                         }
+                        x if x.addressible() => {
+                            let modrm = x.as_modrm(self.mode, X86RegisterClass::Byte).unwrap();
+                            let ptrreg = self.get_or_allocate_pointer_reg();
+                            self.insns
+                                .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                                    X86Opcode::Lea,
+                                    vec![
+                                        X86Operand::Register(ptrreg),
+                                        X86Operand::ModRM(ModRM::Indirect {
+                                            size: X86RegisterClass::Byte,
+                                            mode: ModRMRegOrSib::RipRel(addr),
+                                        }),
+                                    ],
+                                )));
+                            self.insns
+                                .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                                    X86Opcode::MovMR,
+                                    vec![X86Operand::ModRM(modrm), X86Operand::Register(ptrreg)],
+                                )));
+                        }
                         loc => todo!("move_val({:?})", loc),
                     }
                 }

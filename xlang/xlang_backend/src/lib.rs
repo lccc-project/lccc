@@ -597,6 +597,9 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         pty.clone(),
                         LValue::StringLiteral(Encoding::XLang(encoding), utf8.into_bytes()),
                     )),
+                    (VStackValue::LValue(_, _), ty) => {
+                        panic!("convert {:?} cannot be applied to lvalues", ty)
+                    }
                     (val, ty) => todo!("convert _ {:?}: {:?}", ty, val),
                 }
             }
