@@ -107,7 +107,10 @@ pub fn lex_group<I: Iterator<Item = char>>(
                             ty: TokenType::Character(CharType::Byte),
                             tok: String::from(lex_single_char(file)),
                         });
-                        assert!(file.next() == Some('\''), "expected closing quote, didn't get");
+                        assert!(
+                            file.next() == Some('\''),
+                            "expected closing quote, didn't get"
+                        );
                     }
                     "r" => todo!(),
                     _ => result.push(Lexeme::Token {
