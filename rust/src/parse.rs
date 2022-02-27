@@ -74,6 +74,7 @@ pub enum Item {
     Adt {
         attrs: Vec<Meta>,
         name: String,
+        generics: Vec<GenericParam>,
         vis: Visibility,
         variants: Vec<EnumVariant>,
     },
@@ -81,7 +82,30 @@ pub enum Item {
         attrs: Vec<Meta>,
         vis: Visibility,
         name: String,
+        generics: Vec<GenericParam>,
+        defn: Option<Type>,
     },
+    Trait {
+        attrs: Vec<Meta>,
+        vis: Visibility,
+        safety: Safety,
+        auto: bool,
+        name: String,
+        generics: Vec<GenericParam>,
+    },
+    Impl {
+        attrs: Vec<Meta>,
+        safety: Safety,
+        trait_name: Option<TraitImplName>,
+        ty: Type,
+    },
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct TraitImplName {
+    const_kind: TraitBoundConst,
+    negative_impl: bool,
+    name: Path,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -107,7 +131,8 @@ pub struct TraitBound {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum GenericParam {
     Lifetime(String, Vec<Lifetime>),
-    Trait(Path),
+    Type(String, Vec<GenericBound>),
+    Const(String, Type),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -139,6 +164,7 @@ pub struct Struct {
     pub vis: Visibility,
     pub tag: TypeTag,
     pub name: String,
+    pub generics: Vec<GenericParam>,
     pub body: StructBody,
 }
 
@@ -212,7 +238,7 @@ pub enum GenericArg {
     Expr(Expr),
     Lifetime(Lifetime),
     AssociatedType(String, Type),
-    AssociatedTypeBound(String, TraitBound),
+    AssociatedTypeBounds(String, Vec<GenericBound>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -670,6 +696,17 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                     } => tok,
                     tok => panic!("Unexpected Token {:?}", tok),
                 };
+                let generics = match it.peek().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    } if tok == "<" => {
+                        it.next();
+                        parse_generic_decl(it)
+                    }
+                    _ => Vec::new(),
+                };
                 match it.next().unwrap() {
                     Lexeme::Group {
                         ty: GroupType::Braces,
@@ -745,6 +782,7 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                         Some(Item::Adt {
                             attrs,
                             name,
+                            generics,
                             vis,
                             variants,
                         })
@@ -772,13 +810,14 @@ pub fn parse_struct_or_union<I: Iterator<Item = Lexeme>>(
         } => tok,
         tok => panic!("Unexpected Token {:?}", tok),
     };
-    match it.peek().unwrap() {
+
+    let generics = match it.peek().unwrap() {
         Lexeme::Token {
             ty: TokenType::Symbol,
             tok,
             ..
-        } if tok == "<" => todo!("generics"),
-        _ => {}
+        } if tok == "<" => parse_generic_decl(it),
+        _ => Vec::new(),
     };
 
     let body = parse_struct_body(it);
@@ -800,6 +839,7 @@ pub fn parse_struct_or_union<I: Iterator<Item = Lexeme>>(
         vis,
         tag,
         name,
+        generics,
         body,
     }
 }
@@ -1088,6 +1128,219 @@ pub fn parse_lifetime<I: Iterator<Item = Lexeme>>(
     }
 }
 
+pub fn parse_bounds<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) -> Vec<GenericBound> {
+    let mut ret = Vec::new();
+    loop {
+        let unbound = match it.peek().unwrap() {
+            Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+                ..
+            } if tok == "?" => {
+                it.next();
+                true
+            }
+            Lexeme::Token {
+                ty: TokenType::Lifetime,
+                ..
+            } => {
+                ret.push(GenericBound::Lifetime(parse_lifetime(it).unwrap()));
+                match it.peek() {
+                    Some(Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    }) if tok == "+" => {
+                        it.next();
+                        continue;
+                    }
+                    _ => break,
+                }
+            }
+            _ => false,
+        };
+
+        let constness = match it.peek().unwrap() {
+            Lexeme::Token {
+                ty: TokenType::Keyword,
+                tok,
+                ..
+            } if tok == "const" => {
+                it.next();
+                TraitBoundConst::Const
+            }
+            Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+                ..
+            } if tok == "~" => {
+                it.next();
+                match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Keyword,
+                        tok,
+                        ..
+                    } if tok == "const" => TraitBoundConst::ConstIfConst,
+                    tok => panic!("Unexpected token {:?}", tok),
+                }
+            }
+            _ => TraitBoundConst::NoConst,
+        };
+
+        let mut path = parse_path(it);
+        if !matches!(path.components.last(), Some(PathComponent::Generics(_))) {
+            match it.peek() {
+                Some(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                }) if tok == "<" => {
+                    it.next();
+                    path.components
+                        .push(PathComponent::Generics(parse_generics(it)));
+                }
+                _ => {}
+            }
+        }
+
+        ret.push(GenericBound::Trait(TraitBound {
+            unbound,
+            const_kind: constness,
+            trait_name: path,
+        }));
+
+        match it.peek() {
+            Some(Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+                ..
+            }) if tok == "+" => {
+                it.next();
+                continue;
+            }
+            _ => break,
+        }
+    }
+    ret
+}
+
+pub fn parse_generic_decl<I: Iterator<Item = Lexeme>>(
+    it: &mut PeekMoreIterator<I>,
+) -> Vec<GenericParam> {
+    let mut params = Vec::new();
+    loop {
+        match it.peek().unwrap() {
+            Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+                ..
+            } if tok == ">" => break,
+            Lexeme::Token {
+                ty: TokenType::Keyword,
+                tok,
+                ..
+            } if tok == "const" => {
+                it.next();
+                let name = match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Identifier,
+                        tok,
+                        ..
+                    } => tok,
+                    tok => panic!("Unexpected Token {:?}", tok),
+                };
+                match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    } if tok == ":" => {}
+                    tok => panic!("Unexpected Token {:?}", tok),
+                };
+                let ty = parse_type(it).unwrap();
+                params.push(GenericParam::Const(name, ty));
+            }
+            Lexeme::Token {
+                ty: TokenType::Lifetime,
+                ..
+            } => {
+                let name = match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Lifetime,
+                        tok,
+                        ..
+                    } if tok != "static" && tok != "_" => tok,
+                    tok => panic!("Unexpected token {:?}", tok),
+                };
+                let mut bounds = Vec::new();
+                match it.peek().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    } if tok == ":" => {
+                        it.next();
+                        loop {
+                            if let Some(life) = parse_lifetime(it) {
+                                bounds.push(life);
+                                match it.peek().unwrap() {
+                                    Lexeme::Token {
+                                        ty: TokenType::Symbol,
+                                        tok,
+                                        ..
+                                    } if tok == "+" => continue,
+                                    _ => break,
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                params.push(GenericParam::Lifetime(name, bounds))
+            }
+            Lexeme::Token {
+                ty: TokenType::Identifier,
+                tok,
+                ..
+            } => {
+                let name = tok.clone();
+                it.next();
+                let bounds = match it.peek().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    } if tok == ":" => {
+                        it.next();
+                        parse_bounds(it)
+                    }
+                    _ => Vec::new(),
+                };
+                params.push(GenericParam::Type(name, bounds));
+            }
+            tok => panic!("Unexpected token {:?}", tok),
+        }
+
+        match it.next().unwrap() {
+            Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+                ..
+            } if tok == "," => continue,
+            Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+                ..
+            } if tok == ">" => break,
+            tok => panic!("Unexpected token {:?}", tok),
+        }
+    }
+
+    params
+}
+
 pub fn parse_generics<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) -> Vec<GenericArg> {
     let mut args = Vec::new();
     loop {
@@ -1136,7 +1389,21 @@ pub fn parse_generics<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) 
                     ty: TokenType::Symbol,
                     tok,
                     ..
-                } if tok == ":" => todo!(),
+                } if tok == ":" => {
+                    it.reset_cursor();
+                    match it.next().unwrap() {
+                        Lexeme::Token {
+                            ty: TokenType::Identifier,
+                            tok,
+                            ..
+                        } => {
+                            it.next();
+                            let bounds = parse_bounds(it);
+                            args.push(GenericArg::AssociatedTypeBounds(tok, bounds));
+                        }
+                        _ => unreachable!(),
+                    }
+                }
                 _ => {
                     it.reset_cursor();
                     args.push(GenericArg::Name(parse_path(it)));
