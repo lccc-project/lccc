@@ -503,109 +503,256 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
         }
     }
     let vis = parse_visibility(it);
-    match it.next()? {
+    match it.peek()? {
         Lexeme::Token {
             ty: TokenType::Identifier,
             tok,
             ..
-        } if tok == "macro_rules" => match it.next().unwrap() {
-            Lexeme::Token {
-                ty: TokenType::Symbol,
-                tok,
-                ..
-            } if tok == "!" => match it.next().unwrap() {
+        } if tok == "macro_rules" => {
+            it.next();
+            match it.next().unwrap() {
                 Lexeme::Token {
-                    ty: TokenType::Identifier,
+                    ty: TokenType::Symbol,
                     tok,
                     ..
-                } => match it.next().unwrap() {
-                    Lexeme::Group {
-                        ty: GroupType::Braces,
-                        inner,
+                } if tok == "!" => match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Identifier,
+                        tok,
                         ..
-                    } => {
-                        let name = tok;
-                        let mut it = inner.into_iter().peekmore();
-                        let mut arms = Vec::new();
-                        loop {
-                            let mut matchers = Vec::new();
-                            let mut outputs = Vec::new();
-                            match it.next() {
-                                Some(Lexeme::Group { inner, .. }) => {
-                                    let mut it = inner.into_iter().peekmore();
-                                    while let Some(matcher) = parse_macro_matcher(&mut it) {
-                                        matchers.push(matcher);
+                    } => match it.next().unwrap() {
+                        Lexeme::Group {
+                            ty: GroupType::Braces,
+                            inner,
+                            ..
+                        } => {
+                            let name = tok;
+                            let mut it = inner.into_iter().peekmore();
+                            let mut arms = Vec::new();
+                            loop {
+                                let mut matchers = Vec::new();
+                                let mut outputs = Vec::new();
+                                match it.next() {
+                                    Some(Lexeme::Group { inner, .. }) => {
+                                        let mut it = inner.into_iter().peekmore();
+                                        while let Some(matcher) = parse_macro_matcher(&mut it) {
+                                            matchers.push(matcher);
+                                        }
+                                    }
+                                    Some(tok) => panic!("Unexpected Token {:?}", tok),
+                                    None => {
+                                        break Some(Item::MacroRules {
+                                            attrs,
+                                            visibility: None,
+                                            name,
+                                            arms,
+                                        })
                                     }
                                 }
-                                Some(tok) => panic!("Unexpected Token {:?}", tok),
-                                None => {
-                                    break Some(Item::MacroRules {
-                                        attrs,
-                                        visibility: None,
-                                        name,
-                                        arms,
-                                    })
+                                match it.next().unwrap() {
+                                    Lexeme::Token {
+                                        ty: TokenType::Symbol,
+                                        tok,
+                                        ..
+                                    } if tok == "=>" => match it.next().unwrap() {
+                                        Lexeme::Group {
+                                            ty: GroupType::Braces,
+                                            inner,
+                                            ..
+                                        } => {
+                                            let mut it = inner.into_iter().peekmore();
+                                            while let Some(output) = parse_macro_output(&mut it) {
+                                                outputs.push(output);
+                                            }
+                                        }
+                                        tok => panic!("Unexpected Token {:?}", tok),
+                                    },
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                }
+
+                                arms.push(MacroArm {
+                                    matchers,
+                                    expansion: outputs,
+                                });
+                                match it.next() {
+                                    Some(Lexeme::Token {
+                                        ty: TokenType::Symbol,
+                                        tok,
+                                        ..
+                                    }) if tok == ";" => continue,
+                                    Some(tok) => panic!("Unexpected Token {:?}", tok),
+                                    None => {
+                                        break Some(Item::MacroRules {
+                                            attrs,
+                                            visibility: None,
+                                            name,
+                                            arms,
+                                        })
+                                    }
                                 }
                             }
+                        }
+                        tok => panic!("Unexpected Token {:?}", tok),
+                    },
+                    tok => panic!("Unexpected Token {:?}", tok),
+                },
+
+                tok => panic!(
+                    "Unexpected Token {:?} (Note: macro_rules::foo! not yet handled)",
+                    tok
+                ),
+            }
+        }
+        Lexeme::Token {
+            ty: TokenType::Identifier,
+            tok,
+            ..
+        } if tok == "union" => {
+            let union = tok.clone();
+            it.next();
+            match it.peek() {
+                Some(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                }) if tok == "::" => {
+                    if vis != Visibility::None {
+                        panic!("Cannot apply visibility {:?} to a macro expansion", vis)
+                    }
+                    it.next();
+                    let mut path = parse_simple_path(it);
+                    path.idents.insert(0, union);
+                    match it.next().unwrap() {
+                        Lexeme::Token {
+                            ty: TokenType::Symbol,
+                            tok,
+                            ..
+                        } if tok == "!" => match it.next().unwrap() {
+                            Lexeme::Group {
+                                ty: GroupType::Braces,
+                                inner,
+                                ..
+                            } => Some(Item::MacroExpansion {
+                                attrs,
+                                target: path,
+                                args: inner,
+                            }),
+                            Lexeme::Group { inner, .. } => {
+                                match it.next().unwrap() {
+                                    Lexeme::Token {
+                                        ty: TokenType::Symbol,
+                                        tok,
+                                        ..
+                                    } if tok == ";" => {}
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                };
+                                Some(Item::MacroExpansion {
+                                    attrs,
+                                    target: path,
+                                    args: inner,
+                                })
+                            }
+                            tok => panic!("Unexpected token {:?}", tok),
+                        },
+                        tok => panic!("Unexpected token {:?}", tok),
+                    }
+                }
+                Some(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                }) if tok == "!" => {
+                    if vis != Visibility::None {
+                        panic!("Cannot apply visibility {:?} to a macro expansion", vis)
+                    }
+                    let path = SimplePath {
+                        root: false,
+                        idents: vec![union],
+                    };
+                    match it.next().unwrap() {
+                        Lexeme::Group {
+                            ty: GroupType::Braces,
+                            inner,
+                            ..
+                        } => Some(Item::MacroExpansion {
+                            attrs,
+                            target: path,
+                            args: inner,
+                        }),
+                        Lexeme::Group { inner, .. } => {
                             match it.next().unwrap() {
                                 Lexeme::Token {
                                     ty: TokenType::Symbol,
                                     tok,
                                     ..
-                                } if tok == "=>" => match it.next().unwrap() {
-                                    Lexeme::Group {
-                                        ty: GroupType::Braces,
-                                        inner,
-                                        ..
-                                    } => {
-                                        let mut it = inner.into_iter().peekmore();
-                                        while let Some(output) = parse_macro_output(&mut it) {
-                                            outputs.push(output);
-                                        }
-                                    }
-                                    tok => panic!("Unexpected Token {:?}", tok),
-                                },
+                                } if tok == ";" => {}
                                 tok => panic!("Unexpected token {:?}", tok),
-                            }
-
-                            arms.push(MacroArm {
-                                matchers,
-                                expansion: outputs,
-                            });
-                            match it.next() {
-                                Some(Lexeme::Token {
-                                    ty: TokenType::Symbol,
-                                    tok,
-                                    ..
-                                }) if tok == ";" => continue,
-                                Some(tok) => panic!("Unexpected Token {:?}", tok),
-                                None => {
-                                    break Some(Item::MacroRules {
-                                        attrs,
-                                        visibility: None,
-                                        name,
-                                        arms,
-                                    })
-                                }
-                            }
+                            };
+                            Some(Item::MacroExpansion {
+                                attrs,
+                                target: path,
+                                args: inner,
+                            })
                         }
+                        tok => panic!("Unexpected token {:?}", tok),
                     }
-                    tok => panic!("Unexpected Token {:?}", tok),
-                },
-                tok => panic!("Unexpected Token {:?}", tok),
-            },
-
-            tok => panic!(
-                "Unexpected Token {:?} (Note: macro_rules::foo! not yet handled)",
-                tok
-            ),
-        },
+                }
+                _ => Some(Item::Type(parse_struct_or_union(
+                    vis,
+                    attrs,
+                    it,
+                    TypeTag::Union,
+                ))),
+            }
+        }
+        Lexeme::Token {
+            ty: TokenType::Identifier,
+            ..
+        } => {
+            let path = parse_simple_path(it);
+            match it.next().unwrap() {
+                Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                } if tok == "!" => {}
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+            match it.next().unwrap() {
+                Lexeme::Group {
+                    ty: GroupType::Braces,
+                    inner,
+                    ..
+                } => Some(Item::MacroExpansion {
+                    attrs,
+                    target: path,
+                    args: inner,
+                }),
+                Lexeme::Group { inner, .. } => {
+                    match it.next().unwrap() {
+                        Lexeme::Token {
+                            ty: TokenType::Symbol,
+                            tok,
+                            ..
+                        } if tok == ";" => {}
+                        tok => panic!("Unexpected token {:?}", tok),
+                    };
+                    Some(Item::MacroExpansion {
+                        attrs,
+                        target: path,
+                        args: inner,
+                    })
+                }
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+        }
         Lexeme::Token {
             ty: TokenType::Keyword,
             tok,
             ..
-        } => match &*tok {
+        } => match &**tok {
             "extern" => {
+                it.next();
                 if vis != Visibility::None {
                     panic!("extern block with visibility is invalid");
                 }
@@ -646,7 +793,7 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                     _ => panic!("Invalid tokens for block"),
                 }
             }
-            "fn" => Some(parse_fn_item(vis, attrs, it)),
+            "fn" | "unsafe" => Some(parse_fn_item(vis, attrs, it)),
             "struct" => Some(Item::Type(parse_struct_or_union(
                 vis,
                 attrs,
@@ -660,6 +807,7 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                 TypeTag::Union,
             ))),
             "mod" => {
+                it.next();
                 let name = match it.next().unwrap() {
                     Lexeme::Token {
                         ty: TokenType::Identifier,
@@ -688,6 +836,7 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                 }
             }
             "enum" => {
+                it.next();
                 let name = match it.next().unwrap() {
                     Lexeme::Token {
                         ty: TokenType::Identifier,
@@ -802,6 +951,7 @@ pub fn parse_struct_or_union<I: Iterator<Item = Lexeme>>(
     it: &mut PeekMoreIterator<I>,
     tag: TypeTag,
 ) -> Struct {
+    it.next(); // eat struct/union
     let name = match it.next().unwrap() {
         Lexeme::Token {
             ty: TokenType::Identifier,
@@ -993,8 +1143,9 @@ pub fn parse_struct_body<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I
 pub fn parse_fn_item<I: Iterator<Item = Lexeme>>(
     visibility: Visibility,
     attrs: Vec<Meta>,
-    mut peek: &mut PeekMoreIterator<I>,
+    peek: &mut PeekMoreIterator<I>,
 ) -> Item {
+    peek.next(); // eat `fn`, do `extern fn`, `unsafe fn`
     let name = match peek.next().expect("Invalid Item") {
         Lexeme::Token {
             ty: TokenType::Identifier,
@@ -1053,7 +1204,7 @@ pub fn parse_fn_item<I: Iterator<Item = Lexeme>>(
             tok,
             ..
         } if tok == "->" => {
-            let retty = parse_type(&mut peek).unwrap();
+            let retty = parse_type(peek).unwrap();
             match peek.next().unwrap() {
                 Lexeme::Token {
                     ty: TokenType::Symbol,
