@@ -1,5 +1,5 @@
 pub use crate::lex::StrType; // TODO: `pub use` this in `crate::parse`
-use crate::parse::{FnParam, Item, Mod, Pattern};
+use crate::parse::{FnParam, Item, Mod, Path, PathComponent, Pattern};
 pub use crate::parse::{Meta, Mutability, Safety, SimplePath, Visibility};
 use std::collections::hash_map::{Entry, HashMap};
 use std::fmt::{self, Display, Formatter};
@@ -74,6 +74,13 @@ impl IntType {
 
 #[allow(dead_code)]
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum Constraint {
+    Integer { min_bits: u8, signed: bool },
+    Type(Type),
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Type {
     Array(Box<Self>, usize),
     Boolean,
@@ -82,6 +89,7 @@ pub enum Type {
     Function(FunctionSignature),
     Integer(IntType),
     Never,
+    Partial(Vec<Constraint>),
     Pointer {
         mutability: Mutability,
         underlying: Box<Self>,
@@ -94,6 +102,7 @@ pub enum Type {
     Tuple(Vec<Self>),
 }
 
+#[allow(dead_code)]
 impl Type {
     #[must_use]
     pub fn name(&self) -> String {
@@ -121,6 +130,7 @@ impl Type {
                 IntType::Usize => "usize",
             }),
             Self::Never => String::from("!"),
+            Self::Partial(_) => String::from("_"),
             Self::Pointer {
                 mutability,
                 underlying,
@@ -156,6 +166,45 @@ impl Type {
             types.is_empty()
         } else {
             false
+        }
+    }
+
+    pub fn constrain(&mut self, constraint: Constraint) {
+        match (&constraint, self) {
+            (_, Self::Partial(constraints)) => constraints.push(constraint),
+            (Constraint::Integer { .. }, Self::Integer(_)) => todo!(),
+            (Constraint::Type(ty), ty2) if ty == ty2 => {}
+            (Constraint::Type(ty), ty2) => {
+                panic!("couldn't resolve `{}` as `{}`", ty2, ty);
+            }
+            (a, b) => todo!("constrain({:?}, {:?})", b, a),
+        }
+    }
+
+    pub fn resolve(&mut self) {
+        match self {
+            Self::Partial(constraints) => {
+                if constraints.is_empty() {
+                    panic!("type annotations needed");
+                }
+                let mut result = None;
+                for constraint in constraints {
+                    match constraint {
+                        Constraint::Integer { .. } => todo!(),
+                        Constraint::Type(ty) => {
+                            if let Some(result) = result.as_ref() {
+                                if result != ty {
+                                    panic!("couldn't resolve `{}` as `{}`", result, ty)
+                                }
+                            } else {
+                                result = Some(ty.clone()); // TODO: wait for borrowck to get better; theoretically, this can move
+                            }
+                        }
+                    }
+                }
+                *self = result.expect("type annotations needed");
+            }
+            _ => {}
         }
     }
 }
@@ -499,8 +548,16 @@ impl Display for Program {
 
 pub fn convert_ty(named_types: &[Type], orig: &crate::parse::Type) -> Type {
     match orig {
-        crate::parse::Type::Name(_) => {
-            todo!("Named Types")
+        crate::parse::Type::Name(name) => {
+            if let PathComponent::Id(name) = &name.components[0] {
+                named_types
+                    .iter()
+                    .find(|x| x.name() == *name)
+                    .unwrap()
+                    .clone()
+            } else {
+                todo!();
+            }
         }
         crate::parse::Type::Pointer {
             mutability,
@@ -518,7 +575,21 @@ pub fn convert_ty(named_types: &[Type], orig: &crate::parse::Type) -> Type {
     }
 }
 
-#[allow(unused_variables)]
+pub fn convert_id(id: &Path) -> Identifier {
+    if id.root.is_some() {
+        todo!()
+    } else if id.components.is_empty() || id.components.len() > 1 {
+        todo!()
+    } else if let PathComponent::Id(name) = &id.components[0] {
+        Identifier::Basic {
+            mangling: None,
+            name: name.clone(),
+        }
+    } else {
+        todo!()
+    }
+}
+
 pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expression {
     match orig {
         crate::parse::Expr::Cast(expr, target) => Expression::Cast {
@@ -532,12 +603,15 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
                 .map(|arg| convert_expr(named_types, arg))
                 .collect(),
         },
-        crate::parse::Expr::Id(id) => todo!("id_expr {:?}", id),
+        crate::parse::Expr::Id(id) => Expression::Identifier {
+            id: convert_id(id),
+            ty: None,
+        },
         crate::parse::Expr::IntLiteral(n) => Expression::IntegerLiteral {
             val: *n as u128,
             ty: None,
         },
-        crate::parse::Expr::Parentheses(inner) => convert_expr(named_types, inner), // I assume this only exists for lints
+        crate::parse::Expr::Parentheses(inner) => convert_expr(named_types, inner),
         crate::parse::Expr::StringLiteral(kind, val) => Expression::StringLiteral {
             kind: *kind,
             val: val.clone(),
