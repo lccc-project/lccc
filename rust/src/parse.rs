@@ -176,8 +176,8 @@ pub enum PathComponent {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Path {
-    root: Option<PathRoot>,
-    components: Vec<PathComponent>,
+    pub root: Option<PathRoot>,
+    pub components: Vec<PathComponent>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
