@@ -606,8 +606,10 @@ fn iter_in_scope<F: FnMut(&Item, Option<&str>)>(items: &[Item], abi: Option<&str
             Item::FnDeclaration { .. } => func(item, abi),
             Item::MacroExpansion { .. } => unreachable!("Macros were already expanded"),
             Item::MacroRules { .. } => todo!("macro_rules!"),
-            Item::Type(_) => todo!("type"),
+            Item::Type(_) => todo!("struct"),
             Item::Mod { .. } => todo!("mod"),
+            Item::Adt { .. } => todo!("enum"),
+            Item::TypeAlias { .. } => todo!("type"),
         }
     }
 }
@@ -713,6 +715,8 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
             Item::MacroRules { .. } => todo!("macro_rules!"),
             Item::Type(_) => todo!("type"),
             Item::Mod { .. } => todo!("mod"),
+            Item::Adt { .. } => todo!(),
+            Item::TypeAlias { .. } => todo!(),
         };
         // TODO: Check attributes
         declarations.push(declaration);

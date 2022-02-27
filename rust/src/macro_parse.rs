@@ -55,7 +55,9 @@ pub fn find_macros(
         Item::ExternBlock { .. }
         | Item::MacroExpansion { .. }
         | Item::FnDeclaration { .. }
-        | Item::Type(_) => {}
+        | Item::Type(_)
+        | Item::Adt { .. }
+        | Item::TypeAlias { .. } => {}
         Item::MacroRules {
             attrs,
             visibility,
