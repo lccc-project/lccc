@@ -700,6 +700,8 @@ fn iter_in_scope<F: FnMut(&Item, Option<&str>)>(items: &[Item], abi: Option<&str
             Item::TypeAlias { .. } => todo!("type"),
             Item::Trait { .. } => todo!("trait"),
             Item::Impl { .. } => todo!("impl"),
+            Item::Const { .. } => todo!("const"),
+            Item::Static { .. } => todo!("static"),
         }
     }
 }
@@ -743,7 +745,11 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
             Item::FnDeclaration {
                 attrs,
                 visibility,
+                is_const: _,
+                is_async: _,
                 safety,
+                abi: _,
+                generics: _,
                 name,
                 params,
                 return_ty,
@@ -809,6 +815,8 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
             Item::TypeAlias { .. } => todo!("type"),
             Item::Trait { .. } => todo!("trait"),
             Item::Impl { .. } => todo!("impl"),
+            Item::Static { .. } => todo!("static"),
+            Item::Const { .. } => todo!("const"),
         };
         // TODO: Check attributes
         declarations.push(declaration);

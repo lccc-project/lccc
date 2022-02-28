@@ -100,6 +100,8 @@ pub fn find_macros(
         }
         Item::Trait { .. } => {}
         Item::Impl { .. } => {}
+        Item::Static { .. } => {}
+        Item::Const { .. } => {}
     }
     ret
 }

@@ -16,6 +16,13 @@ pub enum Visibility {
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum BoundKind {
+    Negative,
+    Maybe,
+    Normal,
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum TypeTag {
     Struct,
     Union,
@@ -49,8 +56,12 @@ pub enum Item {
     FnDeclaration {
         attrs: Vec<Meta>,
         visibility: Visibility,
+        is_const: bool,
+        is_async: bool,
         safety: Safety,
+        abi: Option<String>,
         name: String,
+        generics: Generics,
         params: Vec<FnParam>,
         return_ty: Option<Type>,
         block: Option<Vec<BlockItem>>,
@@ -75,7 +86,7 @@ pub enum Item {
     Adt {
         attrs: Vec<Meta>,
         name: String,
-        generics: Vec<GenericParam>,
+        generics: Generics,
         vis: Visibility,
         variants: Vec<EnumVariant>,
     },
@@ -83,7 +94,7 @@ pub enum Item {
         attrs: Vec<Meta>,
         vis: Visibility,
         name: String,
-        generics: Vec<GenericParam>,
+        generics: Generics,
         defn: Option<Type>,
     },
     Trait {
@@ -92,14 +103,47 @@ pub enum Item {
         safety: Safety,
         auto: bool,
         name: String,
-        generics: Vec<GenericParam>,
+        generics: Generics,
+        supertraits: Vec<GenericBound>,
+        body: TraitBody,
     },
     Impl {
         attrs: Vec<Meta>,
         safety: Safety,
+        generics: Generics,
         trait_name: Option<TraitImplName>,
         ty: Type,
     },
+    Static {
+        attrs: Vec<Meta>,
+        vis: Visibility,
+        name: Pattern,
+        init: Expr,
+    },
+    Const {
+        attrs: Vec<Meta>,
+        vis: Visibility,
+        name: Pattern,
+        init: Option<Expr>,
+    },
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Generics {
+    pub params: Vec<GenericParam>,
+    pub where_bounds: Vec<WhereBound>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct WhereBound {
+    pub ty: Type,
+    pub bounds: Vec<GenericBound>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum TraitBody {
+    Alias(Vec<GenericBound>),
+    Block(Vec<Item>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -124,7 +168,7 @@ pub enum TraitBoundConst {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct TraitBound {
-    pub unbound: bool,
+    pub unbound: BoundKind,
     pub const_kind: TraitBoundConst,
     pub trait_name: Path,
 }
@@ -165,7 +209,7 @@ pub struct Struct {
     pub vis: Visibility,
     pub tag: TypeTag,
     pub name: String,
-    pub generics: Vec<GenericParam>,
+    pub generics: Generics,
     pub body: StructBody,
 }
 
@@ -867,6 +911,32 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
             ..
         } => match &**tok {
             "extern" => {
+                match it.peek_next() {
+                    Some(Lexeme::Token {
+                        ty: TokenType::String(_),
+                        ..
+                    }) => match it.peek_next() {
+                        Some(Lexeme::Token {
+                            ty: TokenType::Keyword,
+                            tok,
+                            ..
+                        }) if tok == "fn" => {
+                            it.reset_cursor();
+                            return Some(parse_fn_item(vis, attrs, it));
+                        }
+                        _ => {}
+                    },
+                    Some(Lexeme::Token {
+                        ty: TokenType::Keyword,
+                        tok,
+                        ..
+                    }) if tok == "fn" => {
+                        it.reset_cursor();
+                        return Some(parse_fn_item(vis, attrs, it));
+                    }
+                    _ => {}
+                }
+                it.reset_cursor();
                 it.next();
                 if vis != Visibility::None {
                     panic!("extern block with visibility is invalid");
@@ -887,7 +957,7 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                             unreachable!()
                         }
                     }
-                    _ => None,
+                    _ => Some("C".to_string()),
                 };
 
                 let block = it.next().expect("Missing block");
@@ -905,10 +975,100 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                         }
                         Some(Item::ExternBlock { attrs, abi, items })
                     }
-                    _ => panic!("Invalid tokens for block"),
+                    tok => panic!("Invalid tokens for block {:?}", tok),
                 }
             }
-            "fn" | "unsafe" => Some(parse_fn_item(vis, attrs, it)),
+            "unsafe" => match it.peek_next().unwrap() {
+                Lexeme::Token {
+                    ty: TokenType::Keyword,
+                    tok,
+                    ..
+                } if tok == "extern" || tok == "fn" => {
+                    it.reset_cursor();
+                    Some(parse_fn_item(vis, attrs, it))
+                }
+                Lexeme::Token {
+                    ty: TokenType::Keyword,
+                    tok,
+                    ..
+                } if tok == "trait" => {
+                    it.reset_cursor();
+                    Some(parse_trait_item(vis, attrs, it))
+                }
+                Lexeme::Token {
+                    ty: TokenType::Identifier,
+                    tok,
+                    ..
+                } if tok == "auto" => {
+                    it.reset_cursor();
+                    Some(parse_trait_item(vis, attrs, it))
+                }
+                tok => panic!("Unexpected token {:?}", tok),
+            },
+            "fn" | "async" => Some(parse_fn_item(vis, attrs, it)),
+            "const" => match it.peek_next() {
+                Some(Lexeme::Token {
+                    ty: TokenType::Keyword,
+                    tok,
+                    ..
+                }) if tok == "unsafe" || tok == "async" || tok == "extern" || tok == "fn" => {
+                    it.reset_cursor();
+                    Some(parse_fn_item(vis, attrs, it))
+                }
+                _ => {
+                    it.reset_cursor();
+                    it.next();
+                    let name = parse_pattern(it).unwrap();
+                    let init = match it.peek().unwrap() {
+                        Lexeme::Token {
+                            ty: TokenType::Symbol,
+                            tok,
+                            ..
+                        } if tok == "=" => {
+                            it.next();
+                            Some(parse_expr(it, true))
+                        }
+                        _ => None,
+                    };
+
+                    match it.next().unwrap() {
+                        Lexeme::Token {
+                            ty: TokenType::Symbol,
+                            tok,
+                            ..
+                        } if tok == ";" => {}
+                        tok => panic!("Unexpected token {:?}", tok),
+                    }
+
+                    Some(Item::Const {
+                        attrs,
+                        vis,
+                        name,
+                        init,
+                    })
+                }
+            },
+            "static" => {
+                it.next();
+                let name = parse_pattern(it).unwrap();
+                match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    } if tok == "=" => {}
+                    tok => panic!("Unexpected token {:?}", tok),
+                }
+                let init = parse_expr(it, true);
+
+                Some(Item::Static {
+                    attrs,
+                    vis,
+                    name,
+                    init,
+                })
+            }
+            "auto" | "trait" => Some(parse_trait_item(vis, attrs, it)),
             "struct" => Some(Item::Type(parse_struct_or_union(
                 vis,
                 attrs,
@@ -960,7 +1120,7 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                     } => tok,
                     tok => panic!("Unexpected Token {:?}", tok),
                 };
-                let generics = match it.peek().unwrap() {
+                let params = match it.peek().unwrap() {
                     Lexeme::Token {
                         ty: TokenType::Symbol,
                         tok,
@@ -971,6 +1131,51 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                     }
                     _ => Vec::new(),
                 };
+                let mut where_bounds = Vec::new();
+                match it.peek().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Keyword,
+                        tok,
+                        ..
+                    } if tok == "where" => {
+                        it.next();
+                        loop {
+                            match it.peek() {
+                                Some(Lexeme::Token {
+                                    ty: TokenType::Symbol,
+                                    tok,
+                                    ..
+                                }) if tok == ";" => break,
+                                Some(Lexeme::Group {
+                                    ty: GroupType::Braces,
+                                    ..
+                                }) => break,
+                                None => break,
+                                Some(_) => {}
+                            }
+                            let ty = parse_type(it).unwrap();
+                            let bounds = match it.next().unwrap() {
+                                Lexeme::Token {
+                                    ty: TokenType::Symbol,
+                                    tok,
+                                    ..
+                                } if tok == ":" => {
+                                    it.next();
+                                    parse_bounds(it)
+                                }
+                                tok => panic!("Unexpected token {:?}", tok),
+                            };
+                            where_bounds.push(WhereBound { ty, bounds })
+                        }
+                    }
+                    _ => {}
+                }
+
+                let generics = Generics {
+                    params,
+                    where_bounds,
+                };
+
                 match it.next().unwrap() {
                     Lexeme::Group {
                         ty: GroupType::Braces,
@@ -1076,13 +1281,58 @@ pub fn parse_struct_or_union<I: Iterator<Item = Lexeme>>(
         tok => panic!("Unexpected Token {:?}", tok),
     };
 
-    let generics = match it.peek().unwrap() {
+    let params = match it.peek().unwrap() {
         Lexeme::Token {
             ty: TokenType::Symbol,
             tok,
             ..
         } if tok == "<" => parse_generic_decl(it),
         _ => Vec::new(),
+    };
+
+    let mut where_bounds = Vec::new();
+    match it.peek().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "where" => {
+            it.next();
+            loop {
+                match it.peek() {
+                    Some(Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    }) if tok == ";" => break,
+                    Some(Lexeme::Group {
+                        ty: GroupType::Braces,
+                        ..
+                    }) => break,
+                    None => break,
+                    Some(_) => {}
+                }
+                let ty = parse_type(it).unwrap();
+                let bounds = match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    } if tok == ":" => {
+                        it.next();
+                        parse_bounds(it)
+                    }
+                    tok => panic!("Unexpected token {:?}", tok),
+                };
+                where_bounds.push(WhereBound { ty, bounds })
+            }
+        }
+        _ => {}
+    }
+
+    let generics = Generics {
+        params,
+        where_bounds,
     };
 
     let body = parse_struct_body(it);
@@ -1257,10 +1507,69 @@ pub fn parse_struct_body<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I
 
 pub fn parse_fn_item<I: Iterator<Item = Lexeme>>(
     visibility: Visibility,
-    attrs: Vec<Meta>,
+    mut attrs: Vec<Meta>,
     peek: &mut PeekMoreIterator<I>,
 ) -> Item {
-    peek.next(); // eat `fn`, do `extern fn`, `unsafe fn`
+    let is_const = match peek.peek() {
+        Some(Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        }) if tok == "const" => {
+            peek.next();
+            true
+        }
+        _ => false,
+    };
+    let is_async = match peek.peek() {
+        Some(Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        }) if tok == "async" => {
+            peek.next();
+            true
+        }
+        _ => false,
+    };
+    let safety = match peek.peek() {
+        Some(Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        }) if tok == "unsafe" => {
+            peek.next();
+            Safety::Unsafe
+        }
+        _ => Safety::Safe,
+    };
+    let abi = match peek.peek() {
+        Some(Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        }) if tok == "extern" => {
+            peek.next();
+            match peek.next().unwrap() {
+                Lexeme::Token {
+                    ty: TokenType::String(StrType::Default),
+                    tok,
+                    ..
+                } => Some(tok),
+                _ => Some("C".to_string()),
+            }
+        }
+        _ => None,
+    };
+
+    match peek.next().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "fn" => {}
+        tok => panic!("Unexpected token {:?}", tok),
+    }
     let name = match peek.next().expect("Invalid Item") {
         Lexeme::Token {
             ty: TokenType::Identifier,
@@ -1268,6 +1577,18 @@ pub fn parse_fn_item<I: Iterator<Item = Lexeme>>(
             ..
         } => tok,
         _ => panic!("Invalid Token"),
+    };
+
+    let generic_params = match peek.peek().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        } if tok == "<" => {
+            peek.next();
+            parse_generic_decl(peek)
+        }
+        _ => Vec::new(),
     };
 
     let params = if let Some(Lexeme::Group {
@@ -1300,70 +1621,269 @@ pub fn parse_fn_item<I: Iterator<Item = Lexeme>>(
         panic!("Invalid Token")
     };
 
-    match peek.next().expect("Invalid Token") {
-        Lexeme::Token {
-            ty: TokenType::Symbol,
-            tok,
-            ..
-        } if tok == ";" => Item::FnDeclaration {
-            attrs,
-            visibility,
-            safety: Safety::Safe,
-            name,
-            params,
-            return_ty: None,
-            block: None,
-        },
+    let retty = match peek.peek().unwrap() {
         Lexeme::Token {
             ty: TokenType::Symbol,
             tok,
             ..
         } if tok == "->" => {
-            let retty = parse_type(peek).unwrap();
-            match peek.next().unwrap() {
-                Lexeme::Token {
-                    ty: TokenType::Symbol,
-                    tok,
-                    ..
-                } if tok == ";" => Item::FnDeclaration {
-                    visibility,
-                    attrs,
-                    safety: Safety::Safe,
-                    name,
-                    params,
-                    return_ty: Some(retty),
-                    block: None,
-                },
-                Lexeme::Group {
-                    ty: GroupType::Braces,
-                    inner,
-                    ..
-                } => Item::FnDeclaration {
-                    attrs,
-                    visibility,
-                    safety: Safety::Safe,
-                    name,
-                    params,
-                    return_ty: Some(retty),
-                    block: Some(parse_block(inner.into_iter())),
-                },
-                tok => panic!("Unexpected Token {:?}", tok),
+            peek.next();
+            Some(parse_type(peek).unwrap())
+        }
+        _ => None,
+    };
+
+    let mut where_bounds = Vec::new();
+    match peek.peek().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "where" => {
+            peek.next();
+            loop {
+                match peek.peek() {
+                    Some(Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    }) if tok == ";" => break,
+                    Some(Lexeme::Group {
+                        ty: GroupType::Braces,
+                        ..
+                    }) => break,
+                    None => break,
+                    Some(_) => {}
+                }
+                let ty = parse_type(peek).unwrap();
+                let bounds = match peek.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    } if tok == ":" => {
+                        peek.next();
+                        parse_bounds(peek)
+                    }
+                    tok => panic!("Unexpected token {:?}", tok),
+                };
+                where_bounds.push(WhereBound { ty, bounds })
             }
         }
+        _ => {}
+    }
+
+    let generics = Generics {
+        params: generic_params,
+        where_bounds,
+    };
+
+    let body = match peek.next().unwrap() {
         Lexeme::Group {
             ty: GroupType::Braces,
             inner,
             ..
-        } => Item::FnDeclaration {
-            attrs,
-            visibility,
-            safety: Safety::Safe,
-            name,
-            params,
-            return_ty: None,
-            block: Some(parse_block(inner.into_iter())),
-        },
-        _ => panic!("Invalid Token"),
+        } => {
+            let mut it = inner.into_iter().peekmore();
+            loop {
+                match it.peek() {
+                    Some(Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    }) if tok == "#" => {
+                        match it.peek_next().unwrap() {
+                            Lexeme::Token {
+                                ty: TokenType::Symbol,
+                                tok,
+                                ..
+                            } if tok == "!" => {
+                                it.next();
+                                it.next();
+                                match it.next().unwrap() {
+                                    Lexeme::Group {
+                                        ty: GroupType::Brackets,
+                                        inner,
+                                        ..
+                                    } => {
+                                        let mut it = inner.into_iter().peekmore();
+                                        attrs.push(parse_meta(&mut it));
+                                    }
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                }
+                            }
+                            _ => break, // No need to validate this is actually #[attr], parsing items will handle that
+                        }
+                    }
+                    _ => break,
+                }
+            }
+            it.reset_cursor();
+            Some(parse_block(it))
+        }
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        } if tok == ";" => None,
+        tok => panic!("Unexpected token {:?}", tok),
+    };
+    Item::FnDeclaration {
+        attrs,
+        visibility,
+        is_const,
+        is_async,
+        safety,
+        abi,
+        name,
+        generics,
+        params,
+        return_ty: retty,
+        block: body,
+    }
+}
+
+pub fn parse_trait_item<I: Iterator<Item = Lexeme>>(
+    vis: Visibility,
+    attrs: Vec<Meta>,
+    it: &mut PeekMoreIterator<I>,
+) -> Item {
+    let safety = match it.peek().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "unsafe" => {
+            it.next();
+            Safety::Unsafe
+        }
+        _ => Safety::Safe,
+    };
+    let auto = match it.peek().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Identifier,
+            tok,
+            ..
+        } if tok == "auto" => {
+            it.next();
+            true
+        }
+        _ => false,
+    };
+
+    match it.next().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "trait" => {}
+        tok => panic!("Unexpected token {:?}", tok),
+    }
+
+    let name = match it.next().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Identifier,
+            tok,
+            ..
+        } => tok,
+        tok => panic!("Unexpected token {:?}", tok),
+    };
+
+    let params = match it.peek().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        } if tok == "<" => {
+            it.next();
+            parse_generic_decl(it)
+        }
+        _ => Vec::new(),
+    };
+
+    let supertraits = match it.peek().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        } if tok == ":" => {
+            it.next();
+            parse_bounds(it)
+        }
+        _ => Vec::new(),
+    };
+
+    let mut where_bounds = Vec::new();
+    match it.peek().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "where" => {
+            it.next();
+            loop {
+                match it.peek() {
+                    Some(Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    }) if tok == ";" => break,
+                    Some(Lexeme::Group {
+                        ty: GroupType::Braces,
+                        ..
+                    }) => break,
+                    None => break,
+                    Some(_) => {}
+                }
+                let ty = parse_type(it).unwrap();
+                let bounds = match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    } if tok == ":" => {
+                        it.next();
+                        parse_bounds(it)
+                    }
+                    tok => panic!("Unexpected token {:?}", tok),
+                };
+                where_bounds.push(WhereBound { ty, bounds })
+            }
+        }
+        _ => {}
+    }
+
+    let generics = Generics {
+        params,
+        where_bounds,
+    };
+
+    let body = match it.next().unwrap() {
+        Lexeme::Group {
+            ty: GroupType::Braces,
+            inner,
+            ..
+        } => {
+            let mut it = inner.into_iter().peekmore();
+            let items = core::iter::from_fn(move || parse_item(&mut it, Vec::new())).collect();
+            TraitBody::Block(items)
+        }
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        } if tok == "=" => TraitBody::Alias(parse_bounds(it)),
+        tok => panic!("Unexpected token {:?}", tok),
+    };
+    Item::Trait {
+        attrs,
+        vis,
+        safety,
+        auto,
+        name,
+        generics,
+        supertraits,
+        body,
     }
 }
 
@@ -1396,6 +1916,19 @@ pub fn parse_lifetime<I: Iterator<Item = Lexeme>>(
 
 pub fn parse_bounds<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) -> Vec<GenericBound> {
     let mut ret = Vec::new();
+    match it.peek() {
+        Some(Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        }) if tok == "," || tok == ";" || tok == "=" => return ret,
+        Some(Lexeme::Group {
+            ty: GroupType::Braces,
+            ..
+        }) => return ret,
+        None => return ret,
+        Some(_) => {}
+    }
     loop {
         let unbound = match it.peek().unwrap() {
             Lexeme::Token {
@@ -1404,7 +1937,15 @@ pub fn parse_bounds<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) ->
                 ..
             } if tok == "?" => {
                 it.next();
-                true
+                BoundKind::Maybe
+            }
+            Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+                ..
+            } if tok == "!" => {
+                it.next();
+                BoundKind::Negative
             }
             Lexeme::Token {
                 ty: TokenType::Lifetime,
@@ -1423,7 +1964,7 @@ pub fn parse_bounds<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) ->
                     _ => break,
                 }
             }
-            _ => false,
+            _ => BoundKind::Normal,
         };
 
         let constness = match it.peek().unwrap() {
