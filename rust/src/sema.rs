@@ -624,6 +624,20 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
         crate::parse::Expr::StructConstructor(_, _) => todo!("struct ctor"),
         crate::parse::Expr::Field(_, _) => todo!("field access"),
         crate::parse::Expr::Await(_) => todo!("await"),
+        crate::parse::Expr::Block(_) => todo!("block"),
+        crate::parse::Expr::Loop(_) => todo!("loop"),
+        crate::parse::Expr::While { .. } => todo!("while"),
+        crate::parse::Expr::If { .. } => todo!("if"),
+        crate::parse::Expr::LetExpr(_, _, _) => todo!("let"),
+        crate::parse::Expr::Return(_) => todo!("return"),
+        crate::parse::Expr::Break(_, _) => todo!("break"),
+        crate::parse::Expr::Continue(_) => todo!("continue"),
+        crate::parse::Expr::Yield(_) => todo!("yield"),
+        crate::parse::Expr::BinaryOp(_, _, _) => todo!("binary op"),
+        crate::parse::Expr::UnaryOp(_, _) => todo!("unary op"),
+        crate::parse::Expr::ArrayIndex { .. } => todo!("array"),
+        crate::parse::Expr::TypeAscription(_, _) => todo!("type ascription"),
+        crate::parse::Expr::Try(_) => todo!("try"),
     }
 }
 
@@ -640,13 +654,13 @@ pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> 
             crate::parse::BlockItem::Item(_) => {
                 todo!("items in code blocks are currently unsupported");
             }
-            crate::parse::BlockItem::Let { pattern, value } => match (pattern, value) {
-                (Pattern::Discard, None) => {}
-                (Pattern::Discard, Some(value)) => {
+            crate::parse::BlockItem::Let { pattern, ty, value } => match (pattern, ty, value) {
+                (Pattern::Discard, None, None) => {}
+                (Pattern::Discard, None, Some(value)) => {
                     result.push(Statement::Discard(convert_expr(named_types, value)))
                 }
-                (Pattern::Ident(_), None) => todo!(),
-                (Pattern::Ident(name), Some(value)) => {
+                (Pattern::Ident(_), None, None) => todo!(),
+                (Pattern::Ident(name), None, Some(value)) => {
                     result.push(Statement::Bind {
                         target: Identifier::Basic {
                             mangling: Some(Mangling::Local),
@@ -655,10 +669,7 @@ pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> 
                         value: convert_expr(named_types, value),
                     });
                 }
-                (Pattern::Parentheses(_), None) | (Pattern::Parentheses(_), Some(_)) => {
-                    todo!("parenthesis patterns")
-                }
-                (Pattern::Tuple(_), None) | (Pattern::Tuple(_), Some(_)) => todo!("tuple patterns"),
+                (pat, ty, expr) => todo!("({:?},{:?},{:?})", pat, ty, expr),
             },
             crate::parse::BlockItem::MacroExpansion { .. } => unreachable!(),
         }

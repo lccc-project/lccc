@@ -1,5 +1,6 @@
 #![allow(dead_code, clippy::module_name_repetitions)] // For now
 use peekmore::{PeekMore, PeekMoreIterator};
+use xlang::prelude::v1::HashMap;
 
 use crate::{
     lex::{GroupType, Lexeme, TokenType},
@@ -194,8 +195,28 @@ pub struct FnParam {
 pub enum Pattern {
     Discard,
     Ident(String),
+    Binding(String, Box<Pattern>),
+    Ref(Mutability, Box<Pattern>),
+    Unref(Mutability, Box<Pattern>),
     Parentheses(Box<Pattern>),
     Tuple(Vec<Pattern>),
+    TupleStruct(Path, Vec<Pattern>),
+    Struct(Path, Vec<FieldPattern>),
+    Const(Path),
+    RangeInclusive(Option<Box<Pattern>>, Option<Box<Pattern>>),
+    RangeExclusive(Option<Box<Pattern>>, Option<Box<Pattern>>),
+    Slice(Vec<Pattern>),
+    StringLiteral(StrType, String),
+    CharLiteral(StrType, String),
+    IntLiteral(u128),
+    DotDotDot,                      // ...: VaList
+    Or(Box<Pattern>, Box<Pattern>), // pat1 | pat2
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum FieldPattern {
+    Rest,
+    Field(FieldName, Pattern),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -205,6 +226,7 @@ pub enum BlockItem {
     Discard(Expr),
     Let {
         pattern: Pattern,
+        ty: Option<Type>,
         value: Option<Expr>,
     },
     MacroExpansion {
@@ -254,8 +276,74 @@ pub struct Path {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum ElseBlock {
+    Else(Vec<BlockItem>),
+    ElseIf {
+        control: Box<Expr>,
+        block: Vec<BlockItem>,
+    },
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum UnaryOp {
+    Try,
+    Neg,
+    Deref,
+    Not,
+    Ref(Mutability),
+    RawRef(Mutability),
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum BinaryOp {
+    Range,
+    RangeTo,
+    BooleanOr,
+    BooleanAnd,
+    CompareEq,
+    CompareNe,
+    CompareLt,
+    CompareGt,
+    CompareLe,
+    CompareGe,
+    And,
+    Or,
+    Xor,
+    Lsh,
+    Rsh,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulus,
+    Assign,
+    AndAssign,
+    OrAssign,
+    XorAssign,
+    LshAssign,
+    RshAssign,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Expr {
     UnsafeBlock(Vec<BlockItem>),
+    Block(Vec<BlockItem>),
+    Loop(Vec<BlockItem>),
+    While {
+        control: Box<Expr>,
+        block: Vec<BlockItem>,
+    },
+    If {
+        control: Box<Expr>,
+        block: Vec<BlockItem>,
+        elses: Vec<ElseBlock>,
+    },
+    LetExpr(Pattern, Option<Type>, Box<Expr>),
     Id(Path),
     FunctionCall {
         func: Box<Self>,
@@ -272,6 +360,18 @@ pub enum Expr {
     StructConstructor(Path, Vec<StructFieldInitializer>),
     Field(Box<Expr>, FieldName),
     Await(Box<Expr>),
+    Return(Option<Box<Expr>>),
+    Break(Option<Lifetime>, Option<Box<Expr>>),
+    Continue(Option<Lifetime>),
+    Yield(Option<Box<Expr>>),
+    BinaryOp(BinaryOp, Box<Expr>, Box<Expr>),
+    UnaryOp(UnaryOp, Box<Expr>),
+    ArrayIndex {
+        base: Box<Expr>,
+        index: Box<Expr>,
+    },
+    TypeAscription(Box<Expr>, Type),
+    Try(Box<Expr>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -2007,22 +2107,39 @@ pub fn parse_block<I: Iterator<Item = Lexeme>>(it: I) -> Vec<BlockItem> {
                     peek.next();
                     let pattern = parse_pattern(&mut peek).unwrap();
                     let value;
-                    match peek.peek() {
-                        Some(Lexeme::Token { tok, .. }) if tok == ";" => {
-                            peek.next();
+                    let ty;
+                    match peek.next().unwrap() {
+                        Lexeme::Token { tok, .. } if tok == ";" => {
+                            ty = None;
                             value = None;
                         }
-                        Some(Lexeme::Token { tok, .. }) if tok == "=" => {
-                            peek.next();
+                        Lexeme::Token { tok, .. } if tok == "=" => {
+                            ty = None;
                             value = Some(parse_expr(&mut peek, true));
                             assert!(
                                 matches!(peek.next(), Some(Lexeme::Token { tok, .. }) if tok == ";"),
                                 "Expected semicolon"
                             );
                         }
-                        _ => panic!("Invalid Token"),
+                        Lexeme::Token { tok, .. } if tok == ":" => {
+                            ty = Some(parse_type(&mut peek).unwrap());
+                            match peek.next().unwrap() {
+                                Lexeme::Token { tok, .. } if tok == ";" => {
+                                    value = None;
+                                }
+                                Lexeme::Token { tok, .. } if tok == "=" => {
+                                    value = Some(parse_expr(&mut peek, true));
+                                    assert!(
+                                        matches!(peek.next(), Some(Lexeme::Token { tok, .. }) if tok == ";"),
+                                        "Expected semicolon"
+                                    );
+                                }
+                                tok => panic!("Unexpected token {:?}", tok),
+                            }
+                        }
+                        tok => panic!("Unexpected Token {:?}", tok),
                     }
-                    ret.push(BlockItem::Let { pattern, value });
+                    ret.push(BlockItem::Let { pattern, ty, value });
                 }
                 _ => {
                     let expr = parse_expr(&mut peek, true);
@@ -2078,6 +2195,308 @@ pub fn parse_expr<I: Iterator<Item = Lexeme>>(
     it: &mut PeekMoreIterator<I>,
     allows_block: bool,
 ) -> Expr {
+    match it.peek() {
+        _ => parse_binary_expr(it, allows_block, None),
+    }
+}
+
+lazy_static::lazy_static! {
+    static ref OPERATOR_MAP: HashMap<&'static str,(usize,usize,BinaryOp)> = {
+        let mut map = HashMap::new();
+        map.insert("=",(1,2,BinaryOp::Assign));
+        map.insert("+=",(1,2,BinaryOp::AddAssign));
+        map.insert("-=",(1,2,BinaryOp::SubAssign));
+        map.insert("*=",(1,2,BinaryOp::MulAssign));
+        map.insert("/=",(1,2,BinaryOp::DivAssign));
+        map.insert("%=",(1,2,BinaryOp::ModAssign));
+        map.insert("&=",(1,2,BinaryOp::AndAssign));
+        map.insert("|=",(1,2,BinaryOp::OrAssign));
+        map.insert("^=",(1,2,BinaryOp::XorAssign));
+        map.insert("<<=",(1,2,BinaryOp::LshAssign));
+        map.insert(">>=",(1,2,BinaryOp::RshAssign));
+        map.insert("||",(5,6,BinaryOp::BooleanOr));
+        map.insert("&&",(7,8,BinaryOp::BooleanAnd));
+        map.insert("==",(10,9,BinaryOp::CompareEq));
+        map.insert("!=",(10,9,BinaryOp::CompareNe));
+        map.insert("<",(10,9,BinaryOp::CompareLt));
+        map.insert(">",(10,9,BinaryOp::CompareGt));
+        map.insert("<=",(10,9,BinaryOp::CompareLe));
+        map.insert(">=",(10,9,BinaryOp::CompareGe));
+        map.insert("|",(11,12,BinaryOp::Or));
+        map.insert("^",(13,14,BinaryOp::Xor));
+        map.insert("&",(15,16,BinaryOp::And));
+        map.insert("<<",(17,18,BinaryOp::Lsh));
+        map.insert(">>",(17,18,BinaryOp::Rsh));
+        map.insert("+",(19,20,BinaryOp::Add));
+        map.insert("-",(19,20,BinaryOp::Subtract));
+        map.insert("*",(21,22,BinaryOp::Multiply));
+        map.insert("/",(21,22,BinaryOp::Divide));
+        map.insert("%",(21,22,BinaryOp::Modulus));
+
+        map
+
+    };
+}
+
+pub fn parse_binary_expr<I: Iterator<Item = Lexeme>>(
+    it: &mut PeekMoreIterator<I>,
+    allows_block: bool,
+    precedence: Option<usize>,
+) -> Expr {
+    let precedence = precedence.unwrap_or(0);
+    let mut lhs = parse_unary_expr(it, allows_block);
+    loop {
+        match it.peek() {
+            Some(Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+                ..
+            }) => {
+                if let Some((lbp, rbp, op)) = OPERATOR_MAP.get(&**tok).copied() {
+                    if lbp < precedence {
+                        continue;
+                    }
+                    it.next();
+                    let rhs = parse_binary_expr(it, allows_block, Some(rbp));
+
+                    match (op, &rhs) {
+                        (
+                            BinaryOp::CompareEq
+                            | BinaryOp::CompareNe
+                            | BinaryOp::CompareLt
+                            | BinaryOp::CompareLe
+                            | BinaryOp::CompareGt
+                            | BinaryOp::CompareGe,
+                            Expr::BinaryOp(
+                                BinaryOp::CompareEq
+                                | BinaryOp::CompareNe
+                                | BinaryOp::CompareLt
+                                | BinaryOp::CompareLe
+                                | BinaryOp::CompareGt
+                                | BinaryOp::CompareGe,
+                                _,
+                                _,
+                            ),
+                        ) => {
+                            panic!("Cannot chain comparison operators")
+                        }
+                        (_, _) => {}
+                    }
+
+                    lhs = Expr::BinaryOp(op, Box::new(lhs), Box::new(rhs));
+                } else {
+                    break;
+                }
+            }
+            _ => break,
+        }
+    }
+    lhs
+}
+
+pub fn parse_unary_expr<I: Iterator<Item = Lexeme>>(
+    it: &mut PeekMoreIterator<I>,
+    allows_block: bool,
+) -> Expr {
+    let mut expr = match it.peek().unwrap() {
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        } if tok == "-" => {
+            it.next();
+            Expr::UnaryOp(UnaryOp::Neg, Box::new(parse_unary_expr(it, allows_block)))
+        }
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        } if tok == "!" => {
+            it.next();
+            Expr::UnaryOp(UnaryOp::Not, Box::new(parse_unary_expr(it, allows_block)))
+        }
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        } if tok == "*" => {
+            it.next();
+            Expr::UnaryOp(UnaryOp::Not, Box::new(parse_unary_expr(it, allows_block)))
+        }
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        } if tok == "&" => {
+            it.next();
+            match it.peek().unwrap() {
+                Lexeme::Token {
+                    ty: TokenType::Identifier,
+                    tok,
+                    ..
+                } if tok == "raw" => match it.peek_next() {
+                    Some(Lexeme::Token {
+                        ty: TokenType::Keyword,
+                        tok,
+                        ..
+                    }) if tok == "const" => {
+                        it.next();
+                        it.next();
+                        Expr::UnaryOp(
+                            UnaryOp::RawRef(Mutability::Const),
+                            Box::new(parse_unary_expr(it, allows_block)),
+                        )
+                    }
+                    Some(Lexeme::Token {
+                        ty: TokenType::Keyword,
+                        tok,
+                        ..
+                    }) if tok == "mut" => {
+                        it.next();
+                        it.next();
+                        Expr::UnaryOp(
+                            UnaryOp::RawRef(Mutability::Mut),
+                            Box::new(parse_unary_expr(it, allows_block)),
+                        )
+                    }
+                    _ => {
+                        it.reset_cursor();
+                        Expr::UnaryOp(
+                            UnaryOp::Ref(Mutability::Const),
+                            Box::new(parse_unary_expr(it, allows_block)),
+                        )
+                    }
+                },
+                Lexeme::Token {
+                    ty: TokenType::Keyword,
+                    tok,
+                    ..
+                } if tok == "mut" => {
+                    it.next();
+                    Expr::UnaryOp(
+                        UnaryOp::Ref(Mutability::Mut),
+                        Box::new(parse_unary_expr(it, allows_block)),
+                    )
+                }
+                _ => Expr::UnaryOp(
+                    UnaryOp::Ref(Mutability::Const),
+                    Box::new(parse_unary_expr(it, allows_block)),
+                ),
+            }
+        }
+        _ => parse_field_expr(it, allows_block),
+    };
+    loop {
+        match it.peek() {
+            Some(Lexeme::Token {
+                ty: TokenType::Keyword,
+                tok,
+                ..
+            }) if tok == "as" => {
+                it.next();
+                expr = Expr::Cast(Box::new(expr), parse_type(it).unwrap())
+            }
+            _ => break expr,
+        }
+    }
+}
+
+pub fn parse_field_expr<I: Iterator<Item = Lexeme>>(
+    it: &mut PeekMoreIterator<I>,
+    allows_block: bool,
+) -> Expr {
+    let mut expr = parse_simple_expr(it, allows_block);
+    loop {
+        match it.peek() {
+            Some(Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+                ..
+            }) if tok == "." => {
+                it.next();
+                match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Identifier,
+                        tok,
+                        ..
+                    } => expr = Expr::Field(Box::new(expr), FieldName::Id(tok)),
+                    Lexeme::Token {
+                        ty: TokenType::Keyword,
+                        tok,
+                        ..
+                    } if tok == "await" => expr = Expr::Await(Box::new(expr)),
+                    Lexeme::Token {
+                        ty: TokenType::Number,
+                        tok,
+                        ..
+                    } => expr = Expr::Field(Box::new(expr), FieldName::Tuple(tok.parse().unwrap())),
+                    tok => panic!("Unexpected token {:?}", tok),
+                }
+            }
+            Some(Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+                ..
+            }) if tok == "?" => {
+                it.next();
+                expr = Expr::Try(Box::new(expr));
+            }
+            Some(Lexeme::Group {
+                ty: GroupType::Brackets | GroupType::Parentheses,
+                ..
+            }) => match it.next().unwrap() {
+                Lexeme::Group {
+                    ty: GroupType::Brackets,
+                    inner,
+                    ..
+                } => {
+                    let mut it = inner.into_iter().peekmore();
+                    let index = parse_expr(&mut it, true);
+                    expr = Expr::ArrayIndex {
+                        base: Box::new(expr),
+                        index: Box::new(index),
+                    };
+                }
+                Lexeme::Group {
+                    ty: GroupType::Parentheses,
+                    inner,
+                    ..
+                } => {
+                    let mut it = inner.into_iter().peekmore();
+                    let mut args = Vec::new();
+                    loop {
+                        if it.peek().is_none() {
+                            break;
+                        }
+
+                        args.push(parse_expr(&mut it, true));
+                        match it.next() {
+                            Some(Lexeme::Token {
+                                ty: TokenType::Symbol,
+                                tok,
+                                ..
+                            }) if tok == "," => continue,
+                            Some(tok) => panic!("Unexpected token {:?}", tok),
+                            None => break,
+                        }
+                    }
+                    expr = Expr::FunctionCall {
+                        func: Box::new(expr),
+                        args,
+                    };
+                }
+                _ => unreachable!(),
+            },
+            _ => break,
+        }
+    }
+    expr
+}
+
+pub fn parse_simple_expr<I: Iterator<Item = Lexeme>>(
+    it: &mut PeekMoreIterator<I>,
+    allows_block: bool,
+) -> Expr {
     match it.peek().unwrap() {
         Lexeme::Token {
             ty: TokenType::Keyword,
@@ -2102,125 +2521,6 @@ pub fn parse_expr<I: Iterator<Item = Lexeme>>(
             ty: GroupType::Braces,
             ..
         } => todo!("Block exprs"),
-        _ => parse_as_cast(it, allows_block),
-    }
-}
-
-pub fn parse_as_cast<I: Iterator<Item = Lexeme>>(
-    mut it: &mut PeekMoreIterator<I>,
-    allows_block: bool,
-) -> Expr {
-    let mut expr = parse_unary_expr(it, allows_block);
-
-    loop {
-        match it.peek() {
-            Some(Lexeme::Token {
-                ty: TokenType::Keyword,
-                tok,
-                ..
-            }) if tok == "as" => {
-                drop(it.next().unwrap());
-                let ty = parse_type(&mut it).unwrap();
-                expr = Expr::Cast(Box::new(expr), ty);
-            }
-            _ => break expr,
-        }
-    }
-}
-
-pub fn parse_unary_expr<I: Iterator<Item = Lexeme>>(
-    it: &mut PeekMoreIterator<I>,
-    allows_block: bool,
-) -> Expr {
-    parse_field_expr(it, allows_block)
-}
-
-pub fn parse_field_expr<I: Iterator<Item = Lexeme>>(
-    it: &mut PeekMoreIterator<I>,
-    allows_block: bool,
-) -> Expr {
-    let mut expr = parse_simple_expr(it, allows_block);
-    loop {
-        match it.peek() {
-            Some(Lexeme::Token {
-                ty: TokenType::Symbol,
-                tok,
-                ..
-            }) if tok == "." => {
-                it.next();
-            }
-            Some(Lexeme::Group {
-                ty: GroupType::Parentheses,
-                ..
-            }) => {
-                let inner = if let Lexeme::Group {
-                    ty: GroupType::Parentheses,
-                    inner,
-                    ..
-                } = it.next().unwrap()
-                {
-                    inner
-                } else {
-                    panic!("Invalid token")
-                };
-                let mut iter = inner.into_iter().peekmore();
-                let mut args = Vec::new();
-                if iter.peek().is_some() {
-                    loop {
-                        let arg = parse_expr(&mut iter, true);
-                        args.push(arg);
-                        match iter.next() {
-                            Some(Lexeme::Token {
-                                ty: TokenType::Symbol,
-                                tok,
-                                ..
-                            }) if tok == "," => {}
-                            Some(_) => panic!("Invalid token"),
-                            None => break,
-                        }
-                    }
-                }
-                expr = Expr::FunctionCall {
-                    func: Box::new(expr),
-                    args,
-                };
-                continue;
-            }
-            _ => break expr,
-        }
-
-        match it.next().unwrap() {
-            Lexeme::Token {
-                ty: TokenType::Identifier,
-                tok,
-                ..
-            } => {
-                expr = Expr::Field(Box::new(expr), FieldName::Id(tok));
-            }
-            Lexeme::Token {
-                ty: TokenType::Number,
-                tok,
-                ..
-            } => {
-                expr = Expr::Field(Box::new(expr), FieldName::Tuple(tok.parse().unwrap()));
-            }
-            Lexeme::Token {
-                ty: TokenType::Keyword,
-                tok,
-                ..
-            } if tok == "await" => {
-                expr = Expr::Await(Box::new(expr));
-            }
-            tok => panic!("Unexpected token {:?}", tok),
-        }
-    }
-}
-
-pub fn parse_simple_expr<I: Iterator<Item = Lexeme>>(
-    it: &mut PeekMoreIterator<I>,
-    allows_block: bool,
-) -> Expr {
-    match it.peek().unwrap() {
         Lexeme::Group {
             ty: GroupType::Parentheses,
             inner,
