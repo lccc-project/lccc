@@ -3,10 +3,12 @@ extern "C" {
 }
 
 struct Holder {
-    x: &[u8],
+    x: *const u8,
 }
 
 fn main() {
-    let holder = Holder { x: b"Hello, world!" };
-    puts(holder.x as *const u8);
+    let holder = Holder { x: b"Hello, world!" as *const u8 };
+    unsafe {
+        puts(holder.x);
+    }
 }
