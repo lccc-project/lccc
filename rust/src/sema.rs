@@ -621,6 +621,9 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
             ty: None,
         },
         crate::parse::Expr::MacroExpansion { .. } => unreachable!(),
+        crate::parse::Expr::StructConstructor(_, _) => todo!("struct ctor"),
+        crate::parse::Expr::Field(_, _) => todo!("field access"),
+        crate::parse::Expr::Await(_) => todo!("await"),
     }
 }
 
