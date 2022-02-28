@@ -363,6 +363,42 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
 
         None
     }
+
+    /// Removes an entry by Key from this map, and returns the Key and Value
+    pub fn remove<Q: ?Sized + Hash + Eq>(&mut self, key: &Q) -> Option<Pair<K, V>>
+    where
+        K: Borrow<Q>,
+    {
+        if self.buckets == 0 {
+            return None;
+        }
+
+        let mut hasher = self.hash.build_hasher();
+        key.hash(&mut hasher);
+        let hash = hasher.finish() as usize % self.buckets;
+
+        let bucket = unsafe { &mut *self.htab.as_ptr().add(hash) };
+
+        for i in 0..bucket.ecount {
+            // SAFETY:
+            // bucket.ecount never exceeds 16, by the check following this loop
+            let key_val = unsafe { &mut *bucket.entries.get_unchecked_mut(i).as_mut_ptr() };
+
+            if key_val.0.borrow().eq(key) {
+                let val = unsafe { core::ptr::read(key_val) };
+                for j in i..(bucket.ecount - 1) {
+                    unsafe {
+                        core::ptr::write(
+                            bucket.entries.as_mut_ptr().add(j),
+                            core::ptr::read(bucket.entries.as_mut_ptr().add(j + 1)),
+                        );
+                    }
+                }
+                return Some(val);
+            }
+        }
+        None
+    }
 }
 
 impl<K: Clone, V: Clone, H: BuildHasher + Clone, A: Allocator + Clone> Clone
@@ -665,6 +701,14 @@ impl<K: Eq + Hash, H: BuildHasher, A: Allocator> HashSet<K, H, A> {
             self.inner.insert(val, ());
             Ok(())
         }
+    }
+
+    /// Removes a value from the set and returns it if present
+    pub fn remove<Q: ?Sized + Hash + Eq>(&mut self, val: &Q) -> Option<K>
+    where
+        K: Borrow<Q>,
+    {
+        self.inner.remove(val).map(|Pair(k, _)| k)
     }
 }
 impl<K: Eq + Hash, H: BuildHasher + Default, A: Allocator + Default> FromIterator<K>

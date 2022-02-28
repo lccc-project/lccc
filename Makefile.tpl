@@ -166,3 +166,6 @@ $([+name+]_[+builddir+])/%: $([+name+]_[+builddir+])/ $(foreach dep,[+deps], $($
 
 
 [+ enddef +]
+
+[+ foreach main +]
+[+ endofr]

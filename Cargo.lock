@@ -253,6 +253,7 @@ dependencies = [
 name = "xlang"
 version = "0.1.0"
 dependencies = [
+ "fake-enum",
  "target-tuples 0.4.1",
  "xlang_abi",
  "xlang_host",

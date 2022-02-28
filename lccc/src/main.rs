@@ -9,9 +9,11 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::process::Command;
 use target_tuples::Target;
+use xlang::abi::collection::HashSet;
 use xlang::abi::io::{ReadAdapter, WriteAdapter};
+use xlang::abi::span::Span;
 use xlang::abi::string::StringView;
-use xlang::plugin::{XLangCodegen, XLangFrontend, XLangPlugin};
+use xlang::plugin::{OutputMode, XLangCodegen, XLangFrontend, XLangPlugin};
 use xlang::prelude::v1::*;
 use xlang_host::dso::Handle;
 
@@ -112,6 +114,13 @@ fn main() {
             xlang::vec!['V'],
             TakesArg::Never,
             true
+        ),
+        ArgSpec::new(
+            "mach-specific",
+            Vec::new(),
+            xlang::vec!['m'],
+            TakesArg::Always,
+            false
         )
     ];
 
@@ -123,6 +132,11 @@ fn main() {
     let mut intree = false;
 
     let mut opt_mode = OptimizeLevel::Integer(0);
+
+    let mut arch_machine = None;
+    let mut tune_machine = None;
+    let mut feature_opts = HashMap::<_, _>::new();
+    let mut abi = None;
 
     for arg in &args {
         match arg.name {
@@ -170,6 +184,24 @@ fn main() {
                 println!("Released under the Terms of the 2 Clause BSD license, with explicit patent grant");
                 return;
             }
+            "machine-specific" => match arg.value.as_deref().unwrap() {
+                x @ ("32" | "x32" | "64") => {
+                    abi = Some(x);
+                }
+                x if x.starts_with("arch") => {
+                    arch_machine = Some(x);
+                }
+                x if x.starts_with("tune") => {
+                    tune_machine = Some(x);
+                }
+                x if x.starts_with("no") => {
+                    let (_, feature) = x.split_once("-").unwrap();
+                    feature_opts.insert(StringView::new(feature), false);
+                }
+                x => {
+                    feature_opts.insert(StringView::new(x), true);
+                }
+            },
             _ => panic!(),
         }
     }
@@ -222,6 +254,49 @@ fn main() {
 
     let properties = xlang::targets::properties::get_properties(xtarget.clone()).unwrap();
 
+    let arch_mach = if let Some(mach) = arch_machine {
+        properties
+            .arch
+            .machines
+            .into_iter()
+            .copied()
+            .find(|Pair(name, _)| (*name) == mach)
+            .map(|Pair(_, m)| m)
+            .unwrap_or_else(|| {
+                eprintln!("Unknown machine {} for target {}", mach, target);
+                std::process::exit(1)
+            })
+    } else {
+        properties.arch.default_machine
+    };
+
+    drop(tune_machine);
+    drop(abi);
+
+    let mut features = HashSet::<_>::new();
+
+    for feature in arch_mach.default_features {
+        let _ = features.insert(*feature);
+    }
+
+    for Pair(feature, enabled) in properties.enabled_features {
+        if *enabled {
+            let _ = features.insert(*feature);
+        } else {
+            let _ = features.remove(feature);
+        }
+    }
+
+    for Pair(feature, enabled) in &feature_opts {
+        if *enabled {
+            let _ = features.insert(*feature);
+        } else {
+            let _ = features.remove(feature);
+        }
+    }
+
+    let features = features.iter().copied().collect::<Vec<_>>();
+
     let mut file_pairs = Vec::new();
 
     let mut codegen = None;
@@ -261,7 +336,13 @@ fn main() {
                         filename = &filename[..offset];
                     }
                     let mut name = String::from(filename);
-                    name += properties.os.obj_suffix;
+                    if mode == Mode::CompileOnly {
+                        name += properties.os.obj_suffix;
+                    } else if mode == Mode::Asm {
+                        name += ".s";
+                    } else if mode == Mode::Xir {
+                        name += ".xir"
+                    }
                     name
                 }
             } else {
@@ -281,6 +362,7 @@ fn main() {
             file_pairs.push((file.clone(), outputfile.clone()));
             frontend.set_file_path(file_view);
             frontend.set_target(xtarget.clone());
+            frontend.set_machine(arch_mach);
             let mut read_adapter =
                 ReadAdapter::new(File::open(&file).expect("can't read input file"));
             frontend
@@ -292,13 +374,20 @@ fn main() {
             };
 
             frontend.accept_ir(&mut file).unwrap();
+
             if mode >= Mode::Asm {
                 codegen.set_target(xtarget.clone());
+                codegen.set_features(Span::new(&features));
                 codegen.accept_ir(&mut file).unwrap();
                 let mut write_adapter =
                     WriteAdapter::new(File::create(outputfile).expect("Can't create output file"));
+                let mode = if mode == Mode::Asm {
+                    OutputMode::Asm
+                } else {
+                    OutputMode::Obj
+                };
                 codegen
-                    .write_output(DynMut::unsize_mut(&mut write_adapter))
+                    .write_output(DynMut::unsize_mut(&mut write_adapter), mode)
                     .unwrap();
                 // TODO: Handle `-S` and write assembly instead of an object
             } else if mode == Mode::Xir {

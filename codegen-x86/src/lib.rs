@@ -4,6 +4,7 @@ pub mod callconv;
 
 use std::cmp::Ordering;
 use std::convert::TryInto;
+use std::ops::Deref;
 use std::{
     cell::RefCell, collections::HashSet, convert::TryFrom, hash::Hash, rc::Rc, str::FromStr,
 };
@@ -23,6 +24,9 @@ use binfmt::{
 };
 use callconv::X86CallConv;
 use target_tuples::Target;
+use xlang::abi::span::Span;
+use xlang::abi::string::StringView;
+use xlang::plugin::OutputMode;
 use xlang::prelude::v1::HashMap;
 use xlang::{
     plugin::{XLangCodegen, XLangPlugin},
@@ -1227,6 +1231,7 @@ pub struct X86CodegenPlugin {
     fns: Option<std::collections::HashMap<String, FunctionCodegen<X86CodegenState>>>,
     strings: Rc<RefCell<StringMap>>,
     properties: Option<&'static TargetProperties>,
+    features: HashSet<X86Feature>,
 }
 
 impl X86CodegenPlugin {
@@ -1329,8 +1334,7 @@ impl XLangPlugin for X86CodegenPlugin {
                     body: xlang::abi::option::Some(body),
                 }) => {
                     let properties = self.properties.unwrap();
-                    let features =
-                        get_features_from_properties(properties, properties.arch.default_machine);
+                    let features = self.features.clone();
                     let mut state = FunctionCodegen::new(
                         X86CodegenState {
                             insns: Vec::new(),
@@ -1382,6 +1386,10 @@ impl XLangPlugin for X86CodegenPlugin {
     fn set_target(&mut self, targ: xlang::targets::Target) {
         self.target = Some((&targ).into());
         self.properties = xlang::targets::properties::get_properties(targ);
+        self.features = get_features_from_properties(
+            self.properties.unwrap(),
+            self.properties.unwrap().arch.default_machine,
+        );
     }
 }
 
@@ -1431,10 +1439,22 @@ impl XLangCodegen for X86CodegenPlugin {
     fn write_output(
         &mut self,
         x: xlang::prelude::v1::DynMut<dyn xlang::abi::io::Write>,
+        mode: OutputMode,
     ) -> xlang::abi::io::Result<()> {
         let wrapper = xlang::abi::io::WriteAdapter::new(x);
-
+        if mode != OutputMode::Obj {
+            todo!("asm output")
+        }
         self.write_output_impl(wrapper).map_err(Into::into).into()
+    }
+
+    fn set_features(&mut self, features: Span<StringView>) {
+        self.features = features
+            .iter()
+            .map(Deref::deref)
+            .map(X86Feature::from_str)
+            .collect::<Result<_, _>>()
+            .unwrap();
     }
 }
 
@@ -1445,7 +1465,8 @@ pub extern "rustcall" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
         fns: Some(std::collections::HashMap::new()),
         target: None,
         strings: Rc::new(RefCell::new(StringMap::new())),
-        properties: None
+        properties: None,
+        features: HashSet::new()
     }))
 }}
 
