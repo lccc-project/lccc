@@ -34,9 +34,9 @@ fake_enum::fake_enum! {
 }
 
 #[repr(u32)]
-pub enum LinkOpt{
+pub enum LinkOpt {
     InputFile(String),
-    Library(LibraryType,String),
+    Library(LibraryType, String),
     Libdir(String),
     RawOption(String),
 }
