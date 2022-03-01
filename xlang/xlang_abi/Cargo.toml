@@ -12,3 +12,4 @@ ABI safe interfaces used by xlang
 
 [dependencies]
 xlang_host = {path="../xlang_host", version="0.1.1"}
+

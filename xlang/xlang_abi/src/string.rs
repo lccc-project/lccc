@@ -13,7 +13,10 @@ use std::{
     ptr::NonNull,
 };
 
-use crate::alloc::{Allocator, XLangAlloc};
+use crate::{
+    alloc::{Allocator, XLangAlloc},
+    span::Span,
+};
 
 /// Error returned when converting a [`crate::vec::Vec`] into [`String`] if that vector does not contain valid Utf8
 pub struct FromUtf8Error<A: Allocator> {
@@ -369,6 +372,7 @@ impl<'a> StringView<'a> {
     /// The behaviour is undefined if any of the following constraints are violated:
     /// * Neither begin nor end may be null pointers or deallocated pointers
     /// * For 'a, the range [begin,end) must be a range that is valid for reads
+    /// * For 'a, the range [begin,end) must not be modified from any other
     /// * The text in the range [begin,end) must be valid UTF-8
     #[must_use]
     pub const unsafe fn from_raw_parts(begin: *const u8, end: *const u8) -> Self {
@@ -401,6 +405,17 @@ impl<'a> StringView<'a> {
                 self.begin.as_ptr(),
                 (self.end.as_ptr() as usize) - (self.begin.as_ptr() as usize), // This is really annoying that have to do this
             ))
+        }
+    }
+
+    ///
+    /// Obtains a [`Span`] over the UTF-8 bytes of this [`StringView`] for the same lifetime
+    pub fn as_byte_span(self) -> Span<'a, u8> {
+        unsafe {
+            Span::from_raw_parts(
+                self.begin.as_ptr(),
+                self.end.as_ptr().offset_from(self.begin.as_ptr()) as usize,
+            )
         }
     }
 }

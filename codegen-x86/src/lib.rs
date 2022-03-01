@@ -283,15 +283,10 @@ impl FunctionRawCodegen for X86CodegenState {
             }
             Type::Scalar(
                 ty @ ScalarType {
-                    header:
-                        ScalarTypeHeader {
-                            bitsize: 0,
-                            validity,
-                            ..
-                        },
+                    header: ScalarTypeHeader { bitsize: 0, .. },
                     kind: ScalarTypeKind::Integer { .. },
                 },
-            ) if validity.contains(ScalarValidity::NONZERO) => {
+            ) if ty.header.validity.contains(ScalarValidity::NONZERO) => {
                 // Special case uint nonzero(0)
                 XLangOption::Some(VStackValue::Constant(Value::Invalid(Type::Scalar(*ty))))
             }

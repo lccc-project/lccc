@@ -11,6 +11,8 @@ license = "BSD-2-Clause-Patent"
 xlang_abi = {path="../xlang_abi"}
 xlang_targets = {path="../xlang_targets"}
 xlang_host = {path="../xlang_host"}
+rand = "0.8.5"
+lazy_static = "1.3"
 
 [lib]
 crate-type=["cdylib"]

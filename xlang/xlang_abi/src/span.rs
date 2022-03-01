@@ -1,8 +1,10 @@
 use std::{
     borrow::{Borrow, BorrowMut},
+    cell::UnsafeCell,
     fmt::Debug,
     hash::Hash,
     marker::PhantomData,
+    mem::MaybeUninit,
     ops::{Deref, DerefMut, RangeBounds},
     ptr::NonNull,
 };
@@ -40,6 +42,32 @@ impl<'a, T> Span<'a, T> {
         Self {
             begin: unsafe { NonNull::new_unchecked(x.as_ptr() as *mut T) },
             len: x.len(),
+            phantom: PhantomData,
+        }
+    }
+
+    /// Returns a span over the elements between `[begin,begin+len)`
+    ///
+    /// # Safety
+    /// * The range `[begin,begin+len)` must be valid and dereferenceable for `'a`.
+    /// * `begin` must not be null
+    /// * The range `[begin,begin+len)` must not be written to for the duration of 'a, except inside an `UnsafeCell`
+    #[must_use]
+    #[deny(unsafe_op_in_unsafe_fn)]
+    pub const unsafe fn from_raw_parts(begin: *const T, len: usize) -> Self {
+        Self {
+            begin: unsafe { NonNull::new_unchecked(begin as *mut T) },
+            len,
+            phantom: PhantomData,
+        }
+    }
+
+    /// Returns a span over a single element, `x`
+    #[must_use]
+    pub const fn from_ref(x: &'a T) -> Self {
+        Self {
+            begin: unsafe { NonNull::new_unchecked(x as *const T as *mut T) },
+            len: 1,
             phantom: PhantomData,
         }
     }
@@ -86,6 +114,21 @@ impl<'a, T> Span<'a, T> {
     #[must_use]
     pub fn into_slice(self) -> &'a [T] {
         unsafe { core::slice::from_raw_parts(self.begin.as_ptr(), self.len) }
+    }
+}
+
+impl<'a, T> Span<'a, MaybeUninit<T>> {
+    ///
+    /// Converts from a [`Span<MaybeUninit<T>>`] to a [`Span<T>`], assuming each element is initialized
+    ///
+    /// ## Safety
+    /// Each element of the span must be valid for `T`, and satisfy any additional invariants `T` imposes.
+    pub const unsafe fn assume_init_span(self) -> Span<'a, T> {
+        Span {
+            begin: self.begin.cast(),
+            len: self.len,
+            phantom: PhantomData,
+        }
     }
 }
 
@@ -395,6 +438,32 @@ impl<'a, T> SpanMut<'a, T> {
         }
     }
 
+    /// Returns a span over a single element, `x`
+    #[must_use]
+    pub fn from_mut(x: &'a mut T) -> Self {
+        Self {
+            begin: NonNull::from(x),
+            len: 1,
+            phantom: PhantomData,
+        }
+    }
+
+    /// Returns a span over the elements between `[begin,begin+len)`
+    ///
+    /// # Safety
+    /// * The range `[begin,begin+len)` must be valid and dereferenceable for `'a`.
+    /// * `begin` must not be null
+    /// * The range `[begin,begin+len)` must not be aliased by any other pointer to for the duration of 'a, except inside an `UnsafeCell`
+    #[must_use]
+    #[deny(unsafe_op_in_unsafe_fn)]
+    pub const unsafe fn from_raw_parts(begin: *mut T, len: usize) -> Self {
+        Self {
+            begin: unsafe { NonNull::new_unchecked(begin as *mut T) },
+            len,
+            phantom: <PhantomData<&'a mut [T]> as Hack>::PHANTOM,
+        }
+    }
+
     /// Reborrows self into a mutable span for a shorter lifetime
     pub fn reborrow_mut(&mut self) -> SpanMut<'_, T> {
         SpanMut {
@@ -489,6 +558,35 @@ impl<'a, T> SpanMut<'a, T> {
     }
 }
 
+impl<'a, T> SpanMut<'a, MaybeUninit<T>> {
+    ///
+    /// Converts from a [`SpanMut<MaybeUninit<T>>`] to a [`SpanMut<T>`], assuming each element is initialized.
+    /// This consumes the span. If this is undesirable, use [`SpanMut::reborrow_mut`] first
+    ///
+    /// ## Safety
+    /// Each element of the span must be valid for `T`, and satisfy any additional invariants `T` imposes.
+    pub const unsafe fn assume_init_span_mut(self) -> SpanMut<'a, T> {
+        SpanMut {
+            begin: self.begin.cast(),
+            len: self.len,
+            phantom: <PhantomData<&'a mut [T]> as Hack>::PHANTOM,
+        }
+    }
+}
+
+impl<'a, T> SpanMut<'a, UnsafeCell<T>> {
+    /// Converts a [`SpanMut`] of [`UnsafeCell`] into a [`SpanMut`] of `T`.
+    ///
+    /// This is safe because holding a mutable span to a range precludes all other access.
+    pub const fn span_mut(self) -> SpanMut<'a, T> {
+        SpanMut {
+            begin: self.begin.cast(),
+            len: self.len,
+            phantom: <PhantomData<&'a mut [T]> as Hack>::PHANTOM,
+        }
+    }
+}
+
 impl<'a, T> Debug for SpanMut<'a, T>
 where
     [T]: Debug,
@@ -502,10 +600,10 @@ where
 #[macro_export]
 macro_rules! span{
     [$($expr:expr),* $(,)?] => {
-        $crate::span::Span::new(&[$($expr),*])
+        $crate::span::Span::<'static,_>::new(&[$($expr),*])
     };
     [$expr:expr ; $repeat:expr] => {
-        $crate::span::Span::new(&[$expr;$repeat])
+        $crate::span::Span::<'static,_>::new(&[$expr;$repeat])
     }
 }
 

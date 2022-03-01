@@ -2,7 +2,7 @@
 #![allow(clippy::missing_safety_doc)] // FIXME: Remove this allow
 use std::alloc::Layout;
 
-use xlang_abi::{const_sv, string::StringView};
+use xlang_abi::{const_sv, span::Span, string::StringView};
 use xlang_targets::{properties::TargetProperties, Target};
 
 #[no_mangle]
@@ -87,4 +87,26 @@ pub extern "C" fn xlang_get_target_properties(targ: Target) -> Option<&'static T
 #[allow(clippy::missing_const_for_fn)] // const extern fn is unstable
 pub extern "C" fn xlang_get_version() -> StringView<'static> {
     const_sv!("0.1")
+}
+
+#[no_mangle]
+pub static XLANG_HASH_SEED: u8 = 254u8;
+
+const PRIME: u64 = 1_099_511_628_211;
+
+lazy_static::lazy_static! {
+    static ref HASH_SEED_ACTUAL: u64 = rand::random::<u64>()^14_695_981_039_346_656_037;
+}
+
+xlang_host::rustcall! {
+    #[no_mangle]
+    pub extern "rustcall" fn xlang_hash_bytes(bytes: Span<u8>) -> u64{
+        let mut hash = *HASH_SEED_ACTUAL;
+
+        for &byte in bytes{
+            hash ^= byte as u64;
+            hash = hash.wrapping_mul(PRIME);
+        }
+        hash
+    }
 }
