@@ -4,6 +4,24 @@
 //! This provides shims for otherwise unusable constructs that can validly be passed accross ABI bounderies.
 //! All publically exposed types in this api have a stable layout and abi, that may only change on semver major versions
 //! Thus, it is valid to use these types accross versions
+//!
+//! ## Interface
+//! This crate relies on a number of special symbols, provided by an interface library, which is typically a cdylib (so that there is one copy at runtime).
+//! This interface is typically provided by the `xlang_interface` crate (which is linked by using the `xlang` crate), otherwise, it must be provided and linked separately.
+//!
+//! The symbols that this crate expects the interface library to provide are considered unstable, but all start with either the `xlang_` or `XLANG_` prefix.
+//!
+//! The symbols are publically available in the module that makes primary of them.
+//!
+//! The current list is:
+//! * [`alloc::xlang_allocate`]
+//! * [`alloc::xlang_allocate_aligned`]
+//! * [`alloc::xlang_deallocate`]
+//! * [`alloc::xlang_deallocate_aligned`]
+//! * [`alloc::xlang_on_allocation_failure`]
+//! * [`hash::xlang_hash_bytes`]
+//! * [`hash::XLANG_HASH_SEED`]
+//!
 
 /// Defines an ABI safe equivalent for [`std::option::Option`] for all types.
 pub mod option;

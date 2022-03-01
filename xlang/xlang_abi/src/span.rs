@@ -123,6 +123,7 @@ impl<'a, T> Span<'a, MaybeUninit<T>> {
     ///
     /// ## Safety
     /// Each element of the span must be valid for `T`, and satisfy any additional invariants `T` imposes.
+    #[must_use]
     pub const unsafe fn assume_init_span(self) -> Span<'a, T> {
         Span {
             begin: self.begin.cast(),
@@ -458,13 +459,14 @@ impl<'a, T> SpanMut<'a, T> {
     #[deny(unsafe_op_in_unsafe_fn)]
     pub const unsafe fn from_raw_parts(begin: *mut T, len: usize) -> Self {
         Self {
-            begin: unsafe { NonNull::new_unchecked(begin as *mut T) },
+            begin: unsafe { NonNull::new_unchecked(begin) },
             len,
             phantom: <PhantomData<&'a mut [T]> as Hack>::PHANTOM,
         }
     }
 
     /// Reborrows self into a mutable span for a shorter lifetime
+    #[must_use]
     pub fn reborrow_mut(&mut self) -> SpanMut<'_, T> {
         SpanMut {
             begin: self.begin,
@@ -565,6 +567,7 @@ impl<'a, T> SpanMut<'a, MaybeUninit<T>> {
     ///
     /// ## Safety
     /// Each element of the span must be valid for `T`, and satisfy any additional invariants `T` imposes.
+    #[must_use]
     pub const unsafe fn assume_init_span_mut(self) -> SpanMut<'a, T> {
         SpanMut {
             begin: self.begin.cast(),
@@ -578,6 +581,7 @@ impl<'a, T> SpanMut<'a, UnsafeCell<T>> {
     /// Converts a [`SpanMut`] of [`UnsafeCell`] into a [`SpanMut`] of `T`.
     ///
     /// This is safe because holding a mutable span to a range precludes all other access.
+    #[must_use]
     pub const fn span_mut(self) -> SpanMut<'a, T> {
         SpanMut {
             begin: self.begin.cast(),

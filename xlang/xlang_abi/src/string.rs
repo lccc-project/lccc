@@ -410,6 +410,8 @@ impl<'a> StringView<'a> {
 
     ///
     /// Obtains a [`Span`] over the UTF-8 bytes of this [`StringView`] for the same lifetime
+    #[must_use]
+    #[allow(clippy::cast_sign_loss)] // allocation size is `[0,isize::MAX)` so this can never possibly overflow
     pub fn as_byte_span(self) -> Span<'a, u8> {
         unsafe {
             Span::from_raw_parts(

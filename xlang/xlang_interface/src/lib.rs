@@ -104,7 +104,7 @@ xlang_host::rustcall! {
         let mut hash = *HASH_SEED_ACTUAL;
 
         for &byte in bytes{
-            hash ^= byte as u64;
+            hash ^= u64::from(byte);
             hash = hash.wrapping_mul(PRIME);
         }
         hash

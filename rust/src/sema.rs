@@ -1,3 +1,5 @@
+#![allow(clippy::cognitive_complexity, clippy::too_many_lines)] // TODO: You figure it out rdr
+
 pub use crate::lex::StrType; // TODO: `pub use` this in `crate::parse`
 use crate::parse::{FnParam, Item, Mod, Path, PathComponent, Pattern};
 pub use crate::parse::{Meta, Mutability, Safety, SimplePath, Visibility};

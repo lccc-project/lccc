@@ -211,7 +211,7 @@ mod abi {
 
     xlang_host::rustcall! {
         unsafe extern "rustcall" fn __set_machine<T: XLangFrontend>(ptr: *mut (), machine: &MachineProperties){
-            (&mut *(ptr.cast::<T>())).set_machine(machine)
+            (&mut *(ptr.cast::<T>())).set_machine(machine);
         }
     }
 
@@ -223,7 +223,7 @@ mod abi {
 
     xlang_host::rustcall! {
         unsafe extern "rustcall" fn __set_features<T: XLangCodegen>(ptr: *mut (),features: Span<StringView>){
-            (&mut *(ptr.cast::<T>())).set_features(features)
+            (&mut *(ptr.cast::<T>())).set_features(features);
         }
     }
 

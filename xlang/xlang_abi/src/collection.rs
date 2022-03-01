@@ -379,6 +379,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
     }
 
     /// Removes an entry by Key from this map, and returns the Key and Value
+    #[allow(clippy::cast_possible_truncation)]
     pub fn remove<Q: ?Sized + Hash + Eq>(&mut self, key: &Q) -> Option<Pair<K, V>>
     where
         K: Borrow<Q>,
@@ -634,7 +635,7 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> Extend<(K, V)> for HashMap<K
     }
 }
 
-/// An [`Iterator`] over the keys and mutable values of a HashMap.
+/// An [`Iterator`] over the keys and mutable values of a [`HashMap`].
 pub struct IterMut<'a, K, V> {
     buckets: *mut HashMapSlot<K, V>,
     buckets_end: *mut HashMapSlot<K, V>,
@@ -649,7 +650,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
         } else {
             let mut ecount = unsafe { (*self.buckets).ecount };
             let mut entries =
-                unsafe { core::ptr::addr_of_mut!((*self.buckets).entries) } as *mut Pair<K, V>;
+                unsafe { core::ptr::addr_of_mut!((*self.buckets).entries) }.cast::<Pair<K, V>>();
 
             while self.bucket_position >= ecount {
                 self.bucket_position = 0;
@@ -658,8 +659,8 @@ impl<'a, K, V> IterMut<'a, K, V> {
                     return None;
                 }
                 ecount = unsafe { (*self.buckets).ecount };
-                entries =
-                    unsafe { core::ptr::addr_of_mut!((*self.buckets).entries) } as *mut Pair<K, V>;
+                entries = unsafe { core::ptr::addr_of_mut!((*self.buckets).entries) }
+                    .cast::<Pair<K, V>>();
             }
 
             let ret = unsafe { entries.add(self.bucket_position) };
@@ -710,7 +711,7 @@ impl<K: Eq + Hash, H: BuildHasher, A: Allocator> Eq for HashSet<K, H, A> {}
 
 impl<K: Eq + Hash, H: BuildHasher, A: Allocator> Hash for HashSet<K, H, A> {
     fn hash<Hash: Hasher>(&self, hasher: &mut Hash) {
-        self.inner.hash(hasher)
+        self.inner.hash(hasher);
     }
 }
 

@@ -10,6 +10,9 @@ use crate::span::Span;
 xlang_host::rustcall! {
     extern "rustcall"{
         /// Hashes the bytes in the given span
+        ///
+        /// # Safety
+        /// This function is always safe to call
         pub fn xlang_hash_bytes(x: Span<u8>) -> u64;
 
         /// A u8 that, when hashed with [`xlang_hash_bytes`] produces a value suitable for use
