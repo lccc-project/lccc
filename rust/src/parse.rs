@@ -113,6 +113,7 @@ pub enum Item {
         generics: Generics,
         trait_name: Option<TraitImplName>,
         ty: Type,
+        body: Vec<Item>,
     },
     Static {
         attrs: Vec<Meta>,

@@ -1,7 +1,8 @@
 use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::hash::{BuildHasher, Hash, Hasher};
-use std::iter::FromIterator;
+use std::iter::{FromIterator, FusedIterator};
+use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::ops::Index;
 
@@ -112,6 +113,19 @@ impl<K, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
             unsafe { core::slice::from_raw_parts(self.htab.as_ptr(), self.buckets) }.iter(),
             None,
         )
+    }
+
+    /// Produces an [`Iterator`] over pairs of keys and mutable values in this [`HashMap`]
+    /// Note that they keys are not mutable, to avoid mutation that would affect the implementation of [`Eq`] and [`Hash`]
+    pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
+        let begin = self.htab.as_ptr();
+        let end = unsafe { begin.add(self.buckets) };
+        IterMut {
+            buckets: begin,
+            buckets_end: end,
+            bucket_position: 0,
+            phantom: PhantomData,
+        }
     }
 
     /// Produces an [`Iterator`] over the values in this [`HashMap`]
@@ -509,6 +523,16 @@ impl<'a, K, V, H: BuildHasher, A: Allocator> IntoIterator for &'a HashMap<K, V, 
     }
 }
 
+impl<'a, K, V, H: BuildHasher, A: Allocator> IntoIterator for &'a mut HashMap<K, V, H, A> {
+    type Item = Pair<&'a K, &'a mut V>;
+
+    type IntoIter = IterMut<'a, K, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
 impl<'a, K: Hash, V: Hash, H: BuildHasher, A: Allocator> Hash for HashMap<K, V, H, A> {
     fn hash<P: Hasher>(&self, state: &mut P) {
         for i in self {
@@ -610,13 +634,67 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> Extend<(K, V)> for HashMap<K
     }
 }
 
+/// An [`Iterator`] over the keys and mutable values of a HashMap.
+pub struct IterMut<'a, K, V> {
+    buckets: *mut HashMapSlot<K, V>,
+    buckets_end: *mut HashMapSlot<K, V>,
+    bucket_position: usize,
+    phantom: PhantomData<&'a mut [HashMapSlot<K, V>]>,
+}
+
+impl<'a, K, V> IterMut<'a, K, V> {
+    fn next_item(&mut self) -> Option<&'a mut Pair<K, V>> {
+        if self.buckets == self.buckets_end {
+            None
+        } else {
+            let mut ecount = unsafe { (*self.buckets).ecount };
+            let mut entries =
+                unsafe { core::ptr::addr_of_mut!((*self.buckets).entries) } as *mut Pair<K, V>;
+
+            while self.bucket_position >= ecount {
+                self.bucket_position = 0;
+                self.buckets = unsafe { self.buckets.offset(1) };
+                if self.buckets == self.buckets_end {
+                    return None;
+                }
+                ecount = unsafe { (*self.buckets).ecount };
+                entries =
+                    unsafe { core::ptr::addr_of_mut!((*self.buckets).entries) } as *mut Pair<K, V>;
+            }
+
+            let ret = unsafe { entries.add(self.bucket_position) };
+            self.bucket_position += 1;
+
+            Some(unsafe { &mut *ret })
+        }
+    }
+}
+
+impl<'a, K, V> Iterator for IterMut<'a, K, V> {
+    type Item = Pair<&'a K, &'a mut V>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_item().map(|Pair(k, v)| Pair(k as &K, v))
+    }
+}
+
+impl<'a, K, V> FusedIterator for IterMut<'a, K, V> {}
+
+/// An [`Iterator`] over the mutable values in a [`HashMap`]
+pub struct ValuesMut<'a, K, V>(IterMut<'a, K, V>);
+
+impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
+    type Item = &'a mut V;
+
+    fn next(&mut self) -> Option<&'a mut V> {
+        self.0.next().map(|Pair(_, v)| v)
+    }
+}
+
 ///
 /// A [`HashSet`] that has a stable ABI and obtains storage backed by an [`Allocator`]
-#[allow(clippy::derive_hash_xor_eq)]
 #[derive(
-    Clone,
-    Debug, /* may not be good to derive(Debug) here. Maybe should provide impl instead */
-    Hash,
+    Clone, Debug /* may not be good to derive(Debug) here. Maybe should provide impl instead */,
 )]
 pub struct HashSet<K, H: BuildHasher = BuildHasherDefault<XLangHasher>, A: Allocator = XLangAlloc> {
     inner: HashMap<K, (), H, A>,
@@ -629,6 +707,12 @@ impl<K: Eq + Hash, H: BuildHasher, A: Allocator> PartialEq for HashSet<K, H, A> 
 }
 
 impl<K: Eq + Hash, H: BuildHasher, A: Allocator> Eq for HashSet<K, H, A> {}
+
+impl<K: Eq + Hash, H: BuildHasher, A: Allocator> Hash for HashSet<K, H, A> {
+    fn hash<Hash: Hasher>(&self, hasher: &mut Hash) {
+        self.inner.hash(hasher)
+    }
+}
 
 impl<K, H: BuildHasher + Default, A: Allocator + Default> HashSet<K, H, A> {
     /// Constructs a new [`HashSet`] with a [`Default`] allocator and [`Default`] hasher
@@ -781,6 +865,21 @@ mod test {
         map.insert("Hi", 0);
         map.insert("Hello", 1);
         assert_eq!(map.iter().count(), 2);
+    }
+
+    #[test]
+    fn test_hash_map_iter_mut_count() {
+        let mut map = HashMap::<&str, i32>::new();
+        map.insert("Hi", 0);
+        map.insert("Hello", 1);
+        assert_eq!(map.iter_mut().count(), 2);
+    }
+
+    #[test]
+    fn test_hash_map_iter_mut_count1() {
+        let mut map = HashMap::<&str, i32>::new();
+        map.insert("Hi", 0);
+        assert_eq!(map.iter_mut().count(), 1);
     }
 
     #[test]

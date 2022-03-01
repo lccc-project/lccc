@@ -234,6 +234,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "transparent"
+version = "0.1.0"
+dependencies = [
+ "xlang",
+]
+
+[[package]]
 name = "unicode-xid"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -315,11 +322,4 @@ version = "0.1.0"
 dependencies = [
  "target-tuples 0.5.4",
  "xlang_abi",
-]
-
-[[package]]
-name = "xlangtransparent"
-version = "0.1.0"
-dependencies = [
- "xlang",
 ]

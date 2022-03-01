@@ -54,7 +54,7 @@ pub fn parse_args(argspecs: &Vec<ArgSpec>) -> (Vec<Arg>, Vec<String>) {
                 let mut found = false;
                 for spec in argspecs {
                     for long in &spec.long {
-                        if long.starts_with(&arg) {
+                        if arg.starts_with(*long) {
                             found = true;
                             if spec.takes_arg == TakesArg::Never {
                                 result.push(Arg {

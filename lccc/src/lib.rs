@@ -1,11 +1,16 @@
 //! Helper library for the lccc driver, and other driver clis (such as lcrust)
 //!
 
-use std::path::PathBuf;
+use std::{
+    borrow::Borrow,
+    hash::{BuildHasher, Hash},
+    option::Option as StdOption,
+    path::{Path, PathBuf},
+};
 
 use target_tuples::Target;
 use xlang::{
-    abi::string::StringView,
+    abi::{alloc::Allocator, string::StringView},
     host::rustcall,
     plugin::{XLangCodegen, XLangFrontend, XLangPlugin},
     prelude::v1::*,
@@ -49,36 +54,50 @@ pub enum OptimizeLevel {
     Extra,
 }
 
-pub fn find_libraries(search_paths: &[PathBuf], names: &[&str], prefix: &str) -> Vec<PathBuf> {
+pub fn find_libraries<K: Borrow<str> + Eq + Hash, V: AsRef<Path>, H: BuildHasher, A: Allocator>(
+    search_paths: &[PathBuf],
+    names: &[&str],
+    prefix: StdOption<&str>,
+    overrides: &HashMap<K, V, H, A>,
+) -> Vec<PathBuf> {
     let mut result = Vec::new();
     for &library in names {
+        let name = prefix
+            .map(<str>::to_owned)
+            .map(|s| s + "_" + library)
+            .unwrap_or_else(|| library.to_owned());
+
         let library_name = if cfg!(windows) {
-            prefix.to_owned() + "_" + library + ".dll"
+            name.clone() + ".dll"
         } else if cfg!(target_os = "linux") {
-            "lib".to_owned() + prefix + "_" + library + ".so"
+            "lib".to_owned() + &name + ".so"
         } else if cfg!(target_os = "macos") {
-            "lib".to_owned() + prefix + "_" + library + ".dylib"
+            "lib".to_owned() + &name + ".dylib"
         } else {
             panic!("unrecognized target OS; can't get frontend library name")
         };
 
         let mut path = None;
-        for search_path in search_paths {
-            let mut library_path = search_path.clone();
-            library_path.push(&library_name);
-            if library_path.exists() {
-                path = Some(library_path);
-                break;
+
+        if let StdOption::Some(over) = overrides.get(&*name) {
+            path = Some(over.as_ref().to_owned());
+        } else if name.contains("/") {
+            path = Some(PathBuf::from(&name));
+        } else {
+            for search_path in search_paths {
+                let mut library_path = search_path.clone();
+                library_path.push(&library_name);
+                if library_path.exists() {
+                    path = Some(library_path);
+                    break;
+                }
             }
         }
 
         if let Some(path) = path {
             result.push(path);
         } else {
-            eprintln!(
-                "warning: couldn't locate library to load for {} \"{}\"",
-                prefix, library
-            );
+            eprintln!("warning: couldn't locate library to load for {}", name);
         }
     }
     result

@@ -60,15 +60,15 @@ fn main() {
             false
         ),
         ArgSpec::new(
-            "plugin",
-            xlang::vec!["plugin"],
+            "plugindirs",
+            xlang::vec!["plugin-dirs"],
             Vec::new(),
             TakesArg::Always,
             false
         ),
         ArgSpec::new(
-            "plugindirs",
-            xlang::vec!["plugin-dirs"],
+            "plugin",
+            xlang::vec!["plugin"],
             Vec::new(),
             TakesArg::Always,
             false
@@ -212,16 +212,47 @@ fn main() {
     }
 
     search_paths.push(lccc::XLANG_PLUGIN_DIR.into());
-    //let paths = userplugins.iter().map(Deref::deref).collect::<Vec<_>>();
+    let mut upaths = userplugins.iter().map(Deref::deref).collect::<Vec<_>>();
     match opt_mode {
         OptimizeLevel::Integer(0) => {}
         OptimizeLevel::Integer(n) => {
-            todo!("-O{}", n)
+            upaths.extend(
+                lccc::OPTIMIZERS[..(n as usize).max(lccc::OPTIMIZERS.len())]
+                    .iter()
+                    .copied()
+                    .flatten()
+                    .copied(),
+            );
         }
         _ => todo!(),
     }
 
-    let frontend_paths = lccc::find_libraries(&search_paths, &lccc::FRONTENDS, "frontend");
+    let userpaths = lccc::find_libraries(
+        &search_paths,
+        &upaths,
+        std::option::Option::None,
+        &plugin_overrides,
+    );
+
+    let mut user_handles = Vec::new();
+
+    for upath in &userpaths {
+        user_handles.push(Handle::open(upath).expect("Could not load plugin"));
+    }
+
+    let mut user_plugins = Vec::new();
+    for h in &user_handles {
+        let init = unsafe { h.function_sym("xlang_plugin_main") };
+        let init: lccc::PluginInit = init.expect("plugin libray missing required entry point");
+        user_plugins.push(init());
+    }
+
+    let frontend_paths = lccc::find_libraries(
+        &search_paths,
+        &lccc::FRONTENDS,
+        std::option::Option::Some("frontend"),
+        &plugin_overrides,
+    );
 
     let mut frontend_handles = Vec::new();
     for frontend_path in &frontend_paths {
@@ -236,7 +267,12 @@ fn main() {
         frontends.push(initializer());
     }
 
-    let codegen_paths = lccc::find_libraries(&search_paths, &lccc::CODEGENS, "codegen");
+    let codegen_paths = lccc::find_libraries(
+        &search_paths,
+        &lccc::CODEGENS,
+        std::option::Option::Some("codegen"),
+        &plugin_overrides,
+    );
 
     let mut codegen_handles = Vec::new();
     for codegen_path in &codegen_paths {
@@ -374,6 +410,41 @@ fn main() {
             };
 
             frontend.accept_ir(&mut file).unwrap();
+
+            let required_names = frontend.required_plugins();
+
+            let required_names = required_names.iter().map(Deref::deref).collect::<Vec<_>>();
+
+            let required_paths = lccc::find_libraries(
+                &search_paths,
+                &required_names,
+                std::option::Option::None,
+                &plugin_overrides,
+            );
+
+            let mut required_handles = Vec::new();
+
+            for upath in &required_paths {
+                required_handles.push(Handle::open(upath).expect("Could not load plugin"));
+            }
+
+            let mut required_plugins = Vec::new();
+            for h in &required_handles {
+                let init = unsafe { h.function_sym("xlang_plugin_main") };
+                let init: lccc::PluginInit =
+                    init.expect("plugin libray missing required entry point");
+                required_plugins.push(init());
+            }
+
+            for plugin in &mut required_plugins {
+                plugin.set_target(xtarget.clone());
+                plugin.accept_ir(&mut file);
+            }
+
+            for plugin in &mut user_plugins {
+                plugin.set_target(xtarget.clone());
+                plugin.accept_ir(&mut file);
+            }
 
             if mode >= Mode::Asm {
                 codegen.set_target(xtarget.clone());

@@ -1480,7 +1480,7 @@ mod test {
     use xlang::{abi::vec, prelude::v1::HashMap};
     use xlang_backend::{str::StringMap, FunctionCodegen};
     use xlang_struct::{
-        Abi, Block, BlockItem, Expr, FunctionBody, FunctionDeclaration, Path, ScalarType,
+        Abi, BinaryOp, Block, BlockItem, Expr, FunctionBody, FunctionDeclaration, Path, ScalarType,
         ScalarTypeHeader, ScalarTypeKind, Type, Value,
     };
 
@@ -1538,6 +1538,78 @@ mod test {
             .write_output(&mut sec, &mut Vec::new())
             .unwrap();
         assert_eq!(*sec.content, [0xC3])
+    }
+
+    #[test]
+    fn test_add() {
+        let target = Target::parse("x86_64-pc-linux-gnu");
+        let properties = xlang::targets::properties::get_properties((&target).into()).unwrap();
+        let features =
+            super::get_features_from_properties(properties, &properties.arch.default_machine);
+        let name = "foo";
+        let sty = ScalarType {
+            header: ScalarTypeHeader {
+                bitsize: 32,
+                ..Default::default()
+            },
+            kind: ScalarTypeKind::Integer {
+                signed: true,
+                min: 0,
+                max: 0,
+            },
+        };
+        let FunctionDeclaration { ty, body } = FunctionDeclaration {
+            ty: xlang_struct::FnType {
+                ret: Type::Scalar(sty),
+                params: xlang::abi::vec::Vec::new(),
+                tag: Abi::C,
+            },
+            body: xlang::abi::option::Some(FunctionBody {
+                locals: vec![],
+                block: Block {
+                    items: vec![
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 1 })),
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: !0 })),
+                        BlockItem::Expr(Expr::BinaryOp(BinaryOp::Add)),
+                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
+                    ],
+                },
+            }),
+        };
+        let mut state = FunctionCodegen::new(
+            X86CodegenState {
+                insns: Vec::new(),
+                mode: X86Mode::default_mode_for(&target).unwrap(),
+                symbols: Vec::new(),
+                name: name.to_string(),
+                strings: Rc::new(RefCell::new(StringMap::new())),
+                fnty: ty.clone(),
+                callconv: callconv::get_callconv(ty.tag, target.clone(), features.clone()).unwrap(),
+                properties,
+                _xmm_status: HashMap::new(),
+                gpr_status: HashMap::new(),
+                frame_size: 0,
+                scratch_reg: None,
+                ptrreg: None,
+                trap_unreachable: true,
+                features,
+            },
+            Path {
+                components: vec![xlang_struct::PathComponent::Text(name.into())],
+            },
+            ty.clone(),
+            properties,
+        );
+        state.write_function_body(&body.as_ref().unwrap());
+        let mut sec = Section {
+            align: 1024,
+            ..Default::default()
+        };
+        state
+            .into_inner()
+            .write_output(&mut sec, &mut Vec::new())
+            .unwrap();
+        assert_eq!(*sec.content, [0x33, 0xC0, 0xC3])
     }
 
     #[test]

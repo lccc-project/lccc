@@ -23,6 +23,24 @@ fake_enum::fake_enum! {
     }
 }
 
+fake_enum::fake_enum! {
+    #[repr(u32)]
+    pub enum struct LibraryType{
+        Unspecified = 0,
+        Static = 1,
+        Shared = 2,
+        Framework = 3,
+    }
+}
+
+#[repr(u32)]
+pub enum LinkOpt{
+    InputFile(String),
+    Library(LibraryType,String),
+    Libdir(String),
+    RawOption(String),
+}
+
 #[repr(u8)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Error {

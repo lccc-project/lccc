@@ -9,8 +9,8 @@ use xlang::{
     abi::string::StringView,
     ir::{
         AccessClass, AggregateCtor, BinaryOp, Block, BranchCondition, Expr, FnType, FunctionBody,
-        Path, PathComponent, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, StackItem,
-        StackValueKind, Type, UnaryOp, Value,
+        Path, PathComponent, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind,
+        ScalarValidity, StackItem, StackValueKind, Type, UnaryOp, Value,
     },
     prelude::v1::*,
     targets::properties::TargetProperties,
@@ -293,8 +293,8 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     .push_back(VStackValue::CompareResult(Box::new(val1), Box::new(val2)))
             }
             Expr::BinaryOp(op) => {
-                let val1 = self.vstack.pop_back().unwrap();
                 let val2 = self.vstack.pop_back().unwrap();
+                let val1 = self.vstack.pop_back().unwrap();
                 match (val1, val2) {
                     (VStackValue::Trapped, _) | (_, VStackValue::Trapped) => {
                         self.vstack.push_back(VStackValue::Trapped);
@@ -360,24 +360,94 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     ) => {
                         panic!("aggregates are not valid for {:?}", op)
                     }
-                    (VStackValue::Constant(_), VStackValue::Constant(_)) => todo!(),
-                    (VStackValue::Constant(_), VStackValue::Pointer(_, _)) => todo!(),
-                    (VStackValue::Constant(_), VStackValue::OpaqueScalar(_, _)) => todo!(),
-                    (VStackValue::Constant(_), VStackValue::CompareResult(_, _)) => todo!(),
+                    (
+                        VStackValue::Constant(Value::Integer {
+                            ty:
+                                ScalarType {
+                                    header:
+                                        ScalarTypeHeader {
+                                            bitsize,
+                                            vectorsize: 0,
+                                            validity: validity1,
+                                        },
+                                    kind: ScalarTypeKind::Integer { signed, .. },
+                                },
+                            val: val1,
+                        }),
+                        VStackValue::Constant(Value::Integer {
+                            ty:
+                                ScalarType {
+                                    header:
+                                        ScalarTypeHeader {
+                                            bitsize: bitsize2,
+                                            vectorsize: 0,
+                                            validity: validity2,
+                                        },
+                                    kind: ScalarTypeKind::Integer { .. },
+                                },
+                            val: val2,
+                        }),
+                    ) if bitsize == bitsize2 && bitsize <= 128 => {
+                        let validity = validity1 & validity2;
+                        let mut val = match op {
+                            BinaryOp::Add => {
+                                (val1.wrapping_add(val2))
+                                    & (!((!0u128).wrapping_shl(128 - (bitsize as u32))))
+                            }
+                            BinaryOp::Sub => {
+                                (val1.wrapping_sub(val2))
+                                    & (!((!0u128).wrapping_shl(128 - (bitsize as u32))))
+                            }
 
-                    (VStackValue::Pointer(_, _), VStackValue::Constant(_)) => todo!(),
-                    (VStackValue::Pointer(_, _), VStackValue::Pointer(_, _)) => todo!(),
-                    (VStackValue::Pointer(_, _), VStackValue::OpaqueScalar(_, _)) => todo!(),
-                    (VStackValue::Pointer(_, _), VStackValue::CompareResult(_, _)) => todo!(),
-                    (VStackValue::OpaqueScalar(_, _), VStackValue::Constant(_)) => todo!(),
+                            BinaryOp::BitAnd => val1 & val2,
+                            BinaryOp::BitOr => val1 | val2,
+                            BinaryOp::BitXor => val1 ^ val2,
+                            BinaryOp::Mul => todo!(),
+                            BinaryOp::Div => todo!(),
+                            BinaryOp::Mod => todo!(),
+                            BinaryOp::Rsh => todo!(),
+                            BinaryOp::Lsh => {
+                                (val1.wrapping_shl((val2 % (bitsize as u128)) as u32))
+                                    & (!((!0u128).wrapping_shl(128 - (bitsize as u32))))
+                            }
+                            BinaryOp::CmpInt | BinaryOp::Cmp => match val1.cmp(&val2) {
+                                Ordering::Less => !0,
+                                Ordering::Equal => 0,
+                                Ordering::Greater => 1,
+                            },
+                            BinaryOp::CmpLt => (val1 < val2) as u128,
+                            BinaryOp::CmpGt => (val1 > val2) as u128,
+                            BinaryOp::CmpEq => (val1 == val2) as u128,
+                            BinaryOp::CmpNe => (val1 != val2) as u128,
+                            BinaryOp::CmpGe => (val1 >= val2) as u128,
+                            BinaryOp::CmpLe => (val1 <= val2) as u128,
+                        };
 
-                    (VStackValue::OpaqueScalar(_, _), VStackValue::Pointer(_, _)) => todo!(),
-                    (VStackValue::OpaqueScalar(_, _), VStackValue::OpaqueScalar(_, _)) => todo!(),
-                    (VStackValue::OpaqueScalar(_, _), VStackValue::CompareResult(_, _)) => todo!(),
-                    (VStackValue::CompareResult(_, _), VStackValue::Constant(_)) => todo!(),
-                    (VStackValue::CompareResult(_, _), VStackValue::Pointer(_, _)) => todo!(),
-                    (VStackValue::CompareResult(_, _), VStackValue::OpaqueScalar(_, _)) => todo!(),
-                    (VStackValue::CompareResult(_, _), VStackValue::CompareResult(_, _)) => todo!(),
+                        if signed && (bitsize > 0) {
+                            val = (((val as i128) << ((128 - (bitsize - 1)) as u32))
+                                >> ((128 - (bitsize - 1)) as u32))
+                                as u128;
+                        }
+                        let ty = ScalarType {
+                            header: ScalarTypeHeader {
+                                bitsize,
+                                vectorsize: 0,
+                                validity,
+                            },
+                            kind: ScalarTypeKind::Integer {
+                                signed,
+                                min: 0,
+                                max: 0,
+                            },
+                        };
+                        if val == 0 && validity.contains(ScalarValidity::NONZERO) {
+                            self.vstack
+                                .push_back(VStackValue::Constant(Value::Invalid(Type::Scalar(ty))))
+                        }
+                        self.vstack
+                            .push_back(VStackValue::Constant(Value::Integer { ty, val }));
+                    }
+                    (val1, val2) => todo!("binary op {:?} [{:?},{:?}]", op, val1, val2),
                 }
             }
             Expr::UnaryOp(op) => todo!("unary op {:?}", op),
