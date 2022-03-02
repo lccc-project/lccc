@@ -11,10 +11,10 @@ use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
 use xlang::targets::Target;
 use xlang_struct::{
     Abi, AccessClass, AnnotatedElement, BinaryOp, Block, BlockItem, BranchCondition, CharFlags,
-    Expr, File, FnType, FunctionBody, FunctionDeclaration, MemberDeclaration, Path, PathComponent,
-    PointerAliasingRule, PointerDeclarationType, PointerType, ScalarType, ScalarTypeHeader,
-    ScalarTypeKind, ScalarValidity, Scope, ScopeMember, StackItem, StringEncoding, Type,
-    ValidRangeType, Value, Visibility,
+    Expr, File, FnType, FunctionBody, FunctionDeclaration, MemberDeclaration, OverflowBehaviour,
+    Path, PathComponent, PointerAliasingRule, PointerDeclarationType, PointerType, ScalarType,
+    ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Scope, ScopeMember, StackItem,
+    StringEncoding, Type, UnaryOp, ValidRangeType, Value, Visibility,
 };
 
 use crate::lexer::{Group, Token};
@@ -24,15 +24,41 @@ pub fn parse_function_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) 
         Token::Ident(id) if id == "function" => match stream.next().unwrap() {
             Token::Group(Group::Parenthesis(tok)) => {
                 let mut params = Vec::new();
-                let mut it = tok.into_iter().peekable();
-                while let Some(ty) = parse_type(&mut it) {
-                    params.push(ty);
-                    match it.peek() {
+                let mut peekable = tok.into_iter().peekable();
+                let mut variadic = false;
+                loop {
+                    match peekable.peek() {
+                        Some(Token::Sigil('.')) => {
+                            peekable.next();
+                            match peekable.next().unwrap() {
+                                Token::Sigil('.') => {}
+                                tok => panic!("Unexpected token {:?}", tok),
+                            }
+                            match peekable.next().unwrap() {
+                                Token::Sigil('.') => {}
+                                tok => panic!("Unexpected token {:?}", tok),
+                            }
+
+                            match peekable.next() {
+                                Some(tok) => panic!("Unexpected token {:?}", tok),
+                                None => {}
+                            }
+                            variadic = true;
+                            break;
+                        }
+                        Some(_) => {
+                            params.push(parse_type(&mut peekable).unwrap());
+                        }
+                        None => break,
+                    }
+
+                    match peekable.next() {
                         Some(Token::Sigil(',')) => continue,
                         Some(tok) => panic!("Unexpected token {:?}", tok),
                         None => break,
                     }
                 }
+                drop(peekable);
                 match stream.peek() {
                     Some(Token::Sigil('-')) => {
                         stream.next();
@@ -41,6 +67,7 @@ pub fn parse_function_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) 
                                 ret: parse_type(stream).unwrap(),
                                 params,
                                 tag: Abi::C,
+                                variadic,
                             },
                             tok => panic!("Unexpected token {:?}", tok),
                         }
@@ -49,6 +76,7 @@ pub fn parse_function_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) 
                         ret: Type::Null,
                         params,
                         tag: Abi::C,
+                        variadic,
                     },
                 }
             }
@@ -87,11 +115,10 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
             "uint" | "int" => {
                 let signed = id == "int";
                 stream.next().unwrap();
-                let mut min = i128::MIN;
-                let mut max = i128::MAX;
+                let mut min = None;
+                let mut max = None;
                 let mut header = ScalarTypeHeader {
                     bitsize: 0,
-                    vectorsize: 0,
                     ..ScalarTypeHeader::default()
                 };
                 loop {
@@ -103,13 +130,15 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
                             if let Some(Token::Group(Group::Parenthesis(toks))) = stream.next() {
                                 match &*toks {
                                     [Token::IntLiteral(n)] => {
-                                        min = i128::try_from(*n).expect(
+                                        min = Some(i128::try_from(*n).expect(
                                             "oversized integer literals currently unsupported",
-                                        );
+                                        ));
                                     }
                                     [Token::Sigil('-'), Token::IntLiteral(n)] => {
-                                        min = -i128::try_from(*n)
-                                            .expect("integer literal too far negative");
+                                        min = Some(
+                                            -i128::try_from(*n)
+                                                .expect("integer literal too far negative"),
+                                        );
                                     }
                                     toks => panic!("Unexpected tokens: {:?}", toks),
                                 }
@@ -121,13 +150,15 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
                             if let Some(Token::Group(Group::Parenthesis(toks))) = stream.next() {
                                 match &*toks {
                                     [Token::IntLiteral(n)] => {
-                                        max = i128::try_from(*n).expect(
+                                        max = Some(i128::try_from(*n).expect(
                                             "oversized integer literals currently unsupported",
-                                        );
+                                        ));
                                     }
                                     [Token::Sigil('-'), Token::IntLiteral(n)] => {
-                                        max = -i128::try_from(*n)
-                                            .expect("integer literal too far negative");
+                                        max = Some(
+                                            -i128::try_from(*n)
+                                                .expect("integer literal too far negative"),
+                                        );
                                     }
                                     toks => panic!("Unexpected tokens: {:?}", toks),
                                 }
@@ -139,7 +170,8 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
                             if let Some(Token::Group(Group::Parenthesis(toks))) = stream.next() {
                                 match &*toks {
                                     [Token::IntLiteral(n)] => {
-                                        header.vectorsize = TryFrom::try_from(*n).unwrap();
+                                        header.vectorsize =
+                                            Some(TryFrom::try_from(*n).unwrap()).into();
                                     }
                                     toks => panic!("Unexpected tokens: {:?}", toks),
                                 }
@@ -152,7 +184,11 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
                                 header.bitsize = TryFrom::try_from(*n).unwrap();
                                 break Some(Type::Scalar(ScalarType {
                                     header,
-                                    kind: ScalarTypeKind::Integer { signed, min, max },
+                                    kind: ScalarTypeKind::Integer {
+                                        signed,
+                                        min: min.into(),
+                                        max: max.into(),
+                                    },
                                 }));
                             }
                             toks => panic!("Unexpected tokens: {:?}", toks),
@@ -170,7 +206,6 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
                 stream.next().unwrap();
                 let mut header = ScalarTypeHeader {
                     bitsize: 0,
-                    vectorsize: 0,
                     ..ScalarTypeHeader::default()
                 };
                 loop {
@@ -185,7 +220,8 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
                             if let Some(Token::Group(Group::Parenthesis(toks))) = stream.next() {
                                 match &*toks {
                                     [Token::IntLiteral(n)] => {
-                                        header.vectorsize = TryFrom::try_from(*n).unwrap();
+                                        header.vectorsize =
+                                            Some(TryFrom::try_from(*n).unwrap()).into();
                                     }
                                     toks => panic!("Unexpected tokens: {:?}", toks),
                                 }
@@ -340,6 +376,7 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
                 Token::Group(Group::Parenthesis(toks)) => {
                     let mut params = Vec::new();
                     let mut peekable = toks.into_iter().peekable();
+                    let mut variadic = false;
                     loop {
                         match peekable.peek() {
                             Some(Token::Ident(id)) if id.starts_with('_') => {
@@ -352,9 +389,33 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
 
                                 params.push(parse_type(&mut peekable).unwrap());
                             }
+                            Some(Token::Sigil('.')) => {
+                                peekable.next();
+                                match peekable.next().unwrap() {
+                                    Token::Sigil('.') => {}
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                }
+                                match peekable.next().unwrap() {
+                                    Token::Sigil('.') => {}
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                }
+
+                                match peekable.next() {
+                                    Some(tok) => panic!("Unexpected token {:?}", tok),
+                                    None => {}
+                                }
+                                variadic = true;
+                                break;
+                            }
                             Some(_) => {
                                 params.push(parse_type(&mut peekable).unwrap());
                             }
+                            None => break,
+                        }
+
+                        match peekable.next() {
+                            Some(Token::Sigil(',')) => continue,
+                            Some(tok) => panic!("Unexpected token {:?}", tok),
                             None => break,
                         }
                     }
@@ -379,6 +440,7 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
                                         ret,
                                         params,
                                         tag: Abi::C,
+                                        variadic,
                                     },
                                     body: xlang::abi::option::None,
                                 }),
@@ -419,6 +481,7 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
                                             ret,
                                             params,
                                             tag: Abi::C,
+                                            variadic,
                                         },
                                         body: xlang::abi::option::Some(FunctionBody {
                                             locals,
@@ -812,73 +875,96 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
             };
             Expr::Pivot(n, m)
         }
-        Token::Ident(id) if id == "add" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::Add)
+        Token::Ident(id)
+            if id == "add"
+                || id == "sub"
+                || id == "mul"
+                || id == "div"
+                || id == "mod"
+                || id == "lsh"
+                || id == "rsh"
+                || id == "bxor"
+                || id == "bor"
+                || id == "band"
+                || id == "cmp"
+                || id == "cmp_lt"
+                || id == "cmp_gt"
+                || id == "cmp_eq"
+                || id == "cmp_ne"
+                || id == "cmp_le"
+                || id == "cmp_ge"
+                || id == "cmp_int" =>
+        {
+            let op = match it.next().unwrap() {
+                Token::Ident(id) if id == "add" => BinaryOp::Add,
+                Token::Ident(id) if id == "sub" => BinaryOp::Sub,
+                Token::Ident(id) if id == "mul" => BinaryOp::Mul,
+                Token::Ident(id) if id == "div" => BinaryOp::Div,
+                Token::Ident(id) if id == "mod" => BinaryOp::Mod,
+                Token::Ident(id) if id == "lsh" => BinaryOp::Lsh,
+                Token::Ident(id) if id == "rsh" => BinaryOp::Rsh,
+                Token::Ident(id) if id == "band" => BinaryOp::BitAnd,
+                Token::Ident(id) if id == "bor" => BinaryOp::BitOr,
+                Token::Ident(id) if id == "bxor" => BinaryOp::BitXor,
+                Token::Ident(id) if id == "cmp" => BinaryOp::Cmp,
+                Token::Ident(id) if id == "cmp_int" => BinaryOp::CmpInt,
+                Token::Ident(id) if id == "cmp_lt" => BinaryOp::CmpLt,
+                Token::Ident(id) if id == "cmp_gt" => BinaryOp::CmpGt,
+                Token::Ident(id) if id == "cmp_eq" => BinaryOp::CmpEq,
+                Token::Ident(id) if id == "cmp_ne" => BinaryOp::CmpNe,
+                Token::Ident(id) if id == "cmp_le" => BinaryOp::CmpLe,
+                Token::Ident(id) if id == "cmp_ge" => BinaryOp::CmpGe,
+                _ => unreachable!(),
+            };
+            let overflow = match it.peek() {
+                Some(Token::Ident(id)) if id == "trap" => {
+                    it.next();
+                    OverflowBehaviour::Trap
+                }
+                Some(Token::Ident(id)) if id == "wrap" => {
+                    it.next();
+                    OverflowBehaviour::Trap
+                }
+                Some(Token::Ident(id)) if id == "checked" => {
+                    it.next();
+                    OverflowBehaviour::Checked
+                }
+                Some(Token::Ident(id)) if id == "unchecked" => {
+                    it.next();
+                    OverflowBehaviour::Unchecked
+                }
+                _ => OverflowBehaviour::Wrap,
+            };
+            Expr::BinaryOp(op, overflow)
         }
-        Token::Ident(id) if id == "sub" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::Sub)
-        }
-        Token::Ident(id) if id == "mul" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::Mul)
-        }
-        Token::Ident(id) if id == "div" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::Div)
-        }
-        Token::Ident(id) if id == "mod" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::Mod)
-        }
-        Token::Ident(id) if id == "cmp" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::Cmp)
-        }
-        Token::Ident(id) if id == "lsh" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::Lsh)
-        }
-        Token::Ident(id) if id == "rsh" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::Rsh)
-        }
-        Token::Ident(id) if id == "band" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::BitAnd)
-        }
-        Token::Ident(id) if id == "bor" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::BitOr)
-        }
-        Token::Ident(id) if id == "bxor" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::BitXor)
-        }
-        Token::Ident(id) if id == "cmp_lt" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::CmpLt)
-        }
-        Token::Ident(id) if id == "cmp_gt" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::CmpGt)
-        }
-        Token::Ident(id) if id == "cmp_eq" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::CmpEq)
-        }
-        Token::Ident(id) if id == "cmp_ne" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::CmpNe)
-        }
-        Token::Ident(id) if id == "cmp_le" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::CmpLe)
-        }
-        Token::Ident(id) if id == "cmp_ge" => {
-            it.next();
-            Expr::BinaryOp(BinaryOp::CmpGe)
+        Token::Ident(id) if id == "not" || id == "neg" || id == "bnot" => {
+            let op = match it.next().unwrap() {
+                Token::Ident(id) if id == "not" => UnaryOp::LogicNot,
+                Token::Ident(id) if id == "bnot" => UnaryOp::BitNot,
+                Token::Ident(id) if id == "neg" => UnaryOp::Minus,
+                _ => unreachable!(),
+            };
+            let overflow = match it.peek() {
+                Some(Token::Ident(id)) if id == "trap" => {
+                    it.next();
+                    OverflowBehaviour::Trap
+                }
+                Some(Token::Ident(id)) if id == "wrap" => {
+                    it.next();
+                    OverflowBehaviour::Trap
+                }
+                Some(Token::Ident(id)) if id == "checked" => {
+                    it.next();
+                    OverflowBehaviour::Checked
+                }
+                Some(Token::Ident(id)) if id == "unchecked" => {
+                    it.next();
+                    OverflowBehaviour::Unchecked
+                }
+                _ => OverflowBehaviour::Wrap,
+            };
+
+            Expr::UnaryOp(op, overflow)
         }
         Token::Ident(id) if id == "local" => {
             it.next();

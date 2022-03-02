@@ -3,7 +3,7 @@ use xlang::{
         AggregateDefinition, AggregateKind, ArrayType, PointerType, ScalarType, ScalarTypeHeader,
         ScalarTypeKind, Type, Value,
     },
-    prelude::v1::Pair,
+    prelude::v1::{Pair, Some as XLangSome},
     targets::properties::TargetProperties,
 };
 
@@ -33,10 +33,10 @@ pub fn type_size(ty: &Type, properties: &TargetProperties) -> Option<u64> {
         }) => {
             let elem_bytes = ((*bitsize as u64) + 7) >> 3;
 
-            let size = if *vectorsize == 0 {
-                elem_bytes
+            let size = if let XLangSome(vector) = vectorsize {
+                u64::from(*vector) * elem_bytes
             } else {
-                elem_bytes * (*vectorsize as u64)
+                elem_bytes
             };
 
             let align = scalar_align(size, properties);
@@ -126,10 +126,10 @@ pub fn type_align(ty: &Type, properties: &TargetProperties) -> Option<u64> {
         }) => {
             let elem_bytes = ((*bitsize as u64) + 7) >> 3;
 
-            let size = if *vectorsize == 0 {
-                elem_bytes
+            let size = if let XLangSome(vector) = vectorsize {
+                u64::from(*vector) * elem_bytes
             } else {
-                elem_bytes * (*vectorsize as u64)
+                elem_bytes
             };
 
             Some(scalar_align(size, properties))

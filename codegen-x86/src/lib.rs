@@ -1472,11 +1472,14 @@ mod test {
     use arch_ops::x86::insn::X86Mode;
     use binfmt::fmt::Section;
     use target_tuples::Target;
-    use xlang::{abi::vec, prelude::v1::HashMap};
+    use xlang::{
+        abi::vec,
+        prelude::v1::{HashMap, None as XLangNone},
+    };
     use xlang_backend::{str::StringMap, FunctionCodegen};
     use xlang_struct::{
-        Abi, BinaryOp, Block, BlockItem, Expr, FunctionBody, FunctionDeclaration, Path, ScalarType,
-        ScalarTypeHeader, ScalarTypeKind, Type, Value,
+        Abi, BinaryOp, Block, BlockItem, Expr, FunctionBody, FunctionDeclaration,
+        OverflowBehaviour, Path, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type, Value,
     };
 
     use crate::{callconv, X86CodegenState};
@@ -1493,6 +1496,7 @@ mod test {
                 ret: Type::Void,
                 params: xlang::abi::vec::Vec::new(),
                 tag: Abi::C,
+                variadic: false,
             },
             body: xlang::abi::option::Some(FunctionBody {
                 locals: vec![],
@@ -1549,8 +1553,8 @@ mod test {
             },
             kind: ScalarTypeKind::Integer {
                 signed: true,
-                min: 0,
-                max: 0,
+                min: XLangNone,
+                max: XLangNone,
             },
         };
         let FunctionDeclaration { ty, body } = FunctionDeclaration {
@@ -1558,6 +1562,7 @@ mod test {
                 ret: Type::Scalar(sty),
                 params: xlang::abi::vec::Vec::new(),
                 tag: Abi::C,
+                variadic: false,
             },
             body: xlang::abi::option::Some(FunctionBody {
                 locals: vec![],
@@ -1565,7 +1570,7 @@ mod test {
                     items: vec![
                         BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 1 })),
                         BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: !0 })),
-                        BlockItem::Expr(Expr::BinaryOp(BinaryOp::Add)),
+                        BlockItem::Expr(Expr::BinaryOp(BinaryOp::Add, OverflowBehaviour::Wrap)),
                         BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
                     ],
                 },
@@ -1621,8 +1626,8 @@ mod test {
             },
             kind: ScalarTypeKind::Integer {
                 signed: true,
-                min: i32::MIN.into(),
-                max: i32::MAX.into(),
+                min: XLangNone,
+                max: XLangNone,
             },
         };
         let FunctionDeclaration { ty, body } = FunctionDeclaration {
@@ -1630,6 +1635,7 @@ mod test {
                 ret: Type::Scalar(intty),
                 params: xlang::abi::vec::Vec::new(),
                 tag: Abi::C,
+                variadic: false,
             },
             body: xlang::abi::option::Some(FunctionBody {
                 locals: vec![],
@@ -1691,8 +1697,8 @@ mod test {
             },
             kind: ScalarTypeKind::Integer {
                 signed: true,
-                min: i32::MIN.into(),
-                max: i32::MAX.into(),
+                min: XLangNone,
+                max: XLangNone,
             },
         };
         let FunctionDeclaration { ty, body } = FunctionDeclaration {
@@ -1700,6 +1706,7 @@ mod test {
                 ret: Type::Scalar(intty),
                 params: xlang::abi::vec::Vec::new(),
                 tag: Abi::C,
+                variadic: false,
             },
             body: xlang::abi::option::Some(FunctionBody {
                 locals: vec![],
@@ -1761,8 +1768,8 @@ mod test {
             },
             kind: ScalarTypeKind::Integer {
                 signed: true,
-                min: i32::MIN.into(),
-                max: i32::MAX.into(),
+                min: XLangNone,
+                max: XLangNone,
             },
         };
         let FunctionDeclaration { ty, body } = FunctionDeclaration {
@@ -1770,6 +1777,7 @@ mod test {
                 ret: Type::Scalar(intty),
                 params: xlang::abi::vec::Vec::new(),
                 tag: Abi::C,
+                variadic: false,
             },
             body: xlang::abi::option::Some(FunctionBody {
                 locals: vec![],

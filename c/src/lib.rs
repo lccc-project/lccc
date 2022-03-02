@@ -79,6 +79,7 @@ impl XLangPlugin for CFrontend {
                         ret: into_xir_type_real(char_type, int_type, ret, None),
                         params: param_types,
                         tag: ir::Abi::C,
+                        variadic: false,
                     }))
                 }
                 BaseType::Primitive(PrimitiveType::Char) => ir::Type::Scalar(*char_type),
@@ -165,25 +166,23 @@ impl XLangPlugin for CFrontend {
         let char_type = ir::ScalarType {
             header: ir::ScalarTypeHeader {
                 bitsize: 8,
-                vectorsize: 0,
-                validity: ir::ScalarValidity::empty(),
+                ..ir::ScalarTypeHeader::default()
             },
             kind: ir::ScalarTypeKind::Integer {
                 signed: false,
-                min: i128::from(u8::MIN),
-                max: i128::from(u8::MAX),
+                min: xlang::abi::option::None,
+                max: xlang::abi::option::None,
             },
         };
         let int_type = ir::ScalarType {
             header: ir::ScalarTypeHeader {
                 bitsize: 32,
-                vectorsize: 0,
-                validity: ir::ScalarValidity::empty(),
+                ..ir::ScalarTypeHeader::default()
             },
             kind: ir::ScalarTypeKind::Integer {
                 signed: true,
-                min: i128::from(i32::MIN),
-                max: i128::from(i32::MAX),
+                min: xlang::abi::option::None,
+                max: xlang::abi::option::None,
             },
         };
 

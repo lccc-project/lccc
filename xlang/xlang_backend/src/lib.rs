@@ -9,8 +9,8 @@ use xlang::{
     abi::string::StringView,
     ir::{
         AccessClass, AggregateCtor, BinaryOp, Block, BranchCondition, Expr, FnType, FunctionBody,
-        Path, PathComponent, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind,
-        ScalarValidity, StackItem, StackValueKind, Type, UnaryOp, Value,
+        OverflowBehaviour, Path, PathComponent, PointerType, ScalarType, ScalarTypeHeader,
+        ScalarTypeKind, ScalarValidity, StackItem, StackValueKind, Type, UnaryOp, Value,
     },
     prelude::v1::*,
     targets::properties::TargetProperties,
@@ -284,7 +284,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     todo!("exit block ${} {}", blk, values);
                 }
             }
-            Expr::BinaryOp(BinaryOp::Cmp) => {
+            Expr::BinaryOp(BinaryOp::Cmp, _) => {
                 let [val1, val2] = [
                     self.vstack.pop_back().unwrap(),
                     self.vstack.pop_back().unwrap(),
@@ -292,7 +292,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 self.vstack
                     .push_back(VStackValue::CompareResult(Box::new(val1), Box::new(val2)))
             }
-            Expr::BinaryOp(op) => {
+            Expr::BinaryOp(op, OverflowBehaviour::Wrap | OverflowBehaviour::Unchecked) => {
                 let val2 = self.vstack.pop_back().unwrap();
                 let val1 = self.vstack.pop_back().unwrap();
                 match (val1, val2) {
@@ -305,7 +305,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         self.vstack.push_back(VStackValue::Trapped);
                     }
                     (VStackValue::Constant(Value::Uninitialized(ty)), _)
-                    | (_, VStackValue::Constant(Value::Uninitialized(ty))) => match op {
+                    | (_, VStackValue::Constant(Value::Uninitialized(ty))) => match *op {
                         BinaryOp::Cmp | BinaryOp::CmpInt => {
                             self.vstack
                                 .push_back(VStackValue::Constant(Value::Uninitialized(
@@ -316,8 +316,8 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                         },
                                         kind: ScalarTypeKind::Integer {
                                             signed: true,
-                                            min: i32::MIN.into(),
-                                            max: i32::MAX.into(),
+                                            min: None,
+                                            max: None,
                                         },
                                     }),
                                 )));
@@ -337,8 +337,8 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                         },
                                         kind: ScalarTypeKind::Integer {
                                             signed: false,
-                                            min: 0,
-                                            max: 1,
+                                            min: None,
+                                            max: None,
                                         },
                                     }),
                                 )));
@@ -367,7 +367,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                     header:
                                         ScalarTypeHeader {
                                             bitsize,
-                                            vectorsize: 0,
+                                            vectorsize: None,
                                             validity: validity1,
                                         },
                                     kind: ScalarTypeKind::Integer { signed, .. },
@@ -380,7 +380,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                     header:
                                         ScalarTypeHeader {
                                             bitsize: bitsize2,
-                                            vectorsize: 0,
+                                            vectorsize: None,
                                             validity: validity2,
                                         },
                                     kind: ScalarTypeKind::Integer { .. },
@@ -389,7 +389,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         }),
                     ) if bitsize == bitsize2 && bitsize <= 128 => {
                         let validity = validity1 & validity2;
-                        let mut val = match op {
+                        let mut val = match *op {
                             BinaryOp::Add => {
                                 (val1.wrapping_add(val2))
                                     & (!((!0u128).wrapping_shl(128 - (bitsize as u32))))
@@ -421,6 +421,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                             BinaryOp::CmpNe => (val1 != val2) as u128,
                             BinaryOp::CmpGe => (val1 >= val2) as u128,
                             BinaryOp::CmpLe => (val1 <= val2) as u128,
+                            op => panic!("Unexpected binary Operator {:?}", op),
                         };
 
                         if signed && (bitsize > 0) {
@@ -431,13 +432,13 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         let ty = ScalarType {
                             header: ScalarTypeHeader {
                                 bitsize,
-                                vectorsize: 0,
+                                vectorsize: None,
                                 validity,
                             },
                             kind: ScalarTypeKind::Integer {
                                 signed,
-                                min: 0,
-                                max: 0,
+                                min: None,
+                                max: None,
                             },
                         };
                         if val == 0 && validity.contains(ScalarValidity::NONZERO) {
@@ -450,7 +451,8 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     (val1, val2) => todo!("binary op {:?} [{:?},{:?}]", op, val1, val2),
                 }
             }
-            Expr::UnaryOp(op) => todo!("unary op {:?}", op),
+            Expr::BinaryOp(op, overflow) => todo!("binary op {:?} {:?}", op, overflow),
+            Expr::UnaryOp(op, overflow) => todo!("unary op {:?} {:?}", op, overflow),
             Expr::CallFunction(ty) => {
                 let start = self.vstack.len() - ty.params.len();
                 let params = self.vstack.drain(start..).collect::<Vec<_>>();
@@ -753,6 +755,38 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     val => panic!("Cannot assign to an rvalue {:?}", val),
                 }
             }
+            Expr::CompoundAssign(_, _, _) => todo!("compound assign"),
+            Expr::LValueOp(_, _, _) => todo!("lvalue"),
+            Expr::Indirect => match self.vstack.pop_back().unwrap() {
+                VStackValue::Pointer(p, lval) => self
+                    .vstack
+                    .push_back(VStackValue::LValue(Box::into_inner(p.inner), lval)),
+                VStackValue::Constant(Value::GlobalAddress { ty, item }) => self
+                    .vstack
+                    .push_back(VStackValue::LValue(ty, LValue::GlobalAddress(item))),
+                VStackValue::Constant(Value::Invalid(Type::Pointer(_)))
+                | VStackValue::Constant(Value::Uninitialized(Type::Pointer(_))) => {
+                    self.inner.write_trap(Trap::Unreachable);
+                    self.vstack.push_back(VStackValue::Trapped);
+                }
+                VStackValue::Trapped => {
+                    self.vstack.push_back(VStackValue::Trapped);
+                }
+                val => panic!("Invalid value for indirect {:?}", val),
+            },
+            Expr::AddrOf => match self.vstack.pop_back().unwrap() {
+                VStackValue::LValue(ty, lval) => self.vstack.push_back(VStackValue::Pointer(
+                    PointerType {
+                        inner: Box::new(ty),
+                        ..Default::default()
+                    },
+                    lval,
+                )),
+                VStackValue::Trapped => self.vstack.push_back(VStackValue::Trapped),
+                val => panic!("invalid value for addr_of {:?}", val),
+            },
+            Expr::Sequence(_) => todo!(),
+            Expr::Fence(_) => todo!(),
         }
     }
 
@@ -821,8 +855,8 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     },
                     kind: ScalarTypeKind::Integer {
                         signed: true,
-                        min: i32::MIN as i128,
-                        max: i32::MAX as i128,
+                        min: None,
+                        max: None,
                     },
                 },
                 loc.clone(),

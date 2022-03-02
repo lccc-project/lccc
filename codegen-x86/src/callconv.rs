@@ -2,7 +2,10 @@ use std::collections::HashSet;
 
 use arch_ops::x86::{features::X86Feature, X86Register, X86RegisterClass};
 use target_tuples::Target;
-use xlang::{prelude::v1::Pair, targets::properties::TargetProperties};
+use xlang::{
+    prelude::v1::{Pair, Some as XLangSome},
+    targets::properties::TargetProperties,
+};
 use xlang_struct::{
     Abi, AggregateDefinition, FnType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type,
 };
@@ -29,7 +32,7 @@ pub fn classify_type(ty: &Type) -> Option<TypeClass> {
         Type::Scalar(ScalarType {
             header:
                 ScalarTypeHeader {
-                    vectorsize: 1..=65535,
+                    vectorsize: XLangSome(1..=65535),
                     ..
                 },
             ..

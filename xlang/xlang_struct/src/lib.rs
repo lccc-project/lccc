@@ -100,7 +100,7 @@ bitflags::bitflags! {
 #[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq)]
 pub struct ScalarTypeHeader {
     pub bitsize: u16,
-    pub vectorsize: u16,
+    pub vectorsize: Option<u16>,
     pub validity: ScalarValidity,
 }
 bitflags::bitflags! {
@@ -115,12 +115,22 @@ bitflags::bitflags! {
 #[repr(u8)]
 pub enum ScalarTypeKind {
     Empty,
-    Integer { signed: bool, min: i128, max: i128 },
-    Float { decimal: bool },
+    Integer {
+        signed: bool,
+        min: Option<i128>,
+        max: Option<i128>,
+    },
+    Float {
+        decimal: bool,
+    },
     // long double
     LongFloat,
-    Fixed { fractbits: u16 },
-    Char { flags: CharFlags },
+    Fixed {
+        fractbits: u16,
+    },
+    Char {
+        flags: CharFlags,
+    },
 }
 
 impl Default for ScalarTypeKind {
@@ -239,10 +249,11 @@ pub struct PointerType {
 }
 
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, Hash, PartialEq, Eq)]
 pub struct FnType {
     pub ret: Type,
     pub params: Vec<Type>,
+    pub variadic: bool,
     pub tag: Abi,
 }
 
@@ -283,36 +294,66 @@ pub enum Value {
     },
 }
 
-#[repr(u16)]
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub enum BinaryOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-    BitAnd,
-    BitOr,
-    BitXor,
-    Rsh,
-    Lsh,
+fake_enum::fake_enum! {
+    #[repr(u16)]
+    #[derive(Hash)]
+    pub enum struct BinaryOp {
+        Add = 0,
+        Sub = 1,
+        Mul = 2,
+        Div = 3,
+        Mod = 4,
+        BitAnd = 5,
+        BitOr = 6,
+        BitXor = 7,
+        Rsh = 8,
+        Lsh = 9,
 
-    CmpInt,
-    CmpLt,
-    CmpGt,
-    CmpEq,
-    CmpNe,
-    CmpGe,
-    CmpLe,
-    Cmp,
+        CmpInt = 10,
+        CmpLt = 11,
+        CmpGt = 12,
+        CmpEq = 13,
+        CmpNe = 14,
+        CmpGe = 15,
+        CmpLe = 16,
+        Cmp = 17,
+    }
 }
 
-#[repr(u16)]
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub enum UnaryOp {
-    Minus,
-    BitNot,
-    LogicNot,
+fake_enum::fake_enum! {
+    #[repr(u16)]
+    #[derive(Hash)]
+    pub enum struct UnaryOp {
+        Minus = 0,
+        BitNot = 1,
+        LogicNot = 2,
+    }
+}
+
+fake_enum::fake_enum! {
+    #[repr(u16)]
+    #[derive(Hash)]
+    pub enum struct OverflowBehaviour{
+        Wrap = 0,
+        Trap = 1,
+        Checked = 2,
+        Unchecked = 3,
+        Saturate = 4,
+    }
+}
+
+fake_enum::fake_enum! {
+    #[repr(u16)]
+    #[derive(Hash)]
+    pub enum struct LValueOp{
+        Xchg = 0,
+        Cmpxchg = 1,
+        Wcmpxchg = 2,
+        PreInc = 3,
+        PostInc = 4,
+        PreDec = 5,
+        PostDec = 6,
+    }
 }
 
 #[repr(u16)]
@@ -375,8 +416,8 @@ pub enum Expr {
         values: u16,
     },
 
-    BinaryOp(BinaryOp),
-    UnaryOp(UnaryOp),
+    BinaryOp(BinaryOp, OverflowBehaviour),
+    UnaryOp(UnaryOp, OverflowBehaviour),
     CallFunction(FnType),
     Branch {
         cond: BranchCondition,
@@ -397,6 +438,12 @@ pub enum Expr {
     },
     Assign(AccessClass),
     AsRValue(AccessClass),
+    CompoundAssign(BinaryOp, OverflowBehaviour, AccessClass),
+    LValueOp(LValueOp, OverflowBehaviour, AccessClass),
+    Indirect,
+    AddrOf,
+    Sequence(AccessClass),
+    Fence(AccessClass),
 }
 
 fake_enum::fake_enum! {
@@ -448,15 +495,20 @@ impl std::fmt::Display for AccessClass {
             sep = " ";
         }
         match atomic {
-            0 => Ok(()),
-            1 => f.write_fmt(format_args!("{}atomic relaxed", sep)),
-            2 => f.write_fmt(format_args!("{}atomic release", sep)),
-            3 => f.write_fmt(format_args!("{}atomic acquire", sep)),
-            4 => f.write_fmt(format_args!("{}atomic acq_rel", sep)),
-            5 => f.write_fmt(format_args!("{}atomic seq_cst", sep)),
-            6..=16 => panic!("Invalid access class {:?}", self),
+            0 => {}
+            1 => f.write_fmt(format_args!("{}atomic relaxed", sep))?,
+            2 => f.write_fmt(format_args!("{}atomic release", sep))?,
+            3 => f.write_fmt(format_args!("{}atomic acquire", sep))?,
+            4 => f.write_fmt(format_args!("{}atomic acq_rel", sep))?,
+            5 => f.write_fmt(format_args!("{}atomic seq_cst", sep))?,
+            x @ 6..=16 => panic!("unknown atomic({})", x),
             _ => unreachable!(),
         }
+        if (bits & 0x80) != 0 {
+            f.write_str(" ")?;
+            f.write_str("fail relaxed")?;
+        }
+        Ok(())
     }
 }
 
@@ -514,16 +566,18 @@ pub struct Block {
     pub items: Vec<BlockItem>,
 }
 
-#[repr(u16)]
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub enum Abi {
-    C,
-    Cdecl,
-    Fastcall,
-    Stdcall,
-    Vectorcall,
-    Thiscall,
-    SysV,
+fake_enum::fake_enum! {
+    #[repr(u16)]
+    #[derive(Hash,Default)]
+    pub enum struct Abi {
+        C = 0,
+        Cdecl = 1,
+        Fastcall = 2,
+        Stdcall = 3,
+        Vectorcall = 4,
+        Thiscall = 5,
+        SysV = 6,
+    }
 }
 
 #[repr(C)]

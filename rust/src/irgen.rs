@@ -79,8 +79,8 @@ fn irgen_type(ty: Type) -> ir::Type {
             },
             kind: ir::ScalarTypeKind::Integer {
                 signed: ty.is_signed(),
-                min: i128::MIN,
-                max: i128::MAX,
+                min: xlang::abi::option::None,
+                max: xlang::abi::option::None,
             },
         }),
         Type::Pointer {
@@ -123,8 +123,8 @@ fn irgen_type(ty: Type) -> ir::Type {
             },
             kind: ir::ScalarTypeKind::Integer {
                 signed: false,
-                min: 0,
-                max: 0,
+                min: xlang::abi::option::None,
+                max: xlang::abi::option::None,
             },
         }),
         x => todo!("{:?}", x),
@@ -290,6 +290,7 @@ fn sig_to_fn_type(sig: FunctionSignature) -> ir::FnType {
             .collect::<Vec<ir::Type>>()
             .into(),
         tag: ir::Abi::C,
+        variadic: false,
     }
 }
 
