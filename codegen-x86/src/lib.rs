@@ -210,6 +210,10 @@ impl FunctionRawCodegen for X86CodegenState {
             LValue::StringLiteral(_, _) | LValue::Label(_) => {
                 self.write_trap(Trap::Unreachable);
             }
+            LValue::Offset(_, _) => todo!("offset"),
+            LValue::Null => {
+                self.write_trap(Trap::Unreachable);
+            }
         }
     }
 
@@ -552,6 +556,7 @@ impl FunctionRawCodegen for X86CodegenState {
                         loc => todo!("move_val({:?})", loc),
                     }
                 }
+                Value::LabelAddress(_) => todo!("label address"),
             },
             VStackValue::Pointer(_, LValue::StringLiteral(encoding, utf8)) => {
                 let sym = self.strings.borrow_mut().get_string_symbol(utf8, encoding);

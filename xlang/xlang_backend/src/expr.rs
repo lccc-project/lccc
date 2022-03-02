@@ -33,6 +33,12 @@ pub enum LValue<Loc: ValLocation> {
     Field(Type, Box<LValue<Loc>>, String),
     /// A pointer to a string literal
     StringLiteral(Encoding, Vec<u8>),
+
+    /// Offset (in bytes) to some other lvalue
+    Offset(Box<LValue<Loc>>, u64),
+
+    /// A Null pointer
+    Null,
 }
 
 /// Represents a value on the stack for codegen

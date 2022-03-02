@@ -292,6 +292,7 @@ pub enum Value {
         utf8: String,
         ty: Type,
     },
+    LabelAddress(u32),
 }
 
 fake_enum::fake_enum! {
@@ -423,6 +424,7 @@ pub enum Expr {
         cond: BranchCondition,
         target: u32,
     },
+    BranchIndirect,
     Convert(ConversionStrength, Type),
     Derive(PointerType, Box<Self>),
     Local(u32),
@@ -444,6 +446,8 @@ pub enum Expr {
     AddrOf,
     Sequence(AccessClass),
     Fence(AccessClass),
+    Switch(Switch),
+    Tailcall(FnType),
 }
 
 fake_enum::fake_enum! {
@@ -537,6 +541,12 @@ impl BitAndAssign for AccessClass {
     fn bitand_assign(&mut self, rhs: Self) {
         self.0 &= rhs.0;
     }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Switch {
+    pub cases: Vec<Pair<Value, u32>>,
+    pub default: Option<u32>,
 }
 
 #[repr(u8)]

@@ -157,7 +157,8 @@ pub fn type_align(ty: &Type, properties: &TargetProperties) -> Option<u64> {
                 | Value::Uninitialized(_)
                 | Value::String { .. }
                 | Value::ByteString { .. }
-                | Value::GlobalAddress { .. } => {
+                | Value::GlobalAddress { .. }
+                | Value::LabelAddress(_) => {
                     panic!("Encountered Invalid Value in Computation of Type")
                 }
                 Value::GenericParameter(_) => panic!("Encountered Generic Parameter in monomorphic code (codegen cannot resolve generics)"),

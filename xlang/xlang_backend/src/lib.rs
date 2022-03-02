@@ -473,7 +473,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                 std::option::Option::Some(PathComponent::Text(n))
                                     if n == "__lccc" || n == "__lccc__" =>
                                 {
-                                    intrinsic::call_intrinsic(&item, self, ty)
+                                    intrinsic::call_intrinsic(&item, self, ty, self.properties);
                                 }
                                 std::option::Option::Some(_) => {
                                     let name = mangle::mangle_itanium(name);
@@ -785,8 +785,11 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 VStackValue::Trapped => self.vstack.push_back(VStackValue::Trapped),
                 val => panic!("invalid value for addr_of {:?}", val),
             },
-            Expr::Sequence(_) => todo!(),
-            Expr::Fence(_) => todo!(),
+            Expr::Sequence(_) => todo!("sequence"),
+            Expr::Fence(_) => todo!("fence"),
+            Expr::BranchIndirect => todo!("branch indirect"),
+            Expr::Switch(_) => todo!("switch"),
+            Expr::Tailcall(_) => todo!("tail call"),
         }
     }
 
@@ -830,8 +833,9 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     },
                     LValue::OpaquePointer(loc.clone()),
                 )),
-                Value::ByteString { .. } => todo!(),
+                Value::ByteString { .. } => todo!("byte string"),
                 Value::String { ty, .. } => self.push_opaque(ty, loc.clone()),
+                Value::LabelAddress(_) => todo!("label addr"),
             },
             VStackValue::LValue(ty, _) => self.vstack.push_back(VStackValue::LValue(
                 ty.clone(),

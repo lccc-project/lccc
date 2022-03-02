@@ -1,0 +1,19 @@
+[package]
+name = "codegen-clever"
+version = "0.1.0"
+edition = "2018"
+license = "BSD-2-Clause-Patent"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[dependencies]
+arch-ops = {path="../arch-ops", version="0.1.0", features=["x86"]}
+binfmt = {path="../binfmt", version="0.1.0", features=["all-formats", "x86"]}
+xlang = {path="../xlang"}
+xlang_struct = {path="../xlang/xlang_struct"}
+xlang_backend = {path="../xlang/xlang_backend"}
+target-tuples = "0.5.2"
+
+[lib]
+crate-type = ["cdylib"]

@@ -1,4 +1,12 @@
-use crate::expr::{Trap, VStackValue};
+use xlang::{
+    ir::{FnType, PathComponent},
+    targets::properties::TargetProperties,
+};
+
+use crate::{
+    expr::{Trap, VStackValue},
+    FunctionCodegen, FunctionRawCodegen,
+};
 
 macro_rules! define_xlang_intrinsics{
     {
@@ -7,7 +15,7 @@ macro_rules! define_xlang_intrinsics{
         ///
         /// Calls an intrinsic function defined
         #[allow(clippy::redundant_closure_call)] // needed for hygine
-        pub fn call_intrinsic<F: $crate::FunctionRawCodegen>(path: &::xlang::ir::Path, codegen: &mut $crate::FunctionCodegen<F>, fnty: &::xlang::ir::FnType){
+        pub fn call_intrinsic<F: $crate::FunctionRawCodegen>(path: &::xlang::ir::Path, codegen: &mut $crate::FunctionCodegen<F>, fnty: &::xlang::ir::FnType,properties: &::xlang::targets::properties::TargetProperties){
             match &*path.components{
                 [::xlang::ir::PathComponent::Root,rest @ ..]
                     | [rest @ ..] => {
@@ -18,10 +26,40 @@ macro_rules! define_xlang_intrinsics{
                             }}).eq(idents.iter().map(|n|::std::option::Option::Some(*n)))=> return (|$codegen: &mut $crate::FunctionCodegen<F>,$ty: &::xlang::ir::FnType| $expr)(codegen,fnty),
                             _ => {}
                         })*
-                        panic!("Unknown intrinsic: {:?}", path)
+                        call_target_intrinsic(rest,codegen,fnty,properties)
                     }
             }
         }
+    }
+}
+
+fn call_target_intrinsic<F: FunctionRawCodegen>(
+    path: &[PathComponent],
+    code: &mut FunctionCodegen<F>,
+    fnty: &FnType,
+    properties: &TargetProperties,
+) {
+    match &path {
+        [PathComponent::Text(lccc), PathComponent::Text(intrinsics), PathComponent::Text(aname), PathComponent::Text(iname)]
+            if lccc.strip_suffix("__").unwrap_or(lccc) == "lccc"
+                && intrinsics
+                    .strip_prefix("__")
+                    .map_or(&**intrinsics, |s| s.strip_suffix("__").unwrap_or(s))
+                    == "intrinsics" =>
+        {
+            for name in properties.arch.arch_names {
+                if name == &**aname {
+                    for name in properties.arch.builtin_names {
+                        if name == &**iname {
+                            let params = code.pop_values(fnty.params.len()).unwrap();
+                            let val = code.raw_inner().write_intrinsic(*name, params);
+                            code.push_value(val);
+                        }
+                    }
+                }
+            }
+        }
+        [path @ ..] => panic!("Unknown intrinsics call {:?}", path),
     }
 }
 

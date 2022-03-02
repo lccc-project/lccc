@@ -30,7 +30,57 @@ macro_rules! x86_builtins{
     }
 }
 
-x86_builtins![];
+x86_builtins![
+    _mm_add_pi16,
+    _mm_add_pi32,
+    _mm_add_pi8,
+    _mm_adds_pi16,
+    _mm_adds_pi8,
+    _mm_adds_pu16,
+    _mm_adds_pu8,
+    _mm_and_si64,
+    _mm_andnot_si64,
+    _mm_cmpeq_pi16,
+    _mm_cmpeq_pi32,
+    _mm_cmpeq_pi8,
+    _mm_cmpgt_pi16,
+    _mm_cmpgt_pi32,
+    _mm_cmpgt_pi8,
+    _mm_cvtm64_si64,
+    _mm_cvtsi32_si64,
+    _m_empty,
+    _mm_empty,
+    _m_from_int,
+    _m_from_int64,
+    _mm_madd_pi16,
+    _mm_mulhi_pi16,
+    _mm_mullo_pi16,
+    _mm_or_si64,
+    _mm_packs_pi16,
+    _mm_packs_pi32,
+    _mm_packs_pu16,
+    _m_packssdw,
+    _m_packsswb,
+    _m_packuswb,
+    _m_paddb,
+    _m_paddd,
+    _m_paddsb,
+    _m_paddsw,
+    _m_paddusb,
+    _m_paddusw,
+    _m_paddw,
+    _m_pand,
+    _m_pandn,
+    _m_pcmpeqb,
+    _m_pcmpeqd,
+    _m_pcmpeqw,
+    _m_pcmpgtb,
+    _m_pcmpgtd,
+    _m_pcmpgtw,
+    _m_paddwd,
+    _m_pmulhw,
+    _m_pullw,
+];
 
 x86_machines! {
     (MX86_64, "x86_64", ["x87","fxsr","mmx","sce","sse","sse2"]),
@@ -38,6 +88,9 @@ x86_machines! {
     (MX86_64_V3, "x86_64-v3" | "x86_64v3", ["x87","fxsr","mmx","sce","sse","sse2","cx16","sahf","popcnt","sse3","sse4.1","sse4.2","sse3","avx","avx2","bmi","bmi2","f16c","lzcnt","movbe","xsave"]),
     (MX86_64_V4, "x86_64-v4" | "x86_64v4", ["x87","fxsr","mmx","sce","sse","sse2","cx16","sahf","popcnt","sse3","sse4.1","sse4.2","sse3","avx",
         "avx2","bmi","bmi2","f16c","lzcnt","movbe","xsave","avx512f","avx512bw","avx512cd","avx512dq","avx512vl"]),
+    (MI86, "i86"|"i8086", []),
+    (MI186, "i186", []),
+    (MI286, "i286", ["x87"]),
     (MI386, "i386", ["x87"]),
     (MI486, "i486", ["x87"]),
     (MI586, "i586" | "pentium", ["x87"]),
@@ -154,6 +207,7 @@ pub static X86_64: ArchProperties = ArchProperties {
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64,
+    arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
 };
 
 pub static X86_64_V2: ArchProperties = ArchProperties {
@@ -162,6 +216,7 @@ pub static X86_64_V2: ArchProperties = ArchProperties {
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64_V2,
+    arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
 };
 
 pub static X86_64_V3: ArchProperties = ArchProperties {
@@ -170,6 +225,7 @@ pub static X86_64_V3: ArchProperties = ArchProperties {
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64_V3,
+    arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
 };
 
 pub static X86_64_V4: ArchProperties = ArchProperties {
@@ -178,6 +234,7 @@ pub static X86_64_V4: ArchProperties = ArchProperties {
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64_V4,
+    arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
 };
 
 pub static I386: ArchProperties = ArchProperties {
@@ -186,6 +243,7 @@ pub static I386: ArchProperties = ArchProperties {
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MI386,
+    arch_names: span![const_sv!("i386"), const_sv!("x86")],
 };
 
 pub static I486: ArchProperties = ArchProperties {
@@ -194,6 +252,7 @@ pub static I486: ArchProperties = ArchProperties {
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MI486,
+    arch_names: span![const_sv!("i486"), const_sv!("x86")],
 };
 pub static I586: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xF,
@@ -201,6 +260,7 @@ pub static I586: ArchProperties = ArchProperties {
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MI586,
+    arch_names: span![const_sv!("i586"), const_sv!("x86")],
 };
 
 pub static I686: ArchProperties = ArchProperties {
@@ -209,4 +269,5 @@ pub static I686: ArchProperties = ArchProperties {
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MI686,
+    arch_names: span![const_sv!("i686"), const_sv!("x86")],
 };

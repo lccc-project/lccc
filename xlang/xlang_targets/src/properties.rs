@@ -82,6 +82,9 @@ pub struct ArchProperties {
     pub machines: Span<'static, Pair<StringView<'static>, &'static MachineProperties>>,
     /// The default set of machine properties to use when compiling for this architecture
     pub default_machine: &'static MachineProperties,
+
+    /// The list of names aliasing the architecture
+    pub arch_names: Span<'static, StringView<'static>>,
 }
 
 ///
@@ -183,6 +186,7 @@ pub struct TargetProperties {
 mod clever;
 mod elf;
 mod linux;
+mod w65;
 mod x86;
 
 #[doc(hidden)]

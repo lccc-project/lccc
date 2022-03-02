@@ -55,6 +55,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "codegen-clever"
+version = "0.1.0"
+dependencies = [
+ "arch-ops",
+ "binfmt",
+ "target-tuples 0.5.4",
+ "xlang",
+ "xlang_backend",
+ "xlang_struct",
+]
+
+[[package]]
 name = "codegen-x86"
 version = "0.1.0"
 dependencies = [
