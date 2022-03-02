@@ -198,17 +198,16 @@ impl FunctionRawCodegen for X86CodegenState {
         match lvalue {
             LValue::OpaquePointer(p) => {
                 let reg = self.get_or_allocate_pointer_reg();
-                self.move_mem2reg(p, reg);
+                self.move_mem2reg(&p, reg);
                 self.move_value(val, ValLocation::ImpliedPtr(reg));
             }
             LValue::Temporary(_) => {}
             LValue::Local(loc) => {
                 self.move_value(val, loc);
             }
-            LValue::GlobalAddress(_) => todo!(),
-            LValue::Label(_) => todo!(),
-            LValue::Field(_, _, _) => todo!(),
-            LValue::StringLiteral(_, _) => {
+            LValue::GlobalAddress(_) => todo!("global address"),
+            LValue::Field(_, _, _) => todo!("field"),
+            LValue::StringLiteral(_, _) | LValue::Label(_) => {
                 self.write_trap(Trap::Unreachable);
             }
         }
@@ -386,7 +385,7 @@ impl FunctionRawCodegen for X86CodegenState {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     fn move_value(&mut self, val: xlang_backend::expr::VStackValue<Self::Loc>, loc: Self::Loc) {
         match val {
             VStackValue::Constant(val) => match val {
@@ -663,15 +662,15 @@ impl FunctionRawCodegen for X86CodegenState {
                     self.move_reg2reg(r2, r1);
                 }
                 (ValLocation::Register(r1), loc) if loc.addressible() => {
-                    self.move_reg2mem(loc, r1);
+                    self.move_reg2mem(&loc, r1);
                 }
                 (loc, ValLocation::Register(r1)) if loc.addressible() => {
-                    self.move_mem2reg(loc, r1);
+                    self.move_mem2reg(&loc, r1);
                 }
                 (l1, l2) if l1.addressible() && l2.addressible() => {
                     let ptrreg = self.get_or_allocate_pointer_reg();
-                    self.move_mem2reg(l1, ptrreg);
-                    self.move_reg2mem(l2, ptrreg);
+                    self.move_mem2reg(&l1, ptrreg);
+                    self.move_reg2mem(&l2, ptrreg);
                 }
                 (ValLocation::Null, _) | (_, ValLocation::Null) => {}
                 (src, dest) => panic!("Cannot move pointer from {:?} to {:?}", src, dest),
@@ -885,17 +884,17 @@ impl FunctionRawCodegen for X86CodegenState {
             (_, ValLocation::Null) | (LValue::Local(ValLocation::Null), _) => {}
             (LValue::OpaquePointer(l1), ValLocation::Register(r)) => {
                 let ptr = self.get_or_allocate_pointer_reg();
-                self.move_mem2reg(l1, ptr);
-                self.move_mem2reg(ValLocation::ImpliedPtr(ptr), r);
+                self.move_mem2reg(&l1, ptr);
+                self.move_mem2reg(&ValLocation::ImpliedPtr(ptr), r);
             }
             (LValue::Local(ValLocation::Register(src)), ValLocation::Register(dest)) => {
                 self.move_reg2reg(dest, src);
             }
             (LValue::Local(src), ValLocation::Register(dest)) if src.addressible() => {
-                self.move_mem2reg(src, dest);
+                self.move_mem2reg(&src, dest);
             }
             (LValue::Local(ValLocation::Register(src)), dest) if dest.addressible() => {
-                self.move_reg2mem(dest, src);
+                self.move_reg2mem(&dest, src);
             }
             (lval, loc) => todo!("load_val {:?} {:?}", lval, loc),
         }
@@ -1010,7 +1009,7 @@ impl X86CodegenState {
                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                         X86Opcode::MovRM8,
                         vec![X86Operand::Register(dest), X86Operand::ModRM(src)],
-                    )))
+                    )));
             }
             X86RegisterClass::Word | X86RegisterClass::Double | X86RegisterClass::Quad => self
                 .insns
@@ -1023,7 +1022,7 @@ impl X86CodegenState {
                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                         X86Opcode::MovQRM,
                         vec![X86Operand::Register(dest), X86Operand::ModRM(src)],
-                    )))
+                    )));
             }
             X86RegisterClass::Xmm => {
                 if self.features.contains(&X86Feature::Avx) {
@@ -1052,7 +1051,7 @@ impl X86CodegenState {
     }
 
     #[allow(dead_code)]
-    fn move_mem2reg(&mut self, loc: ValLocation, reg: X86Register) {
+    fn move_mem2reg(&mut self, loc: &ValLocation, reg: X86Register) {
         let modrm = loc.as_modrm(self.mode, reg.class()).unwrap();
         match reg.class() {
             X86RegisterClass::Byte | X86RegisterClass::ByteRex => {
@@ -1104,13 +1103,13 @@ impl X86CodegenState {
                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                         X86Opcode::TileLoadD,
                         vec![X86Operand::Register(reg), X86Operand::ModRM(modrm)],
-                    )))
+                    )));
             }
             r => todo!("{:?}", r),
         }
     }
 
-    fn move_reg2mem(&mut self, loc: ValLocation, reg: X86Register) {
+    fn move_reg2mem(&mut self, loc: &ValLocation, reg: X86Register) {
         let modrm = loc.as_modrm(self.mode, reg.class()).unwrap();
         match reg.class() {
             X86RegisterClass::Byte | X86RegisterClass::ByteRex => {
@@ -1162,7 +1161,7 @@ impl X86CodegenState {
                     .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                         X86Opcode::TileStoreD,
                         vec![X86Operand::ModRM(modrm), X86Operand::Register(reg)],
-                    )))
+                    )));
             }
             r => todo!("{:?}", r),
         }

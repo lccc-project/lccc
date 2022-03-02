@@ -81,7 +81,7 @@ pub fn find_libraries<K: Borrow<str> + Eq + Hash, V: AsRef<Path>, H: BuildHasher
 
         if let StdOption::Some(over) = overrides.get(&*name) {
             path = Some(over.as_ref().to_owned());
-        } else if name.contains("/") {
+        } else if name.contains('/') {
             path = Some(PathBuf::from(&name));
         } else {
             for search_path in search_paths {

@@ -148,7 +148,7 @@ fn main() {
             "typeck" => mode = Mode::TypeCheck,
             "pluginpath" => {
                 let arg = arg.value.as_ref().unwrap();
-                let (name, path) = arg.split_once("=").unwrap();
+                let (name, path) = arg.split_once('=').unwrap();
                 let path = PathBuf::from(path);
                 plugin_overrides.insert(name.to_string(), path);
             }
@@ -189,13 +189,15 @@ fn main() {
                     abi = Some(x);
                 }
                 x if x.starts_with("arch") => {
-                    arch_machine = Some(x);
+                    let (_, arch) = x.split_once('=').unwrap();
+                    arch_machine = Some(arch);
                 }
                 x if x.starts_with("tune") => {
-                    tune_machine = Some(x);
+                    let (_, tune) = x.split_once('=').unwrap();
+                    tune_machine = Some(tune);
                 }
                 x if x.starts_with("no") => {
-                    let (_, feature) = x.split_once("-").unwrap();
+                    let (_, feature) = x.split_once('-').unwrap();
                     feature_opts.insert(StringView::new(feature), false);
                 }
                 x => {
@@ -240,11 +242,11 @@ fn main() {
         user_handles.push(Handle::open(upath).expect("Could not load plugin"));
     }
 
-    let mut user_plugins = Vec::new();
+    let mut userplugins = Vec::new();
     for h in &user_handles {
         let init = unsafe { h.function_sym("xlang_plugin_main") };
         let init: lccc::PluginInit = init.expect("plugin libray missing required entry point");
-        user_plugins.push(init());
+        userplugins.push(init());
     }
 
     let frontend_paths = lccc::find_libraries(
@@ -290,24 +292,31 @@ fn main() {
 
     let properties = xlang::targets::properties::get_properties(xtarget.clone()).unwrap();
 
-    let arch_mach = if let Some(mach) = arch_machine {
-        properties
+    let arch_mach = match arch_machine {
+        Some("generic") | None => properties.arch.default_machine,
+        Some("native") => todo!("-march=native"),
+        Some(mach) => properties
             .arch
             .machines
             .into_iter()
             .copied()
             .find(|Pair(name, _)| (*name) == mach)
-            .map(|Pair(_, m)| m)
-            .unwrap_or_else(|| {
-                eprintln!("Unknown machine {} for target {}", mach, target);
-                std::process::exit(1)
-            })
-    } else {
-        properties.arch.default_machine
+            .map_or_else(
+                || {
+                    eprintln!("Unknown machine {} for target {}", mach, target);
+                    std::process::exit(1)
+                },
+                |Pair(_, m)| m,
+            ),
     };
 
-    drop(tune_machine);
-    drop(abi);
+    if let Some(tune) = tune_machine {
+        todo!("-mtune={}", tune);
+    }
+
+    if let Some(abi) = abi {
+        todo!("-m{}", abi)
+    }
 
     let mut features = HashSet::<_>::new();
 
@@ -377,7 +386,7 @@ fn main() {
                     } else if mode == Mode::Asm {
                         name += ".s";
                     } else if mode == Mode::Xir {
-                        name += ".xir"
+                        name += ".xir";
                     }
                     name
                 }
@@ -441,7 +450,7 @@ fn main() {
                 plugin.accept_ir(&mut file);
             }
 
-            for plugin in &mut user_plugins {
+            for plugin in &mut userplugins {
                 plugin.set_target(xtarget.clone());
                 plugin.accept_ir(&mut file);
             }

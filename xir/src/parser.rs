@@ -39,9 +39,8 @@ pub fn parse_function_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) 
                                 tok => panic!("Unexpected token {:?}", tok),
                             }
 
-                            match peekable.next() {
-                                Some(tok) => panic!("Unexpected token {:?}", tok),
-                                None => {}
+                            if let Some(tok) = peekable.next() {
+                                panic!("Unexpected token {:?}", tok);
                             }
                             variadic = true;
                             break;
@@ -329,7 +328,7 @@ pub fn parse_path<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Path {
     }
 }
 
-#[allow(clippy::too_many_lines)] // TODO: refactor
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)] // TODO: refactor
 pub fn parse_scope_member<I: Iterator<Item = Token>>(
     it: &mut Peekable<I>,
 ) -> Option<(Path, ScopeMember)> {
@@ -400,9 +399,8 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
                                     tok => panic!("Unexpected token {:?}", tok),
                                 }
 
-                                match peekable.next() {
-                                    Some(tok) => panic!("Unexpected token {:?}", tok),
-                                    None => {}
+                                if let Some(tok) = peekable.next() {
+                                    panic!("Unexpected token {:?}", tok);
                                 }
                                 variadic = true;
                                 break;
@@ -760,7 +758,7 @@ pub fn parse_access_class<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Ac
                         it.next();
                         match it.next().unwrap() {
                             Token::Ident(id) if id == "relaxed" => {
-                                acc |= AccessClass::AtomicFailRelaxed
+                                acc |= AccessClass::AtomicFailRelaxed;
                             }
                             tok => panic!("Unexpected token {:?}", tok),
                         }
@@ -782,7 +780,7 @@ pub fn parse_access_class<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Ac
     }
 }
 
-#[allow(clippy::cognitive_complexity)]
+#[allow(clippy::cognitive_complexity, clippy::too_many_lines)]
 pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
     match it.peek().unwrap() {
         Token::Ident(id) if id == "const" => {
