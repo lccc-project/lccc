@@ -207,13 +207,10 @@ impl FunctionRawCodegen for X86CodegenState {
             }
             LValue::GlobalAddress(_) => todo!("global address"),
             LValue::Field(_, _, _) => todo!("field"),
-            LValue::StringLiteral(_, _) | LValue::Label(_) => {
+            LValue::StringLiteral(_, _) | LValue::Label(_) | LValue::Null => {
                 self.write_trap(Trap::Unreachable);
             }
             LValue::Offset(_, _) => todo!("offset"),
-            LValue::Null => {
-                self.write_trap(Trap::Unreachable);
-            }
         }
     }
 
