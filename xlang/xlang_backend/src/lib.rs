@@ -372,7 +372,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             }
             ty => {
                 let retloc = self.inner.get_callconv().find_return_val(callty);
-                self.push_opaque(&ty, retloc);
+                self.push_opaque(ty, retloc);
             }
         }
     }
@@ -417,7 +417,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             }
             ty => {
                 let retloc = self.inner.get_callconv().find_return_val(callty);
-                self.push_opaque(&ty, retloc);
+                self.push_opaque(ty, retloc);
             }
         }
     }
@@ -461,7 +461,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     VStackValue::Constant(Value::GlobalAddress { ty, item }) => {
                         let realty = match &ty {
                             Type::FnType(ty) => &**ty,
-                            _ => &fnty,
+                            _ => fnty,
                         };
                         self.call_fn(fnty, realty, &item, vals);
                     }
@@ -475,7 +475,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     VStackValue::LValue(ty, lvalue) => {
                         let realty = match &ty {
                             Type::FnType(ty) => &**ty,
-                            _ => &fnty,
+                            _ => fnty,
                         };
                         match lvalue {
                             LValue::OpaquePointer(loc) => {

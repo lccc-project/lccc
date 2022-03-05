@@ -473,6 +473,7 @@ impl FunctionRawCodegen for X86CodegenState {
         todo!()
     }
 
+    #[allow(clippy::cast_possible_truncation)] // truncation here is a feature, not a bug. src may be a sign-extended negative value
     fn move_imm(&mut self, src: u128, dest: Self::Loc) {
         match dest {
             ValLocation::Register(reg) => match reg.class() {
@@ -481,7 +482,7 @@ impl FunctionRawCodegen for X86CodegenState {
                         .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                             X86Opcode::MovImm8,
                             vec![X86Operand::Register(reg), X86Operand::Immediate(src as u64)],
-                        )))
+                        )));
                 }
                 X86RegisterClass::Word | X86RegisterClass::Double | X86RegisterClass::Quad => {
                     if src == 0 {
@@ -489,13 +490,13 @@ impl FunctionRawCodegen for X86CodegenState {
                             .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                                 X86Opcode::XorMR,
                                 vec![X86Operand::Register(reg), X86Operand::Register(reg)],
-                            )))
+                            )));
                     } else {
                         self.insns
                             .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                                 X86Opcode::MovImm,
                                 vec![X86Operand::Register(reg), X86Operand::Immediate(src as u64)],
-                            )))
+                            )));
                     }
                 }
 
@@ -531,7 +532,7 @@ impl FunctionRawCodegen for X86CodegenState {
     }
 
     fn leave_function(&mut self) {
-        self.insns.push(X86InstructionOrLabel::FunctionEpilogue)
+        self.insns.push(X86InstructionOrLabel::FunctionEpilogue);
     }
 
     fn prepare_call_frame(&mut self, _: &FnType, _: &FnType) {

@@ -133,7 +133,7 @@ impl TypeInformation {
                     } => (*val).try_into().ok(),
                     v => panic!("Invalid value encountered in type {:?}", v),
                 }?;
-                return Some(align_size(raw_size, alignment));
+                Some(align_size(raw_size, alignment))
             }
             Type::Aggregate(a) => {
                 let align = a
@@ -169,7 +169,7 @@ impl TypeInformation {
                                 (None, _) | (_, None) => None,
                                 (Some(x), Some(y)) => Some(x.max(y)),
                             })
-                            .map_or(None, |s| s)?;
+                            .and_then(|s| s)?;
                         Some(align_size(raw_size, align))
                     }
                 }
