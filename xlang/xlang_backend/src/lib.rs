@@ -1,16 +1,18 @@
 #![deny(missing_docs, warnings)] // No clippy::nursery
 //! A helper crate for implementing [`xlang::plugin::XLangCodegen`]s without duplicating code (also can be used to evaluate constant expressions)
 //! the `xlang_backend` crate provides a general interface for writing expressions to an output.
-use std::{cmp::Ordering, collections::VecDeque, fmt::Debug};
+use std::{collections::VecDeque, convert::TryInto, fmt::Debug, rc::Rc};
 
 use self::str::Encoding;
+use callconv::CallingConvention;
 use expr::{LValue, Trap, VStackValue, ValLocation};
+use ty::TypeInformation;
 use xlang::{
     abi::string::StringView,
     ir::{
-        AccessClass, AggregateCtor, BinaryOp, Block, BranchCondition, Expr, FnType, FunctionBody,
-        OverflowBehaviour, Path, PathComponent, PointerType, ScalarType, ScalarTypeHeader,
-        ScalarTypeKind, ScalarValidity, StackItem, StackValueKind, Type, UnaryOp, Value,
+        AccessClass, Block, BranchCondition, Expr, FnType, FunctionBody, Path, PointerType,
+        ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, StackItem, StackValueKind,
+        Type, Value,
     },
     prelude::v1::*,
     targets::properties::TargetProperties,
@@ -44,9 +46,12 @@ pub trait FunctionRawCodegen {
     /// The type of errors returned from the [`FunctionRawCodegen::write_output`] function
     type Error: Debug;
 
+    /// The type of calling conventions used by this backend
+    type CallConv: CallingConvention<Loc = Self::Loc> + ?Sized;
+
     /// Handles the `__lccc::xlang::deoptimize` intrinsic. Implemented as a no-op by default.
     /// Implementations that generate IR that is run through a separate optimizer should override the default impl
-    fn write_deoptimize(&mut self, val: VStackValue<Self::Loc>) -> VStackValue<Self::Loc> {
+    fn write_deoptimize(&mut self, val: Self::Loc) -> Self::Loc {
         val
     }
 
@@ -56,21 +61,36 @@ pub trait FunctionRawCodegen {
     /// Writes a full thread fence for the given AccessClass
     fn write_barrier(&mut self, acc: AccessClass);
 
-    /// Writes a given value into a given lvalue.
-    fn store_val(&mut self, val: VStackValue<Self::Loc>, lvalue: LValue<Self::Loc>);
+    /// Moves a value between two [`ValLocation`]s
+    fn move_val(&mut self, src: Self::Loc, dest: Self::Loc);
+
+    /// Stores an immediate value into the given location
+    fn move_imm(&mut self, src: u128, dest: Self::Loc);
+
+    /// Stores an immediate value into
+    fn store_indirect_imm(&mut self, src: Value, ptr: Self::Loc);
 
     /// Loads a value into the given val location
     fn load_val(&mut self, lvalue: LValue<Self::Loc>, loc: Self::Loc);
 
-    /// Writes the exit routine for returning nothing
-    fn return_void(&mut self);
+    /// Obtains the calling convention for the current function
+    fn get_callconv(&self) -> &Self::CallConv;
 
-    /// Writes the exit routine for returning a value, including moving the value into the return place
-    fn return_value(&mut self, val: VStackValue<Self::Loc>);
+    /// The maximum integer size (in bits) supported natively (without emulation)
+    fn native_int_size(&self) -> u16;
+    /// The maximum floating point size (in bits) supported natively, or None if no floating-point support exists
+    fn native_float_size(&self) -> Option<u16>;
 
-    /// Preferred Vector size of the current codegen
-    fn preferred_vec_size(&self) -> usize {
-        0
+    /// The maximum Vector size supported natively, in bytes
+    fn native_vec_size(&self) -> Option<u64> {
+        None
+    }
+
+    /// Preferred Vector size of the current codegen, in total bytes
+    /// This need not be the same as the [`FunctionRawCodegen::native_vec_size`], for example, if some vector types incur a significant runtime performance penalty
+    /// (such as AVX-512)
+    fn preferred_vec_size(&self) -> Option<u64> {
+        None
     }
 
     /// Writes a call to a target intrinsic (such as `x86::_mm_addp_i8`)
@@ -83,19 +103,9 @@ pub trait FunctionRawCodegen {
     /// Writes a new target at the current location
     fn write_target(&mut self, target: u32);
     /// Performs a direct call to a named function
-    fn call_direct(
-        &mut self,
-        value: StringView,
-        ty: &FnType,
-        params: Vec<VStackValue<Self::Loc>>,
-    ) -> Option<VStackValue<Self::Loc>>;
+    fn call_direct(&mut self, path: &Path);
     /// Performs an indirect call to the pointer stored in `value`
-    fn call_indirect(
-        &mut self,
-        value: Self::Loc,
-        ty: &FnType,
-        params: Vec<VStackValue<Self::Loc>>,
-    ) -> Option<VStackValue<Self::Loc>>;
+    fn call_indirect(&mut self, value: Self::Loc);
 
     /// Performs a guaranteed tail call to the target
     /// Note: The signature is assumed to be compatible with the current function
@@ -115,6 +125,9 @@ pub trait FunctionRawCodegen {
         params: Vec<VStackValue<Self::Loc>>,
     );
 
+    /// Performs the exit sequence of a function
+    fn leave_function(&mut self);
+
     /// Performs a conditional branch to `target` based on `condition` and `val`
     fn branch(&mut self, target: u32, condition: BranchCondition, val: VStackValue<Self::Loc>);
     /// Performs a conditional branch based on comparing `v1` and `v2` according to `condition`
@@ -131,8 +144,6 @@ pub trait FunctionRawCodegen {
 
     /// Branches to the target given in `target`
     fn branch_indirect(&mut self, target: Self::Loc);
-    /// Moves a value to `loc`. Doesn't free the incoming `val`
-    fn move_value(&mut self, val: VStackValue<Self::Loc>, loc: Self::Loc);
 
     /// Computes the address of a global, and moves the pointer into `Self::Loc`
     fn compute_global_address(&mut self, path: &Path, loc: Self::Loc);
@@ -161,16 +172,6 @@ pub trait FunctionRawCodegen {
     /// Allocates space to store an lvalue
     fn allocate_lvalue(&mut self, needs_addr: bool) -> Self::Loc;
 
-    /// Writes the result of some binary operator applied to v1 and v2 to the location given by `out`
-    /// Implementations should be prepared to handle constant values, as well as opaque values
-    fn write_binary_op(
-        &mut self,
-        v1: VStackValue<Self::Loc>,
-        v2: VStackValue<Self::Loc>,
-        op: BinaryOp,
-        out: Self::Loc,
-    );
-
     /// Writes a branch point for the entry of block n
     fn write_block_entry_point(&mut self, n: u32);
     /// Writes a branch point for the exit of block n
@@ -178,13 +179,8 @@ pub trait FunctionRawCodegen {
     /// Writes an branch to the exit of block n
     fn write_block_exit(&mut self, n: u32);
 
-    /// Writes the result of some unary operator applied to v1 and v2 to the location given by `out`
-    /// Implementations should be prepared to handle constant values, as well as opaque values
-    fn write_unary_op(&mut self, v1: VStackValue<Self::Loc>, op: UnaryOp, out: Self::Loc);
-
-    /// Writes the result of a scalar cast to some ScalarType to v1 to the location given by `out`
-    /// Implementations should be prepared to handle constant values, as well as opaque values
-    fn write_scalar_cast(&mut self, v1: VStackValue<Self::Loc>, ty: &ScalarType, out: Self::Loc);
+    /// Prepares the stack frame (as necessary) for a call to a function with the given `callty` and `realty`
+    fn prepare_call_frame(&mut self, callty: &FnType, realty: &FnType);
 }
 
 /// A type for handling the generation of code for functions.
@@ -195,6 +191,8 @@ pub struct FunctionCodegen<F: FunctionRawCodegen> {
     targets: HashMap<u32, Vec<(F::Loc, StackItem)>>,
     diverged: bool,
     locals: Vec<(F::Loc, Type)>,
+    fnty: FnType,
+    _tys: Rc<TypeInformation>,
 }
 
 impl<F: FunctionRawCodegen> FunctionCodegen<F> {
@@ -202,8 +200,9 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
     pub fn new(
         inner: F,
         _path: Path,
-        _fnty: FnType,
+        fnty: FnType,
         properties: &'static TargetProperties,
+        tys: Rc<TypeInformation>,
     ) -> Self {
         Self {
             inner,
@@ -212,6 +211,8 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             targets: HashMap::new(),
             diverged: false,
             locals: Vec::new(),
+            fnty,
+            _tys: tys,
         }
     }
 
@@ -229,6 +230,54 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
     /// Obtains the inner `F` from self
     pub fn into_inner(self) -> F {
         self.inner
+    }
+
+    /// Moves a given value into the given value location
+    pub fn move_val(&mut self, val: VStackValue<F::Loc>, loc: F::Loc) {
+        match val {
+            VStackValue::Constant(Value::Invalid(_)) => {
+                self.inner.write_trap(Trap::Unreachable);
+                self.vstack.push_back(VStackValue::Trapped);
+            }
+            VStackValue::Constant(Value::Uninitialized(_)) | VStackValue::Trapped => {}
+            VStackValue::Constant(Value::GlobalAddress { item, .. }) => {
+                self.inner.compute_global_address(&item, loc)
+            }
+            VStackValue::Constant(Value::LabelAddress(n)) => {
+                self.inner.compute_label_address(n, loc)
+            }
+            VStackValue::Constant(Value::String {
+                encoding,
+                utf8,
+                ty: Type::Pointer(_),
+            }) => {
+                self.inner
+                    .compute_string_address(Encoding::XLang(encoding), utf8.into_bytes(), loc)
+            }
+            VStackValue::Constant(Value::String { ty, .. }) => todo!("string {:?}", ty),
+            VStackValue::Constant(Value::ByteString { content }) => self
+                .inner
+                .compute_string_address(Encoding::Byte, content, loc),
+            VStackValue::Constant(Value::Integer { val, .. }) => self.inner.move_imm(val, loc),
+            VStackValue::Constant(Value::GenericParameter(n)) => todo!("%{}", n),
+            VStackValue::LValue(_, lvalue) | VStackValue::Pointer(_, lvalue) => match lvalue {
+                LValue::OpaquePointer(loc2) => self.inner.move_val(loc2, loc),
+                LValue::Temporary(_) => todo!("temporary address"),
+                LValue::Local(n) => todo!("local {:?}", n),
+                LValue::GlobalAddress(item) => self.inner.compute_global_address(&item, loc),
+                LValue::Label(n) => self.inner.compute_label_address(n, loc),
+                LValue::Field(_, _, _) => todo!("field"),
+                LValue::StringLiteral(enc, bytes) => {
+                    self.inner.compute_string_address(enc, bytes, loc)
+                }
+                LValue::Offset(_, _) => todo!("offset"),
+                LValue::Null => self.inner.move_imm(0, loc),
+            },
+            VStackValue::OpaqueScalar(_, loc2) => self.inner.move_val(loc2, loc),
+            VStackValue::AggregatePieced(_, _) => todo!("aggregate pieced"),
+            VStackValue::OpaqueAggregate(_, loc2) => self.inner.move_val(loc2, loc),
+            VStackValue::CompareResult(_, _) => todo!("compare result"),
+        }
     }
 
     ///
@@ -254,620 +303,257 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         }
     }
 
+    ///
+    /// Pushes all of the incoming values to the stack, in order
+    pub fn push_values<I: IntoIterator<Item = VStackValue<F::Loc>>>(&mut self, vals: I) {
+        self.vstack.extend(vals);
+    }
+
+    /// Pushes an opaque value of the given type
+    pub fn push_opaque(&mut self, ty: &Type, loc: F::Loc) {
+        match ty {
+            Type::Null | Type::Void | Type::FnType(_) => panic!("Invalid type"),
+            Type::Scalar(sty) => self.push_value(VStackValue::OpaqueScalar(*sty, loc)),
+            Type::Pointer(pty) => self.push_value(VStackValue::Pointer(
+                pty.clone(),
+                LValue::OpaquePointer(loc),
+            )),
+            Type::Array(_) => todo!("array"),
+            Type::TaggedType(_, ty) => self.push_opaque(ty, loc),
+            Type::Product(_) | Type::Aggregate(_) => {
+                self.push_value(VStackValue::OpaqueAggregate(ty.clone(), loc))
+            }
+            Type::Aligned(_, ty) => self.push_opaque(ty, loc),
+        }
+    }
+
     /// Clears the expression stack
     pub fn clear_stack(&mut self) {
         self.vstack.clear()
+    }
+
+    /// Calls a function by memory address stored in `loc`
+    pub fn call_indirect(
+        &mut self,
+        callty: &FnType,
+        realty: &FnType,
+        loc: F::Loc,
+        vals: Vec<VStackValue<F::Loc>>,
+    ) {
+        self.inner.prepare_call_frame(callty, realty);
+        if let std::option::Option::Some(place) =
+            self.inner.get_callconv().pass_return_place(&callty.ret)
+        {
+            todo!("return place {:?}", place);
+        }
+
+        for (i, val) in vals.into_iter().enumerate() {
+            let param_loc =
+                self.inner
+                    .get_callconv()
+                    .find_param(callty, realty, i.try_into().unwrap(), false);
+            self.move_val(val, param_loc);
+        }
+
+        self.inner.call_indirect(loc);
+        match &callty.ret {
+            Type::Void => {}
+            Type::Scalar(ScalarType {
+                kind: kind @ ScalarTypeKind::Integer { .. },
+                header: header @ ScalarTypeHeader { bitsize: 0, .. },
+            }) if header.validity.contains(ScalarValidity::NONZERO) => {
+                // special case uint nonzero(0)/int nonzero(0)
+                self.push_value(VStackValue::Constant(Value::Uninitialized(Type::Scalar(
+                    ScalarType {
+                        kind: *kind,
+                        header: *header,
+                    },
+                ))));
+            }
+            ty => {
+                let retloc = self.inner.get_callconv().find_return_val(callty);
+                self.push_opaque(&ty, retloc);
+            }
+        }
+    }
+
+    /// Calls a function by name
+    pub fn call_fn(
+        &mut self,
+        callty: &FnType,
+        realty: &FnType,
+        path: &Path,
+        vals: Vec<VStackValue<F::Loc>>,
+    ) {
+        self.inner.prepare_call_frame(callty, realty);
+        if let std::option::Option::Some(place) =
+            self.inner.get_callconv().pass_return_place(&callty.ret)
+        {
+            todo!("return place {:?}", place);
+        }
+
+        for (i, val) in vals.into_iter().enumerate() {
+            let param_loc =
+                self.inner
+                    .get_callconv()
+                    .find_param(callty, realty, i.try_into().unwrap(), false);
+            self.move_val(val, param_loc);
+        }
+
+        self.inner.call_direct(path);
+        match &callty.ret {
+            Type::Void => {}
+            Type::Scalar(ScalarType {
+                kind: kind @ ScalarTypeKind::Integer { .. },
+                header: header @ ScalarTypeHeader { bitsize: 0, .. },
+            }) if header.validity.contains(ScalarValidity::NONZERO) => {
+                // special case uint nonzero(0)/int nonzero(0)
+                self.push_value(VStackValue::Constant(Value::Uninitialized(Type::Scalar(
+                    ScalarType {
+                        kind: *kind,
+                        header: *header,
+                    },
+                ))));
+            }
+            ty => {
+                let retloc = self.inner.get_callconv().find_return_val(callty);
+                self.push_opaque(&ty, retloc);
+            }
+        }
     }
 
     /// Writes an expression in linear order into the codegen
     pub fn write_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Null => {}
-            Expr::Const(v) => self.vstack.push_back(VStackValue::Constant(v.clone())),
+            Expr::Const(v) => self.push_value(VStackValue::Constant(v.clone())),
             Expr::ExitBlock { blk, values } => {
                 self.diverged = true;
-                if *blk == 0 {
-                    assert!(*values <= 1);
-                    if *values == 0 {
-                        self.inner.return_void();
-                    } else {
-                        let val = self.vstack.pop_back().unwrap();
-                        if let VStackValue::Trapped = val {
-                            self.vstack.push_back(VStackValue::Trapped)
-                        } else {
-                            self.inner.return_value(val);
-                        }
-                    }
-                } else if *values == 0 {
-                    self.inner.write_block_exit(*blk);
-                } else {
-                    todo!("exit block ${} {}", blk, values);
-                }
-            }
-            Expr::BinaryOp(BinaryOp::Cmp, _) => {
-                let [val1, val2] = [
-                    self.vstack.pop_back().unwrap(),
-                    self.vstack.pop_back().unwrap(),
-                ];
-                self.vstack
-                    .push_back(VStackValue::CompareResult(Box::new(val1), Box::new(val2)))
-            }
-            Expr::BinaryOp(op, OverflowBehaviour::Wrap | OverflowBehaviour::Unchecked) => {
-                let val2 = self.vstack.pop_back().unwrap();
-                let val1 = self.vstack.pop_back().unwrap();
-                match (val1, val2) {
-                    (VStackValue::Trapped, _) | (_, VStackValue::Trapped) => {
-                        self.vstack.push_back(VStackValue::Trapped);
-                    }
-                    (VStackValue::Constant(Value::Invalid(_)), _)
-                    | (_, VStackValue::Constant(Value::Invalid(_))) => {
-                        self.inner.write_trap(Trap::Unreachable);
-                        self.vstack.push_back(VStackValue::Trapped);
-                    }
-                    (VStackValue::Constant(Value::Uninitialized(ty)), _)
-                    | (_, VStackValue::Constant(Value::Uninitialized(ty))) => match *op {
-                        BinaryOp::Cmp | BinaryOp::CmpInt => {
-                            self.vstack
-                                .push_back(VStackValue::Constant(Value::Uninitialized(
-                                    Type::Scalar(ScalarType {
-                                        header: ScalarTypeHeader {
-                                            bitsize: 32,
-                                            ..Default::default()
-                                        },
-                                        kind: ScalarTypeKind::Integer {
-                                            signed: true,
-                                            min: None,
-                                            max: None,
-                                        },
-                                    }),
-                                )));
-                        }
-                        BinaryOp::CmpLt
-                        | BinaryOp::CmpGt
-                        | BinaryOp::CmpEq
-                        | BinaryOp::CmpNe
-                        | BinaryOp::CmpGe
-                        | BinaryOp::CmpLe => {
-                            self.vstack
-                                .push_back(VStackValue::Constant(Value::Uninitialized(
-                                    Type::Scalar(ScalarType {
-                                        header: ScalarTypeHeader {
-                                            bitsize: 1,
-                                            ..Default::default()
-                                        },
-                                        kind: ScalarTypeKind::Integer {
-                                            signed: false,
-                                            min: None,
-                                            max: None,
-                                        },
-                                    }),
-                                )));
-                        }
-                        _ => self
-                            .vstack
-                            .push_back(VStackValue::Constant(Value::Uninitialized(ty))),
-                    },
-                    (VStackValue::LValue(_, _), _) | (_, VStackValue::LValue(_, _)) => {
-                        panic!("lvalues are not valid for {:?}", op)
-                    }
-                    (
-                        VStackValue::AggregatePieced(_, _) | VStackValue::OpaqueAggregate(_, _),
-                        _,
-                    )
-                    | (
-                        _,
-                        VStackValue::AggregatePieced(_, _) | VStackValue::OpaqueAggregate(_, _),
-                    ) => {
-                        panic!("aggregates are not valid for {:?}", op)
-                    }
-                    (
-                        VStackValue::Constant(Value::Integer {
-                            ty:
-                                ScalarType {
-                                    header:
-                                        ScalarTypeHeader {
-                                            bitsize,
-                                            vectorsize: None,
-                                            validity: validity1,
-                                        },
-                                    kind: ScalarTypeKind::Integer { signed, .. },
-                                },
-                            val: val1,
-                        }),
-                        VStackValue::Constant(Value::Integer {
-                            ty:
-                                ScalarType {
-                                    header:
-                                        ScalarTypeHeader {
-                                            bitsize: bitsize2,
-                                            vectorsize: None,
-                                            validity: validity2,
-                                        },
-                                    kind: ScalarTypeKind::Integer { .. },
-                                },
-                            val: val2,
-                        }),
-                    ) if bitsize == bitsize2 && bitsize <= 128 => {
-                        let validity = validity1 & validity2;
-                        let mut val = match *op {
-                            BinaryOp::Add => {
-                                (val1.wrapping_add(val2))
-                                    & (!((!0u128).wrapping_shl(128 - (bitsize as u32))))
-                            }
-                            BinaryOp::Sub => {
-                                (val1.wrapping_sub(val2))
-                                    & (!((!0u128).wrapping_shl(128 - (bitsize as u32))))
-                            }
-
-                            BinaryOp::BitAnd => val1 & val2,
-                            BinaryOp::BitOr => val1 | val2,
-                            BinaryOp::BitXor => val1 ^ val2,
-                            BinaryOp::Mul => todo!(),
-                            BinaryOp::Div => todo!(),
-                            BinaryOp::Mod => todo!(),
-                            BinaryOp::Rsh => todo!(),
-                            BinaryOp::Lsh => {
-                                (val1.wrapping_shl((val2 % (bitsize as u128)) as u32))
-                                    & (!((!0u128).wrapping_shl(128 - (bitsize as u32))))
-                            }
-                            BinaryOp::CmpInt | BinaryOp::Cmp => match val1.cmp(&val2) {
-                                Ordering::Less => !0,
-                                Ordering::Equal => 0,
-                                Ordering::Greater => 1,
-                            },
-                            BinaryOp::CmpLt => (val1 < val2) as u128,
-                            BinaryOp::CmpGt => (val1 > val2) as u128,
-                            BinaryOp::CmpEq => (val1 == val2) as u128,
-                            BinaryOp::CmpNe => (val1 != val2) as u128,
-                            BinaryOp::CmpGe => (val1 >= val2) as u128,
-                            BinaryOp::CmpLe => (val1 <= val2) as u128,
-                            op => panic!("Unexpected binary Operator {:?}", op),
-                        };
-
-                        if signed && (bitsize > 0) {
-                            val = (((val as i128) << ((128 - (bitsize - 1)) as u32))
-                                >> ((128 - (bitsize - 1)) as u32))
-                                as u128;
-                        }
-                        let ty = ScalarType {
-                            header: ScalarTypeHeader {
-                                bitsize,
-                                vectorsize: None,
-                                validity,
-                            },
-                            kind: ScalarTypeKind::Integer {
-                                signed,
-                                min: None,
-                                max: None,
-                            },
-                        };
-                        if val == 0 && validity.contains(ScalarValidity::NONZERO) {
-                            self.vstack
-                                .push_back(VStackValue::Constant(Value::Invalid(Type::Scalar(ty))))
-                        }
-                        self.vstack
-                            .push_back(VStackValue::Constant(Value::Integer { ty, val }));
-                    }
-                    (val1, val2) => todo!("binary op {:?} [{:?},{:?}]", op, val1, val2),
-                }
-            }
-            Expr::BinaryOp(op, overflow) => todo!("binary op {:?} {:?}", op, overflow),
-            Expr::UnaryOp(op, overflow) => todo!("unary op {:?} {:?}", op, overflow),
-            Expr::CallFunction(ty) => {
-                let start = self.vstack.len() - ty.params.len();
-                let params = self.vstack.drain(start..).collect::<Vec<_>>();
-                let f = self.vstack.pop_back().unwrap();
-                match f {
-                    VStackValue::Trapped => self.vstack.push_back(VStackValue::Trapped),
-                    VStackValue::Constant(Value::GlobalAddress { item, .. }) => {
-                        match &*item.components {
-                            [PathComponent::Text(name)]
-                            | [PathComponent::Root, PathComponent::Text(name)] => {
-                                if let Some(ret) =
-                                    self.inner.call_direct(StringView::new(name), ty, params)
-                                {
-                                    self.vstack.push_back(ret)
-                                }
-                            }
-                            [PathComponent::Root, name @ ..] | [name @ ..] => match name.first() {
-                                std::option::Option::Some(PathComponent::Text(n))
-                                    if n == "__lccc" || n == "__lccc__" =>
-                                {
-                                    intrinsic::call_intrinsic(&item, self, ty, self.properties);
-                                }
-                                std::option::Option::Some(_) => {
-                                    let name = mangle::mangle_itanium(name);
-                                    if let Some(ret) =
-                                        self.inner.call_direct(StringView::new(&name), ty, params)
-                                    {
-                                        self.vstack.push_back(ret)
-                                    }
-                                }
-                                std::option::Option::None => {
-                                    panic!("unexpected path without components")
-                                }
-                            },
-                        }
-                    }
-                    VStackValue::Constant(Value::Uninitialized(_))
-                    | VStackValue::Constant(Value::Invalid(_)) => {
-                        self.inner.write_trap(Trap::Unreachable);
-                        self.vstack.push_back(VStackValue::Trapped)
-                    }
-                    VStackValue::LValue(_, _) => todo!(),
-                    VStackValue::Pointer(_, _) => todo!(),
-                    v => panic!("invalid value {:?}", v),
-                }
-            }
-            Expr::Branch { cond, target } => {
-                match cond {
-                    BranchCondition::Always => {
-                        let locs = self.targets[target].clone();
-                        let vals = self.pop_values(locs.len()).unwrap();
-                        for (val, (loc, _)) in vals.into_iter().zip(locs) {
-                            self.inner.move_value(val, loc); // This will break if the branch target uses any values rn.
-                        }
-                        self.inner.branch_unconditional(*target);
-                        self.clear_stack();
-                        self.diverged = true;
-                    }
-                    BranchCondition::Never => {}
-                    cond => {
-                        let val = self.vstack.pop_back().unwrap();
-                        let locs = self.targets[target].clone();
-                        let vals = self.pop_values(locs.len()).unwrap();
-
+                if (*blk) == 0 {
+                    if (*values) == 1 {
+                        let val = self.pop_value().unwrap();
                         match val {
-                            VStackValue::Constant(v) => match v {
-                                Value::Invalid(_) | Value::Uninitialized(_) => {
-                                    self.inner.write_trap(Trap::Unreachable);
-                                    self.vstack.push_back(VStackValue::Trapped)
-                                }
-                                Value::GenericParameter(u) => todo!("%{}", u),
-                                Value::Integer {
-                                    ty:
-                                        ScalarType {
-                                            kind: ScalarTypeKind::Integer { signed: true, .. },
-                                            ..
-                                        },
-                                    val,
-                                } => match ((val as i128).cmp(&0), cond) {
-                                    (_, BranchCondition::Always | BranchCondition::Never) => {
-                                        unreachable!()
-                                    }
-                                    (
-                                        Ordering::Less,
-                                        BranchCondition::Less
-                                        | BranchCondition::LessEqual
-                                        | BranchCondition::NotEqual,
-                                    ) => {
-                                        for (val, (loc, _)) in vals.into_iter().zip(locs) {
-                                            self.inner.move_value(val, loc);
-                                            // This will break if the branch target uses any values rn.
-                                        }
-                                        self.inner.branch_unconditional(*target);
-                                        self.clear_stack();
-                                        self.diverged = true;
-                                    }
-                                    (
-                                        Ordering::Equal,
-                                        BranchCondition::Equal
-                                        | BranchCondition::LessEqual
-                                        | BranchCondition::GreaterEqual,
-                                    ) => {
-                                        for (val, (loc, _)) in vals.into_iter().zip(locs) {
-                                            self.inner.move_value(val, loc);
-                                            // This will break if the branch target uses any values rn.
-                                        }
-                                        self.inner.branch_unconditional(*target);
-                                        self.clear_stack();
-                                        self.diverged = true;
-                                    }
-                                    (
-                                        Ordering::Greater,
-                                        BranchCondition::Greater
-                                        | BranchCondition::GreaterEqual
-                                        | BranchCondition::NotEqual,
-                                    ) => {
-                                        for (val, (loc, _)) in vals.into_iter().zip(locs) {
-                                            self.inner.move_value(val, loc);
-                                            // This will break if the branch target uses any values rn.
-                                        }
-                                        self.inner.branch_unconditional(*target);
-                                        self.clear_stack();
-                                        self.diverged = true;
-                                    }
-                                    _ => {}
-                                },
-                                Value::Integer {
-                                    ty:
-                                        ScalarType {
-                                            kind: ScalarTypeKind::Integer { signed: false, .. },
-                                            ..
-                                        },
-                                    val,
-                                } => {
-                                    match (val, cond) {
-                                        (
-                                            0,
-                                            BranchCondition::Equal
-                                            | BranchCondition::LessEqual
-                                            | BranchCondition::GreaterEqual,
-                                        ) => {
-                                            for (val, (loc, _)) in vals.into_iter().zip(locs) {
-                                                self.inner.move_value(val, loc);
-                                                // This will break if the branch target uses any values rn.
-                                            }
-                                            self.inner.branch_unconditional(*target);
-                                            self.clear_stack();
-                                            self.diverged = true;
-                                        }
-                                        (
-                                            x,
-                                            BranchCondition::Greater
-                                            | BranchCondition::GreaterEqual
-                                            | BranchCondition::NotEqual,
-                                        ) if x != 0 => {
-                                            for (val, (loc, _)) in vals.into_iter().zip(locs) {
-                                                self.inner.move_value(val, loc);
-                                                // This will break if the branch target uses any values rn.
-                                            }
-                                            self.inner.branch_unconditional(*target);
-                                            self.clear_stack();
-                                            self.diverged = true;
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                v => panic!("Cannot branch on {:?}", v),
-                            },
-
-                            VStackValue::OpaqueScalar(
-                                sty @ ScalarType {
-                                    kind: ScalarTypeKind::Integer { .. },
-                                    ..
-                                },
-                                loc,
-                            ) => self.inner.branch_compare(
-                                *target,
-                                *cond,
-                                VStackValue::OpaqueScalar(sty, loc),
-                                VStackValue::Constant(Value::Integer { ty: sty, val: 0 }),
-                            ),
-
-                            VStackValue::CompareResult(c1, c2) => {
-                                for (val, (loc, _)) in vals.into_iter().zip(locs) {
-                                    self.opaqueify(val, loc) // This will break if the branch target uses any values rn.
-                                }
-                                self.inner.branch_compare(
-                                    *target,
-                                    *cond,
-                                    Box::into_inner(c1),
-                                    Box::into_inner(c2),
-                                );
+                            VStackValue::Constant(Value::Invalid(_)) => {
+                                self.inner.write_trap(Trap::Unreachable);
                             }
                             VStackValue::Trapped => {}
-                            v => panic!("Cannot branch on {:?}", v),
+                            val => {
+                                let loc = self.inner.get_callconv().find_return_val(&self.fnty);
+                                self.move_val(val, loc);
+                            }
+                        }
+                        self.inner.leave_function();
+                    } else if (*values) == 0 {
+                        self.inner.leave_function();
+                    } else {
+                        panic!("Attempt to exit function with more than one value");
+                    }
+                } else {
+                    todo!("exit non-function block")
+                }
+            }
+            Expr::BinaryOp(_, _) => todo!(),
+            Expr::UnaryOp(_, _) => todo!(),
+            Expr::CallFunction(fnty) => {
+                let vals = self.pop_values(fnty.params.len()).unwrap();
+                let target = self.pop_value().unwrap();
+                match target {
+                    VStackValue::Constant(Value::GlobalAddress { ty, item }) => {
+                        let realty = match &ty {
+                            Type::FnType(ty) => &**ty,
+                            _ => &fnty,
+                        };
+                        self.call_fn(fnty, realty, &item, vals);
+                    }
+                    VStackValue::Constant(Value::Invalid(_))
+                    | VStackValue::Constant(Value::Uninitialized(_))
+                    | VStackValue::Constant(Value::LabelAddress(_)) => {
+                        self.inner.write_trap(Trap::Unreachable);
+                        self.push_value(VStackValue::Trapped);
+                    }
+                    VStackValue::Constant(v) => panic!("Invalid Value {:?}", v),
+                    VStackValue::LValue(ty, lvalue) => {
+                        let realty = match &ty {
+                            Type::FnType(ty) => &**ty,
+                            _ => &fnty,
+                        };
+                        match lvalue {
+                            LValue::OpaquePointer(loc) => {
+                                self.call_indirect(fnty, realty, loc, vals)
+                            }
+                            LValue::GlobalAddress(path) => self.call_fn(fnty, realty, &path, vals),
+                            _ => {
+                                self.inner.write_trap(Trap::Unreachable);
+                                self.push_value(VStackValue::Trapped);
+                            }
                         }
                     }
+                    VStackValue::Pointer(_, _) => todo!(),
+                    VStackValue::OpaqueScalar(_, _) => todo!(),
+                    VStackValue::AggregatePieced(_, _) => todo!(),
+                    VStackValue::OpaqueAggregate(_, _) => todo!(),
+                    VStackValue::CompareResult(_, _) => todo!(),
+                    VStackValue::Trapped => self.push_value(VStackValue::Trapped),
                 }
             }
-            Expr::Convert(_, ty) => {
-                let val = self.vstack.pop_back().unwrap();
-                match (val, ty) {
-                    (VStackValue::Pointer(_, lvalue), Type::Pointer(pty)) => self
-                        .vstack
-                        .push_back(VStackValue::Pointer(pty.clone(), lvalue)),
-                    (
-                        VStackValue::Constant(Value::String {
-                            encoding,
-                            utf8,
-                            ty: Type::Pointer(_),
-                        }),
-                        Type::Pointer(pty),
-                    ) => self.vstack.push_back(VStackValue::Pointer(
-                        pty.clone(),
-                        LValue::StringLiteral(Encoding::XLang(encoding), utf8.into_bytes()),
-                    )),
-                    (VStackValue::LValue(_, _), ty) => {
-                        panic!("convert {:?} cannot be applied to lvalues", ty)
-                    }
-                    (val, ty) => todo!("convert _ {:?}: {:?}", ty, val),
-                }
+            Expr::Branch { .. } => todo!(),
+            Expr::BranchIndirect => todo!(),
+            Expr::Convert(_, _) => todo!(),
+            Expr::Derive(_, _) => todo!(),
+            Expr::Local(_) => todo!(),
+            Expr::Pop(n) => {
+                self.pop_values((*n).try_into().unwrap());
             }
-            Expr::Derive(_, expr) => self.write_expr(expr),
-            Expr::Local(n) => {
-                let (loc, ty) = self.locals[*n as usize].clone();
-                self.vstack
-                    .push_back(VStackValue::LValue(ty, LValue::Local(loc)))
-            }
-            Expr::Pop(n) => drop(self.pop_values(*n as usize).unwrap()),
             Expr::Dup(n) => {
-                let stack = self.pop_values(*n as usize).unwrap();
-                self.vstack.extend(stack.iter().cloned());
-                self.vstack.extend(stack);
+                let values = self.pop_values((*n).try_into().unwrap()).unwrap();
+                self.push_values(values.clone());
+                self.push_values(values);
             }
             Expr::Pivot(n, m) => {
-                let s1 = self.pop_values(*m as usize).unwrap();
-                let s2 = self.pop_values(*n as usize).unwrap();
-                self.vstack.extend(s1);
-                self.vstack.extend(s2);
+                let vals1 = self.pop_values((*m).try_into().unwrap()).unwrap();
+                let vals2 = self.pop_values((*n).try_into().unwrap()).unwrap();
+                self.push_values(vals1);
+                self.push_values(vals2);
             }
-            Expr::Aggregate(AggregateCtor { ty, fields }) => {
-                let ctor_values = self.pop_values(fields.len()).unwrap();
-                self.vstack.push_back(VStackValue::AggregatePieced(
-                    ty.clone(),
-                    fields.iter().cloned().zip(ctor_values).collect(),
-                ))
-            }
-            Expr::Member(name) => {
-                let value = self.vstack.pop_back().unwrap();
-                match value {
-                    VStackValue::LValue(ty, val) => {
-                        let fty = ty::field_type(&ty, name).unwrap();
-                        self.vstack.push_back(VStackValue::LValue(
-                            fty,
-                            LValue::Field(ty, Box::new(val), name.clone()),
-                        ));
-                    }
-                    val => panic!("Cannot apply member {} to {:?}", name, val),
-                }
-            }
-            Expr::MemberIndirect(name) => {
-                let value = self.vstack.pop_back().unwrap();
-                match value {
-                    VStackValue::Pointer(ty, val) => {
-                        let fty = ty::field_type(&ty.inner, name).unwrap();
-                        let inner = ty.inner;
-                        let pty = PointerType {
-                            inner: Box::new(fty),
-                            ..ty
-                        };
-                        self.vstack.push_back(VStackValue::Pointer(
-                            pty,
-                            LValue::Field(Box::into_inner(inner), Box::new(val), name.clone()),
-                        ));
-                    }
-                    val => panic!("Cannot apply member {} to {:?}", name, val),
-                }
-            }
+            Expr::Aggregate(_) => todo!(),
+            Expr::Member(_) => todo!(),
+            Expr::MemberIndirect(_) => todo!(),
             Expr::Block { n, block } => {
                 self.inner.write_block_entry_point(*n);
                 self.write_block(block, *n);
                 self.inner.write_block_exit_point(*n);
             }
-            Expr::Assign(_) => {
-                let value = self.vstack.pop_back().unwrap();
-                let destination = self.vstack.pop_back().unwrap();
-                match destination {
-                    VStackValue::LValue(_, lval) => self.inner.store_val(value, lval),
-                    val => panic!("Cannot assign to an rvalue {:?}", val),
-                }
-            }
-            Expr::AsRValue(_) => {
-                let destination = self.vstack.pop_back().unwrap();
-                match destination {
-                    VStackValue::LValue(ty, lval) => {
-                        let loc = self.inner.allocate(&ty, false);
-                        self.inner.load_val(lval, loc.clone());
-                        self.push_opaque(&ty, loc);
+            Expr::Assign(_) => todo!(),
+            Expr::AsRValue(_) => todo!(),
+            Expr::CompoundAssign(_, _, _) => todo!(),
+            Expr::LValueOp(_, _, _) => todo!(),
+            Expr::Indirect => {
+                let val = self.pop_value().unwrap();
+                match val {
+                    VStackValue::Pointer(pty, lval) => {
+                        self.push_value(VStackValue::LValue(Box::into_inner(pty.inner), lval))
                     }
-                    val => panic!("Cannot assign to an rvalue {:?}", val),
+                    val => panic!("Invalid value for instruction {:?}", val),
                 }
             }
-            Expr::CompoundAssign(_, _, _) => todo!("compound assign"),
-            Expr::LValueOp(_, _, _) => todo!("lvalue"),
-            Expr::Indirect => match self.vstack.pop_back().unwrap() {
-                VStackValue::Pointer(p, lval) => self
-                    .vstack
-                    .push_back(VStackValue::LValue(Box::into_inner(p.inner), lval)),
-                VStackValue::Constant(Value::GlobalAddress { ty, item }) => self
-                    .vstack
-                    .push_back(VStackValue::LValue(ty, LValue::GlobalAddress(item))),
-                VStackValue::Constant(Value::Invalid(Type::Pointer(_)))
-                | VStackValue::Constant(Value::Uninitialized(Type::Pointer(_))) => {
-                    self.inner.write_trap(Trap::Unreachable);
-                    self.vstack.push_back(VStackValue::Trapped);
+            Expr::AddrOf => {
+                let val = self.pop_value().unwrap();
+                match val {
+                    VStackValue::LValue(ty, lval) => self.push_value(VStackValue::Pointer(
+                        PointerType {
+                            inner: Box::new(ty),
+                            ..Default::default()
+                        },
+                        lval,
+                    )),
+                    val => panic!("Invalid value for instruction {:?}", val),
                 }
-                VStackValue::Trapped => {
-                    self.vstack.push_back(VStackValue::Trapped);
-                }
-                val => panic!("Invalid value for indirect {:?}", val),
-            },
-            Expr::AddrOf => match self.vstack.pop_back().unwrap() {
-                VStackValue::LValue(ty, lval) => self.vstack.push_back(VStackValue::Pointer(
-                    PointerType {
-                        inner: Box::new(ty),
-                        ..Default::default()
-                    },
-                    lval,
-                )),
-                VStackValue::Trapped => self.vstack.push_back(VStackValue::Trapped),
-                val => panic!("invalid value for addr_of {:?}", val),
-            },
-            Expr::Sequence(_) => todo!("sequence"),
-            Expr::Fence(_) => todo!("fence"),
-            Expr::BranchIndirect => todo!("branch indirect"),
-            Expr::Switch(_) => todo!("switch"),
-            Expr::Tailcall(_) => todo!("tail call"),
-        }
-    }
-
-    /// Pushes an opaque value of the given type
-    pub fn push_opaque(&mut self, ty: &Type, loc: F::Loc) {
-        match ty {
-            Type::Scalar(st) => self.vstack.push_back(VStackValue::OpaqueScalar(*st, loc)),
-            Type::Void | Type::Null | Type::FnType(_) => {
-                self.vstack.push_back(VStackValue::Trapped)
             }
-            Type::Pointer(pty) => self.vstack.push_back(VStackValue::Pointer(
-                pty.clone(),
-                LValue::OpaquePointer(loc),
-            )),
-            Type::Array(_) => todo!(),
-            Type::TaggedType(_, ty) | Type::Aligned(_, ty) => self.push_opaque(ty, loc),
-            Type::Product(_) | Type::Aggregate(_) => self
-                .vstack
-                .push_back(VStackValue::OpaqueAggregate(ty.clone(), loc)),
+            Expr::Sequence(_) => {}
+            Expr::Fence(barrier) => self.inner.write_barrier(*barrier),
+            Expr::Switch(_) => todo!(),
+            Expr::Tailcall(_) => todo!(),
         }
-    }
-
-    ///
-    /// Moves val into loc and pushes the opaque version
-    pub fn opaqueify(&mut self, val: VStackValue<F::Loc>, loc: F::Loc) {
-        match &val {
-            VStackValue::Constant(v) => match v {
-                Value::Invalid(_) => {
-                    self.inner.write_trap(Trap::Unreachable);
-                    self.vstack.push_back(VStackValue::Trapped)
-                }
-                Value::Uninitialized(ty) => self.push_opaque(ty, loc.clone()),
-                Value::GenericParameter(n) => todo!("%{}", n),
-                Value::Integer { ty, .. } => self
-                    .vstack
-                    .push_back(VStackValue::OpaqueScalar(*ty, loc.clone())),
-                Value::GlobalAddress { ty, .. } => self.vstack.push_back(VStackValue::Pointer(
-                    PointerType {
-                        inner: Box::new(ty.clone()),
-                        ..Default::default()
-                    },
-                    LValue::OpaquePointer(loc.clone()),
-                )),
-                Value::ByteString { .. } => todo!("byte string"),
-                Value::String { ty, .. } => self.push_opaque(ty, loc.clone()),
-                Value::LabelAddress(_) => todo!("label addr"),
-            },
-            VStackValue::LValue(ty, _) => self.vstack.push_back(VStackValue::LValue(
-                ty.clone(),
-                LValue::OpaquePointer(loc.clone()),
-            )),
-            VStackValue::Pointer(pty, _) => self.vstack.push_back(VStackValue::Pointer(
-                pty.clone(),
-                LValue::OpaquePointer(loc.clone()),
-            )),
-            VStackValue::OpaqueScalar(ty, _) => self
-                .vstack
-                .push_back(VStackValue::OpaqueScalar(*ty, loc.clone())),
-            VStackValue::AggregatePieced(ty, _) | VStackValue::OpaqueAggregate(ty, _) => self
-                .vstack
-                .push_back(VStackValue::OpaqueAggregate(ty.clone(), loc.clone())),
-            VStackValue::CompareResult(_, _) => self.vstack.push_back(VStackValue::OpaqueScalar(
-                ScalarType {
-                    header: ScalarTypeHeader {
-                        bitsize: 32,
-                        ..Default::default()
-                    },
-                    kind: ScalarTypeKind::Integer {
-                        signed: true,
-                        min: None,
-                        max: None,
-                    },
-                },
-                loc.clone(),
-            )),
-            VStackValue::Trapped => self.vstack.push_back(VStackValue::Trapped),
-        }
-        self.inner.move_value(val, loc);
     }
 
     /// Writes the body of a function to the codegen
@@ -879,7 +565,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         }
         self.write_block(&body.block, 0);
         if !self.diverged {
-            self.inner.return_void();
+            self.inner.leave_function();
         }
     }
 
@@ -912,7 +598,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         let locs = self.targets[num].clone();
                         let vals = self.pop_values(locs.len()).unwrap();
                         for (val, (loc, _)) in vals.into_iter().zip(locs) {
-                            self.inner.move_value(val, loc); // This will break if the branch target uses any values rn.
+                            self.move_val(val, loc); // This will break if the branch target uses any values rn.
                         }
                         self.clear_stack();
                     }

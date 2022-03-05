@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, rc::Rc};
 
 use arch_ops::x86::{features::X86Feature, X86Register, X86RegisterClass};
 use target_tuples::Target;
@@ -6,11 +6,10 @@ use xlang::{
     prelude::v1::{Pair, Some as XLangSome},
     targets::properties::TargetProperties,
 };
+use xlang_backend::{callconv::CallingConvention, ty::TypeInformation};
 use xlang_struct::{
     Abi, AggregateDefinition, FnType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type,
 };
-
-use xlang_backend::ty::type_size;
 
 use crate::ValLocation;
 
@@ -84,7 +83,7 @@ pub fn classify_type(ty: &Type) -> Option<TypeClass> {
 
 pub trait X86CallConv {
     fn prepare_stack(&self, ty: &FnType, frame_size: usize) -> usize;
-    fn find_parameter(&self, off: u32, ty: &FnType) -> ValLocation;
+    fn find_parameter(&self, off: u32, ty: &FnType, infn: bool) -> ValLocation;
     fn find_return_val(&self, ty: &Type) -> Option<ValLocation>;
     fn pass_return_place(&self, ty: &Type, frame_size: usize) -> Option<ValLocation>;
     fn with_tag(&self, tag: Abi) -> Option<Box<dyn X86CallConv>>;
@@ -94,6 +93,7 @@ pub trait X86CallConv {
 pub struct SysV64CC<S: std::hash::BuildHasher + Clone = std::collections::hash_map::RandomState>(
     &'static TargetProperties,
     HashSet<X86Feature, S>,
+    Rc<TypeInformation>,
 );
 
 impl<S: std::hash::BuildHasher + Clone + 'static> X86CallConv for SysV64CC<S> {
@@ -102,7 +102,7 @@ impl<S: std::hash::BuildHasher + Clone + 'static> X86CallConv for SysV64CC<S> {
     }
 
     #[allow(clippy::no_effect_underscore_binding)] // TODO: use xmm_regs
-    fn find_parameter(&self, off: u32, ty: &FnType) -> ValLocation {
+    fn find_parameter(&self, off: u32, ty: &FnType, _: bool) -> ValLocation {
         let mut int_regs: &[X86Register] = &[
             X86Register::Rdi,
             X86Register::Rsi,
@@ -126,7 +126,7 @@ impl<S: std::hash::BuildHasher + Clone + 'static> X86CallConv for SysV64CC<S> {
         }
         let mut last_val = ValLocation::Unassigned(0);
         for ty in ty.params.iter().take(off as usize + 1) {
-            match (classify_type(ty).unwrap(), type_size(ty, self.0).unwrap()) {
+            match (classify_type(ty).unwrap(), self.2.type_size(ty).unwrap()) {
                 (_, 0) => last_val = ValLocation::Null,
                 (TypeClass::Integer, 1) => {
                     int_regs.get(0).map_or_else(
@@ -208,7 +208,7 @@ impl<S: std::hash::BuildHasher + Clone + 'static> X86CallConv for SysV64CC<S> {
 
     #[allow(clippy::unnested_or_patterns)]
     fn find_return_val(&self, ty: &Type) -> Option<ValLocation> {
-        match (classify_type(ty), type_size(ty, self.0)) {
+        match (classify_type(ty), self.2.type_size(ty)) {
             (None, None) => None,
             (None, Some(_)) | (Some(_), None) => unreachable!(),
             (Some(TypeClass::Zero), Some(0)) => Some(ValLocation::Null),
@@ -250,16 +250,33 @@ impl<S: std::hash::BuildHasher + Clone + 'static> X86CallConv for SysV64CC<S> {
     }
 }
 
+impl<'a> CallingConvention for dyn X86CallConv + 'a {
+    type Loc = ValLocation;
+
+    fn pass_return_place(&self, ty: &Type) -> Option<Self::Loc> {
+        self.pass_return_place(ty, 0)
+    }
+
+    fn find_param(&self, fnty: &FnType, _: &FnType, param: u32, infn: bool) -> Self::Loc {
+        self.find_parameter(param, fnty, infn)
+    }
+
+    fn find_return_val(&self, fnty: &FnType) -> Self::Loc {
+        self.find_return_val(&fnty.ret).unwrap()
+    }
+}
+
 #[allow(clippy::module_name_repetitions)]
 pub fn get_callconv<S: std::hash::BuildHasher + Clone + 'static>(
     _tag: Abi,
     target: Target,
     features: HashSet<X86Feature, S>,
+    tys: Rc<TypeInformation>,
 ) -> Option<Box<dyn X86CallConv>> {
     target_tuples::match_targets! {
         match (target){
-            x86_64-*-linux-gnu => Some(Box::new(SysV64CC(xlang::targets::properties::get_properties(target.into())?,features))),
-            x86_64-*-linux-gnux32 => Some(Box::new(SysV64CC(xlang::targets::properties::get_properties(target.into())?,features)))
+            x86_64-*-linux-gnu => Some(Box::new(SysV64CC(xlang::targets::properties::get_properties(target.into())?,features,tys))),
+            x86_64-*-linux-gnux32 => Some(Box::new(SysV64CC(xlang::targets::properties::get_properties(target.into())?,features,tys)))
         }
     }
 }

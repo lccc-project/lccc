@@ -2,7 +2,6 @@
 
 pub mod callconv;
 
-use std::cmp::Ordering;
 use std::convert::TryInto;
 use std::ops::Deref;
 use std::{
@@ -34,15 +33,15 @@ use xlang::{
     targets::properties::{MachineProperties, TargetProperties},
 };
 use xlang_backend::expr::{Trap, ValLocation as _};
-use xlang_backend::ty::type_size;
+use xlang_backend::mangle::mangle_itanium;
+use xlang_backend::ty::TypeInformation;
 use xlang_backend::{
     expr::{LValue, VStackValue},
-    str::{Encoding, StringMap},
+    str::StringMap,
     FunctionCodegen, FunctionRawCodegen,
 };
 use xlang_struct::{
-    AccessClass, BranchCondition, FnType, FunctionDeclaration, PathComponent, ScalarType,
-    ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type, UnaryOp, Value,
+    AccessClass, BranchCondition, FnType, FunctionDeclaration, Path, PathComponent, Type, Value,
 };
 
 #[allow(dead_code)]
@@ -138,7 +137,6 @@ pub struct X86CodegenState {
     name: String,
     strings: Rc<RefCell<StringMap>>,
     callconv: std::boxed::Box<dyn X86CallConv>,
-    fnty: FnType,
     frame_size: i32,
     properties: &'static TargetProperties,
     scratch_reg: Option<X86Register>,
@@ -147,6 +145,7 @@ pub struct X86CodegenState {
     _xmm_status: HashMap<u8, RegisterStatus>,
     trap_unreachable: bool,
     features: HashSet<X86Feature>,
+    tys: Rc<TypeInformation>,
 }
 
 impl FunctionRawCodegen for X86CodegenState {
@@ -190,47 +189,6 @@ impl FunctionRawCodegen for X86CodegenState {
         }
     }
 
-    fn store_val(
-        &mut self,
-        val: xlang_backend::expr::VStackValue<Self::Loc>,
-        lvalue: xlang_backend::expr::LValue<Self::Loc>,
-    ) {
-        match lvalue {
-            LValue::OpaquePointer(p) => {
-                let reg = self.get_or_allocate_pointer_reg();
-                self.move_mem2reg(&p, reg);
-                self.move_value(val, ValLocation::ImpliedPtr(reg));
-            }
-            LValue::Temporary(_) => {}
-            LValue::Local(loc) => {
-                self.move_value(val, loc);
-            }
-            LValue::GlobalAddress(_) => todo!("global address"),
-            LValue::Field(_, _, _) => todo!("field"),
-            LValue::StringLiteral(_, _) | LValue::Label(_) | LValue::Null => {
-                self.write_trap(Trap::Unreachable);
-            }
-            LValue::Offset(_, _) => todo!("offset"),
-        }
-    }
-
-    fn return_void(&mut self) {
-        self.insns.push(X86InstructionOrLabel::FunctionEpilogue);
-    }
-
-    fn return_value(&mut self, val: xlang_backend::expr::VStackValue<Self::Loc>) {
-        match val {
-            VStackValue::Trapped => {}
-            VStackValue::Constant(Value::Invalid(_)) => {
-                self.write_trap(Trap::Unreachable);
-            }
-            val => {
-                self.move_value(val, self.callconv.find_return_val(&self.fnty.ret).unwrap());
-                self.insns.push(X86InstructionOrLabel::FunctionEpilogue);
-            }
-        }
-    }
-
     fn write_intrinsic(
         &mut self,
         _name: xlang::abi::string::StringView,
@@ -247,64 +205,26 @@ impl FunctionRawCodegen for X86CodegenState {
     }
 
     #[allow(clippy::match_wildcard_for_single_variants)]
-    fn call_direct(
-        &mut self,
-        value: xlang::abi::string::StringView,
-        ty: &FnType,
-        params: xlang::vec::Vec<xlang_backend::expr::VStackValue<Self::Loc>>,
-    ) -> xlang::prelude::v1::Option<xlang_backend::expr::VStackValue<Self::Loc>> {
-        let sym = X86TempSymbol(
-            value.to_string(),
-            None,
-            None,
-            SymbolType::Null,
-            SymbolKind::Global,
-        );
-        self.symbols.push(sym);
-        let call_addr = Address::PltSym {
-            name: value.to_string(),
+    fn call_direct(&mut self, path: &Path) {
+        let name = match &*path.components {
+            [PathComponent::Root, PathComponent::Text(name)] | [PathComponent::Text(name)] => {
+                name.to_string()
+            }
+            [PathComponent::Root, components @ ..] | [components @ ..] => {
+                mangle_itanium(components)
+            }
         };
-        let cc = self.callconv.with_tag(ty.tag).unwrap();
-        for (i, val) in params.into_iter().enumerate() {
-            self.move_value(val, cc.find_parameter(i.try_into().unwrap(), ty));
-        }
+
+        let addr = Address::PltSym { name };
 
         self.insns
             .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                 X86Opcode::Call,
-                vec![X86Operand::RelAddr(call_addr)],
+                vec![X86Operand::RelAddr(addr)],
             )));
-
-        let retval = cc.find_return_val(&ty.ret);
-        match &ty.ret {
-            Type::Void | Type::Null => XLangOption::None,
-            ty @ Type::Product(_) => {
-                XLangOption::Some(VStackValue::OpaqueAggregate(ty.clone(), retval.unwrap()))
-            }
-            Type::Scalar(
-                ty @ ScalarType {
-                    header: ScalarTypeHeader { bitsize: 0, .. },
-                    kind: ScalarTypeKind::Integer { .. },
-                },
-            ) if ty.header.validity.contains(ScalarValidity::NONZERO) => {
-                // Special case uint nonzero(0)
-                XLangOption::Some(VStackValue::Constant(Value::Invalid(Type::Scalar(*ty))))
-            }
-            Type::Scalar(ty) => XLangOption::Some(VStackValue::OpaqueScalar(*ty, retval.unwrap())),
-            Type::Pointer(pty) => XLangOption::Some(VStackValue::Pointer(
-                pty.clone(),
-                LValue::OpaquePointer(retval.unwrap()),
-            )),
-            ty => todo!("{:?}", ty),
-        }
     }
 
-    fn call_indirect(
-        &mut self,
-        _value: Self::Loc,
-        _ty: &FnType,
-        _params: xlang::vec::Vec<xlang_backend::expr::VStackValue<Self::Loc>>,
-    ) -> xlang::prelude::v1::Option<xlang_backend::expr::VStackValue<Self::Loc>> {
+    fn call_indirect(&mut self, _value: Self::Loc) {
         todo!()
     }
 
@@ -386,316 +306,6 @@ impl FunctionRawCodegen for X86CodegenState {
         }
     }
 
-    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
-    fn move_value(&mut self, val: xlang_backend::expr::VStackValue<Self::Loc>, loc: Self::Loc) {
-        match val {
-            VStackValue::Constant(val) => match val {
-                xlang_struct::Value::Invalid(_) => {
-                    self.write_trap(Trap::Unreachable);
-                }
-                xlang_struct::Value::Uninitialized(_) => {}
-                xlang_struct::Value::GenericParameter(n) => todo!("param %{}", n),
-                xlang_struct::Value::Integer { ty, val } => match loc {
-                    ValLocation::Null => {}
-                    ValLocation::Register(r) => {
-                        if val == 0 {
-                            self.insns
-                                .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                    X86Opcode::XorRM,
-                                    vec![
-                                        X86Operand::Register(r),
-                                        X86Operand::ModRM(ModRM::Direct(r)),
-                                    ],
-                                )));
-                        } else {
-                            self.insns
-                                .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                    X86Opcode::MovImm,
-                                    vec![
-                                        X86Operand::Register(r),
-                                        X86Operand::Immediate(u64::try_from(val).unwrap()),
-                                    ],
-                                )));
-                        }
-                    }
-                    loc if loc.addressible() => {
-                        let size = type_size(&Type::Scalar(ty), self.properties).unwrap();
-                        match size {
-                            1 => {
-                                let modrm =
-                                    loc.as_modrm(self.mode, X86RegisterClass::Byte).unwrap();
-                                self.insns
-                                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                        X86Opcode::MovImmM8,
-                                        vec![
-                                            X86Operand::ModRM(modrm),
-                                            X86Operand::Immediate(u64::try_from(val).unwrap()),
-                                        ],
-                                    )));
-                            }
-                            2 | 4 => {
-                                let modrm = loc
-                                    .as_modrm(
-                                        self.mode,
-                                        X86RegisterClass::gpr_size(size as usize, self.mode)
-                                            .unwrap(),
-                                    )
-                                    .unwrap();
-                                self.insns
-                                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                        X86Opcode::MovImmM,
-                                        vec![
-                                            X86Operand::ModRM(modrm),
-                                            X86Operand::Immediate(u64::try_from(val).unwrap()),
-                                        ],
-                                    )));
-                            }
-                            8 => {
-                                let ptrreg = self.get_or_allocate_pointer_reg();
-                                let modrm =
-                                    loc.as_modrm(self.mode, X86RegisterClass::Quad).unwrap();
-                                self.insns
-                                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                        X86Opcode::Lea,
-                                        vec![
-                                            X86Operand::Register(ptrreg),
-                                            X86Operand::ModRM(modrm),
-                                        ],
-                                    )));
-                                self.insns
-                                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                        X86Opcode::MovImmM,
-                                        vec![
-                                            X86Operand::Register(ptrreg),
-                                            X86Operand::Immediate(u64::try_from(val).unwrap()),
-                                        ],
-                                    )));
-                            }
-                            sz => todo!("move_val {}", sz),
-                        }
-                    }
-                    _ => todo!(),
-                },
-                xlang_struct::Value::GlobalAddress { ty: _, item: _ } => todo!(),
-                xlang_struct::Value::ByteString { content } => {
-                    let sym = self
-                        .strings
-                        .borrow_mut()
-                        .get_string_symbol(content, Encoding::Byte);
-                    let addr = Address::Symbol {
-                        name: sym.to_string(),
-                        disp: 0,
-                    };
-                    match loc {
-                        ValLocation::Register(r) => {
-                            self.insns
-                                .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                    X86Opcode::Lea,
-                                    vec![
-                                        X86Operand::Register(r),
-                                        X86Operand::ModRM(ModRM::Indirect {
-                                            size: r.class(),
-                                            mode: ModRMRegOrSib::RipRel(addr),
-                                        }),
-                                    ],
-                                )));
-                        }
-                        _ => todo!(),
-                    }
-                }
-                xlang_struct::Value::String {
-                    encoding,
-                    utf8,
-                    ty: _,
-                } => {
-                    let sym = self
-                        .strings
-                        .borrow_mut()
-                        .get_string_symbol(utf8.into_bytes(), Encoding::XLang(encoding));
-                    let addr = Address::Symbol {
-                        name: sym.to_string(),
-                        disp: 0,
-                    };
-                    match loc {
-                        ValLocation::Register(r) => {
-                            self.insns
-                                .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                    X86Opcode::Lea,
-                                    vec![
-                                        X86Operand::Register(r),
-                                        X86Operand::ModRM(ModRM::Indirect {
-                                            size: X86RegisterClass::Byte,
-                                            mode: ModRMRegOrSib::RipRel(addr),
-                                        }),
-                                    ],
-                                )));
-                        }
-                        x if x.addressible() => {
-                            let ptrreg = self.get_or_allocate_pointer_reg();
-                            let modrm = x.as_modrm(self.mode, ptrreg.class()).unwrap();
-                            self.insns
-                                .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                    X86Opcode::Lea,
-                                    vec![
-                                        X86Operand::Register(ptrreg),
-                                        X86Operand::ModRM(ModRM::Indirect {
-                                            size: ptrreg.class(),
-                                            mode: ModRMRegOrSib::RipRel(addr),
-                                        }),
-                                    ],
-                                )));
-                            self.insns
-                                .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                    X86Opcode::MovMR,
-                                    vec![X86Operand::ModRM(modrm), X86Operand::Register(ptrreg)],
-                                )));
-                        }
-                        loc => todo!("move_val({:?})", loc),
-                    }
-                }
-                Value::LabelAddress(_) => todo!("label address"),
-            },
-            VStackValue::Pointer(_, LValue::StringLiteral(encoding, utf8)) => {
-                let sym = self.strings.borrow_mut().get_string_symbol(utf8, encoding);
-                let addr = Address::Symbol {
-                    name: sym.to_string(),
-                    disp: 0,
-                };
-                match loc {
-                    ValLocation::Register(r) => {
-                        self.insns
-                            .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                X86Opcode::Lea,
-                                vec![
-                                    X86Operand::Register(r),
-                                    X86Operand::ModRM(ModRM::Indirect {
-                                        size: X86RegisterClass::Byte,
-                                        mode: ModRMRegOrSib::RipRel(addr),
-                                    }),
-                                ],
-                            )));
-                    }
-                    loc => todo!("move_val({:?})", loc),
-                }
-            }
-            VStackValue::OpaqueScalar(ty, l2) => match (loc, l2) {
-                (_, ValLocation::Null) | (ValLocation::Null, _) => {}
-                (ValLocation::Unassigned(_), _) | (_, ValLocation::Unassigned(_)) => {
-                    panic!("Unassigned location");
-                }
-                (ValLocation::Register(r1), ValLocation::Register(r2)) => {
-                    if !(r1 == r2) {
-                        match r1.class().size(self.mode).cmp(&r2.class().size(self.mode)) {
-                            Ordering::Equal => {
-                                if r1.class().size(self.mode) == 1 {
-                                    self.insns.push(X86InstructionOrLabel::Insn(
-                                        X86Instruction::new(
-                                            X86Opcode::MovRM8,
-                                            vec![
-                                                X86Operand::Register(r1),
-                                                X86Operand::ModRM(ModRM::Direct(r2)),
-                                            ],
-                                        ),
-                                    ));
-                                } else {
-                                    self.insns.push(X86InstructionOrLabel::Insn(
-                                        X86Instruction::new(
-                                            X86Opcode::MovRM,
-                                            vec![
-                                                X86Operand::Register(r1),
-                                                X86Operand::ModRM(ModRM::Direct(r2)),
-                                            ],
-                                        ),
-                                    ));
-                                }
-                            }
-                            _ => todo!(),
-                        }
-                    }
-                }
-                (ValLocation::Register(r), x) if x.addressible() => {
-                    let modrm = x.as_modrm(self.mode, r.class()).unwrap();
-                    self.insns
-                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                            X86Opcode::MovMR,
-                            vec![X86Operand::ModRM(modrm), X86Operand::Register(r)],
-                        )));
-                }
-                (x, ValLocation::Register(r)) if x.addressible() => {
-                    let modrm = x.as_modrm(self.mode, r.class()).unwrap();
-                    self.insns
-                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                            X86Opcode::MovRM,
-                            vec![X86Operand::Register(r), X86Operand::ModRM(modrm)],
-                        )));
-                }
-                (x, y) if x.addressible() && y.addressible() => {
-                    let size = type_size(&Type::Scalar(ty), self.properties).unwrap() as usize;
-                    let modrm1 = x
-                        .as_modrm(
-                            self.mode,
-                            X86RegisterClass::gpr_size(size, self.mode).unwrap(),
-                        )
-                        .unwrap();
-                    let modrm2 = y
-                        .as_modrm(
-                            self.mode,
-                            X86RegisterClass::gpr_size(size, self.mode).unwrap(),
-                        )
-                        .unwrap();
-                    let r = self.get_or_allocate_scratch_reg();
-
-                    self.insns
-                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                            X86Opcode::MovRM,
-                            vec![X86Operand::Register(r), X86Operand::ModRM(modrm2)],
-                        )));
-                    self.insns
-                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                            X86Opcode::MovMR,
-                            vec![X86Operand::ModRM(modrm1), X86Operand::Register(r)],
-                        )));
-                }
-                (l1, l2) => todo!("move_val({:?},{:?})", l1, l2),
-            },
-            VStackValue::Pointer(_, LValue::OpaquePointer(l2))
-            | VStackValue::LValue(_, LValue::OpaquePointer(l2)) => match (l2, loc) {
-                (ValLocation::Register(r1), ValLocation::Register(r2)) => {
-                    self.move_reg2reg(r2, r1);
-                }
-                (ValLocation::Register(r1), loc) if loc.addressible() => {
-                    self.move_reg2mem(&loc, r1);
-                }
-                (loc, ValLocation::Register(r1)) if loc.addressible() => {
-                    self.move_mem2reg(&loc, r1);
-                }
-                (l1, l2) if l1.addressible() && l2.addressible() => {
-                    let ptrreg = self.get_or_allocate_pointer_reg();
-                    self.move_mem2reg(&l1, ptrreg);
-                    self.move_reg2mem(&l2, ptrreg);
-                }
-                (ValLocation::Null, _) | (_, ValLocation::Null) => {}
-                (src, dest) => panic!("Cannot move pointer from {:?} to {:?}", src, dest),
-            },
-            VStackValue::Trapped => {}
-            VStackValue::AggregatePieced(_ty, _pieces) => match loc {
-                ValLocation::BpDisp(i) => todo!("[bp{:+#x}]", i),
-                ValLocation::SpDisp(i) => todo!("[sp{:+#x}]", i),
-                ValLocation::Register(r) => todo!("{}", r),
-                ValLocation::Regs(regs) => todo!("{:?}", regs),
-                ValLocation::ImpliedPtr(r) => todo!("[{}]", r),
-                ValLocation::Null => {}
-                ValLocation::Unassigned(n) => panic!("unassigned({})", n),
-            },
-            v @ (VStackValue::OpaqueAggregate(_, _)
-            | VStackValue::CompareResult(_, _)
-            | VStackValue::LValue(_, _)
-            | VStackValue::Pointer(_, _)) => {
-                todo!("{:?}", v)
-            }
-        }
-    }
-
     fn compute_global_address(&mut self, path: &xlang_struct::Path, loc: Self::Loc) {
         let addr = self.get_global_address(path);
         self.load_address(addr, loc);
@@ -719,11 +329,17 @@ impl FunctionRawCodegen for X86CodegenState {
 
     fn compute_string_address(
         &mut self,
-        _enc: xlang_backend::str::Encoding,
-        _bytes: xlang::vec::Vec<u8>,
-        _loc: Self::Loc,
+        enc: xlang_backend::str::Encoding,
+        bytes: xlang::vec::Vec<u8>,
+        loc: Self::Loc,
     ) {
-        todo!()
+        let name = self
+            .strings
+            .borrow_mut()
+            .get_string_symbol(bytes, enc)
+            .to_string();
+        let addr = Address::Symbol { name, disp: 0 };
+        self.load_address(addr, loc);
     }
 
     fn free(&mut self, _loc: Self::Loc) {
@@ -735,7 +351,7 @@ impl FunctionRawCodegen for X86CodegenState {
     }
 
     fn allocate(&mut self, ty: &Type, needs_addr: bool) -> Self::Loc {
-        let size = type_size(ty, self.properties).unwrap();
+        let size = self.tys.type_size(ty).unwrap();
         if !(size > 8 || needs_addr) {
             if size == 0 {
                 return ValLocation::Null;
@@ -785,34 +401,6 @@ impl FunctionRawCodegen for X86CodegenState {
         ValLocation::BpDisp(-self.frame_size)
     }
 
-    fn write_binary_op(
-        &mut self,
-        _v1: xlang_backend::expr::VStackValue<Self::Loc>,
-        _v2: xlang_backend::expr::VStackValue<Self::Loc>,
-        _op: xlang_struct::BinaryOp,
-        _out: Self::Loc,
-    ) {
-        todo!()
-    }
-
-    fn write_unary_op(
-        &mut self,
-        _v1: xlang_backend::expr::VStackValue<Self::Loc>,
-        _op: UnaryOp,
-        _out: Self::Loc,
-    ) {
-        todo!()
-    }
-
-    fn write_scalar_cast(
-        &mut self,
-        _v1: xlang_backend::expr::VStackValue<Self::Loc>,
-        _ty: &ScalarType,
-        _out: Self::Loc,
-    ) {
-        todo!()
-    }
-
     fn write_block_entry_point(&mut self, n: u32) {
         self.insns.push(X86InstructionOrLabel::Label(format!(
             "{}._BE{}",
@@ -842,34 +430,11 @@ impl FunctionRawCodegen for X86CodegenState {
 
     fn tailcall_direct(
         &mut self,
-        value: xlang::abi::string::StringView,
-        ty: &FnType,
-        params: xlang::vec::Vec<VStackValue<Self::Loc>>,
+        _value: xlang::abi::string::StringView,
+        _ty: &FnType,
+        _params: xlang::vec::Vec<VStackValue<Self::Loc>>,
     ) {
-        let sym = X86TempSymbol(
-            value.to_string(),
-            None,
-            None,
-            SymbolType::Null,
-            SymbolKind::Global,
-        );
-        self.symbols.push(sym);
-        let call_addr = Address::PltSym {
-            name: value.to_string(),
-        };
-        let cc = self.callconv.with_tag(ty.tag).unwrap();
-        for (i, val) in params.into_iter().enumerate() {
-            self.move_value(val, cc.find_parameter(i.try_into().unwrap(), ty));
-        }
-
-        self.insns
-            .push(X86InstructionOrLabel::Insn(X86Instruction::Leave));
-
-        self.insns
-            .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                X86Opcode::Jmp,
-                vec![X86Operand::RelAddr(call_addr)],
-            )));
+        todo!()
     }
 
     fn tailcall_indirect(
@@ -900,6 +465,77 @@ impl FunctionRawCodegen for X86CodegenState {
             }
             (lval, loc) => todo!("load_val {:?} {:?}", lval, loc),
         }
+    }
+
+    type CallConv = dyn X86CallConv;
+
+    fn move_val(&mut self, _src: Self::Loc, _dest: Self::Loc) {
+        todo!()
+    }
+
+    fn move_imm(&mut self, src: u128, dest: Self::Loc) {
+        match dest {
+            ValLocation::Register(reg) => match reg.class() {
+                X86RegisterClass::Byte | X86RegisterClass::ByteRex => {
+                    self.insns
+                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                            X86Opcode::MovImm8,
+                            vec![X86Operand::Register(reg), X86Operand::Immediate(src as u64)],
+                        )))
+                }
+                X86RegisterClass::Word | X86RegisterClass::Double | X86RegisterClass::Quad => {
+                    if src == 0 {
+                        self.insns
+                            .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                                X86Opcode::XorMR,
+                                vec![X86Operand::Register(reg), X86Operand::Register(reg)],
+                            )))
+                    } else {
+                        self.insns
+                            .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                                X86Opcode::MovImm,
+                                vec![X86Operand::Register(reg), X86Operand::Immediate(src as u64)],
+                            )))
+                    }
+                }
+
+                cl => todo!("Class {:?}", cl),
+            },
+            ValLocation::Regs(_) => todo!("regs"),
+            ValLocation::ImpliedPtr(_) | ValLocation::SpDisp(_) | ValLocation::BpDisp(_) => {
+                todo!("memory")
+            }
+            ValLocation::Null => {}
+            ValLocation::Unassigned(_) => panic!("unassigned"),
+        }
+    }
+
+    fn store_indirect_imm(&mut self, _src: Value, _ptr: Self::Loc) {
+        todo!()
+    }
+
+    fn get_callconv(&self) -> &Self::CallConv {
+        &*self.callconv
+    }
+
+    fn native_int_size(&self) -> u16 {
+        match self.mode {
+            X86Mode::Real | X86Mode::Virtual8086 => 16,
+            X86Mode::Protected | X86Mode::Compatibility => 32,
+            X86Mode::Long => 64,
+        }
+    }
+
+    fn native_float_size(&self) -> XLangOption<u16> {
+        XLangOption::Some(80)
+    }
+
+    fn leave_function(&mut self) {
+        self.insns.push(X86InstructionOrLabel::FunctionEpilogue)
+    }
+
+    fn prepare_call_frame(&mut self, _: &FnType, _: &FnType) {
+        /* todo */
     }
 }
 
@@ -958,26 +594,26 @@ impl X86CodegenState {
         }
     }
 
-    fn get_or_allocate_scratch_reg(&mut self) -> X86Register {
-        if let Some(reg) = self.scratch_reg {
-            reg
-        } else {
-            for i in 0..(if self.mode == X86Mode::Long { 16 } else { 8 }) {
-                let class = self.mode.largest_gpr();
-                let mode = self.gpr_status.get_or_insert_mut(i, RegisterStatus::Free);
-                match mode {
-                    RegisterStatus::Free => {
-                        let reg = X86Register::from_class(class, i).unwrap();
-                        *mode = RegisterStatus::InUse;
-                        self.scratch_reg = Some(reg);
-                        return reg;
-                    }
-                    _ => continue,
-                }
-            }
-            todo!()
-        }
-    }
+    // fn get_or_allocate_scratch_reg(&mut self) -> X86Register {
+    //     if let Some(reg) = self.scratch_reg {
+    //         reg
+    //     } else {
+    //         for i in 0..(if self.mode == X86Mode::Long { 16 } else { 8 }) {
+    //             let class = self.mode.largest_gpr();
+    //             let mode = self.gpr_status.get_or_insert_mut(i, RegisterStatus::Free);
+    //             match mode {
+    //                 RegisterStatus::Free => {
+    //                     let reg = X86Register::from_class(class, i).unwrap();
+    //                     *mode = RegisterStatus::InUse;
+    //                     self.scratch_reg = Some(reg);
+    //                     return reg;
+    //                 }
+    //                 _ => continue,
+    //             }
+    //         }
+    //         todo!()
+    //     }
+    // }
 
     fn get_or_allocate_pointer_reg(&mut self) -> X86Register {
         if let Some(reg) = self.ptrreg {
@@ -1314,6 +950,24 @@ impl XLangPlugin for X86CodegenPlugin {
         ir: &mut xlang_struct::File,
     ) -> xlang::abi::result::Result<(), xlang::plugin::Error> {
         self.fns = Some(std::collections::HashMap::new());
+        let properties = self.properties.unwrap();
+
+        let mut tys = TypeInformation::from_properties(properties);
+
+        for Pair(path, member) in &ir.root.members {
+            match &member.member_decl {
+                xlang_struct::MemberDeclaration::AggregateDefinition(defn) => {
+                    tys.add_aggregate(path.clone(), defn.clone());
+                }
+                xlang_struct::MemberDeclaration::OpaqueAggregate(_) => {
+                    tys.add_opaque_aggregate(path.clone());
+                }
+                _ => {}
+            }
+        }
+
+        let tys = Rc::new(tys);
+
         for Pair(path, member) in &ir.root.members {
             let name = &*path.components;
             let name = match name {
@@ -1329,7 +983,6 @@ impl XLangPlugin for X86CodegenPlugin {
                     ty,
                     body: xlang::abi::option::Some(body),
                 }) => {
-                    let properties = self.properties.unwrap();
                     let features = self.features.clone();
                     let mut state = FunctionCodegen::new(
                         X86CodegenState {
@@ -1338,11 +991,11 @@ impl XLangPlugin for X86CodegenPlugin {
                             symbols: Vec::new(),
                             name: name.clone(),
                             strings: self.strings.clone(),
-                            fnty: ty.clone(),
                             callconv: callconv::get_callconv(
                                 ty.tag,
                                 self.target.clone().unwrap(),
                                 features.clone(),
+                                tys.clone(),
                             )
                             .unwrap(),
                             properties,
@@ -1353,13 +1006,12 @@ impl XLangPlugin for X86CodegenPlugin {
                             ptrreg: None,
                             trap_unreachable: true,
                             features,
+                            tys: tys.clone(),
                         },
                         path.clone(),
                         ty.clone(),
-                        xlang::targets::properties::get_properties(
-                            self.target.as_ref().map(From::from).unwrap(),
-                        )
-                        .unwrap(),
+                        properties,
+                        tys.clone(),
                     );
                     state.write_function_body(body);
                     self.fns.as_mut().unwrap().insert(name.clone(), state);
@@ -1372,6 +1024,7 @@ impl XLangPlugin for X86CodegenPlugin {
                 | xlang_struct::MemberDeclaration::Empty
                 | xlang_struct::MemberDeclaration::OpaqueAggregate(_)
                 | xlang_struct::MemberDeclaration::AggregateDefinition(_) => {}
+                xlang_struct::MemberDeclaration::Static(_) => todo!(),
             }
         }
 
@@ -1466,363 +1119,5 @@ pub extern "rustcall" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
     }))
 }}
 
-#[cfg(test)] // miri doesn't work because of FFI calls. This should be fixed
-mod test {
-    use std::{cell::RefCell, rc::Rc};
-
-    use arch_ops::x86::insn::X86Mode;
-    use binfmt::fmt::Section;
-    use target_tuples::Target;
-    use xlang::{
-        abi::vec,
-        prelude::v1::{HashMap, None as XLangNone},
-    };
-    use xlang_backend::{str::StringMap, FunctionCodegen};
-    use xlang_struct::{
-        Abi, BinaryOp, Block, BlockItem, Expr, FunctionBody, FunctionDeclaration,
-        OverflowBehaviour, Path, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type, Value,
-    };
-
-    use crate::{callconv, X86CodegenState};
-
-    #[test]
-    fn test_return_void() {
-        let target = Target::parse("x86_64-pc-linux-gnu");
-        let properties = xlang::targets::properties::get_properties((&target).into()).unwrap();
-        let features =
-            super::get_features_from_properties(properties, &properties.arch.default_machine);
-        let name = "foo";
-        let FunctionDeclaration { ty, body } = FunctionDeclaration {
-            ty: xlang_struct::FnType {
-                ret: Type::Void,
-                params: xlang::abi::vec::Vec::new(),
-                tag: Abi::C,
-                variadic: false,
-            },
-            body: xlang::abi::option::Some(FunctionBody {
-                locals: vec![],
-                block: Block { items: vec![] },
-            }),
-        };
-        let mut state = FunctionCodegen::new(
-            X86CodegenState {
-                insns: Vec::new(),
-                mode: X86Mode::default_mode_for(&target).unwrap(),
-                symbols: Vec::new(),
-                name: name.to_string(),
-                strings: Rc::new(RefCell::new(StringMap::new())),
-                fnty: ty.clone(),
-                callconv: callconv::get_callconv(ty.tag, target.clone(), features.clone()).unwrap(),
-                properties,
-                _xmm_status: HashMap::new(),
-                gpr_status: HashMap::new(),
-                frame_size: 0,
-                scratch_reg: None,
-                ptrreg: None,
-                trap_unreachable: true,
-                features,
-            },
-            Path {
-                components: vec![xlang_struct::PathComponent::Text(name.into())],
-            },
-            ty.clone(),
-            properties,
-        );
-        state.write_function_body(&body.as_ref().unwrap());
-        let mut sec = Section {
-            align: 1024,
-            ..Default::default()
-        };
-        state
-            .into_inner()
-            .write_output(&mut sec, &mut Vec::new())
-            .unwrap();
-        assert_eq!(*sec.content, [0xC3])
-    }
-
-    #[test]
-    fn test_add() {
-        let target = Target::parse("x86_64-pc-linux-gnu");
-        let properties = xlang::targets::properties::get_properties((&target).into()).unwrap();
-        let features =
-            super::get_features_from_properties(properties, &properties.arch.default_machine);
-        let name = "foo";
-        let sty = ScalarType {
-            header: ScalarTypeHeader {
-                bitsize: 32,
-                ..Default::default()
-            },
-            kind: ScalarTypeKind::Integer {
-                signed: true,
-                min: XLangNone,
-                max: XLangNone,
-            },
-        };
-        let FunctionDeclaration { ty, body } = FunctionDeclaration {
-            ty: xlang_struct::FnType {
-                ret: Type::Scalar(sty),
-                params: xlang::abi::vec::Vec::new(),
-                tag: Abi::C,
-                variadic: false,
-            },
-            body: xlang::abi::option::Some(FunctionBody {
-                locals: vec![],
-                block: Block {
-                    items: vec![
-                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 1 })),
-                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: !0 })),
-                        BlockItem::Expr(Expr::BinaryOp(BinaryOp::Add, OverflowBehaviour::Wrap)),
-                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
-                    ],
-                },
-            }),
-        };
-        let mut state = FunctionCodegen::new(
-            X86CodegenState {
-                insns: Vec::new(),
-                mode: X86Mode::default_mode_for(&target).unwrap(),
-                symbols: Vec::new(),
-                name: name.to_string(),
-                strings: Rc::new(RefCell::new(StringMap::new())),
-                fnty: ty.clone(),
-                callconv: callconv::get_callconv(ty.tag, target.clone(), features.clone()).unwrap(),
-                properties,
-                _xmm_status: HashMap::new(),
-                gpr_status: HashMap::new(),
-                frame_size: 0,
-                scratch_reg: None,
-                ptrreg: None,
-                trap_unreachable: true,
-                features,
-            },
-            Path {
-                components: vec![xlang_struct::PathComponent::Text(name.into())],
-            },
-            ty.clone(),
-            properties,
-        );
-        state.write_function_body(&body.as_ref().unwrap());
-        let mut sec = Section {
-            align: 1024,
-            ..Default::default()
-        };
-        state
-            .into_inner()
-            .write_output(&mut sec, &mut Vec::new())
-            .unwrap();
-        assert_eq!(*sec.content, [0x33, 0xC0, 0xC3])
-    }
-
-    #[test]
-    fn test_return_value() {
-        let target = Target::parse("x86_64-pc-linux-gnu");
-        let properties = xlang::targets::properties::get_properties((&target).into()).unwrap();
-        let features =
-            super::get_features_from_properties(properties, &properties.arch.default_machine);
-        let name = "foo";
-        let intty = ScalarType {
-            header: ScalarTypeHeader {
-                bitsize: 32,
-                ..Default::default()
-            },
-            kind: ScalarTypeKind::Integer {
-                signed: true,
-                min: XLangNone,
-                max: XLangNone,
-            },
-        };
-        let FunctionDeclaration { ty, body } = FunctionDeclaration {
-            ty: xlang_struct::FnType {
-                ret: Type::Scalar(intty),
-                params: xlang::abi::vec::Vec::new(),
-                tag: Abi::C,
-                variadic: false,
-            },
-            body: xlang::abi::option::Some(FunctionBody {
-                locals: vec![],
-                block: Block {
-                    items: vec![
-                        BlockItem::Expr(Expr::Const(Value::Integer { ty: intty, val: 0 })),
-                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
-                    ],
-                },
-            }),
-        };
-        let mut state = FunctionCodegen::new(
-            X86CodegenState {
-                insns: Vec::new(),
-                mode: X86Mode::default_mode_for(&target).unwrap(),
-                symbols: Vec::new(),
-                name: name.to_string(),
-                strings: Rc::new(RefCell::new(StringMap::new())),
-                fnty: ty.clone(),
-                callconv: callconv::get_callconv(ty.tag, target.clone(), features.clone()).unwrap(),
-                properties,
-                _xmm_status: HashMap::new(),
-                gpr_status: HashMap::new(),
-                frame_size: 0,
-                scratch_reg: None,
-                ptrreg: None,
-                trap_unreachable: true,
-                features,
-            },
-            Path {
-                components: vec![xlang_struct::PathComponent::Text(name.into())],
-            },
-            ty.clone(),
-            properties,
-        );
-        state.write_function_body(&body.as_ref().unwrap());
-        let mut sec = Section {
-            align: 1024,
-            ..Default::default()
-        };
-        state
-            .into_inner()
-            .write_output(&mut sec, &mut Vec::new())
-            .unwrap();
-        assert_eq!(*sec.content, [0x33, 0xC0, 0xC3]);
-    }
-
-    #[test]
-    fn test_invalid() {
-        let target = Target::parse("x86_64-pc-linux-gnu");
-        let properties = xlang::targets::properties::get_properties((&target).into()).unwrap();
-        let features =
-            super::get_features_from_properties(properties, &properties.arch.default_machine);
-        let name = "foo";
-        let intty = ScalarType {
-            header: ScalarTypeHeader {
-                bitsize: 32,
-                ..Default::default()
-            },
-            kind: ScalarTypeKind::Integer {
-                signed: true,
-                min: XLangNone,
-                max: XLangNone,
-            },
-        };
-        let FunctionDeclaration { ty, body } = FunctionDeclaration {
-            ty: xlang_struct::FnType {
-                ret: Type::Scalar(intty),
-                params: xlang::abi::vec::Vec::new(),
-                tag: Abi::C,
-                variadic: false,
-            },
-            body: xlang::abi::option::Some(FunctionBody {
-                locals: vec![],
-                block: Block {
-                    items: vec![
-                        BlockItem::Expr(Expr::Const(Value::Invalid(Type::Scalar(intty)))),
-                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
-                    ],
-                },
-            }),
-        };
-        let mut state = FunctionCodegen::new(
-            X86CodegenState {
-                insns: Vec::new(),
-                mode: X86Mode::default_mode_for(&target).unwrap(),
-                symbols: Vec::new(),
-                name: name.to_string(),
-                strings: Rc::new(RefCell::new(StringMap::new())),
-                fnty: ty.clone(),
-                callconv: callconv::get_callconv(ty.tag, target.clone(), features.clone()).unwrap(),
-                properties,
-                _xmm_status: HashMap::new(),
-                gpr_status: HashMap::new(),
-                frame_size: 0,
-                scratch_reg: None,
-                ptrreg: None,
-                trap_unreachable: true,
-                features,
-            },
-            Path {
-                components: vec![xlang_struct::PathComponent::Text(name.into())],
-            },
-            ty.clone(),
-            properties,
-        );
-        state.write_function_body(&body.as_ref().unwrap());
-        let mut sec = Section {
-            align: 1024,
-            ..Default::default()
-        };
-        state
-            .into_inner()
-            .write_output(&mut sec, &mut Vec::new())
-            .unwrap();
-        assert_eq!(*sec.content, [0x0F, 0x0B])
-    }
-
-    #[test]
-    fn test_invalid_notrap() {
-        let target = Target::parse("x86_64-pc-linux-gnu");
-        let properties = xlang::targets::properties::get_properties((&target).into()).unwrap();
-        let features =
-            super::get_features_from_properties(properties, &properties.arch.default_machine);
-        let name = "foo";
-        let intty = ScalarType {
-            header: ScalarTypeHeader {
-                bitsize: 32,
-                ..Default::default()
-            },
-            kind: ScalarTypeKind::Integer {
-                signed: true,
-                min: XLangNone,
-                max: XLangNone,
-            },
-        };
-        let FunctionDeclaration { ty, body } = FunctionDeclaration {
-            ty: xlang_struct::FnType {
-                ret: Type::Scalar(intty),
-                params: xlang::abi::vec::Vec::new(),
-                tag: Abi::C,
-                variadic: false,
-            },
-            body: xlang::abi::option::Some(FunctionBody {
-                locals: vec![],
-                block: Block {
-                    items: vec![
-                        BlockItem::Expr(Expr::Const(Value::Invalid(Type::Scalar(intty)))),
-                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 }),
-                    ],
-                },
-            }),
-        };
-        let mut state = FunctionCodegen::new(
-            X86CodegenState {
-                insns: Vec::new(),
-                mode: X86Mode::default_mode_for(&target).unwrap(),
-                symbols: Vec::new(),
-                name: name.to_string(),
-                strings: Rc::new(RefCell::new(StringMap::new())),
-                fnty: ty.clone(),
-                callconv: callconv::get_callconv(ty.tag, target.clone(), features.clone()).unwrap(),
-                properties,
-                _xmm_status: HashMap::new(),
-                gpr_status: HashMap::new(),
-                frame_size: 0,
-                scratch_reg: None,
-                ptrreg: None,
-                trap_unreachable: false,
-                features,
-            },
-            Path {
-                components: vec![xlang_struct::PathComponent::Text(name.into())],
-            },
-            ty.clone(),
-            properties,
-        );
-        state.write_function_body(&body.as_ref().unwrap());
-        let mut sec = Section {
-            align: 1024,
-            ..Default::default()
-        };
-        state
-            .into_inner()
-            .write_output(&mut sec, &mut Vec::new())
-            .unwrap();
-        assert_eq!(*sec.content, [])
-    }
-}
+#[cfg(test)]
+mod test {}

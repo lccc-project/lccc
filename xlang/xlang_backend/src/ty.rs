@@ -1,9 +1,11 @@
+use std::convert::TryInto;
+
 use xlang::{
     ir::{
-        AggregateDefinition, AggregateKind, ArrayType, PointerType, ScalarType, ScalarTypeHeader,
-        ScalarTypeKind, Type, Value,
+        AggregateDefinition, AggregateKind, Path, ScalarType, ScalarTypeHeader, ScalarTypeKind,
+        Type, Value,
     },
-    prelude::v1::{Pair, Some as XLangSome},
+    prelude::v1::{HashMap, Pair, Some as XLangSome},
     targets::properties::TargetProperties,
 };
 
@@ -19,182 +21,159 @@ fn align_size(size: u64, align: u64) -> u64 {
     (size.wrapping_neg() & !(align - 1)).wrapping_neg()
 }
 
-/// Computes the size of the type given by `ty`, according to the `properties` of the current target
-pub fn type_size(ty: &Type, properties: &TargetProperties) -> Option<u64> {
-    match ty {
-        Type::Scalar(ScalarType {
-            header:
-                ScalarTypeHeader {
-                    bitsize,
-                    vectorsize,
-                    ..
-                },
-            ..
-        }) => {
-            let elem_bytes = ((*bitsize as u64) + 7) >> 3;
-
-            let size = if let XLangSome(vector) = vectorsize {
-                u64::from(*vector) * elem_bytes
-            } else {
-                elem_bytes
-            };
-
-            let align = scalar_align(size, properties);
-            Some(align_size(size, align))
-        }
-        Type::Void | Type::FnType(_) | Type::Null => None,
-        Type::Pointer(PointerType { .. }) => Some(align_size(
-            ((properties.ptrbits as u64) + 7) >> 3,
-            properties.ptralign as u64,
-        )),
-        Type::Array(ty) => match &**ty {
-            ArrayType {
-                ty,
-                len: Value::Integer { val, .. },
-            } => Some(type_size(ty, properties)? * (*val as u64)),
-            ArrayType { len, .. } => panic!(
-                "Encountered Invalid Value in computation of a type (len={:?})",
-                len
-            ),
-        },
-        Type::TaggedType(_, ty) => type_size(ty, properties),
-        Type::Product(tys) => {
-            let total_align = type_align(ty, properties)?;
-            let mut acc_size: u64 = 0;
-            for ty in tys {
-                let align = type_align(ty, properties)?;
-                acc_size = (acc_size.wrapping_neg() & !(align - 1)).wrapping_neg();
-                acc_size += type_size(ty, properties)?;
-            }
-            Some((acc_size.wrapping_neg() & !(total_align - 1)).wrapping_neg())
-        }
-        Type::Aligned(_, bty) => {
-            let align = type_align(ty, properties)?;
-            let acc_size = type_size(bty, properties)?;
-            Some((acc_size.wrapping_neg() & !(align - 1)).wrapping_neg())
-        }
-        Type::Aggregate(AggregateDefinition {
-            kind: AggregateKind::Struct,
-            fields,
-            ..
-        }) => {
-            let total_align = type_align(ty, properties)?;
-            let mut acc_size: u64 = 0;
-            for ty in fields.iter().map(|Pair(_, ty)| ty) {
-                let align = type_align(ty, properties)?;
-                acc_size = (acc_size.wrapping_neg() & !(align - 1)).wrapping_neg();
-                acc_size += type_size(ty, properties)?;
-            }
-            Some((acc_size.wrapping_neg() & !(total_align - 1)).wrapping_neg())
-        }
-        Type::Aggregate(AggregateDefinition {
-            kind: AggregateKind::Union,
-            fields,
-            ..
-        }) => {
-            let total_align = type_align(ty, properties)?;
-            fields
-                .iter()
-                .map(|Pair(_, ty)| ty)
-                .map(|ty| type_align(ty, properties))
-                .reduce(|a, b| match (a, b) {
-                    (None, _) => None,
-                    (_, None) => None,
-                    (Some(a), Some(b)) => Some(a.max(b)),
-                })
-                .flatten()
-                .map(|v| (v.wrapping_neg() & !(total_align - 1)).wrapping_neg())
-        }
-    }
+///
+/// A map of information about the types on the system
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct TypeInformation {
+    aggregates: HashMap<Path, Option<AggregateDefinition>>,
+    aliases: HashMap<Path, Type>,
+    properties: &'static TargetProperties,
 }
 
-/// Computes the size of the type given by `ty`, according to the `properties` of the current target
-pub fn type_align(ty: &Type, properties: &TargetProperties) -> Option<u64> {
-    match ty {
-        Type::Scalar(ScalarType {
-            kind: ScalarTypeKind::LongFloat,
-            ..
-        }) => Some(properties.ldbl_align as u64),
-        Type::Scalar(ScalarType {
-            header:
-                ScalarTypeHeader {
-                    bitsize,
-                    vectorsize,
-                    ..
-                },
-            ..
-        }) => {
-            let elem_bytes = ((*bitsize as u64) + 7) >> 3;
+impl TypeInformation {
+    /// Constructs a new set of [`TypeInformation`] from the properties of a given target
+    pub fn from_properties(properties: &'static TargetProperties) -> Self {
+        Self {
+            properties,
+            aliases: HashMap::new(),
+            aggregates: HashMap::new(),
+        }
+    }
 
-            let size = if let XLangSome(vector) = vectorsize {
-                u64::from(*vector) * elem_bytes
-            } else {
-                elem_bytes
-            };
+    /// Adds a new aggregate type at the given path
+    pub fn add_aggregate(&mut self, path: Path, defn: AggregateDefinition) {
+        self.aggregates.insert(path, Some(defn));
+    }
 
-            Some(scalar_align(size, properties))
-        }
-        Type::Pointer(_) => Some(properties.ptralign as u64),
-        Type::Void | Type::FnType(_) | Type::Null => None,
-        Type::Array(ty) => {
-            let ArrayType { ty, .. } = &**ty;
-            type_align(ty, properties)
-        }
-        Type::TaggedType(_, ty) => type_align(ty, properties),
-        Type::Product(tys) => {
-            tys.iter()
-                .map(|ty| type_align(ty, properties))
-                .fold(Some(1), |a, b| match (a, b) {
-                    (None, _) => None,
-                    (_, None) => None,
-                    (Some(a), Some(b)) => Some(a.max(b)),
-                })
-        }
-        Type::Aligned(val, ty) => {
-            let base_align = type_align(ty, properties)?;
-            match &**val {
-                Value::Invalid(_)
-                | Value::Uninitialized(_)
-                | Value::String { .. }
-                | Value::ByteString { .. }
-                | Value::GlobalAddress { .. }
-                | Value::LabelAddress(_) => {
-                    panic!("Encountered Invalid Value in Computation of Type")
+    /// Adds a new opaque type at the given path
+    pub fn add_opaque_aggregate(&mut self, path: Path) {
+        self.aggregates.get_or_insert_mut(path, None);
+    }
+
+    /// Computes the alignment of a type
+    pub fn type_align(&self, _: &Type) -> Option<u64> {
+        todo!()
+    }
+
+    /// Computes the size of a type
+    pub fn type_size(&self, ty: &Type) -> Option<u64> {
+        match ty {
+            Type::Null | Type::Void | Type::FnType(_) => None,
+            Type::Scalar(ScalarType {
+                header:
+                    ScalarTypeHeader {
+                        bitsize,
+                        vectorsize,
+                        ..
+                    },
+                ..
+            }) => {
+                let raw_size = (((*bitsize) + 7) / 8).into();
+                let aligned_size = align_size(raw_size, scalar_align(raw_size, self.properties));
+                if let XLangSome(v) = vectorsize {
+                    let vsize = aligned_size * u64::from(*v);
+                    Some(align_size(vsize, scalar_align(vsize, self.properties)))
+                } else {
+                    Some(aligned_size)
                 }
-                Value::GenericParameter(_) => panic!("Encountered Generic Parameter in monomorphic code (codegen cannot resolve generics)"),
-                Value::Integer { val, .. } => Some((*val as u64).max(base_align)),
+            }
+            Type::Pointer(_) => {
+                let raw_size = ((self.properties.ptrbits + 7) / 8).into();
+
+                Some(align_size(raw_size, self.properties.ptralign.into()))
+            }
+            Type::Array(a) => {
+                let size = self.type_size(&a.ty)?;
+                match &a.len {
+                    Value::Invalid(_) | Value::Uninitialized(_) => None,
+                    Value::Integer {
+                        ty:
+                            ScalarType {
+                                kind: ScalarTypeKind::Integer { .. },
+                                ..
+                            },
+                        val,
+                    } => size.checked_mul((*val).try_into().ok()?),
+                    v => panic!("Encountered invalid value in computation of a type {:?}", v),
+                }
+            }
+            Type::TaggedType(_, ty) => self.type_size(ty),
+            Type::Product(tys) => {
+                let mut tys = tys.clone();
+                tys.sort_by(|a, b| self.type_align(a).cmp(&self.type_align(b)));
+                let raw_size =
+                    tys.iter()
+                        .map(|s| self.type_size(s))
+                        .fold(Some(0u64), |a, b| match (a, b) {
+                            (None, _) | (_, None) => None,
+                            (Some(x), Some(y)) => x.checked_add(y),
+                        })?;
+
+                let align =
+                    tys.iter()
+                        .map(|s| self.type_align(s))
+                        .fold(Some(1u64), |a, b| match (a, b) {
+                            (None, _) | (_, None) => None,
+                            (Some(x), Some(y)) => Some(x.max(y)),
+                        })?;
+                Some(align_size(raw_size, align))
+            }
+            Type::Aligned(alignment, ty) => {
+                let raw_size = self.type_size(ty)?;
+
+                let alignment = match &**alignment {
+                    Value::Invalid(_) | Value::Uninitialized(_) => None,
+                    Value::Integer {
+                        ty:
+                            ScalarType {
+                                kind: ScalarTypeKind::Integer { .. },
+                                ..
+                            },
+                        val,
+                    } => (*val).try_into().ok(),
+                    v => panic!("Invalid value encountered in type {:?}", v),
+                }?;
+                return Some(align_size(raw_size, alignment));
+            }
+            Type::Aggregate(a) => {
+                let align = a
+                    .fields
+                    .iter()
+                    .map(|Pair(_, ty)| ty)
+                    .map(|s| self.type_align(s))
+                    .fold(Some(1u64), |a, b| match (a, b) {
+                        (None, _) | (_, None) => None,
+                        (Some(x), Some(y)) => Some(x.max(y)),
+                    })?;
+                match a.kind {
+                    AggregateKind::Struct => {
+                        let raw_size = a
+                            .fields
+                            .iter()
+                            .map(|Pair(_, ty)| ty)
+                            .map(|ty| self.type_size(ty))
+                            .fold(Some(0u64), |a, b| match (a, b) {
+                                (None, _) | (_, None) => None,
+                                (Some(x), Some(y)) => x.checked_add(y),
+                            })?;
+
+                        Some(align_size(raw_size, align))
+                    }
+                    AggregateKind::Union => {
+                        let raw_size = a
+                            .fields
+                            .iter()
+                            .map(|Pair(_, ty)| ty)
+                            .map(|s| self.type_size(s))
+                            .reduce(|a, b| match (a, b) {
+                                (None, _) | (_, None) => None,
+                                (Some(x), Some(y)) => Some(x.max(y)),
+                            })
+                            .map_or(None, |s| s)?;
+                        Some(align_size(raw_size, align))
+                    }
+                }
             }
         }
-        Type::Aggregate(AggregateDefinition { fields, .. }) => fields
-            .iter()
-            .map(|Pair(_, ty)| ty)
-            .map(|ty| type_align(ty, properties))
-            .fold(Some(1), |a, b| match (a, b) {
-                (None, _) => None,
-                (_, None) => None,
-                (Some(a), Some(b)) => Some(a.max(b)),
-            }),
-    }
-}
-
-/// Gets the type of the field of `ty` with `name`
-pub fn field_type(ty: &Type, name: &str) -> Option<Type> {
-    match ty {
-        Type::Null => None,
-        Type::Scalar(_) => None,
-        Type::Void => None,
-        Type::FnType(_) => None,
-        Type::Pointer(_) => None,
-        Type::Array(_) => None,
-        Type::TaggedType(_, ty) => field_type(ty, name),
-        Type::Product(tys) => {
-            let id = name.parse::<u32>().ok()?;
-            tys.get(id as usize).cloned()
-        }
-        Type::Aligned(_, ty) => field_type(ty, name),
-        Type::Aggregate(AggregateDefinition { fields, .. }) => fields
-            .iter()
-            .find(|Pair(n, _)| n == name)
-            .map(|Pair(_, ty)| ty.clone()),
     }
 }

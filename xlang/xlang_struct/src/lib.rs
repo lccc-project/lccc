@@ -78,6 +78,23 @@ pub enum MemberDeclaration {
     Function(FunctionDeclaration),
     OpaqueAggregate(AggregateKind),
     AggregateDefinition(AggregateDefinition),
+    Static(StaticDefinition),
+}
+
+#[repr(u16)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Linkage {
+    External,
+    Internal,
+    Constant,
+}
+
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct StaticDefinition {
+    pub ty: Type,
+    pub init: Value,
+    pub linkage: Linkage,
 }
 
 impl Default for MemberDeclaration {
