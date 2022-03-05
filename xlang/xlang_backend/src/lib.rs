@@ -496,7 +496,70 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     VStackValue::Trapped => self.push_value(VStackValue::Trapped),
                 }
             }
-            Expr::Branch { .. } => todo!(),
+            Expr::Branch { cond, target } => match cond {
+                BranchCondition::Always => {
+                    let values = self.pop_values(self.targets[target].len()).unwrap();
+                    for ((loc, _), val) in self.targets[target].clone().into_iter().zip(values) {
+                        self.move_val(val, loc);
+                    }
+                    self.diverged = true;
+                    self.inner.branch_unconditional(*target);
+                }
+                BranchCondition::Never => {}
+                cond => {
+                    let control = self.pop_value().unwrap();
+                    let values = self.pop_values(self.targets[target].len()).unwrap();
+                    match control {
+                        VStackValue::Constant(Value::Uninitialized(_))
+                        | VStackValue::Constant(Value::Invalid(_)) => {
+                            self.inner.write_trap(Trap::Unreachable);
+                            self.vstack.push_back(VStackValue::Trapped);
+                        }
+                        VStackValue::Constant(Value::Integer {
+                            ty:
+                                ScalarType {
+                                    kind: ScalarTypeKind::Integer { signed, .. },
+                                    ..
+                                },
+                            val,
+                        }) => {
+                            let taken = match cond {
+                                BranchCondition::Equal => val == 0,
+                                BranchCondition::NotEqual => val != 0,
+                                BranchCondition::Less => signed && ((val as i128) < 0),
+                                BranchCondition::LessEqual => {
+                                    (signed && ((val as i128) <= 0)) || val == 0
+                                }
+                                BranchCondition::Greater => {
+                                    if signed {
+                                        (val as i128) > 0
+                                    } else {
+                                        val > 0
+                                    }
+                                }
+                                BranchCondition::GreaterEqual => (!signed) || ((val as i128) >= 0),
+                                _ => unreachable!(),
+                            };
+
+                            if taken {
+                                for ((loc, _), val) in
+                                    self.targets[target].clone().into_iter().zip(values)
+                                {
+                                    self.move_val(val, loc);
+                                }
+                                self.diverged = true;
+                                self.inner.branch_unconditional(*target);
+                            }
+                        }
+                        VStackValue::OpaqueScalar(_, _) => todo!("opaque scalar"),
+                        VStackValue::CompareResult(_, _) => todo!("compare"),
+                        VStackValue::Trapped => {
+                            self.push_value(VStackValue::Trapped);
+                        }
+                        val => panic!("Invalid Branch Control {:?}", val),
+                    }
+                }
+            },
             Expr::BranchIndirect => todo!(),
             Expr::Convert(_, _) => todo!(),
             Expr::Derive(_, _) => todo!(),

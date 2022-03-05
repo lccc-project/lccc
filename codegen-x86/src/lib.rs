@@ -469,8 +469,19 @@ impl FunctionRawCodegen for X86CodegenState {
 
     type CallConv = dyn X86CallConv;
 
-    fn move_val(&mut self, _src: Self::Loc, _dest: Self::Loc) {
-        todo!()
+    fn move_val(&mut self, src: Self::Loc, dest: Self::Loc) {
+        match (src, dest) {
+            (ValLocation::Null, _) | (_, ValLocation::Null) => {}
+            (ValLocation::Unassigned(_), _) | (_, ValLocation::Unassigned(_)) => {
+                panic!("Unassigned Val Location")
+            }
+            (ValLocation::Register(r1), ValLocation::Register(r2)) => {
+                self.move_reg2reg(r2, r1);
+            }
+            (ValLocation::Register(r1), loc) if loc.addressible() => self.move_reg2mem(&loc, r1),
+            (loc, ValLocation::Register(r2)) if loc.addressible() => self.move_mem2reg(&loc, r2),
+            (_, _) => todo!("mem2mem"),
+        }
     }
 
     #[allow(clippy::cast_possible_truncation)] // truncation here is a feature, not a bug. src may be a sign-extended negative value
