@@ -61,5 +61,5 @@ pub static CLEVER_ELF: TargetProperties = TargetProperties {
     endfiles: span![const_sv!("crtn.o")],
     enabled_features: span![],
     available_formats: span![],
-    interp: const_sv!("ld-x86_64.so"),
+    interp: const_sv!("ld-clever.so"),
 };

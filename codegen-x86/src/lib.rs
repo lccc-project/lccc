@@ -1132,4 +1132,200 @@ pub extern "rustcall" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
 }}
 
 #[cfg(test)]
-mod test {}
+mod test {
+    use std::{cell::RefCell, rc::Rc};
+
+    use arch_ops::x86::insn::X86Mode;
+    use binfmt::fmt::Section;
+    use target_tuples::Target;
+    use xlang::prelude::v1::{HashMap, None as XLangNone};
+    use xlang_backend::{str::StringMap, ty::TypeInformation, FunctionCodegen};
+    use xlang_struct::{
+        Abi, BinaryOp, BlockItem, Expr, FnType, FunctionBody, OverflowBehaviour, Path,
+        PathComponent, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type, Value,
+    };
+
+    use crate::X86CodegenState;
+
+    fn run_codegen_test(sig: FnType, f: &FunctionBody, expected: &[u8], target: Target) {
+        let xtarget = xlang::targets::Target::from(&target);
+        let properties = xlang::targets::properties::get_properties(xtarget).unwrap();
+        let features =
+            crate::get_features_from_properties(properties, properties.arch.default_machine);
+        let tys = Rc::new(TypeInformation::from_properties(properties));
+
+        let strings = Rc::new(RefCell::new(StringMap::new()));
+
+        let fncg = X86CodegenState {
+            insns: vec![],
+            mode: X86Mode::default_mode_for(&target).unwrap(),
+            symbols: vec![],
+            name: String::from("foo"),
+            strings: strings.clone(),
+            callconv: crate::callconv::get_callconv(sig.tag, target, features.clone(), tys.clone())
+                .unwrap(),
+            frame_size: 0,
+            properties,
+            scratch_reg: None,
+            ptrreg: None,
+            gpr_status: HashMap::new(),
+            _xmm_status: HashMap::new(),
+            trap_unreachable: true,
+            features,
+            tys: tys.clone(),
+        };
+
+        let mut cg = FunctionCodegen::new(
+            fncg,
+            Path {
+                components: xlang::abi::vec![PathComponent::Text(
+                    xlang::abi::string::String::from("foo")
+                )],
+            },
+            sig,
+            properties,
+            tys,
+        );
+        cg.write_function_body(f);
+
+        let mut text = Section {
+            align: 1024,
+            ..Default::default()
+        };
+
+        cg.into_inner()
+            .write_output(&mut text, &mut vec![])
+            .unwrap();
+
+        if &text.content != expected {
+            panic!(
+                "Codegen test failed: Output {:x?}, Expected {:x?}",
+                text.content, expected
+            );
+        }
+    }
+
+    #[test]
+    fn cgtest_return_void() {
+        run_codegen_test(
+            FnType {
+                ret: Type::Void,
+                params: xlang::abi::vec![],
+                variadic: false,
+                tag: Abi::C,
+            },
+            &FunctionBody {
+                locals: xlang::abi::vec![],
+                block: xlang_struct::Block {
+                    items: xlang::abi::vec![],
+                },
+            },
+            &[0xC3],
+            Target::parse("x86_64-pc-linux-gnu"),
+        )
+    }
+
+    #[test]
+    fn cgtest_return_0() {
+        let sty = ScalarType {
+            header: ScalarTypeHeader {
+                bitsize: 32,
+                ..Default::default()
+            },
+            kind: ScalarTypeKind::Integer {
+                signed: true,
+                min: XLangNone,
+                max: XLangNone,
+            },
+        };
+        run_codegen_test(
+            FnType {
+                ret: Type::Scalar(sty),
+                params: xlang::abi::vec![],
+                variadic: false,
+                tag: Abi::C,
+            },
+            &FunctionBody {
+                locals: xlang::abi::vec![],
+                block: xlang_struct::Block {
+                    items: xlang::abi::vec![
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 0 })),
+                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 })
+                    ],
+                },
+            },
+            &[0x31, 0xC0, 0xC3],
+            Target::parse("x86_64-pc-linux-gnu"),
+        )
+    }
+
+    #[test]
+    fn cgtest_return_1() {
+        let sty = ScalarType {
+            header: ScalarTypeHeader {
+                bitsize: 32,
+                ..Default::default()
+            },
+            kind: ScalarTypeKind::Integer {
+                signed: true,
+                min: XLangNone,
+                max: XLangNone,
+            },
+        };
+        run_codegen_test(
+            FnType {
+                ret: Type::Scalar(sty),
+                params: xlang::abi::vec![],
+                variadic: false,
+                tag: Abi::C,
+            },
+            &FunctionBody {
+                locals: xlang::abi::vec![],
+                block: xlang_struct::Block {
+                    items: xlang::abi::vec![
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 1 })),
+                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 })
+                    ],
+                },
+            },
+            &[0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3],
+            Target::parse("x86_64-pc-linux-gnu"),
+        )
+    }
+
+    #[test]
+    fn cgtest_add_0() {
+        let sty = ScalarType {
+            header: ScalarTypeHeader {
+                bitsize: 32,
+                ..Default::default()
+            },
+            kind: ScalarTypeKind::Integer {
+                signed: true,
+                min: XLangNone,
+                max: XLangNone,
+            },
+        };
+        run_codegen_test(
+            FnType {
+                ret: Type::Scalar(sty),
+                params: xlang::abi::vec![],
+                variadic: false,
+                tag: Abi::C,
+            },
+            &FunctionBody {
+                locals: xlang::abi::vec![],
+                block: xlang_struct::Block {
+                    items: xlang::abi::vec![
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 1 })),
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: !0 })),
+                        BlockItem::Expr(Expr::BinaryOp(BinaryOp::Add, OverflowBehaviour::Wrap)),
+                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 })
+                    ],
+                },
+            },
+            &[0x31, 0xC0, 0xC3],
+            Target::parse("x86_64-pc-linux-gnu"),
+        )
+    }
+}

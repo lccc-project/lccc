@@ -17,6 +17,16 @@ use xlang::plugin::{OutputMode, XLangCodegen, XLangFrontend, XLangPlugin};
 use xlang::prelude::v1::*;
 use xlang_host::dso::Handle;
 
+pub enum DumpMode {
+    Target,
+    Machine,
+    Features,
+    MachineProperties,
+    TargetProperties,
+    OsProperties,
+    ArchProperties,
+}
+
 #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 fn main() {
     let mut target = target_tuples::from_env!("default_target");
@@ -121,6 +131,13 @@ fn main() {
             xlang::vec!['m'],
             TakesArg::Always,
             false
+        ),
+        ArgSpec::new(
+            "dump",
+            xlang::vec!["dump"],
+            Vec::new(),
+            TakesArg::Always,
+            true
         )
     ];
 
@@ -137,6 +154,8 @@ fn main() {
     let mut tune_machine = None;
     let mut feature_opts = HashMap::<_, _>::new();
     let mut abi = None;
+
+    let mut dump_modes = Vec::new();
 
     for arg in &args {
         match arg.name {
@@ -204,6 +223,24 @@ fn main() {
                     feature_opts.insert(StringView::new(x), true);
                 }
             },
+
+            "dump" => {
+                for i in arg.value.as_deref().unwrap().split(",") {
+                    match i {
+                        "target" => dump_modes.push(DumpMode::Target),
+                        "machine" => dump_modes.push(DumpMode::Machine),
+                        "features" => dump_modes.push(DumpMode::Features),
+                        "target-properties" => dump_modes.push(DumpMode::TargetProperties),
+                        "machine-properties" => dump_modes.push(DumpMode::MachineProperties),
+                        "arch-properties" => dump_modes.push(DumpMode::ArchProperties),
+                        "os-properties" => dump_modes.push(DumpMode::OsProperties),
+                        m => {
+                            eprintln!("Unrecognized dump mode {}", m);
+                            std::process::exit(1)
+                        }
+                    }
+                }
+            }
             _ => panic!(),
         }
     }
@@ -227,6 +264,91 @@ fn main() {
             );
         }
         _ => todo!(),
+    }
+
+    let xtarget = xlang::targets::Target::from(&target);
+
+    let properties = xlang::targets::properties::get_properties(xtarget.clone()).unwrap();
+
+    let arch_mach = match arch_machine {
+        Some("generic") | None => properties.arch.default_machine,
+        Some("native") => todo!("-march=native"),
+        Some(mach) => properties
+            .arch
+            .machines
+            .into_iter()
+            .copied()
+            .find(|Pair(name, _)| (*name) == mach)
+            .map_or_else(
+                || {
+                    eprintln!("Unknown machine {} for target {}", mach, target);
+                    std::process::exit(1)
+                },
+                |Pair(_, m)| m,
+            ),
+    };
+
+    if let Some(tune) = tune_machine {
+        todo!("-mtune={}", tune);
+    }
+
+    if let Some(abi) = abi {
+        todo!("-m{}", abi)
+    }
+
+    let mut features = HashSet::<_>::new();
+
+    for feature in arch_mach.default_features {
+        let _ = features.insert(*feature);
+    }
+
+    for Pair(feature, enabled) in properties.enabled_features {
+        if *enabled {
+            let _ = features.insert(*feature);
+        } else {
+            let _ = features.remove(feature);
+        }
+    }
+
+    for Pair(feature, enabled) in &feature_opts {
+        if *enabled {
+            let _ = features.insert(*feature);
+        } else {
+            let _ = features.remove(feature);
+        }
+    }
+
+    let features = features.iter().copied().collect::<Vec<_>>();
+
+    if !dump_modes.is_empty() {
+        for m in dump_modes {
+            match m {
+                DumpMode::Target => println!("Target: {}", target),
+                DumpMode::Machine => match arch_machine {
+                    Some("generic") | None => {
+                        for Pair(name, mprop) in properties.arch.machines {
+                            if core::ptr::eq(*mprop, arch_mach) {
+                                println!("Machine: {}", name);
+                                break;
+                            }
+                        }
+                    }
+                    Some("native") => todo!("-march=native"),
+                    Some(name) => println!("Machine: {}", name),
+                },
+                DumpMode::Features => {
+                    println!("Features:");
+                    for feature in &features {
+                        println!("\t{}", feature);
+                    }
+                }
+                DumpMode::MachineProperties => println!("Machine Properties:\n{:#?}", arch_mach),
+                DumpMode::TargetProperties => println!("Target Properties:\n{:#?}", properties),
+                DumpMode::OsProperties => println!("OS Properties:\n{:#?}", properties.os),
+                DumpMode::ArchProperties => println!("Arch Properties:\n{:#?}", properties.arch),
+            }
+        }
+        std::process::exit(1);
     }
 
     let userpaths = lccc::find_libraries(
@@ -287,60 +409,6 @@ fn main() {
                 .expect("frontend library missing required entry point");
         codegens.push(initializer());
     }
-
-    let xtarget = xlang::targets::Target::from(&target);
-
-    let properties = xlang::targets::properties::get_properties(xtarget.clone()).unwrap();
-
-    let arch_mach = match arch_machine {
-        Some("generic") | None => properties.arch.default_machine,
-        Some("native") => todo!("-march=native"),
-        Some(mach) => properties
-            .arch
-            .machines
-            .into_iter()
-            .copied()
-            .find(|Pair(name, _)| (*name) == mach)
-            .map_or_else(
-                || {
-                    eprintln!("Unknown machine {} for target {}", mach, target);
-                    std::process::exit(1)
-                },
-                |Pair(_, m)| m,
-            ),
-    };
-
-    if let Some(tune) = tune_machine {
-        todo!("-mtune={}", tune);
-    }
-
-    if let Some(abi) = abi {
-        todo!("-m{}", abi)
-    }
-
-    let mut features = HashSet::<_>::new();
-
-    for feature in arch_mach.default_features {
-        let _ = features.insert(*feature);
-    }
-
-    for Pair(feature, enabled) in properties.enabled_features {
-        if *enabled {
-            let _ = features.insert(*feature);
-        } else {
-            let _ = features.remove(feature);
-        }
-    }
-
-    for Pair(feature, enabled) in &feature_opts {
-        if *enabled {
-            let _ = features.insert(*feature);
-        } else {
-            let _ = features.remove(feature);
-        }
-    }
-
-    let features = features.iter().copied().collect::<Vec<_>>();
 
     let mut file_pairs = Vec::new();
 
