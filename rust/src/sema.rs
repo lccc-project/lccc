@@ -703,7 +703,10 @@ fn iter_in_scope<F: FnMut(&Item, Option<&str>)>(items: &[Item], abi: Option<&str
             Item::MacroExpansion { .. } => unreachable!("Macros were already expanded"),
             Item::MacroRules { .. } => todo!("macro_rules!"),
             Item::Type(_) => {
-                assert!(abi.is_none(), "`struct` is not supported in `extern` blocks");
+                assert!(
+                    abi.is_none(),
+                    "`struct` is not supported in `extern` blocks"
+                );
                 func(item, abi);
             }
             Item::Mod { .. } => todo!("mod"),
@@ -749,41 +752,49 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
     ];
 
     // Pass 1.2: structures
-    iter_in_scope(items, None, &mut |item, abi| {
-        match item {
-            Item::Type(structure) => {
-                assert!(structure.attrs.is_empty());
-                assert!(structure.tag == TypeTag::Struct);
-                assert!(structure.generics.params.is_empty());
-                named_types.push(Type::Struct { name: Identifier::Basic { mangling: Some(Mangling::Rust), name: structure.name.clone() }, fields: None });
-            }
-            _ => {}
+    iter_in_scope(items, None, &mut |item, abi| match item {
+        Item::Type(structure) => {
+            assert!(structure.attrs.is_empty());
+            assert!(structure.tag == TypeTag::Struct);
+            assert!(structure.generics.params.is_empty());
+            named_types.push(Type::Struct {
+                name: Identifier::Basic {
+                    mangling: Some(Mangling::Rust),
+                    name: structure.name.clone(),
+                },
+                fields: None,
+            });
         }
+        _ => {}
     });
 
     // Pass 1.3: fields of structures
-    iter_in_scope(items, None, &mut |item, abi| {
-        match item {
-            Item::Type(structure) => {
-                let mut converted_fields = Vec::new();
-                match &structure.body {
-                    StructBody::Struct(fields) => for field in fields {
+    iter_in_scope(items, None, &mut |item, abi| match item {
+        Item::Type(structure) => {
+            let mut converted_fields = Vec::new();
+            match &structure.body {
+                StructBody::Struct(fields) => {
+                    for field in fields {
                         assert!(field.attrs.is_empty());
-                        converted_fields.push((field.name.clone(), convert_ty(&named_types, &field.ty)));
+                        converted_fields
+                            .push((field.name.clone(), convert_ty(&named_types, &field.ty)));
                     }
-                    StructBody::Tuple(_) => todo!(),
-                    StructBody::Unit => {}
                 }
-                if let Some(Type::Struct { fields, .. }) = named_types.iter_mut().find(|ty| ty.name() == structure.name) {
-                    *fields = Some(converted_fields);
-                } else {
-                    unreachable!();
-                }
+                StructBody::Tuple(_) => todo!(),
+                StructBody::Unit => {}
             }
-            _ => {}
+            if let Some(Type::Struct { fields, .. }) = named_types
+                .iter_mut()
+                .find(|ty| ty.name() == structure.name)
+            {
+                *fields = Some(converted_fields);
+            } else {
+                unreachable!();
+            }
         }
+        _ => {}
     });
-    
+
     // Pass 2: list declarations and initially fill lang item table
     let mut declarations = Vec::new();
     let mut lang_items = HashMap::new();
