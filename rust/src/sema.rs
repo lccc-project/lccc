@@ -1,12 +1,12 @@
 #![allow(clippy::cognitive_complexity, clippy::too_many_lines)] // TODO: You figure it out rdr
 
 pub use crate::lex::StrType; // TODO: `pub use` this in `crate::parse`
-use crate::parse::{FnParam, Item, Mod, Path, PathComponent, Pattern};
+use crate::parse::{FnParam, Item, Mod, Path, PathComponent, Pattern, StructBody, TypeTag};
 pub use crate::parse::{Meta, Mutability, Safety, SimplePath, Visibility};
 use std::collections::hash_map::{Entry, HashMap};
 use std::fmt::{self, Display, Formatter};
 
-#[derive(Clone, Debug, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Identifier {
     Basic {
         mangling: Option<Mangling>,
@@ -100,6 +100,10 @@ pub enum Type {
         mutability: Mutability,
         underlying: Box<Self>,
     },
+    Struct {
+        name: Identifier,
+        fields: Option<Vec<(String, Self)>>,
+    },
     Str,
     Tuple(Vec<Self>),
 }
@@ -146,6 +150,8 @@ impl Type {
                 result.push_str(&underlying.name());
                 result
             }
+            Self::Struct { name, .. } => name.to_string(),
+            Self::Str => String::from("str"),
             Self::Tuple(types) => {
                 let mut result = String::from("(");
                 let mut comma = false;
@@ -696,7 +702,10 @@ fn iter_in_scope<F: FnMut(&Item, Option<&str>)>(items: &[Item], abi: Option<&str
             Item::FnDeclaration { .. } => func(item, abi),
             Item::MacroExpansion { .. } => unreachable!("Macros were already expanded"),
             Item::MacroRules { .. } => todo!("macro_rules!"),
-            Item::Type(_) => todo!("struct"),
+            Item::Type(_) => {
+                assert!(abi.is_none(), "`struct` is not supported in `extern` blocks");
+                func(item, abi);
+            }
             Item::Mod { .. } => todo!("mod"),
             Item::Adt { .. } => todo!("enum"),
             Item::TypeAlias { .. } => todo!("type"),
@@ -716,9 +725,8 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
         todo!("#[{:?}]", attr)
     }
     // Pass 1: list types
-    // Since we don't have a prelude to give us standard types yet, we list them
-    // inline.
-    let named_types = vec![
+    // Pass 1.1: primitives
+    let mut named_types = vec![
         Type::Boolean,
         Type::Char,
         Type::Float(FloatType::F32),
@@ -739,6 +747,43 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
         Type::Integer(IntType::Usize),
         Type::Str,
     ];
+
+    // Pass 1.2: structures
+    iter_in_scope(items, None, &mut |item, abi| {
+        match item {
+            Item::Type(structure) => {
+                assert!(structure.attrs.is_empty());
+                assert!(structure.tag == TypeTag::Struct);
+                assert!(structure.generics.params.is_empty());
+                named_types.push(Type::Struct { name: Identifier::Basic { mangling: Some(Mangling::Rust), name: structure.name.clone() }, fields: None });
+            }
+            _ => {}
+        }
+    });
+
+    // Pass 1.3: fields of structures
+    iter_in_scope(items, None, &mut |item, abi| {
+        match item {
+            Item::Type(structure) => {
+                let mut converted_fields = Vec::new();
+                match &structure.body {
+                    StructBody::Struct(fields) => for field in fields {
+                        assert!(field.attrs.is_empty());
+                        converted_fields.push((field.name.clone(), convert_ty(&named_types, &field.ty)));
+                    }
+                    StructBody::Tuple(_) => todo!(),
+                    StructBody::Unit => {}
+                }
+                if let Some(Type::Struct { fields, .. }) = named_types.iter_mut().find(|ty| ty.name() == structure.name) {
+                    *fields = Some(converted_fields);
+                } else {
+                    unreachable!();
+                }
+            }
+            _ => {}
+        }
+    });
+    
     // Pass 2: list declarations and initially fill lang item table
     let mut declarations = Vec::new();
     let mut lang_items = HashMap::new();
@@ -780,7 +825,7 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                         x => todo!("#[{:?}]", attr),
                     }
                 }
-                Declaration::Function {
+                Some(Declaration::Function {
                     has_definition: block.is_some(),
                     name,
                     sig: FunctionSignature {
@@ -804,14 +849,14 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                         },
                         visibility: *visibility,
                     },
-                }
+                })
             }
             Item::ExternBlock { .. } => {
                 unreachable!("Should have been descended into by calling function");
             }
             Item::MacroExpansion { .. } => unreachable!("Macros should already be expanded"),
-            Item::MacroRules { .. } => todo!("macro_rules!"),
-            Item::Type(_) => todo!("struct"),
+            Item::MacroRules { .. } => unreachable!("macro_rules!"),
+            Item::Type(_) => None,
             Item::Mod { .. } => todo!("mod"),
             Item::Adt { .. } => todo!("enum"),
             Item::TypeAlias { .. } => todo!("type"),
@@ -820,8 +865,10 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
             Item::Static { .. } => todo!("static"),
             Item::Const { .. } => todo!("const"),
         };
-        // TODO: Check attributes
-        declarations.push(declaration);
+        if let Some(declaration) = declaration {
+            // TODO: Check attributes
+            declarations.push(declaration);
+        }
     });
     if let Entry::Vacant(entry) = lang_items.entry(LangItem::Main) {
         // Pass 2.5: locate `main`, if it exists
