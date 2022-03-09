@@ -225,7 +225,7 @@ fn main() {
             },
 
             "dump" => {
-                for i in arg.value.as_deref().unwrap().split(",") {
+                for i in arg.value.as_deref().unwrap().split(',') {
                     match i {
                         "target" => dump_modes.push(DumpMode::Target),
                         "machine" => dump_modes.push(DumpMode::Machine),

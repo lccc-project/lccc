@@ -24,7 +24,7 @@ pub enum LValue<Loc: ValLocation> {
     /// A pointer to a temporary value (`as_temporary`)
     Temporary(Box<VStackValue<Loc>>),
     /// A pointer to a local variable
-    Local(Loc),
+    Local(u32),
     /// A pointer to a global static/function
     GlobalAddress(Path),
     /// A pointer to a Label

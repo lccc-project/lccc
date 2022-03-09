@@ -1,7 +1,13 @@
 #![deny(missing_docs, warnings)] // No clippy::nursery
 //! A helper crate for implementing [`xlang::plugin::XLangCodegen`]s without duplicating code (also can be used to evaluate constant expressions)
 //! the `xlang_backend` crate provides a general interface for writing expressions to an output.
-use std::{collections::VecDeque, convert::TryInto, fmt::Debug, rc::Rc};
+use std::{
+    collections::VecDeque,
+    convert::{TryFrom, TryInto},
+    fmt::Debug,
+    option::Option::Some as StdSome,
+    rc::Rc,
+};
 
 use self::str::Encoding;
 use callconv::CallingConvention;
@@ -65,13 +71,16 @@ pub trait FunctionRawCodegen {
     fn move_val(&mut self, src: Self::Loc, dest: Self::Loc);
 
     /// Stores an immediate value into the given location
-    fn move_imm(&mut self, src: u128, dest: Self::Loc);
+    fn move_imm(&mut self, src: u128, dest: Self::Loc, ty: &Type);
 
-    /// Stores an immediate value into
+    /// Stores an immediate value into the pointer in `ptr`
     fn store_indirect_imm(&mut self, src: Value, ptr: Self::Loc);
 
-    /// Loads a value into the given val location
-    fn load_val(&mut self, lvalue: LValue<Self::Loc>, loc: Self::Loc);
+    /// Loads a value into the pointer in the given value location
+    fn load_val(&mut self, lvalue: Self::Loc, loc: Self::Loc);
+
+    /// Stores a value into the given value location
+    fn store_indirect(&mut self, lvalue: Self::Loc, loc: Self::Loc, ty: &Type);
 
     /// Obtains the calling convention for the current function
     fn get_callconv(&self) -> &Self::CallConv;
@@ -258,9 +267,11 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             VStackValue::Constant(Value::ByteString { content }) => self
                 .inner
                 .compute_string_address(Encoding::Byte, content, loc),
-            VStackValue::Constant(Value::Integer { val, .. }) => self.inner.move_imm(val, loc),
+            VStackValue::Constant(Value::Integer { val, ty }) => {
+                self.inner.move_imm(val, loc, &Type::Scalar(ty))
+            }
             VStackValue::Constant(Value::GenericParameter(n)) => todo!("%{}", n),
-            VStackValue::LValue(_, lvalue) | VStackValue::Pointer(_, lvalue) => match lvalue {
+            VStackValue::Pointer(pty, lvalue) => match lvalue {
                 LValue::OpaquePointer(loc2) => self.inner.move_val(loc2, loc),
                 LValue::Temporary(_) => todo!("temporary address"),
                 LValue::Local(n) => todo!("local {:?}", n),
@@ -271,10 +282,33 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     self.inner.compute_string_address(enc, bytes, loc)
                 }
                 LValue::Offset(_, _) => todo!("offset"),
-                LValue::Null => self.inner.move_imm(0, loc),
+                LValue::Null => self.inner.move_imm(0, loc, &Type::Pointer(pty)),
             },
+            VStackValue::LValue(ty, lvalue) => {
+                let pty = PointerType {
+                    inner: Box::new(ty),
+                    ..Default::default()
+                };
+                match lvalue {
+                    LValue::OpaquePointer(loc2) => self.inner.move_val(loc2, loc),
+                    LValue::Temporary(_) => todo!("temporary address"),
+                    LValue::Local(n) => todo!("local {:?}", n),
+                    LValue::GlobalAddress(item) => self.inner.compute_global_address(&item, loc),
+                    LValue::Label(n) => self.inner.compute_label_address(n, loc),
+                    LValue::Field(_, _, _) => todo!("field"),
+                    LValue::StringLiteral(enc, bytes) => {
+                        self.inner.compute_string_address(enc, bytes, loc)
+                    }
+                    LValue::Offset(_, _) => todo!("offset"),
+                    LValue::Null => self.inner.move_imm(0, loc, &Type::Pointer(pty)),
+                }
+            }
             VStackValue::OpaqueScalar(_, loc2) => self.inner.move_val(loc2, loc),
-            VStackValue::AggregatePieced(_, _) => todo!("aggregate pieced"),
+            VStackValue::AggregatePieced(ty, fields) => {
+                if self._tys.type_size(&ty) != StdSome(0) {
+                    todo!("aggregate pieced {:?}", fields)
+                }
+            }
             VStackValue::OpaqueAggregate(_, loc2) => self.inner.move_val(loc2, loc),
             VStackValue::CompareResult(_, _) => todo!("compare result"),
         }
@@ -449,7 +483,10 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         panic!("Attempt to exit function with more than one value");
                     }
                 } else {
-                    todo!("exit non-function block")
+                    if (*values) != 0 {
+                        todo!("exit block ${} {}", blk, values)
+                    }
+                    self.inner.write_block_exit(*blk);
                 }
             }
             Expr::BinaryOp(op, v) => {
@@ -1137,9 +1174,55 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 }
             },
             Expr::BranchIndirect => todo!(),
-            Expr::Convert(_, _) => todo!(),
-            Expr::Derive(_, _) => todo!(),
-            Expr::Local(_) => todo!(),
+
+            Expr::Convert(_, Type::Pointer(pty)) => match self.pop_value().unwrap() {
+                VStackValue::Constant(Value::LabelAddress(n)) => {
+                    self.push_value(VStackValue::Pointer(pty.clone(), LValue::Label(n)))
+                }
+                VStackValue::Constant(Value::String { encoding, utf8, .. }) => {
+                    self.push_value(VStackValue::Pointer(
+                        pty.clone(),
+                        LValue::StringLiteral(Encoding::XLang(encoding), utf8.into_bytes()),
+                    ))
+                }
+                VStackValue::Constant(Value::ByteString { content }) => {
+                    self.push_value(VStackValue::Pointer(
+                        pty.clone(),
+                        LValue::StringLiteral(Encoding::Byte, content),
+                    ))
+                }
+                VStackValue::Constant(Value::GlobalAddress { item, .. }) => self.push_value(
+                    VStackValue::Pointer(pty.clone(), LValue::GlobalAddress(item)),
+                ),
+                VStackValue::Constant(Value::Uninitialized(Type::Pointer(_))) => self.push_value(
+                    VStackValue::Constant(Value::Uninitialized(Type::Pointer(pty.clone()))),
+                ),
+                VStackValue::Constant(Value::Invalid(Type::Pointer(_))) => {
+                    self.push_value(VStackValue::Trapped);
+                    self.inner.write_trap(Trap::Unreachable)
+                }
+                VStackValue::Pointer(_, lval) => {
+                    self.push_value(VStackValue::Pointer(pty.clone(), lval))
+                }
+                VStackValue::Trapped => {
+                    self.push_value(VStackValue::Trapped);
+                }
+                VStackValue::OpaqueScalar(sty, _) => todo!("{:?} as {:?}", sty, pty),
+                val => panic!("Invalid value for convert _ {:?}: {:?}", pty, val),
+            },
+            Expr::Convert(str, ty) => todo!("convert {:?} {:?}", str, ty),
+            Expr::Derive(_, expr) => {
+                self.write_expr(expr);
+            }
+            Expr::Local(n) => {
+                let param_cnt = u32::try_from(self.fnty.params.len()).unwrap();
+                let ty = if *n < param_cnt {
+                    self.fnty.params[*n as usize].clone()
+                } else {
+                    self.locals[((*n) - param_cnt) as usize].1.clone()
+                };
+                self.push_value(VStackValue::LValue(ty, LValue::Local(*n)))
+            }
             Expr::Pop(n) => {
                 self.pop_values((*n).try_into().unwrap());
             }
@@ -1154,7 +1237,13 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 self.push_values(vals1);
                 self.push_values(vals2);
             }
-            Expr::Aggregate(_) => todo!(),
+            Expr::Aggregate(ctor) => {
+                let vals = self.pop_values(ctor.fields.len()).unwrap();
+                self.push_value(VStackValue::AggregatePieced(
+                    ctor.ty.clone(),
+                    ctor.fields.iter().cloned().zip(vals).collect(),
+                ));
+            }
             Expr::Member(_) => todo!(),
             Expr::MemberIndirect(_) => todo!(),
             Expr::Block { n, block } => {
@@ -1162,8 +1251,79 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 self.write_block(block, *n);
                 self.inner.write_block_exit_point(*n);
             }
-            Expr::Assign(_) => todo!(),
-            Expr::AsRValue(_) => todo!(),
+            Expr::Assign(_) => {
+                let value = self.vstack.pop_back().unwrap();
+                let lval = self.vstack.pop_back().unwrap();
+
+                let (_, lval) = match lval {
+                    VStackValue::LValue(ty, lval) => (ty, lval),
+                    val => panic!("Cannot assign to rvalue stack value {:?}", val),
+                };
+
+                match (lval, value) {
+                    (LValue::Null, _)
+                    | (LValue::Label(_), _)
+                    | (LValue::StringLiteral(_, _), _)
+                    | (_, VStackValue::Constant(Value::Invalid(_))) => {
+                        self.inner.write_trap(Trap::Unreachable);
+                        self.push_value(VStackValue::Trapped);
+                    }
+                    (_, VStackValue::Trapped) => {
+                        self.push_value(VStackValue::Trapped);
+                    }
+                    (LValue::Local(n), val) => {
+                        let param_cnt = u32::try_from(self.fnty.params.len()).unwrap();
+                        let loc = if n < param_cnt {
+                            self.inner
+                                .get_callconv()
+                                .find_param(&self.fnty, &self.fnty, n, true)
+                        } else {
+                            self.locals[(n - param_cnt) as usize].0.clone()
+                        };
+                        self.move_val(val, loc)
+                    }
+                    (LValue::OpaquePointer(loc), val) => todo!("store [{:?}] <- {:?}", loc, val),
+                    (a, b) => todo!("store {:?} <- {:?}", a, b),
+                }
+            }
+            Expr::AsRValue(_) => {
+                let lvalue = self.pop_value().unwrap();
+                let (ty, lvalue) = match lvalue {
+                    VStackValue::LValue(ty, lvalue) => (ty, lvalue),
+                    val => panic!("Invalid value for as_rvalue {:?}", val),
+                };
+
+                match lvalue {
+                    LValue::Null => {
+                        self.inner.write_trap(Trap::Unreachable);
+                        self.push_value(VStackValue::Trapped);
+                    }
+                    LValue::Temporary(val) => self.push_value(Box::into_inner(val)),
+                    LValue::OpaquePointer(loc) => todo!("as_rvalue [{:?}]", loc),
+
+                    LValue::Local(n) => {
+                        let param_cnt = u32::try_from(self.fnty.params.len()).unwrap();
+                        let loc = if n < param_cnt {
+                            self.inner
+                                .get_callconv()
+                                .find_param(&self.fnty, &self.fnty, n, true)
+                        } else {
+                            self.locals[(n - param_cnt) as usize].0.clone()
+                        };
+                        let dst = self.inner.allocate(&ty, false);
+                        self.inner.move_val(loc, dst.clone());
+                        self.push_opaque(&ty, dst);
+                    }
+                    LValue::GlobalAddress(_) => todo!("as_rvalue global_address"),
+                    LValue::Label(_) => {
+                        self.inner.write_trap(Trap::Unreachable);
+                        self.push_value(VStackValue::Trapped);
+                    }
+                    LValue::Field(_, _, _) => todo!("as_rvalue field"),
+                    LValue::StringLiteral(_, _) => todo!("as_rvalue string_literal"),
+                    LValue::Offset(_, _) => todo!("as_rvalue offset"),
+                }
+            }
             Expr::CompoundAssign(_, _, _) => todo!(),
             Expr::LValueOp(_, _, _) => todo!(),
             Expr::Indirect => {
@@ -1199,7 +1359,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
     pub fn write_function_body(&mut self, body: &FunctionBody) {
         self.locals.reserve(body.locals.len());
         for ty in &body.locals {
-            let loc = self.inner.allocate(ty, true);
+            let loc = self.inner.allocate(ty, false);
             self.locals.push((loc, ty.clone()))
         }
         self.write_block(&body.block, 0);

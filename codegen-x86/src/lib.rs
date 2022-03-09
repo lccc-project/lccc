@@ -35,11 +35,7 @@ use xlang::{
 use xlang_backend::expr::{Trap, ValLocation as _};
 use xlang_backend::mangle::mangle_itanium;
 use xlang_backend::ty::TypeInformation;
-use xlang_backend::{
-    expr::{LValue, VStackValue},
-    str::StringMap,
-    FunctionCodegen, FunctionRawCodegen,
-};
+use xlang_backend::{expr::VStackValue, str::StringMap, FunctionCodegen, FunctionRawCodegen};
 use xlang_struct::{
     AccessClass, BranchCondition, FnType, FunctionDeclaration, Path, PathComponent, Type, Value,
 };
@@ -446,24 +442,13 @@ impl FunctionRawCodegen for X86CodegenState {
         todo!()
     }
 
-    fn load_val(&mut self, lvalue: LValue<Self::Loc>, loc: Self::Loc) {
+    fn load_val(&mut self, lvalue: Self::Loc, loc: Self::Loc) {
         match (lvalue, loc) {
-            (_, ValLocation::Null) | (LValue::Local(ValLocation::Null), _) => {}
-            (LValue::OpaquePointer(l1), ValLocation::Register(r)) => {
-                let ptr = self.get_or_allocate_pointer_reg();
-                self.move_mem2reg(&l1, ptr);
-                self.move_mem2reg(&ValLocation::ImpliedPtr(ptr), r);
+            (ValLocation::Null, _) | (_, ValLocation::Null) => {}
+            (ValLocation::Register(r1), ValLocation::Register(r2)) => {
+                self.move_mem2reg(&ValLocation::ImpliedPtr(r1), r2);
             }
-            (LValue::Local(ValLocation::Register(src)), ValLocation::Register(dest)) => {
-                self.move_reg2reg(dest, src);
-            }
-            (LValue::Local(src), ValLocation::Register(dest)) if src.addressible() => {
-                self.move_mem2reg(&src, dest);
-            }
-            (LValue::Local(ValLocation::Register(src)), dest) if dest.addressible() => {
-                self.move_reg2mem(&dest, src);
-            }
-            (lval, loc) => todo!("load_val {:?} {:?}", lval, loc),
+            (l1, l2) => panic!("load [{:?}] -> {:?}", l1, l2),
         }
     }
 
@@ -473,7 +458,7 @@ impl FunctionRawCodegen for X86CodegenState {
         match (src, dest) {
             (ValLocation::Null, _) | (_, ValLocation::Null) => {}
             (ValLocation::Unassigned(_), _) | (_, ValLocation::Unassigned(_)) => {
-                panic!("Unassigned Val Location")
+                panic!("Unassigned Val Location");
             }
             (ValLocation::Register(r1), ValLocation::Register(r2)) => {
                 self.move_reg2reg(r2, r1);
@@ -485,37 +470,67 @@ impl FunctionRawCodegen for X86CodegenState {
     }
 
     #[allow(clippy::cast_possible_truncation)] // truncation here is a feature, not a bug. src may be a sign-extended negative value
-    fn move_imm(&mut self, src: u128, dest: Self::Loc) {
+    fn move_imm(&mut self, mut src: u128, dest: Self::Loc, ty: &Type) {
+        let mut size = self.tys.type_size(ty).unwrap();
         match dest {
-            ValLocation::Register(reg) => match reg.class() {
-                X86RegisterClass::Byte | X86RegisterClass::ByteRex => {
-                    self.insns
-                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                            X86Opcode::MovImm8,
-                            vec![X86Operand::Register(reg), X86Operand::Immediate(src as u64)],
-                        )));
+            ValLocation::Register(reg) => self.move_imm2reg(src, reg),
+            ValLocation::Regs(regs) => {
+                for r in regs {
+                    self.move_imm2reg(src, r);
+                    src >>= r.class().size(self.mode) * 8;
                 }
-                X86RegisterClass::Word | X86RegisterClass::Double | X86RegisterClass::Quad => {
-                    if src == 0 {
+            }
+            ValLocation::ImpliedPtr(_) | ValLocation::SpDisp(_) | ValLocation::BpDisp(_) => {
+                let max_size = self.mode.largest_gpr().size(self.mode).try_into().unwrap();
+                if size.is_power_of_two() && size <= max_size {
+                    let class = X86RegisterClass::gpr_size(size as usize, self.mode).unwrap();
+                    let modrm = dest.as_modrm(self.mode, class).unwrap();
+                    if size == 1 {
                         self.insns
                             .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                X86Opcode::XorMR,
-                                vec![X86Operand::Register(reg), X86Operand::Register(reg)],
+                                X86Opcode::MovImmM8,
+                                vec![X86Operand::ModRM(modrm), X86Operand::Immediate(src as u64)],
                             )));
                     } else {
                         self.insns
                             .push(X86InstructionOrLabel::Insn(X86Instruction::new(
-                                X86Opcode::MovImm,
-                                vec![X86Operand::Register(reg), X86Operand::Immediate(src as u64)],
+                                X86Opcode::MovImmM,
+                                vec![X86Operand::ModRM(modrm), X86Operand::Immediate(src as u64)],
                             )));
                     }
+                } else {
+                    let mut modrm = dest.as_modrm(self.mode, X86RegisterClass::Word).unwrap(); // Don't care what we use here, could be Cr for all the code cares
+                    while size > 0 {
+                        let actual_size = ((size + 1).next_power_of_two() >> 1).min(max_size);
+                        let class =
+                            X86RegisterClass::gpr_size(actual_size as usize, self.mode).unwrap();
+                        let addr = modrm.resize(class).unwrap();
+                        modrm = addr
+                            .clone()
+                            .with_disp32(actual_size.try_into().unwrap())
+                            .unwrap();
+                        if actual_size == 1 {
+                            self.insns
+                                .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                                    X86Opcode::MovImmM8,
+                                    vec![
+                                        X86Operand::ModRM(addr),
+                                        X86Operand::Immediate(src as u64),
+                                    ],
+                                )));
+                        } else {
+                            self.insns
+                                .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                                    X86Opcode::MovImmM,
+                                    vec![
+                                        X86Operand::ModRM(addr),
+                                        X86Operand::Immediate(src as u64),
+                                    ],
+                                )));
+                        }
+                        size -= actual_size;
+                    }
                 }
-
-                cl => todo!("Class {:?}", cl),
-            },
-            ValLocation::Regs(_) => todo!("regs"),
-            ValLocation::ImpliedPtr(_) | ValLocation::SpDisp(_) | ValLocation::BpDisp(_) => {
-                todo!("memory")
             }
             ValLocation::Null => {}
             ValLocation::Unassigned(_) => panic!("unassigned"),
@@ -548,6 +563,16 @@ impl FunctionRawCodegen for X86CodegenState {
 
     fn prepare_call_frame(&mut self, _: &FnType, _: &FnType) {
         /* todo */
+    }
+
+    fn store_indirect(&mut self, lvalue: Self::Loc, loc: Self::Loc, _: &Type) {
+        match (lvalue, loc) {
+            (ValLocation::Null, _) | (_, ValLocation::Null) => {}
+            (ValLocation::Register(ptr), ValLocation::Register(src)) => {
+                self.move_reg2mem(&ValLocation::ImpliedPtr(ptr), src);
+            }
+            (l1, l2) => todo!("store [{:?}] <- {:?}", l1, l2),
+        }
     }
 }
 
@@ -814,6 +839,43 @@ impl X86CodegenState {
                     )));
             }
             r => todo!("{:?}", r),
+        }
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::missing_panics_doc)]
+    pub fn move_imm2reg(&mut self, imm: u128, dest: X86Register) {
+        match dest.class() {
+            X86RegisterClass::Byte | X86RegisterClass::ByteRex => {
+                self.insns
+                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                        X86Opcode::MovImm8,
+                        vec![
+                            X86Operand::Register(dest),
+                            X86Operand::Immediate(imm as u64),
+                        ],
+                    )));
+            }
+            X86RegisterClass::Word | X86RegisterClass::Double | X86RegisterClass::Quad => {
+                if imm == 0 {
+                    self.insns
+                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                            X86Opcode::XorMR,
+                            vec![X86Operand::Register(dest), X86Operand::Register(dest)],
+                        )));
+                } else {
+                    self.insns
+                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                            X86Opcode::MovImm,
+                            vec![
+                                X86Operand::Register(dest),
+                                X86Operand::Immediate(imm as u64),
+                            ],
+                        )));
+                }
+            }
+
+            cl => todo!("Class {:?}", cl),
         }
     }
 
