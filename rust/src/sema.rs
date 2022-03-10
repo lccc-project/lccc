@@ -646,6 +646,7 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
         crate::parse::Expr::ArrayIndex { .. } => todo!("array"),
         crate::parse::Expr::TypeAscription(_, _) => todo!("type ascription"),
         crate::parse::Expr::Try(_) => todo!("try"),
+        crate::parse::Expr::CharLiteral(_, _) => todo!("char literal"),
     }
 }
 

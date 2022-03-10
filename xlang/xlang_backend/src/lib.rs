@@ -358,6 +358,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 self.push_value(VStackValue::OpaqueAggregate(ty.clone(), loc))
             }
             Type::Aligned(_, ty) => self.push_opaque(ty, loc),
+            Type::Named(path) => todo!("named type {:?}", path),
         }
     }
 

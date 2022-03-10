@@ -1,0 +1,3 @@
+struct Foo;
+
+impl Foo {}

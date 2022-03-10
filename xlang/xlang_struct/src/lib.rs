@@ -187,6 +187,7 @@ pub enum Type {
     Product(Vec<Self>),
     Aligned(Box<Value>, Box<Self>),
     Aggregate(AggregateDefinition),
+    Named(Path),
 }
 
 #[repr(u16)]

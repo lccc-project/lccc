@@ -78,6 +78,7 @@ pub fn classify_type(ty: &Type) -> Option<TypeClass> {
             }
             Some(infected)
         }
+        Type::Named(path) => todo!("named type {:?}", path),
     }
 }
 

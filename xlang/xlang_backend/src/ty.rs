@@ -21,6 +21,15 @@ fn align_size(size: u64, align: u64) -> u64 {
     (size.wrapping_neg() & !(align - 1)).wrapping_neg()
 }
 
+/// The layout of a particular aggregate type
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct AggregateLayout {
+    total_size: u64,
+    total_align: u64,
+    fields: HashMap<String, (u64, Type)>,
+    transparent_over: Option<Type>,
+}
+
 ///
 /// A map of information about the types on the system
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -51,7 +60,7 @@ impl TypeInformation {
     }
 
     /// Computes the alignment of a type
-    pub fn type_align(&self, _: &Type) -> Option<u64> {
+    pub fn type_align(&self, _ty: &Type) -> Option<u64> {
         todo!()
     }
 
@@ -174,6 +183,7 @@ impl TypeInformation {
                     }
                 }
             }
+            Type::Named(path) => todo!("{:?}", path),
         }
     }
 }
