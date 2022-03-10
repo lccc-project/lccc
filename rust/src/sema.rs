@@ -1,7 +1,9 @@
 #![allow(clippy::cognitive_complexity, clippy::too_many_lines)] // TODO: You figure it out rdr
 
 pub use crate::lex::StrType; // TODO: `pub use` this in `crate::parse`
-use crate::parse::{FnParam, Item, Mod, Path, PathComponent, Pattern, StructBody, TypeTag};
+use crate::parse::{
+    FieldName, FnParam, Item, Mod, Path, PathComponent, Pattern, StructBody, TypeTag,
+};
 pub use crate::parse::{Meta, Mutability, Safety, SimplePath, Visibility};
 use std::collections::hash_map::{Entry, HashMap};
 use std::fmt::{self, Display, Formatter};
@@ -356,6 +358,11 @@ pub enum Expression {
         kind: StrType,
         val: String,
     },
+    StructInitializer {
+        typename: Identifier,
+        args: Vec<(Identifier, Self)>,
+        ty: Option<Type>,
+    },
     UnsafeBlock {
         block: Vec<Statement>,
         ty: Option<Type>,
@@ -377,7 +384,9 @@ impl Expression {
                     panic!("attempted to call a value that isn't a function, uncaught by typeck; this is an ICE");
                 }
             }
-            Expression::Identifier { ty, .. } | Expression::UnsafeBlock { ty, .. } => ty
+            Expression::Identifier { ty, .. }
+            | Expression::StructInitializer { ty, .. }
+            | Expression::UnsafeBlock { ty, .. } => ty
                 .as_ref()
                 .expect("typeck forgot to resolve type of expression; this is an ICE")
                 .clone(),
@@ -431,6 +440,18 @@ impl Display for Expression {
                     write!(f, "b")?;
                 }
                 write!(f, "\"{}\"", val)
+            }
+            Expression::StructInitializer { typename, args, .. } => {
+                write!(f, "{} {{", typename)?;
+                let mut comma = false;
+                for (name, arg) in args {
+                    if comma {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}: {}", name, arg)?;
+                    comma = true;
+                }
+                write!(f, "}}")
             }
             Expression::UnsafeBlock { block, .. } => {
                 writeln!(f, "unsafe {{")?;
@@ -629,7 +650,25 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
             ty: None,
         },
         crate::parse::Expr::MacroExpansion { .. } => unreachable!(),
-        crate::parse::Expr::StructConstructor(_, _) => todo!("struct ctor"),
+        crate::parse::Expr::StructConstructor(id, args) => Expression::StructInitializer {
+            typename: convert_id(id),
+            args: args
+                .iter()
+                .map(|arg| {
+                    (
+                        Identifier::Basic {
+                            mangling: None,
+                            name: match &arg.name {
+                                FieldName::Id(str) => str.clone(),
+                                FieldName::Tuple(id) => format!("${}", id),
+                            },
+                        },
+                        convert_expr(named_types, &arg.expr),
+                    )
+                })
+                .collect(),
+            ty: None,
+        },
         crate::parse::Expr::Field(_, _) => todo!("field access"),
         crate::parse::Expr::Await(_) => todo!("await"),
         crate::parse::Expr::Block(_) => todo!("block"),
@@ -1059,7 +1098,7 @@ fn typeck_expr(
             *block_ty = Some(new_ty.clone());
             new_ty
         }
-        x @ Expression::FunctionArg(_) => todo!("{:?}", x),
+        x => todo!("{:?}", x),
     }
 }
 
