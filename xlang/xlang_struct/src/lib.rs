@@ -200,7 +200,7 @@ pub enum AggregateKind {
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AggregateDefinition {
-    pub anotations: AnnotatedElement,
+    pub annotations: AnnotatedElement,
     pub kind: AggregateKind,
     pub fields: Vec<Pair<String, Type>>,
 }

@@ -109,6 +109,18 @@ fn irgen_type(ty: Type) -> ir::Type {
             },
             inner: abi::boxed::Box::new(irgen_type((*underlying).clone())),
         }),
+        Type::Struct { fields, .. } => ir::Type::Aggregate(ir::AggregateDefinition {
+            annotations: ir::AnnotatedElement::default(),
+            kind: ir::AggregateKind::Struct,
+            fields: fields.map_or_else(&abi::vec::Vec::new, |x| {
+                x.into_iter()
+                    .map(|(name, ty)| {
+                        abi::pair::Pair(abi::string::String::from(&name), irgen_type(ty))
+                    })
+                    .collect::<Vec<abi::pair::Pair<abi::string::String, ir::Type>>>()
+                    .into()
+            }),
+        }),
         Type::Tuple(list) => ir::Type::Product(
             list.into_iter()
                 .map(&irgen_type)
