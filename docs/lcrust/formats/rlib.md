@@ -149,6 +149,7 @@ The Stability type is an 12-byte enum that is well-aligned to 4 bytes. It is def
 
 ```rust
 #[repr(u32,align(4))]
+#[non_exhaustive]
 pub enum Stability{
     Stable{since: u32} = 0,
     Unstable{feature: u32, issue: u32} = 1,
@@ -159,15 +160,22 @@ pub enum Stability{
     ConstUnstable{feature: u32, issue: u32} = 6,
     ConstStableInEdition{edition: u32} = 7,
     ConstRemovedInEdition{edition: u32} = 8,
+    SafeInEdition{edition: u32} = 9,
+    UnsafeInEdition{edition: u32} = 10,
+    SafeStable{since: u32} = 11,
+    SafeUnstable{feature: u32, issue: u32} = 12,
 }
 ```
 
-Other variants are reserved and may be given meaning in future versions, implementations should not produce these variants and shall ignore them if present in the file. The value of the trailing 4 bytes of any variant except for `Unstable` is undefined and shall be ignored when reading the file.
+Other variants are reserved and may be given meaning in future versions.
+Only the `Stable`, `Unstable`, and `StableInEdition` variants are meaningful for the `stability` field of a crate header. 
 
-Only the `Stable`, `Unstable`, and `StableInEdition` variants are meaningful for the `stability` field of a crate header.
+`since`shall be an index in the string table for the file which is either an empty string or a version string which contains a rust language version, *major*.*minor*, which the version of the rust language the item was stabilized or was stabilized for use in `const` fns. 
+`feature` shall be an index in the string table for the file which is the name of the feature it applies to.
 
-`since` for the `Stable` and `ConstStable` variants shall be an indecies in the string table for the file which is either an empty string or a version string which contains a rust language version, *major*.*minor*, which the version of the rust language the item was stabilized or was stabilized for use in `const` fns. 
-`feature` for the `Unstable` and `ConstUnstable` variants shall be indecies in the string table for the file which is the feature 
+`edition` for `StableInEdition`
+
+
 
 ### Extra Information
 
@@ -203,7 +211,7 @@ The `len` field shall be the total number of bytes of the entry, not including t
 
 The `flags` field specifies flags of the entry. The flags are as follows:
 * required (0x0000000000000001): The extra entry is mandatory to correctly interpreting the manifest file, and an implementation that does not understand the entry with this flag set must issue an error when parsing the file.
-* 
+
 
 Special types are defined by this specification, and have the meaning given below, including the content of the trailing bytes.
 
@@ -216,15 +224,42 @@ pub struct ExtraEntryStability{
     len: u32,
     flags: u64,
     stability: Stability,
+    pad: u32,
 }
 ```
 
 The `Stability` extra information entry provides additional stability information from the `stability` field in the crate header. 
 
 The `id` field shall be an offset into the file's string table, which refers to a null-terminated UTF-8 String that is exactly equal to the string "Stability". 
-The `len` field shall be the value 28. 
-The `flags` field shall set the `REQUIRED` flag
+The `len` field shall be the value 32. 
+The `flags` field shall set the `REQUIRED` flag.
 
 The `stability` field shall be a value of the `Stability` enum defined above. It is used in combination with the `stability` field in the crate header to define the stability of the crate.
 
-### 
+The `pad` field is reserved as an extension to the `Stability` enum, shall be set to `0` and ignored.
+
+### Crate Contents
+
+```rust
+#[repr(C,align(8))]
+pub struct ExtraEntryContents{
+    id: u32,
+    len: u32,
+    flags: u64,
+    items: [ItemRef]
+}
+```
+
+The `Contents` extra entry provides the list of items defined within the crate.
+
+The `id` field shall be an offset into the file's string table, which refers to a null-terminated UTF-8 string that is exactly equal to the string "Contents".
+The `len` field shall be the total number of bytes of the entry, not including trailing padding, if any, but including the header. The remaining bytes of the entry, followed by any padding, trails the header.
+The `flags` field shall set the `REQUIRED` flag.
+
+The `items` shall be an array of `ItemRef`s, given below. The length of the array is the length of the entire entry, minus the length of the header (16 bytes), divided by 32.
+
+```rust
+#[repr(C,align(8))]
+pub struct ItemRef{
+    pub ikind: u16,
+}

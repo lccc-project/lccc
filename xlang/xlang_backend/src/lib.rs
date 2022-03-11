@@ -5,6 +5,7 @@ use std::{
     collections::VecDeque,
     convert::{TryFrom, TryInto},
     fmt::Debug,
+    mem::MaybeUninit,
     option::Option::Some as StdSome,
     rc::Rc,
 };
@@ -337,6 +338,31 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         }
     }
 
+    /// Pops `N` values from the stack, and returns them in a statically-sized array, or otherwise returns `None`.
+    pub fn pop_values_static<const N: usize>(&mut self) -> Option<[VStackValue<F::Loc>; N]> {
+        let len = self.vstack.len();
+        if len < N {
+            None
+        } else {
+            let mut array = MaybeUninit::<[VStackValue<F::Loc>; N]>::uninit();
+            let ptr = array.as_mut_ptr().cast::<VStackValue<F::Loc>>();
+
+            let vals = self.vstack.drain((len - N)..);
+
+            for (i, val) in vals.enumerate() {
+                // SAFETY:
+                // i is less than the length of the array
+                unsafe {
+                    ptr.add(i).write(val);
+                }
+            }
+
+            // SAFETY:
+            // The loop above has initialized array
+            Some(unsafe { array.assume_init() })
+        }
+    }
+
     ///
     /// Pushes all of the incoming values to the stack, in order
     pub fn push_values<I: IntoIterator<Item = VStackValue<F::Loc>>>(&mut self, vals: I) {
@@ -491,8 +517,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 }
             }
             Expr::BinaryOp(op, v) => {
-                let val2 = self.pop_value().unwrap();
-                let val1 = self.pop_value().unwrap();
+                let [val1, val2] = self.pop_values_static().unwrap();
 
                 match (val1, val2) {
                     (VStackValue::Trapped, _) | (_, VStackValue::Trapped) => {
@@ -539,7 +564,34 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                 },
                             })),
                         )),
-                        _ => self.push_value(VStackValue::Constant(Value::Uninitialized(ty))),
+                        _ => match *v {
+                            OverflowBehaviour::Wrap => {
+                                self.push_value(VStackValue::Constant(Value::Uninitialized(ty)))
+                            }
+                            OverflowBehaviour::Trap | OverflowBehaviour::Unchecked => {
+                                self.inner.write_trap(Trap::Unreachable);
+                                self.push_value(VStackValue::Trapped);
+                            }
+                            OverflowBehaviour::Checked => {
+                                self.push_values([
+                                    VStackValue::Constant(Value::Uninitialized(ty)),
+                                    VStackValue::Constant(Value::Uninitialized(Type::Scalar(
+                                        ScalarType {
+                                            header: ScalarTypeHeader {
+                                                bitsize: 1,
+                                                ..Default::default()
+                                            },
+                                            kind: ScalarTypeKind::Integer {
+                                                signed: false,
+                                                min: None,
+                                                max: None,
+                                            },
+                                        },
+                                    ))),
+                                ]);
+                            }
+                            v => todo!("Unexpected Overflow behaviour {:?}", v),
+                        },
                     },
                     (
                         VStackValue::Constant(Value::Integer {

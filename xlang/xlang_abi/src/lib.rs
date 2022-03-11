@@ -1,5 +1,9 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery, missing_docs)]
-#![allow(clippy::module_name_repetitions, clippy::needless_borrow)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::needless_borrow,
+    clippy::missing_const_for_fn
+)]
 //! A crate that provides abi-safe and stable wrappers of language and library constructs that don't have fixed abi
 //! This provides shims for otherwise unusable constructs that can validly be passed accross ABI bounderies.
 //! All publically exposed types in this api have a stable layout and abi, that may only change on semver major versions

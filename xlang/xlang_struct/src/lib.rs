@@ -339,6 +339,31 @@ fake_enum::fake_enum! {
     }
 }
 
+impl core::fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match *self {
+            Self::Add => f.write_str("add"),
+            Self::Sub => f.write_str("sub"),
+            Self::Mul => f.write_str("mul"),
+            Self::Div => f.write_str("div"),
+            Self::Mod => f.write_str("mod"),
+            Self::BitAnd => f.write_str("bit_and"),
+            Self::BitOr => f.write_str("bit_or"),
+            Self::BitXor => f.write_str("bit_xor"),
+            Self::Rsh => f.write_str("rsh"),
+            Self::CmpInt => f.write_str("cmp_int"),
+            Self::CmpLt => f.write_str("cmp_lt"),
+            Self::CmpGt => f.write_str("cmp_gt"),
+            Self::CmpLe => f.write_str("cmp_le"),
+            Self::CmpGe => f.write_str("cmp_ge"),
+            Self::CmpEq => f.write_str("cmp_eq"),
+            Self::CmpNe => f.write_str("cmp_ne"),
+            Self::Cmp => f.write_str("cmp"),
+            val => todo!("Invalid Operand {:?}", val),
+        }
+    }
+}
+
 fake_enum::fake_enum! {
     #[repr(u16)]
     #[derive(Hash)]
