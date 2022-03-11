@@ -7,7 +7,6 @@ use crate::sema::{
 
 use std::convert::TryInto; // TODO: Remove when we move to edition 2021
 
-use ir::FunctionBody;
 use xlang::{
     abi::{
         self,
@@ -110,7 +109,20 @@ fn irgen_type(ty: Type) -> ir::Type {
             inner: abi::boxed::Box::new(irgen_type((*underlying).clone())),
         }),
         Type::Struct { fields, .. } => ir::Type::Aggregate(ir::AggregateDefinition {
-            annotations: ir::AnnotatedElement::default(),
+            annotations: ir::AnnotatedElement {
+                annotations: abi::vec![ir::Annotation {
+                    items: abi::vec![
+                        ir::AnnotationItem::Identifier(ir::Path {
+                            components: abi::vec![ir::PathComponent::Text(abi::string::String::from("sort_layout"))]
+                        }),
+                        ir::AnnotationItem::Meta(abi::boxed::Box::new(ir::Annotation {
+                            items: abi::vec![ir::AnnotationItem::Identifier(ir::Path {
+                                components: abi::vec![ir::PathComponent::Text(abi::string::String::from("alignment"))]
+                            })]
+                        }))
+                    ]
+                }],
+            },
             kind: ir::AggregateKind::Struct,
             fields: fields.map_or_else(&abi::vec::Vec::new, |x| {
                 x.into_iter()
@@ -222,6 +234,17 @@ fn irgen_expr(
                 unreachable!()
             }
         }
+        Expression::StructInitializer { args, ty } => {
+            let ty = irgen_type(ty);
+            let mut fields = abi::vec::Vec::new();
+            let mut result = Vec::new();
+            for (name, arg) in args {
+                fields.push((&name.to_string()).into());
+                result.append(&mut irgen_expr(arg, n, locals));
+            }
+            result.push(ir::BlockItem::Expr(ir::Expr::Aggregate(ir::AggregateCtor { ty, fields })));
+            result
+        }
         Expression::UnsafeBlock {
             block,
             ty: Some(ty),
@@ -325,7 +348,7 @@ pub fn irgen_definition(
                 vis: ir::Visibility::Public,
                 member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration {
                     ty: sig_to_fn_type(sig.clone()),
-                    body: AbiSome(FunctionBody {
+                    body: AbiSome(ir::FunctionBody {
                         locals: locals.into_iter().map(|x| x.1).collect(),
                         block,
                     }),
