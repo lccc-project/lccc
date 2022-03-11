@@ -1027,10 +1027,17 @@ fn typeck_expr(
                 (x, y) => todo!("{:?} to {:?}", x, y),
             }
         }
-        Expression::FieldAccess { lhs, name, ty: field_ty } => {
+        Expression::FieldAccess {
+            lhs,
+            name,
+            ty: field_ty,
+        } => {
             let lhs_ty = typeck_expr(declarations, lhs, safety, None, return_ty);
             if let Type::Struct { fields, .. } = &lhs_ty {
-                if let Some((_, ty)) = fields.as_ref().map_or(None, |x| x.iter().find(|x| x.0 == *name)) {
+                if let Some((_, ty)) = fields
+                    .as_ref()
+                    .map_or(None, |x| x.iter().find(|x| x.0 == *name))
+                {
                     *field_ty = Some(ty.clone());
                     ty.clone()
                 } else {
