@@ -226,6 +226,14 @@ fn irgen_expr(
                 unreachable!()
             }
         }
+        Expression::FieldAccess { lhs, name, ty } => {
+            let mut result = irgen_expr(*lhs, n, locals);
+            result.push(ir::BlockItem::Expr(ir::Expr::Member((&name).into())));
+            result.push(ir::BlockItem::Expr(ir::Expr::AsRValue(
+                ir::AccessClass::Normal,
+            )));
+            result
+        }
         ref x @ Expression::StringLiteral { .. } => {
             let ty = irgen_type(x.ty());
             if let Expression::StringLiteral { val, .. } = x {
