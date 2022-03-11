@@ -341,6 +341,11 @@ pub enum Expression {
         expr: Box<Expression>,
         target: Type,
     },
+    FieldAccess {
+        lhs: Box<Expression>,
+        name: String,
+        ty: Option<Type>,
+    },
     FunctionArg(usize),
     FunctionCall {
         func: Box<Expression>,
@@ -359,9 +364,8 @@ pub enum Expression {
         val: String,
     },
     StructInitializer {
-        typename: Identifier,
         args: Vec<(Identifier, Self)>,
-        ty: Option<Type>,
+        ty: Type,
     },
     UnsafeBlock {
         block: Vec<Statement>,
@@ -373,7 +377,9 @@ impl Expression {
     #[allow(dead_code)]
     pub fn ty(&self) -> Type {
         match self {
-            Expression::Cast { target, .. } => target.clone(),
+            Expression::Cast { target: ty, .. } | Expression::StructInitializer { ty, .. } => {
+                ty.clone()
+            }
             Expression::FunctionArg(_) => {
                 todo!("Expression::FunctionArg(_).ty() currently unsopported")
             }
@@ -384,8 +390,8 @@ impl Expression {
                     panic!("attempted to call a value that isn't a function, uncaught by typeck; this is an ICE");
                 }
             }
-            Expression::Identifier { ty, .. }
-            | Expression::StructInitializer { ty, .. }
+            Expression::FieldAccess { ty, .. }
+            | Expression::Identifier { ty, .. }
             | Expression::UnsafeBlock { ty, .. } => ty
                 .as_ref()
                 .expect("typeck forgot to resolve type of expression; this is an ICE")
@@ -411,6 +417,9 @@ impl Display for Expression {
         match self {
             Expression::Cast { expr, target } => {
                 write!(f, "{} as {}", expr, target)
+            }
+            Expression::FieldAccess { lhs, name, .. } => {
+                write!(f, "{}.{}", lhs, name)
             }
             Expression::FunctionArg(id) => {
                 write!(f, "<function arg {}>", id)
@@ -441,8 +450,8 @@ impl Display for Expression {
                 }
                 write!(f, "\"{}\"", val)
             }
-            Expression::StructInitializer { typename, args, .. } => {
-                write!(f, "{} {{", typename)?;
+            Expression::StructInitializer { args, ty, .. } => {
+                write!(f, "{} {{", ty)?;
                 let mut comma = false;
                 for (name, arg) in args {
                     if comma {
@@ -575,32 +584,15 @@ impl Display for Program {
     }
 }
 
-pub fn convert_ty(named_types: &[Type], orig: &crate::parse::Type) -> Type {
-    match orig {
-        crate::parse::Type::Name(name) => {
-            if let PathComponent::Id(name) = &name.components[0] {
-                named_types
-                    .iter()
-                    .find(|x| x.name() == *name)
-                    .unwrap()
-                    .clone()
-            } else {
-                todo!();
-            }
-        }
-        crate::parse::Type::Pointer {
-            mutability,
-            underlying,
-        } => Type::Pointer {
-            mutability: *mutability,
-            underlying: Box::new(convert_ty(named_types, &**underlying)),
-        },
-        crate::parse::Type::Never => Type::Never,
-        crate::parse::Type::Tuple(_) => todo!("tuple"),
-        crate::parse::Type::Wildcard => todo!("_"),
-        crate::parse::Type::Reference { .. } => todo!("reference"),
-        crate::parse::Type::Slice(_) => todo!("slice"),
-        crate::parse::Type::Array(_, _) => todo!("array"),
+pub fn resolve_named_type(named_types: &[Type], name: &Identifier) -> Type {
+    if let Identifier::Basic { name, .. } = name {
+        named_types
+            .iter()
+            .find(|x| x.name() == *name)
+            .unwrap()
+            .clone()
+    } else {
+        todo!();
     }
 }
 
@@ -616,6 +608,25 @@ pub fn convert_id(id: &Path) -> Identifier {
         }
     } else {
         todo!()
+    }
+}
+
+pub fn convert_ty(named_types: &[Type], orig: &crate::parse::Type) -> Type {
+    match orig {
+        crate::parse::Type::Name(name) => resolve_named_type(named_types, &convert_id(&name)),
+        crate::parse::Type::Pointer {
+            mutability,
+            underlying,
+        } => Type::Pointer {
+            mutability: *mutability,
+            underlying: Box::new(convert_ty(named_types, &**underlying)),
+        },
+        crate::parse::Type::Never => Type::Never,
+        crate::parse::Type::Tuple(_) => todo!("tuple"),
+        crate::parse::Type::Wildcard => todo!("_"),
+        crate::parse::Type::Reference { .. } => todo!("reference"),
+        crate::parse::Type::Slice(_) => todo!("slice"),
+        crate::parse::Type::Array(_, _) => todo!("array"),
     }
 }
 
@@ -651,7 +662,6 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
         },
         crate::parse::Expr::MacroExpansion { .. } => unreachable!(),
         crate::parse::Expr::StructConstructor(id, args) => Expression::StructInitializer {
-            typename: convert_id(id),
             args: args
                 .iter()
                 .map(|arg| {
@@ -667,9 +677,16 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
                     )
                 })
                 .collect(),
+            ty: resolve_named_type(named_types, &convert_id(id)),
+        },
+        crate::parse::Expr::Field(lhs, name) => Expression::FieldAccess {
+            lhs: Box::new(convert_expr(named_types, lhs)),
+            name: match name {
+                FieldName::Id(str) => str.clone(),
+                FieldName::Tuple(id) => format!("${}", id),
+            },
             ty: None,
         },
-        crate::parse::Expr::Field(_, _) => todo!("field access"),
         crate::parse::Expr::Await(_) => todo!("await"),
         crate::parse::Expr::Block(_) => todo!("block"),
         crate::parse::Expr::Loop(_) => todo!("loop"),
@@ -1010,6 +1027,19 @@ fn typeck_expr(
                 (x, y) => todo!("{:?} to {:?}", x, y),
             }
         }
+        Expression::FieldAccess { lhs, name, ty: field_ty } => {
+            let lhs_ty = typeck_expr(declarations, lhs, safety, None, return_ty);
+            if let Type::Struct { fields, .. } = &lhs_ty {
+                if let Some((_, ty)) = fields.as_ref().map_or(None, |x| x.iter().find(|x| x.0 == *name)) {
+                    *field_ty = Some(ty.clone());
+                    ty.clone()
+                } else {
+                    panic!("type {:?} doesn't have a field named {}", &lhs_ty, name);
+                }
+            } else {
+                todo!();
+            }
+        }
         Expression::FunctionCall { func, args } => {
             let func_ty = typeck_expr(declarations, func, safety, None, return_ty);
             if let Type::Function(func_sig) = func_ty {
@@ -1087,6 +1117,14 @@ fn typeck_expr(
                 StrType::Default => Type::Str,
             }),
         },
+        Expression::StructInitializer { args, ty } => {
+            // TODO: check if correct struct fields were initialized.
+            // For now, we just run typeck on each arg so that irgen knows the types.
+            for (_, arg) in args {
+                typeck_expr(declarations, arg, safety, None, return_ty);
+            }
+            ty.clone()
+        }
         Expression::UnsafeBlock {
             block,
             ty: block_ty,
