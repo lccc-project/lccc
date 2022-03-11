@@ -113,11 +113,15 @@ fn irgen_type(ty: Type) -> ir::Type {
                 annotations: abi::vec![ir::Annotation {
                     items: abi::vec![
                         ir::AnnotationItem::Identifier(ir::Path {
-                            components: abi::vec![ir::PathComponent::Text(abi::string::String::from("sort_layout"))]
+                            components: abi::vec![ir::PathComponent::Text(
+                                abi::string::String::from("sort_layout")
+                            )]
                         }),
                         ir::AnnotationItem::Meta(abi::boxed::Box::new(ir::Annotation {
                             items: abi::vec![ir::AnnotationItem::Identifier(ir::Path {
-                                components: abi::vec![ir::PathComponent::Text(abi::string::String::from("alignment"))]
+                                components: abi::vec![ir::PathComponent::Text(
+                                    abi::string::String::from("alignment")
+                                )]
                             })]
                         }))
                     ]
@@ -242,7 +246,9 @@ fn irgen_expr(
                 fields.push((&name.to_string()).into());
                 result.append(&mut irgen_expr(arg, n, locals));
             }
-            result.push(ir::BlockItem::Expr(ir::Expr::Aggregate(ir::AggregateCtor { ty, fields })));
+            result.push(ir::BlockItem::Expr(ir::Expr::Aggregate(
+                ir::AggregateCtor { ty, fields },
+            )));
             result
         }
         Expression::UnsafeBlock {
