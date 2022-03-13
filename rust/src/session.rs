@@ -1,5 +1,5 @@
 use xlang::{
-    abi::{collection::HashSet, string::StringView, span::Span},
+    abi::{collection::HashSet, span::Span, string::StringView},
     prelude::v1::HashMap,
     targets::properties::TargetProperties,
 };

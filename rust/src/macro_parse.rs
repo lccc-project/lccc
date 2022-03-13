@@ -105,5 +105,3 @@ pub fn find_macros(
     }
     ret
 }
-
-
