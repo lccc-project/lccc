@@ -12,4 +12,7 @@
 
 3. Certain expression *synchronize-with* other expression. These expressions guarantee that a happens-before relation exists between these expressions in some order (which order is unspecified, unless otherwise guaranteed). 
 
-## 
+
+## Signal Handlers [memory.signal]
+
+1. 

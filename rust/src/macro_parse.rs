@@ -106,8 +106,4 @@ pub fn find_macros(
     ret
 }
 
-#[derive(Debug)]
-pub struct Cfg {
-    pub keys: HashSet<String>,
-    pub pairs: HashMap<String, String>,
-}
+

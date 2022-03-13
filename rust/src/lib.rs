@@ -6,6 +6,7 @@ mod lex;
 mod macro_parse;
 mod parse;
 mod sema;
+mod session;
 
 use irgen::irgen;
 use lex::lex;

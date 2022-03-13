@@ -170,10 +170,10 @@ pub enum Stability{
 Other variants are reserved and may be given meaning in future versions.
 Only the `Stable`, `Unstable`, and `StableInEdition` variants are meaningful for the `stability` field of a crate header. 
 
-`since`shall be an index in the string table for the file which is either an empty string or a version string which contains a rust language version, *major*.*minor*, which the version of the rust language the item was stabilized or was stabilized for use in `const` fns. 
+`since`shall be an index in the string table for the file which is either an empty string or a version string which contains a rust language version, *major*.*minor*, which the version of the rust language the item applies since. 
 `feature` shall be an index in the string table for the file which is the name of the feature it applies to.
 
-`edition` for `StableInEdition`
+`edition` shall be the integer value of the rust edition the attribute applies to.
 
 
 
@@ -262,4 +262,7 @@ The `items` shall be an array of `ItemRef`s, given below. The length of the arra
 #[repr(C,align(8))]
 pub struct ItemRef{
     pub ikind: u16,
+    pub xref: u16,
+    pub name: u32,
 }
+```
