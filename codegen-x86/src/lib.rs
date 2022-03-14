@@ -37,7 +37,8 @@ use xlang_backend::mangle::mangle_itanium;
 use xlang_backend::ty::TypeInformation;
 use xlang_backend::{expr::VStackValue, str::StringMap, FunctionCodegen, FunctionRawCodegen};
 use xlang_struct::{
-    AccessClass, BranchCondition, FnType, FunctionDeclaration, Path, PathComponent, Type, Value,
+    AccessClass, BinaryOp, BranchCondition, FnType, FunctionDeclaration, Path, PathComponent, Type,
+    Value,
 };
 
 #[allow(dead_code)]
@@ -574,6 +575,62 @@ impl FunctionRawCodegen for X86CodegenState {
             (l1, l2) => todo!("store [{:?}] <- {:?}", l1, l2),
         }
     }
+
+    fn write_int_binary_imm(&mut self, a: Self::Loc, b: u128, ty: &Type, op: BinaryOp) {
+        let size = self.tys.type_size(ty).unwrap();
+        let imm_size = (((128 - b.leading_zeros()) as u64 + 7) / 8).min(size);
+        let modrm = a
+            .as_modrm(
+                self.mode,
+                X86RegisterClass::gpr_size(size.try_into().unwrap(), self.mode).unwrap(),
+            )
+            .unwrap();
+        match op {
+            BinaryOp::Add => match (size, imm_size) {
+                (1, 1) => self
+                    .insns
+                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                        X86Opcode::AddImm8,
+                        vec![X86Operand::ModRM(modrm), X86Operand::Immediate(b as u64)],
+                    ))),
+                (2 | 4 | 8, 1) => {
+                    self.insns
+                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                            X86Opcode::AddGImm8,
+                            vec![X86Operand::ModRM(modrm), X86Operand::Immediate(b as u64)],
+                        )))
+                }
+                (2 | 4 | 8, 2 | 4) => {
+                    self.insns
+                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                            X86Opcode::AddImm,
+                            vec![X86Operand::ModRM(modrm), X86Operand::Immediate(b as u64)],
+                        )))
+                }
+                (8, 8) => {
+                    let scratch = self.get_or_allocate_scratch_reg();
+                    self.insns
+                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                            X86Opcode::MovImm,
+                            vec![
+                                X86Operand::Register(scratch),
+                                X86Operand::Immediate(b as u64),
+                            ],
+                        )));
+                    self.insns
+                        .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                            X86Opcode::AddMR,
+                            vec![X86Operand::ModRM(modrm), X86Operand::Register(scratch)],
+                        )))
+                }
+                (size, imm_size) => panic!(
+                    "Cannot move immediate of size {:?} into loc of size {:?}",
+                    imm_size, size
+                ),
+            },
+            op => todo!("{:?}", op),
+        }
+    }
 }
 
 impl X86CodegenState {
@@ -631,26 +688,26 @@ impl X86CodegenState {
         }
     }
 
-    // fn get_or_allocate_scratch_reg(&mut self) -> X86Register {
-    //     if let Some(reg) = self.scratch_reg {
-    //         reg
-    //     } else {
-    //         for i in 0..(if self.mode == X86Mode::Long { 16 } else { 8 }) {
-    //             let class = self.mode.largest_gpr();
-    //             let mode = self.gpr_status.get_or_insert_mut(i, RegisterStatus::Free);
-    //             match mode {
-    //                 RegisterStatus::Free => {
-    //                     let reg = X86Register::from_class(class, i).unwrap();
-    //                     *mode = RegisterStatus::InUse;
-    //                     self.scratch_reg = Some(reg);
-    //                     return reg;
-    //                 }
-    //                 _ => continue,
-    //             }
-    //         }
-    //         todo!()
-    //     }
-    // }
+    fn get_or_allocate_scratch_reg(&mut self) -> X86Register {
+        if let Some(reg) = self.scratch_reg {
+            reg
+        } else {
+            for i in 0..(if self.mode == X86Mode::Long { 16 } else { 8 }) {
+                let class = self.mode.largest_gpr();
+                let mode = self.gpr_status.get_or_insert_mut(i, RegisterStatus::Free);
+                match mode {
+                    RegisterStatus::Free => {
+                        let reg = X86Register::from_class(class, i).unwrap();
+                        *mode = RegisterStatus::InUse;
+                        self.scratch_reg = Some(reg);
+                        return reg;
+                    }
+                    _ => continue,
+                }
+            }
+            todo!()
+        }
+    }
 
     fn get_or_allocate_pointer_reg(&mut self) -> X86Register {
         if let Some(reg) = self.ptrreg {
@@ -1387,6 +1444,83 @@ mod test {
                 },
             },
             &[0x31, 0xC0, 0xC3],
+            Target::parse("x86_64-pc-linux-gnu"),
+        )
+    }
+
+    #[test]
+    pub fn cgtest_add_3() {
+        let sty = ScalarType {
+            header: ScalarTypeHeader {
+                bitsize: 32,
+                ..Default::default()
+            },
+            kind: ScalarTypeKind::Integer {
+                signed: true,
+                min: XLangNone,
+                max: XLangNone,
+            },
+        };
+        run_codegen_test(
+            FnType {
+                ret: Type::Scalar(sty),
+                params: xlang::abi::vec![],
+                variadic: false,
+                tag: Abi::C,
+            },
+            &FunctionBody {
+                locals: xlang::abi::vec![],
+                block: xlang_struct::Block {
+                    items: xlang::abi::vec![
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 1 })),
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 2 })),
+                        BlockItem::Expr(Expr::BinaryOp(BinaryOp::Add, OverflowBehaviour::Wrap)),
+                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 })
+                    ],
+                },
+            },
+            &[0xB8, 0x03, 0x00, 0x00, 0x00, 0xC3],
+            Target::parse("x86_64-pc-linux-gnu"),
+        )
+    }
+
+    #[test]
+    pub fn cgtest_6plus21mod10() {
+        let sty = ScalarType {
+            header: ScalarTypeHeader {
+                bitsize: 32,
+                ..Default::default()
+            },
+            kind: ScalarTypeKind::Integer {
+                signed: true,
+                min: XLangNone,
+                max: XLangNone,
+            },
+        };
+        run_codegen_test(
+            FnType {
+                ret: Type::Scalar(sty),
+                params: xlang::abi::vec![],
+                variadic: false,
+                tag: Abi::C,
+            },
+            &FunctionBody {
+                locals: xlang::abi::vec![],
+                block: xlang_struct::Block {
+                    items: xlang::abi::vec![
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 6 })),
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 21 })),
+                        BlockItem::Expr(Expr::BinaryOp(BinaryOp::Add, OverflowBehaviour::Wrap)),
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 10 })),
+                        BlockItem::Expr(Expr::BinaryOp(
+                            BinaryOp::Mod,
+                            OverflowBehaviour::Unchecked
+                        )),
+                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 })
+                    ],
+                },
+            },
+            &[0xB8, 0x07, 0x00, 0x00, 0x00, 0xC3],
             Target::parse("x86_64-pc-linux-gnu"),
         )
     }

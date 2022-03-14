@@ -62,7 +62,7 @@ pub enum VStackValue<Loc: ValLocation> {
     /// The result of the `cmp` instruction
     CompareResult(Box<VStackValue<Loc>>, Box<VStackValue<Loc>>),
 
-    /// Placeholder for a value that's already caused a `ud2`
+    /// Placeholder for a value that's already caused a [`Trap`]
     Trapped,
 }
 

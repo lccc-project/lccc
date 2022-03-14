@@ -68,6 +68,9 @@ pub trait FunctionRawCodegen {
     /// Writes a full thread fence for the given AccessClass
     fn write_barrier(&mut self, acc: AccessClass);
 
+    /// Performs a binary operatoration on a val location and a constant
+    fn write_int_binary_imm(&mut self, a: Self::Loc, b: u128, ty: &Type, op: BinaryOp);
+
     /// Moves a value between two [`ValLocation`]s
     fn move_val(&mut self, src: Self::Loc, dest: Self::Loc);
 
@@ -1116,6 +1119,41 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                             }
                         }
                     },
+                    (
+                        VStackValue::OpaqueScalar(
+                            st @ ScalarType {
+                                kind: ScalarTypeKind::Integer { .. },
+                                ..
+                            },
+                            loc,
+                        ),
+                        VStackValue::Constant(Value::Integer { ty, val }),
+                    ) if st == ty => {
+                        let header = st.header;
+                        match header.vectorsize {
+                            None => {
+                                if header.bitsize.is_power_of_two()
+                                    && header.bitsize <= self.inner.native_int_size()
+                                {
+                                    match *v {
+                                        OverflowBehaviour::Wrap | OverflowBehaviour::Unchecked => {
+                                            self.inner.write_int_binary_imm(
+                                                loc.clone(),
+                                                val,
+                                                &Type::Scalar(st),
+                                                *op,
+                                            );
+                                            self.push_value(VStackValue::OpaqueScalar(st, loc));
+                                        }
+                                        v => todo!("{:?} {:?}", op, v),
+                                    }
+                                } else {
+                                    todo!("Non-native integer")
+                                }
+                            }
+                            Some(vector) => todo!("vectorsize({:?})", vector),
+                        }
+                    }
                     (a, b) => todo!("{:?}: {:?}, {:?}", op, a, b),
                 }
             }
