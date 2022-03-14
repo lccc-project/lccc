@@ -576,6 +576,7 @@ impl FunctionRawCodegen for X86CodegenState {
         }
     }
 
+    #[allow(clippy::cast_possible_truncation, clippy::cast_lossless)]
     fn write_int_binary_imm(&mut self, a: Self::Loc, b: u128, ty: &Type, op: BinaryOp) {
         let size = self.tys.type_size(ty).unwrap();
         let imm_size = (((128 - b.leading_zeros()) as u64 + 7) / 8).min(size);
@@ -598,14 +599,14 @@ impl FunctionRawCodegen for X86CodegenState {
                         .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                             X86Opcode::AddGImm8,
                             vec![X86Operand::ModRM(modrm), X86Operand::Immediate(b as u64)],
-                        )))
+                        )));
                 }
                 (2 | 4 | 8, 2 | 4) => {
                     self.insns
                         .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                             X86Opcode::AddImm,
                             vec![X86Operand::ModRM(modrm), X86Operand::Immediate(b as u64)],
-                        )))
+                        )));
                 }
                 (8, 8) => {
                     let scratch = self.get_or_allocate_scratch_reg();
@@ -621,7 +622,7 @@ impl FunctionRawCodegen for X86CodegenState {
                         .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                             X86Opcode::AddMR,
                             vec![X86Operand::ModRM(modrm), X86Operand::Register(scratch)],
-                        )))
+                        )));
                 }
                 (size, imm_size) => panic!(
                     "Cannot move immediate of size {:?} into loc of size {:?}",

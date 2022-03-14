@@ -3,7 +3,6 @@ use bytemuck::{Pod, Zeroable};
 #[derive(Copy, Clone, Hash, Zeroable, Pod)]
 #[repr(C, align(8))]
 // Note: The file is always present at offset 0, which is well-aligned. This is a hint to show that the file can be copied from memory that is aligned to 8 bytes
-#[allow(clippy::missing_const_for_fn)] // Why does this need to go here?
 pub struct RManifestHeader {
     pub magic: [u8; 4],
     pub format_ver: [u8; 2],

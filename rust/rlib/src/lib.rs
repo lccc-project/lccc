@@ -1,2 +1,2 @@
-#![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+#![deny(warnings, clippy::all, clippy::pedantic)]
 pub mod manifest;
