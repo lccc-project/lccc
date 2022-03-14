@@ -586,3 +586,13 @@ macro_rules! vec{
 
     }
 }
+
+#[cfg(test)]
+mod test {
+    #[test]
+    pub fn test_vec_new() {
+        let vec = super::Vec::<u32>::new();
+
+        assert_eq!(vec.len(), 0);
+    }
+}
