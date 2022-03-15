@@ -7,7 +7,7 @@ name = "arch-ops"
 version = "0.1.0"
 dependencies = [
  "lazy_static",
- "target-tuples 0.5.4",
+ "target-tuples",
 ]
 
 [[package]]
@@ -19,7 +19,7 @@ dependencies = [
  "fake-enum",
  "lazy_static",
  "static_assertions",
- "target-tuples 0.5.4",
+ "target-tuples",
 ]
 
 [[package]]
@@ -60,7 +60,7 @@ version = "0.1.0"
 dependencies = [
  "arch-ops",
  "binfmt",
- "target-tuples 0.5.4",
+ "target-tuples",
  "xlang",
  "xlang_backend",
  "xlang_struct",
@@ -72,7 +72,7 @@ version = "0.1.0"
 dependencies = [
  "arch-ops",
  "binfmt",
- "target-tuples 0.5.4",
+ "target-tuples",
  "xlang",
  "xlang_backend",
  "xlang_struct",
@@ -113,7 +113,7 @@ dependencies = [
 name = "frontend-xir"
 version = "0.1.0"
 dependencies = [
- "target-tuples 0.5.4",
+ "target-tuples",
  "unicode-xid",
  "xlang",
  "xlang_struct",
@@ -151,7 +151,7 @@ version = "0.1.0"
 dependencies = [
  "install-dirs",
  "serde",
- "target-tuples 0.5.4",
+ "target-tuples",
  "temp-file",
  "toml",
  "which",
@@ -273,15 +273,9 @@ dependencies = [
 
 [[package]]
 name = "target-tuples"
-version = "0.4.2"
+version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23801dfda77151ef8e6c43196c779dcaf672dc62e6ebf1a5594270bdf3e2c4f2"
-
-[[package]]
-name = "target-tuples"
-version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51c705272aad55605b1249c12de4ec6df4da3aab19eab31fc13d302910aea97f"
+checksum = "25261724592734b5619df41651407f098517c3405015009c3857f58059044cb9"
 
 [[package]]
 name = "temp-file"
@@ -333,7 +327,7 @@ name = "xlang"
 version = "0.1.0"
 dependencies = [
  "fake-enum",
- "target-tuples 0.4.2",
+ "target-tuples",
  "xlang_abi",
  "xlang_host",
  "xlang_interface",
@@ -393,6 +387,6 @@ dependencies = [
 name = "xlang_targets"
 version = "0.1.0"
 dependencies = [
- "target-tuples 0.5.4",
+ "target-tuples",
  "xlang_abi",
 ]

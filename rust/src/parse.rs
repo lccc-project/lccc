@@ -232,8 +232,8 @@ pub enum Meta {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct FnParam {
-    pub pat: Pattern,
-    pub ty: Type,
+    pub pat: Option<Pattern>,
+    pub ty: Option<Type>, // Only for closures/...
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -2864,18 +2864,102 @@ pub fn parse_type<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) -> O
 }
 
 pub fn parse_fn_param<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) -> FnParam {
-    let pat = parse_pattern(it).unwrap();
-
-    match it.next().unwrap() {
+    let (pat, ty) = match it.peek().unwrap() {
+        Lexeme::Group { .. } => match it.peek_next().unwrap() {
+            Lexeme::Token {
+                ty: TokenType::Symbol,
+                tok,
+                ..
+            } if tok == ":" => {
+                it.reset_cursor();
+                let pat = parse_pattern(it).unwrap();
+                match it.next().unwrap() {
+                    Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    } if tok == ":" => {}
+                    tok => panic!("Unexpected token {:?}", tok),
+                }
+                let ty = parse_type(it).unwrap();
+                (Some(pat), Some(ty))
+            }
+            _ => {
+                it.reset_cursor();
+                (None, Some(parse_type(it).unwrap()))
+            }
+        },
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "ref" || tok == "mut" => {
+            let pat = parse_pattern(it).unwrap();
+            match it.next().unwrap() {
+                Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                } if tok == ":" => {}
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+            let ty = parse_type(it).unwrap();
+            (Some(pat), Some(ty))
+        }
         Lexeme::Token {
             ty: TokenType::Symbol,
             tok,
             ..
-        } if tok == ":" => {}
-        _ => panic!("Invalid Token"),
-    }
-
-    let ty = parse_type(it).unwrap();
+        } if tok == "_" => {
+            let pat = parse_pattern(it).unwrap();
+            match it.next().unwrap() {
+                Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                } if tok == ":" => {}
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+            let ty = parse_type(it).unwrap();
+            (Some(pat), Some(ty))
+        }
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        } if tok == "*" => (None, Some(parse_type(it).unwrap())),
+        _ => {
+            let pat = parse_pattern(it).unwrap();
+            match (pat, it.peek()) {
+                (
+                    pat,
+                    Some(Lexeme::Token {
+                        ty: TokenType::Symbol,
+                        tok,
+                        ..
+                    }),
+                ) if tok == ":" => {
+                    it.next();
+                    let ty = parse_type(it).unwrap();
+                    (Some(pat), Some(ty))
+                }
+                (Pattern::DotDotDot, _) => (Some(Pattern::DotDotDot), None),
+                (Pattern::Const(name), _) => (None, Some(Type::Name(name))),
+                (Pattern::Ref(mt, pat), tok) => match *pat {
+                    Pattern::Const(name) => (
+                        None,
+                        Some(Type::Reference {
+                            mutability: mt,
+                            lifetime: None,
+                            underlying: Box::new(Type::Name(name)),
+                        }),
+                    ),
+                    _ => panic!("Invalid token {:?}", tok),
+                },
+                (_, tok) => panic!("Invalid token {:?}", tok),
+            }
+        }
+    };
 
     FnParam { pat, ty }
 }

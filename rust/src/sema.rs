@@ -904,7 +904,9 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                         }),
                         params: params
                             .iter()
-                            .map(|FnParam { ty, .. }| convert_ty(&named_types, ty))
+                            .map(|FnParam { ty, .. }| {
+                                convert_ty(&named_types, ty.as_ref().unwrap())
+                            })
                             .collect(),
                         return_ty: Box::new(return_ty.as_ref().map_or_else(
                             || Type::Tuple(Vec::new()),

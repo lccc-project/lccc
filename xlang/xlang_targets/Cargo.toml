@@ -8,5 +8,5 @@ license = "BSD-2-Clause-Patent"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-target-tuples = "0.5.4"
+target-tuples = "0.5.5"
 xlang_abi = {path="../xlang_abi"}

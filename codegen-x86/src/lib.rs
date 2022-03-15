@@ -1261,7 +1261,7 @@ mod test {
     use xlang::prelude::v1::{HashMap, None as XLangNone};
     use xlang_backend::{str::StringMap, ty::TypeInformation, FunctionCodegen};
     use xlang_struct::{
-        Abi, BinaryOp, BlockItem, Expr, FnType, FunctionBody, OverflowBehaviour, Path,
+        Abi, AccessClass, BinaryOp, BlockItem, Expr, FnType, FunctionBody, OverflowBehaviour, Path,
         PathComponent, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type, Value,
     };
 
@@ -1522,6 +1522,48 @@ mod test {
                 },
             },
             &[0xB8, 0x07, 0x00, 0x00, 0x00, 0xC3],
+            Target::parse("x86_64-pc-linux-gnu"),
+        )
+    }
+    #[test]
+    fn cgtest_add_0_local() {
+        let sty = ScalarType {
+            header: ScalarTypeHeader {
+                bitsize: 32,
+                ..Default::default()
+            },
+            kind: ScalarTypeKind::Integer {
+                signed: true,
+                min: XLangNone,
+                max: XLangNone,
+            },
+        };
+        run_codegen_test(
+            FnType {
+                ret: Type::Scalar(sty),
+                params: xlang::abi::vec![],
+                variadic: false,
+                tag: Abi::C,
+            },
+            &FunctionBody {
+                locals: xlang::abi::vec![Type::Scalar(sty)],
+                block: xlang_struct::Block {
+                    items: xlang::abi::vec![
+                        BlockItem::Expr(Expr::Local(0)),
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 1 })),
+                        BlockItem::Expr(Expr::Assign(AccessClass::Normal)),
+                        BlockItem::Expr(Expr::Local(0)),
+                        BlockItem::Expr(Expr::AsRValue(AccessClass::Normal)),
+                        BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: !0 })),
+                        BlockItem::Expr(Expr::BinaryOp(BinaryOp::Add, OverflowBehaviour::Wrap)),
+                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 })
+                    ],
+                },
+            },
+            &[
+                0xB8, 0x01, 0x00, 0x00, 0x00, 0x8B, 0xC8, 0x81, 0xC1, 0xFF, 0xFF, 0xFF, 0xFF, 0x8B,
+                0xC1, 0xC3,
+            ],
             Target::parse("x86_64-pc-linux-gnu"),
         )
     }
