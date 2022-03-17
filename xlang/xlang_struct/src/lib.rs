@@ -589,7 +589,7 @@ impl BitAndAssign for AccessClass {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Switch {
     pub cases: Vec<Pair<Value, u32>>,
-    pub default: Option<u32>,
+    pub default: u32,
 }
 
 #[repr(u8)]

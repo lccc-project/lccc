@@ -1,0 +1,13 @@
+function main() -> int(32){
+    const uint(32) 1
+    switch
+        case uint(32) 1: @2
+        default: @1
+    end switch
+    target @1 []
+    const uint(32) 1
+    exit block $0 1
+    target @2 []
+    const uint(32) 0
+    exit block $0 1
+}

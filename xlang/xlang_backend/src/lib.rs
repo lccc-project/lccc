@@ -499,8 +499,9 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         match val {
                             VStackValue::Constant(Value::Invalid(_)) => {
                                 self.inner.write_trap(Trap::Unreachable);
+                                return;
                             }
-                            VStackValue::Trapped => {}
+                            VStackValue::Trapped => return,
                             val => {
                                 let loc = self.inner.get_callconv().find_return_val(&self.fnty);
                                 self.move_val(val, loc);
@@ -1087,7 +1088,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                 }
                                 OverflowBehaviour::Trap => {
                                     if overflow {
-                                        self.inner.write_trap(Trap::Overflow);
+                                        self.inner.write_trap(Trap::Abort);
                                         self.vstack.push_back(VStackValue::Trapped);
                                     } else {
                                         self.vstack.push_back(VStackValue::Constant(
@@ -1441,8 +1442,46 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             }
             Expr::Sequence(_) => {}
             Expr::Fence(barrier) => self.inner.write_barrier(*barrier),
-            Expr::Switch(_) => todo!(),
-            Expr::Tailcall(_) => todo!(),
+            Expr::Switch(s) => {
+                let ctrl = self.pop_value().unwrap();
+                match ctrl {
+                    VStackValue::Constant(Value::Uninitialized(_) | Value::Invalid(_)) => {
+                        self.inner.write_trap(Trap::Unreachable);
+                    }
+                    VStackValue::Constant(v @ Value::Integer { .. }) => {
+                        let mut found = None;
+                        for Pair(case, target) in &s.cases {
+                            if &v == case {
+                                found = Some(*target);
+                                break;
+                            }
+                        }
+                        let target = found.unwrap_or(s.default);
+
+                        let targ = self.targets[&target]
+                            .iter()
+                            .map(|(a, _)| a)
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        let vals = self.pop_values(targ.len()).unwrap();
+
+                        for (val, loc) in vals.into_iter().zip(targ) {
+                            self.move_val(val, loc)
+                        }
+
+                        self.inner.branch_unconditional(target);
+                    }
+                    VStackValue::OpaqueScalar(ty, loc) => {
+                        todo!("switch OpaqueScalar({:?},{:?})", ty, loc)
+                    }
+                    VStackValue::CompareResult(a, b) => {
+                        todo!("switch CompareResult({:?},{:?})", a, b)
+                    }
+                    VStackValue::Trapped => {}
+                    v => panic!("Invalid value for switch {:?}", v),
+                }
+            }
+            Expr::Tailcall(_) => todo!("tailcall"),
         }
     }
 

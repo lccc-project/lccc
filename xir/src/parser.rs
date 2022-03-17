@@ -14,7 +14,7 @@ use xlang_struct::{
     Expr, File, FnType, FunctionBody, FunctionDeclaration, MemberDeclaration, OverflowBehaviour,
     Path, PathComponent, PointerAliasingRule, PointerDeclarationType, PointerType, ScalarType,
     ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Scope, ScopeMember, StackItem,
-    StringEncoding, Type, UnaryOp, ValidRangeType, Value, Visibility,
+    StringEncoding, Switch, Type, UnaryOp, ValidRangeType, Value, Visibility,
 };
 
 use crate::lexer::{Group, Token};
@@ -626,9 +626,7 @@ pub fn parse_const<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Value {
             it.next();
             match it.next().unwrap() {
                 Token::Ident(id) if id == "uninit" => Value::Uninitialized(parse_type(it).unwrap()),
-                Token::Ident(id) if id == "invalid" => {
-                    Value::Uninitialized(parse_type(it).unwrap())
-                }
+                Token::Ident(id) if id == "invalid" => Value::Invalid(parse_type(it).unwrap()),
                 tok => panic!("Unexpected token {:?}", tok),
             }
         }
@@ -983,6 +981,61 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
             it.next();
             let acc = parse_access_class(it);
             Expr::AsRValue(acc)
+        }
+        Token::Ident(id) if id == "switch" => {
+            it.next();
+            let mut cases = Vec::new();
+            let mut default = None;
+            loop {
+                match it.peek().unwrap() {
+                    Token::Ident(id) if id == "case" => {
+                        it.next();
+                        let label = parse_const(it);
+                        match it.next().unwrap() {
+                            Token::Sigil(':') => {}
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+                        match it.next().unwrap() {
+                            Token::Sigil('@') => match it.next().unwrap() {
+                                Token::IntLiteral(target) => {
+                                    cases.push(Pair(label, target.try_into().unwrap()))
+                                }
+                                tok => panic!("Unexpected token {:?}", tok),
+                            },
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+                    }
+                    Token::Ident(id) if id == "default" => {
+                        it.next();
+                        match it.next().unwrap() {
+                            Token::Sigil(':') => {}
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+                        match it.next().unwrap() {
+                            Token::Sigil('@') => match it.next().unwrap() {
+                                Token::IntLiteral(target) => {
+                                    default = Some(target.try_into().unwrap())
+                                }
+                                tok => panic!("Unexpected token {:?}", tok),
+                            },
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+                    }
+                    Token::Ident(id) if id == "end" => {
+                        it.next();
+                        match it.next().unwrap() {
+                            Token::Ident(id) if id == "switch" => {
+                                break Expr::Switch(Switch {
+                                    cases,
+                                    default: default.unwrap(),
+                                })
+                            }
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+                    }
+                    tok => panic!("Unexpected token {:?}", tok),
+                }
+            }
         }
         tok => todo!("{:?}", tok),
     }
