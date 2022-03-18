@@ -587,9 +587,25 @@ impl BitAndAssign for AccessClass {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Switch {
+#[repr(u32)]
+pub enum Switch {
+    Hash(HashSwitch),
+    Linear(LinearSwitch),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct HashSwitch {
     pub cases: Vec<Pair<Value, u32>>,
     pub default: u32,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct LinearSwitch {
+    pub ty: Type,
+    pub min: u128,
+    pub scale: u32,
+    pub default: u32,
+    pub cases: Vec<u32>,
 }
 
 #[repr(u8)]

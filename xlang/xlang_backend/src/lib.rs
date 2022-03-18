@@ -19,7 +19,7 @@ use xlang::{
     ir::{
         AccessClass, BinaryOp, Block, BranchCondition, Expr, FnType, FunctionBody,
         OverflowBehaviour, Path, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind,
-        ScalarValidity, StackItem, StackValueKind, Type, Value,
+        ScalarValidity, StackItem, StackValueKind, Switch, Type, Value,
     },
     prelude::v1::*,
     targets::properties::TargetProperties,
@@ -1442,7 +1442,45 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             }
             Expr::Sequence(_) => {}
             Expr::Fence(barrier) => self.inner.write_barrier(*barrier),
-            Expr::Switch(s) => {
+            Expr::Switch(Switch::Linear(s)) => {
+                let ctrl = self.pop_value().unwrap();
+                match ctrl {
+                    VStackValue::Constant(Value::Uninitialized(_) | Value::Invalid(_)) => {
+                        self.inner.write_trap(Trap::Unreachable);
+                    }
+                    VStackValue::Constant(Value::Integer { val, .. }) => {
+                        let val = val.wrapping_sub(s.min);
+                        let (idx, rem) = ((val / (s.scale as u128)), val % (s.scale as u128));
+                        let target = if rem != 0 || idx >= (s.cases.len() as u128) {
+                            s.default
+                        } else {
+                            s.cases[usize::try_from(idx).unwrap()]
+                        };
+
+                        let targ = self.targets[&target]
+                            .iter()
+                            .map(|(a, _)| a)
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        let vals = self.pop_values(targ.len()).unwrap();
+
+                        for (val, loc) in vals.into_iter().zip(targ) {
+                            self.move_val(val, loc);
+                        }
+
+                        self.inner.branch_unconditional(target);
+                    }
+                    VStackValue::OpaqueScalar(ty, loc) => {
+                        todo!("switch OpaqueScalar({:?},{:?})", ty, loc)
+                    }
+                    VStackValue::CompareResult(a, b) => {
+                        todo!("switch CompareResult({:?},{:?})", a, b)
+                    }
+                    VStackValue::Trapped => {}
+                    v => panic!("Invalid value for switch {:?}", v),
+                }
+            }
+            Expr::Switch(Switch::Hash(s)) => {
                 let ctrl = self.pop_value().unwrap();
                 match ctrl {
                     VStackValue::Constant(Value::Uninitialized(_) | Value::Invalid(_)) => {
@@ -1466,7 +1504,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         let vals = self.pop_values(targ.len()).unwrap();
 
                         for (val, loc) in vals.into_iter().zip(targ) {
-                            self.move_val(val, loc)
+                            self.move_val(val, loc);
                         }
 
                         self.inner.branch_unconditional(target);

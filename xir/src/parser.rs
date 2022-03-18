@@ -11,10 +11,11 @@ use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
 use xlang::targets::Target;
 use xlang_struct::{
     Abi, AccessClass, AnnotatedElement, BinaryOp, Block, BlockItem, BranchCondition, CharFlags,
-    Expr, File, FnType, FunctionBody, FunctionDeclaration, MemberDeclaration, OverflowBehaviour,
-    Path, PathComponent, PointerAliasingRule, PointerDeclarationType, PointerType, ScalarType,
-    ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Scope, ScopeMember, StackItem,
-    StringEncoding, Switch, Type, UnaryOp, ValidRangeType, Value, Visibility,
+    Expr, File, FnType, FunctionBody, FunctionDeclaration, HashSwitch, LinearSwitch,
+    MemberDeclaration, OverflowBehaviour, Path, PathComponent, PointerAliasingRule,
+    PointerDeclarationType, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind,
+    ScalarValidity, Scope, ScopeMember, StackItem, StringEncoding, Switch, Type, UnaryOp,
+    ValidRangeType, Value, Visibility,
 };
 
 use crate::lexer::{Group, Token};
@@ -984,57 +985,136 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
         }
         Token::Ident(id) if id == "switch" => {
             it.next();
-            let mut cases = Vec::new();
-            let mut default = None;
-            loop {
-                match it.peek().unwrap() {
-                    Token::Ident(id) if id == "case" => {
-                        it.next();
-                        let label = parse_const(it);
-                        match it.next().unwrap() {
-                            Token::Sigil(':') => {}
-                            tok => panic!("Unexpected token {:?}", tok),
-                        }
-                        match it.next().unwrap() {
-                            Token::Sigil('@') => match it.next().unwrap() {
-                                Token::IntLiteral(target) => {
-                                    cases.push(Pair(label, target.try_into().unwrap()))
+
+            let switch = match it.next().unwrap() {
+                Token::Ident(id) if id == "hash" => {
+                    let mut cases = Vec::new();
+                    let mut default = None;
+                    loop {
+                        match it.peek().unwrap() {
+                            Token::Ident(id) if id == "case" => {
+                                it.next();
+                                let val = parse_const(it);
+
+                                match it.next().unwrap() {
+                                    Token::Sigil(':') => {}
+                                    tok => panic!("Unexpected token {:?}", tok),
                                 }
-                                tok => panic!("Unexpected token {:?}", tok),
-                            },
-                            tok => panic!("Unexpected token {:?}", tok),
-                        }
-                    }
-                    Token::Ident(id) if id == "default" => {
-                        it.next();
-                        match it.next().unwrap() {
-                            Token::Sigil(':') => {}
-                            tok => panic!("Unexpected token {:?}", tok),
-                        }
-                        match it.next().unwrap() {
-                            Token::Sigil('@') => match it.next().unwrap() {
-                                Token::IntLiteral(target) => {
-                                    default = Some(target.try_into().unwrap())
+                                match it.next().unwrap() {
+                                    Token::Sigil('@') => {}
+                                    tok => panic!("Unexpected token {:?}", tok),
                                 }
-                                tok => panic!("Unexpected token {:?}", tok),
-                            },
-                            tok => panic!("Unexpected token {:?}", tok),
-                        }
-                    }
-                    Token::Ident(id) if id == "end" => {
-                        it.next();
-                        match it.next().unwrap() {
-                            Token::Ident(id) if id == "switch" => {
-                                break Expr::Switch(Switch {
+
+                                let targ = match it.next().unwrap() {
+                                    Token::IntLiteral(n) => u32::try_from(n).unwrap(),
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                };
+                                cases.push(Pair(val, targ));
+                            }
+                            Token::Ident(id) if id == "default" => {
+                                it.next();
+
+                                match it.next().unwrap() {
+                                    Token::Sigil(':') => {}
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                }
+                                match it.next().unwrap() {
+                                    Token::Sigil('@') => {}
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                }
+
+                                match it.next().unwrap() {
+                                    Token::IntLiteral(n) => {
+                                        default = Some(u32::try_from(n).unwrap())
+                                    }
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                }
+                            }
+                            _ => {
+                                break Switch::Hash(HashSwitch {
                                     cases,
                                     default: default.unwrap(),
                                 })
                             }
-                            tok => panic!("Unexpected token {:?}", tok),
                         }
                     }
-                    tok => panic!("Unexpected token {:?}", tok),
                 }
+                Token::Ident(id) if id == "linear" => {
+                    let ty = parse_type(it).unwrap();
+                    let min = match it.peek().unwrap() {
+                        Token::Ident(id) if id == "min" => {
+                            it.next();
+                            match it.next().unwrap() {
+                                Token::IntLiteral(n) => n,
+                                Token::Sigil('-') => match it.next().unwrap() {
+                                    Token::IntLiteral(n) => n.wrapping_neg(),
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                },
+                                tok => panic!("Unexpected token {:?}", tok),
+                            }
+                        }
+                        _ => 0,
+                    };
+                    let scale = match it.peek().unwrap() {
+                        Token::Ident(id) if id == "min" => {
+                            it.next();
+                            match it.next().unwrap() {
+                                Token::IntLiteral(n) => u32::try_from(n).unwrap(),
+                                tok => panic!("Unexpected token {:?}", tok),
+                            }
+                        }
+                        _ => 1,
+                    };
+                    let default = match it.peek().unwrap() {
+                        Token::Ident(id) if id == "default" => {
+                            it.next();
+
+                            match it.next().unwrap() {
+                                Token::Sigil('@') => {}
+                                tok => panic!("Unexpected token {:?}", tok),
+                            }
+
+                            match it.next().unwrap() {
+                                Token::IntLiteral(n) => u32::try_from(n).unwrap(),
+                                tok => panic!("Unexpected token {:?}", tok),
+                            }
+                        }
+                        tok => panic!("Unexpected token {:?}", tok),
+                    };
+
+                    let mut cases = Vec::new();
+
+                    loop {
+                        match it.peek().unwrap() {
+                            Token::Sigil('@') => {
+                                it.next();
+                                match it.next().unwrap() {
+                                    Token::IntLiteral(n) => cases.push(u32::try_from(n).unwrap()),
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                }
+                            }
+                            _ => {
+                                break Switch::Linear(LinearSwitch {
+                                    ty,
+                                    min,
+                                    scale,
+                                    default,
+                                    cases,
+                                })
+                            }
+                        }
+                    }
+                }
+                tok => panic!("Unexpected token {:?}", tok),
+            };
+
+            match it.next().unwrap() {
+                Token::Ident(id) if id == "end" => {}
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+            match it.next().unwrap() {
+                Token::Ident(id) if id == "switch" => Expr::Switch(switch),
+                tok => panic!("Unexpected token {:?}", tok),
             }
         }
         tok => todo!("{:?}", tok),
