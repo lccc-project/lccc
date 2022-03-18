@@ -1025,7 +1025,7 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
 
                                 match it.next().unwrap() {
                                     Token::IntLiteral(n) => {
-                                        default = Some(u32::try_from(n).unwrap())
+                                        default = Some(u32::try_from(n).unwrap());
                                     }
                                     tok => panic!("Unexpected token {:?}", tok),
                                 }
