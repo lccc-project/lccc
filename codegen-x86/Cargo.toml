@@ -12,7 +12,7 @@ binfmt = {path="../binfmt", version="0.1.0", features=["all-formats", "x86"]}
 xlang = {path="../xlang"}
 xlang_struct = {path="../xlang/xlang_struct"}
 xlang_backend = {path="../xlang/xlang_backend"}
-target-tuples = "0.5.2"
+target-tuples = "0.5.5"
 
 [lib]
 crate-type = ["cdylib"]

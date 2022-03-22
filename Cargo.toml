@@ -1,2 +1,2 @@
 [workspace]
-members = ["xlang","xlang/xlang_abi","xlang/xlang_abi_macro","xlang/xlang_struct", "xlang/xlang_targets","xlang/xlang_host","xlang/xlang_backend","xlangtransparent","lccc","c","xir","codegen-x86","codegen-clever", "arch-ops", "binfmt", "rust","rust/rlib"]
+members = ["xlang","xlang/xlang_abi","xlang/xlang_abi_macro","xlang/xlang_struct", "xlang/xlang_targets","xlang/xlang_host","xlang/xlang_backend","xlang/xlang_opt","xlangtransparent","lccc","c","xir","codegen-x86","codegen-clever", "arch-ops", "binfmt", "rust","rust/rlib","rust/lcrustc"]

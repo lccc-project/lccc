@@ -113,6 +113,7 @@ dependencies = [
 name = "frontend-xir"
 version = "0.1.0"
 dependencies = [
+ "peekmore",
  "target-tuples",
  "unicode-xid",
  "xlang",
@@ -157,6 +158,14 @@ dependencies = [
  "which",
  "xlang",
  "xlang_host",
+]
+
+[[package]]
+name = "lcrustc"
+version = "0.1.0"
+dependencies = [
+ "lccc",
+ "xlang",
 ]
 
 [[package]]
@@ -371,6 +380,13 @@ dependencies = [
  "xlang_abi",
  "xlang_host",
  "xlang_targets",
+]
+
+[[package]]
+name = "xlang_opt"
+version = "0.1.0"
+dependencies = [
+ "xlang",
 ]
 
 [[package]]

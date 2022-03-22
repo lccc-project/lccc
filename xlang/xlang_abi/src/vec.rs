@@ -589,10 +589,127 @@ macro_rules! vec{
 
 #[cfg(test)]
 mod test {
+    use super::Vec;
     #[test]
-    pub fn test_vec_new() {
-        let vec = super::Vec::<u32>::new();
+    fn test_vec_new() {
+        let vec = Vec::<u32>::new();
 
         assert_eq!(vec.len(), 0);
+    }
+
+    #[test]
+    fn test_vec_empty() {
+        let vec: Vec<u32> = vec![];
+        assert_eq!(vec.len(), 0);
+    }
+
+    #[test]
+    fn test_vec_push() {
+        let mut vec = Vec::new();
+        vec.push(0);
+        assert_eq!(vec.len(), 1);
+    }
+
+    #[test]
+    fn test_vec_deref() {
+        let mut vec = Vec::new();
+        vec.push(0);
+        assert!(matches!(*vec, [0]));
+    }
+
+    #[test]
+    fn test_vec_iter() {
+        let mut vec = Vec::new();
+        vec.push(1);
+
+        let mut iter = vec.iter();
+        assert_eq!(iter.next(), Some(&1));
+    }
+
+    #[test]
+    fn test_vec_subscript() {
+        let mut vec = Vec::new();
+        vec.push(1);
+
+        assert_eq!(vec[0], 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_vec_subscript_oob() {
+        let mut vec = Vec::new();
+        vec.push(1);
+        vec.push(2);
+
+        let _ = vec[2];
+    }
+
+    #[test]
+    fn test_vec_get() {
+        let mut vec = Vec::new();
+        vec.push(1);
+
+        assert_eq!(vec.get(0), Some(&1));
+    }
+
+    #[test]
+    fn test_vec_get_oob() {
+        let mut vec = Vec::new();
+        vec.push(1);
+
+        assert_eq!(vec.get(1), None);
+    }
+
+    #[test]
+    fn test_vec_get_unchecked() {
+        let mut vec = Vec::new();
+        vec.push(1);
+        vec.push(2);
+
+        assert_eq!(unsafe { vec.get_unchecked(1) }, &2);
+    }
+
+    #[test]
+    fn test_vec_slice() {
+        let mut vec = Vec::new();
+        vec.push(1);
+        vec.push(2);
+        vec.push(3);
+
+        assert!(matches!(vec[..2], [1, 2]));
+    }
+
+    #[test]
+    fn test_vec_slice_inclusive_bound() {
+        let mut vec = Vec::new();
+        vec.push(1);
+        vec.push(2);
+        vec.push(3);
+
+        assert!(matches!(vec[..=2], [1, 2, 3]));
+    }
+
+    #[test]
+    fn test_vec_slice_full() {
+        let mut vec = Vec::new();
+        vec.push(1);
+        vec.push(2);
+        vec.push(3);
+
+        assert!(matches!(vec[..], [1, 2, 3]));
+    }
+
+    #[test]
+    fn test_vec_iter_mut() {
+        let mut vec = Vec::new();
+        vec.push(1);
+        vec.push(2);
+
+        let mut iter_mut = vec.iter_mut();
+        *iter_mut.next().unwrap() += 3;
+        *iter_mut.next().unwrap() += 3;
+
+        assert_eq!(vec[0], 4);
+        assert_eq!(vec[1], 5);
     }
 }

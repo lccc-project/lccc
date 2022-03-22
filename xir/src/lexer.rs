@@ -63,9 +63,8 @@ fn lex_one<I: Iterator<Item = char>>(stream: &mut Peekable<I>) -> Option<Token> 
             }
             Some(Token::Ident(id))
         }
-        '!' | '@' | '#' | '%' | '^' | '&' | '*' | '<' | '>' | '=' | '+' | '-' | ';' | ':' => {
-            Some(Token::Sigil(stream.next().unwrap()))
-        }
+        '!' | '@' | '#' | '%' | '^' | '&' | '*' | '<' | '>' | '=' | '+' | '-' | ';' | ':' | ','
+        | '.' => Some(Token::Sigil(stream.next().unwrap())),
 
         '0' => {
             // We can toss away the zero, just remember that it exists

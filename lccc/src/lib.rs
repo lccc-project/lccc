@@ -1,6 +1,8 @@
 //! Helper library for the lccc driver, and other driver clis (such as lcrust)
 //!
 
+pub mod argparse;
+
 use std::{
     borrow::Borrow,
     hash::{BuildHasher, Hash},
@@ -44,7 +46,7 @@ pub enum LinkOutput {
     Manifest,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OptimizeLevel {
     Integer(u8),
     Debug,
@@ -121,4 +123,8 @@ pub fn find_tool(target: &Target, name: StringView) -> Option<PathBuf> {
     } else {
         None
     }
+}
+
+pub fn get_default_target() -> Target {
+    target_tuples::from_env!("default_target")
 }

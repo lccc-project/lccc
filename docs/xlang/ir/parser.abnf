@@ -12,6 +12,6 @@ path := ["::" /("%" <dec-literal> "::")]  <path-component> [*("::" <path-compone
 
 file := <target-spec> <scope>
 
-function-declaration := "function" <path> "(" [*("_" <dec-literal> ":" <type>)] ")"
+function-declaration := "function" <path> "(" [*(["_" <dec-literal> ":"] <type>)] ")" ["->" <type>] (";" "{" <block> "}")
 
 

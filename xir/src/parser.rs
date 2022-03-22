@@ -1,9 +1,8 @@
 #![allow(dead_code)]
 
-use std::{
-    convert::{TryFrom, TryInto},
-    iter::Peekable,
-};
+use std::convert::{TryFrom, TryInto};
+
+use peekmore::{PeekMore as _, PeekMoreIterator};
 
 use xlang::abi::string::FromUtf8Error;
 use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
@@ -20,12 +19,12 @@ use xlang_struct::{
 
 use crate::lexer::{Group, Token};
 
-pub fn parse_function_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> FnType {
+pub fn parse_function_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreIterator<I>) -> FnType {
     match stream.next().unwrap() {
         Token::Ident(id) if id == "function" => match stream.next().unwrap() {
             Token::Group(Group::Parenthesis(tok)) => {
                 let mut params = Vec::new();
-                let mut peekable = tok.into_iter().peekable();
+                let mut peekable = tok.into_iter().peekmore();
                 let mut variadic = false;
                 loop {
                     match peekable.peek() {
@@ -89,7 +88,7 @@ pub fn parse_function_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) 
 
 #[allow(clippy::cognitive_complexity)] // TODO: refactor
 #[allow(clippy::too_many_lines)] // TODO: refactor
-pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option<Type> {
+pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreIterator<I>) -> Option<Type> {
     match stream.peek() {
         Some(Token::Group(Group::Parenthesis(_))) => {
             let group = if let Some(Token::Group(Group::Parenthesis(inner))) = stream.next() {
@@ -97,7 +96,7 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
             } else {
                 unreachable!()
             };
-            let mut inner = group.into_iter().peekable();
+            let mut inner = group.into_iter().peekmore();
             Some(parse_type(&mut inner).unwrap())
         }
         Some(Token::Ident(id)) => match &**id {
@@ -297,11 +296,13 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Option
     }
 }
 
-pub fn parse_attr_list<I: Iterator<Item = Token>>(_it: &mut Peekable<I>) -> AnnotatedElement {
+pub fn parse_attr_list<I: Iterator<Item = Token>>(
+    _it: &mut PeekMoreIterator<I>,
+) -> AnnotatedElement {
     todo!()
 }
 
-pub fn parse_path<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Path {
+pub fn parse_path<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Path {
     let mut path = Vec::new();
     if it.peek() == Some(&Token::Sigil(':')) {
         it.next();
@@ -331,7 +332,7 @@ pub fn parse_path<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Path {
 
 #[allow(clippy::too_many_lines, clippy::cognitive_complexity)] // TODO: refactor
 pub fn parse_scope_member<I: Iterator<Item = Token>>(
-    it: &mut Peekable<I>,
+    it: &mut PeekMoreIterator<I>,
 ) -> Option<(Path, ScopeMember)> {
     match it.peek()? {
         Token::Ident(id) if id == "public" => {
@@ -375,7 +376,7 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
             match it.next().unwrap() {
                 Token::Group(Group::Parenthesis(toks)) => {
                     let mut params = Vec::new();
-                    let mut peekable = toks.into_iter().peekable();
+                    let mut peekable = toks.into_iter().peekmore();
                     let mut variadic = false;
                     loop {
                         match peekable.peek() {
@@ -447,7 +448,7 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
                             },
                         )),
                         Token::Group(Group::Braces(toks)) => {
-                            let mut peekable = toks.into_iter().peekable();
+                            let mut peekable = toks.into_iter().peekmore();
                             let mut locals = Vec::new();
                             loop {
                                 match peekable.peek() {
@@ -508,7 +509,7 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
 }
 
 pub fn parse_stack_items<I: Iterator<Item = Token>>(it: I) -> Vec<StackItem> {
-    let mut peekable = it.peekable();
+    let mut peekable = it.peekmore();
     let mut ret = Vec::new();
     loop {
         match peekable.peek() {
@@ -535,20 +536,17 @@ pub fn parse_stack_items<I: Iterator<Item = Token>>(it: I) -> Vec<StackItem> {
     }
 }
 
-pub fn parse_block<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Block {
+pub fn parse_block<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Block {
     let mut items = Vec::new();
     loop {
         match it.peek() {
-            Some(Token::Ident(id)) if id == "end" => {
-                it.next();
-                match it.next().unwrap() {
-                    Token::Ident(id) if id == "block" => {
-                        it.next();
-                        break Block { items };
-                    }
-                    tok => todo!("end {:?}", tok),
+            Some(Token::Ident(id)) if id == "end" => match it.peek_next().unwrap() {
+                Token::Ident(id) if id == "block" => {
+                    it.reset_cursor();
+                    break Block { items };
                 }
-            }
+                tok => todo!("end {:?}", tok),
+            },
             None => break Block { items },
             Some(Token::Ident(id)) if id == "target" => {
                 it.next();
@@ -621,7 +619,7 @@ fn literal_to_xir_bytes(s: &str) -> Result<String, Vec<u8>> {
 #[allow(clippy::cognitive_complexity)] // TODO: refactor
 #[allow(clippy::match_wild_err_arm)] // TODO: find a better solution
 #[allow(clippy::too_many_lines)] // TODO: refactor
-pub fn parse_const<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Value {
+pub fn parse_const<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Value {
     match it.peek().unwrap() {
         Token::Ident(id) if id == "undef" => {
             it.next();
@@ -724,7 +722,7 @@ pub fn parse_const<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Value {
     }
 }
 
-pub fn parse_access_class<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> AccessClass {
+pub fn parse_access_class<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> AccessClass {
     let mut acc = AccessClass::Normal;
     loop {
         match it.peek() {
@@ -780,7 +778,7 @@ pub fn parse_access_class<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Ac
 }
 
 #[allow(clippy::cognitive_complexity, clippy::too_many_lines)]
-pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
+pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Expr {
     match it.peek().unwrap() {
         Token::Ident(id) if id == "const" => {
             it.next();
@@ -1117,12 +1115,34 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut Peekable<I>) -> Expr {
                 tok => panic!("Unexpected token {:?}", tok),
             }
         }
+        Token::Ident(id) if id == "begin" => {
+            it.next();
+            match it.next().unwrap() {
+                Token::Ident(id) if id == "block" => {
+                    let n = match it.next().unwrap() {
+                        Token::Ident(id) if id.starts_with('$') => id[1..].parse().unwrap(),
+                        tok => panic!("Unexpected token {:?}", tok),
+                    };
+                    let block = parse_block(it);
+                    match it.next().unwrap() {
+                        Token::Ident(id) if id == "end" => {}
+                        tok => panic!("Unexpected token {:?}", tok),
+                    }
+                    match it.next().unwrap() {
+                        Token::Ident(id) if id == "block" => {}
+                        tok => panic!("Unexpected token {:?}", tok),
+                    }
+                    Expr::Block { n, block }
+                }
+                tok => todo!("begin {:?}", tok),
+            }
+        }
         tok => todo!("{:?}", tok),
     }
 }
 
 pub fn parse_file<I: Iterator<Item = Token>>(it: I, deftarg: Target) -> File {
-    let mut peekable = it.peekable();
+    let mut peekable = it.peekmore();
     match peekable.peek() {
         Some(Token::Ident(id)) if id == "target" => {
             peekable.next();

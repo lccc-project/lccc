@@ -1,7 +1,6 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
-mod argparse;
 
-use crate::argparse::{parse_args, ArgSpec, TakesArg};
+use lccc::argparse::{parse_args, ArgSpec, TakesArg};
 use lccc::{LinkOutput, Mode, OptimizeLevel};
 use std::fs::File;
 use std::io::ErrorKind;

@@ -1,6 +1,6 @@
 use xlang_abi::{const_sv, span};
 
-use super::{clever::CLEVER, x86::X86_64, OperatingSystemProperties, TargetProperties};
+use super::{clever::CLEVER, w65::W65, x86::X86_64, OperatingSystemProperties, TargetProperties};
 
 pub static BARE_ELF: OperatingSystemProperties = OperatingSystemProperties {
     is_unix_like: false,
@@ -48,8 +48,8 @@ pub static CLEVER_ELF: TargetProperties = TargetProperties {
     ptrbits: 64,
     max_align: 16,
     ptralign: 8,
-    intmaxbits: 8,
-    sizebits: 8,
+    intmaxbits: 64,
+    sizebits: 64,
     lock_free_atomic_mask: 0xff,
     ldbl_align: 8,
     ldbl_format: super::LongDoubleFormat::IEEE64,
@@ -62,4 +62,27 @@ pub static CLEVER_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     available_formats: span![],
     interp: const_sv!("ld-clever.so"),
+};
+
+pub static W65_ELF: TargetProperties = TargetProperties {
+    intbits: 16,
+    longbits: 32,
+    llongbits: 64,
+    ptrbits: 32,
+    ptralign: 4,
+    max_align: 2,
+    intmaxbits: 128,
+    sizebits: 16,
+    lock_free_atomic_mask: 0x3,
+    ldbl_align: 2,
+    ldbl_format: super::LongDoubleFormat::IEEE64,
+    arch: &W65,
+    os: &BARE_ELF,
+    libdirs: span![const_sv!("lib")],
+    default_libs: span![],
+    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
+    endfiles: span![const_sv!("crtn.o")],
+    enabled_features: span![],
+    available_formats: span![],
+    interp: const_sv!(""),
 };

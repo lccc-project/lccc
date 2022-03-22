@@ -211,6 +211,7 @@ pub fn __get_properties(targ: Target) -> Option<&'static TargetProperties> {
             i486-*-linux-gnu => Some(&linux::I486_LINUX_GNU),
             i586-*-linux-gnu => Some(&linux::I586_LINUX_GNU),
             i686-*-linux-gnu => Some(&linux::I686_LINUX_GNU),
+            w65-*-elf => Some(&elf::W65_ELF),
             * => None
         }
     }

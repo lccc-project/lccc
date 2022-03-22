@@ -53,6 +53,7 @@ impl XLangPlugin for XirFrontend {
     #[allow(clippy::too_many_lines)]
     fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
         *file = self.file.take().unwrap();
+        validate::tycheck(file);
         Result::Ok(())
     }
 

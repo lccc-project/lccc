@@ -256,12 +256,13 @@ pub enum Pattern {
     IntLiteral(u128),
     DotDotDot,                      // ...: VaList
     Or(Box<Pattern>, Box<Pattern>), // pat1 | pat2
+    SelfPat,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum FieldPattern {
     Rest,
-    Field(FieldName, Pattern),
+    Field(FieldName, Option<Pattern>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -2672,53 +2673,179 @@ pub fn parse_path<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) -> P
 }
 
 pub fn parse_pattern<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) -> Option<Pattern> {
-    match it.next()? {
-        Lexeme::Token {
-            ty: TokenType::Identifier,
-            tok,
-            ..
-        } => Some(Pattern::Ident(tok)),
+    match it.peek()? {
         Lexeme::Token {
             ty: TokenType::Symbol,
             tok,
             ..
-        } if tok == "_" => Some(Pattern::Discard),
-        Lexeme::Group {
-            ty: GroupType::Parentheses,
-            inner,
-            ..
-        } => {
-            let mut iter = inner.into_iter().peekmore();
-            if let Some(pat2) = parse_pattern(&mut iter) {
-                match iter.next() {
-                    Some(Lexeme::Token {
-                        ty: TokenType::Symbol,
-                        tok,
+        } if tok == "_" => {
+            it.next();
+            Some(Pattern::Discard)
+        }
+        Lexeme::Group { .. } => match it.next().unwrap() {
+            Lexeme::Group {
+                ty: GroupType::Parentheses,
+                inner,
+                ..
+            } => {
+                let mut iter = inner.into_iter().peekmore();
+                if let Some(pat2) = parse_pattern(&mut iter) {
+                    match iter.next() {
+                        Some(Lexeme::Token {
+                            ty: TokenType::Symbol,
+                            tok,
+                            ..
+                        }) if tok == "," => {
+                            let mut inner = vec![pat2];
+                            while let Some(pat) = parse_pattern(&mut iter) {
+                                inner.push(pat);
+                                match iter.next() {
+                                    Some(Lexeme::Token {
+                                        ty: TokenType::Symbol,
+                                        tok,
+                                        ..
+                                    }) if tok == "," => {}
+                                    None => break,
+                                    Some(tok) => panic!("Unexpected token: {:?}", tok),
+                                }
+                            }
+                            Some(Pattern::Tuple(inner))
+                        }
+                        Some(tok) => panic!("Unexpected Token: {:?}", tok),
+                        None => Some(Pattern::Parentheses(Box::new(pat2))),
+                    }
+                } else {
+                    Some(Pattern::Tuple(vec![]))
+                }
+            }
+            Lexeme::Group {
+                ty: GroupType::Brackets,
+                ..
+            } => todo!("slice patterns"),
+            tok => panic!("Unexpected token {:?}", tok),
+        },
+        _ => {
+            let path = parse_path(it);
+
+            match it.peek() {
+                Some(Lexeme::Group { .. }) => match it.next().unwrap() {
+                    Lexeme::Group {
+                        ty: GroupType::Parentheses,
+                        inner,
                         ..
-                    }) if tok == "," => {
-                        let mut inner = vec![pat2];
-                        while let Some(pat) = parse_pattern(&mut iter) {
-                            inner.push(pat);
-                            match iter.next() {
+                    } => {
+                        let mut it = inner.into_iter().peekmore();
+                        let mut inner = Vec::new();
+                        loop {
+                            if let Some(pat) = parse_pattern(&mut it) {
+                                inner.push(pat)
+                            } else {
+                                break;
+                            }
+
+                            match it.next() {
                                 Some(Lexeme::Token {
                                     ty: TokenType::Symbol,
                                     tok,
                                     ..
-                                }) if tok == "," => {}
+                                }) if tok == "," => continue,
+                                Some(tok) => panic!("Unexepected token {:?}", tok),
                                 None => break,
-                                Some(tok) => panic!("Unexpected token: {:?}", tok),
                             }
                         }
-                        Some(Pattern::Tuple(inner))
+                        Some(Pattern::TupleStruct(path, inner))
                     }
-                    Some(tok) => panic!("Unexpected Token: {:?}", tok),
-                    None => Some(Pattern::Parentheses(Box::new(pat2))),
+                    Lexeme::Group {
+                        ty: GroupType::Braces,
+                        inner,
+                        ..
+                    } => {
+                        let mut it = inner.into_iter().peekmore();
+                        let mut inner = Vec::new();
+
+                        loop {
+                            let name = match it.next() {
+                                None => break,
+                                Some(Lexeme::Token {
+                                    ty: TokenType::Identifier,
+                                    tok,
+                                    ..
+                                }) => FieldName::Id(tok),
+                                Some(Lexeme::Token {
+                                    ty: TokenType::Number,
+                                    tok,
+                                    ..
+                                }) => FieldName::Tuple(tok.parse().unwrap()),
+                                Some(Lexeme::Token {
+                                    ty: TokenType::Symbol,
+                                    tok,
+                                    ..
+                                }) if tok == ".." => {
+                                    if let Some(tok) = it.next() {
+                                        panic!("Unexpected token {:?}", tok)
+                                    }
+                                    inner.push(FieldPattern::Rest);
+                                    break;
+                                }
+                                Some(tok) => panic!("Unexpected token {:?}", tok),
+                            };
+
+                            let pat = match it.peek() {
+                                Some(Lexeme::Token {
+                                    ty: TokenType::Symbol,
+                                    tok,
+                                    ..
+                                }) if tok == ":" => {
+                                    it.next();
+                                    Some(parse_pattern(&mut it).unwrap())
+                                }
+                                _ => None,
+                            };
+
+                            inner.push(FieldPattern::Field(name, pat));
+
+                            match it.next() {
+                                Some(Lexeme::Token {
+                                    ty: TokenType::Symbol,
+                                    tok,
+                                    ..
+                                }) if tok == "," => continue,
+                                Some(tok) => panic!("Unexpected token {:?}", tok),
+                                None => break,
+                            }
+                        }
+
+                        Some(Pattern::Struct(path, inner))
+                    }
+                    tok => panic!("Unexpected token {:?}", tok),
+                },
+                Some(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                }) if tok == "@" => {
+                    let pat = parse_pattern(it).unwrap();
+                    match (&path.root, &*path.components) {
+                        (None, [PathComponent::Id(id)]) => {
+                            Some(Pattern::Binding(id.clone(), Box::new(pat)))
+                        }
+                        _ => panic!("Cannot create pinding with path {:?}", path),
+                    }
                 }
-            } else {
-                Some(Pattern::Tuple(vec![]))
+                _ => {
+                    if path.root == Some(PathRoot::SelfPath) && path.components.is_empty() {
+                        Some(Pattern::SelfPat)
+                    } else if path.root == None && path.components.len() == 1 {
+                        match &*path.components {
+                            [PathComponent::Id(id)] => Some(Pattern::Ident(id.clone())),
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        Some(Pattern::Const(path))
+                    }
+                }
             }
         }
-        _ => todo!("struct patterns"),
     }
 }
 
@@ -2864,104 +2991,21 @@ pub fn parse_type<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) -> O
 }
 
 pub fn parse_fn_param<I: Iterator<Item = Lexeme>>(it: &mut PeekMoreIterator<I>) -> FnParam {
-    let (pat, ty) = match it.peek().unwrap() {
-        Lexeme::Group { .. } => match it.peek_next().unwrap() {
-            Lexeme::Token {
-                ty: TokenType::Symbol,
-                tok,
-                ..
-            } if tok == ":" => {
-                it.reset_cursor();
-                let pat = parse_pattern(it).unwrap();
-                match it.next().unwrap() {
-                    Lexeme::Token {
-                        ty: TokenType::Symbol,
-                        tok,
-                        ..
-                    } if tok == ":" => {}
-                    tok => panic!("Unexpected token {:?}", tok),
-                }
-                let ty = parse_type(it).unwrap();
-                (Some(pat), Some(ty))
-            }
-            _ => {
-                it.reset_cursor();
-                (None, Some(parse_type(it).unwrap()))
-            }
-        },
-        Lexeme::Token {
-            ty: TokenType::Keyword,
-            tok,
-            ..
-        } if tok == "ref" || tok == "mut" => {
-            let pat = parse_pattern(it).unwrap();
-            match it.next().unwrap() {
-                Lexeme::Token {
-                    ty: TokenType::Symbol,
-                    tok,
-                    ..
-                } if tok == ":" => {}
-                tok => panic!("Unexpected token {:?}", tok),
-            }
-            let ty = parse_type(it).unwrap();
-            (Some(pat), Some(ty))
-        }
-        Lexeme::Token {
+    let pat = parse_pattern(it).unwrap();
+
+    let ty = match it.peek() {
+        Some(Lexeme::Token {
             ty: TokenType::Symbol,
             tok,
             ..
-        } if tok == "_" => {
-            let pat = parse_pattern(it).unwrap();
-            match it.next().unwrap() {
-                Lexeme::Token {
-                    ty: TokenType::Symbol,
-                    tok,
-                    ..
-                } if tok == ":" => {}
-                tok => panic!("Unexpected token {:?}", tok),
-            }
-            let ty = parse_type(it).unwrap();
-            (Some(pat), Some(ty))
+        }) if tok == ":" => {
+            it.next();
+            Some(parse_type(it).unwrap())
         }
-        Lexeme::Token {
-            ty: TokenType::Symbol,
-            tok,
-            ..
-        } if tok == "*" => (None, Some(parse_type(it).unwrap())),
-        _ => {
-            let pat = parse_pattern(it).unwrap();
-            match (pat, it.peek()) {
-                (
-                    pat,
-                    Some(Lexeme::Token {
-                        ty: TokenType::Symbol,
-                        tok,
-                        ..
-                    }),
-                ) if tok == ":" => {
-                    it.next();
-                    let ty = parse_type(it).unwrap();
-                    (Some(pat), Some(ty))
-                }
-                (Pattern::DotDotDot, _) => (Some(Pattern::DotDotDot), None),
-                (Pattern::Const(name), _) => (None, Some(Type::Name(name))),
-                (Pattern::Ref(mt, pat), tok) => match *pat {
-                    Pattern::Const(name) => (
-                        None,
-                        Some(Type::Reference {
-                            mutability: mt,
-                            lifetime: None,
-                            underlying: Box::new(Type::Name(name)),
-                        }),
-                    ),
-                    _ => panic!("Invalid token {:?}", tok),
-                },
-                (_, tok) => panic!("Invalid token {:?}", tok),
-            }
-        }
+        _ => None,
     };
 
-    FnParam { pat, ty }
+    FnParam { pat: Some(pat), ty }
 }
 
 pub fn parse_block<I: Iterator<Item = Lexeme>>(it: I) -> Vec<BlockItem> {
