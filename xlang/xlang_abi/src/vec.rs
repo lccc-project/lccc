@@ -250,6 +250,8 @@ impl<T, A: Allocator> Vec<T, A> {
     }
 
     /// Leaks self into a slice of `T`, without deallocating any elements or excess capacity
+    ///
+    /// This will permanently leak the allocation and it's elements
     pub fn leak<'a>(self) -> &'a mut [T]
     where
         A: 'a,
@@ -300,6 +302,82 @@ impl<T, A: Allocator> Vec<T, A> {
     /// The pointer may not be used to write to the elements
     pub fn as_ptr(&self) -> *const T {
         self.ptr.as_ptr()
+    }
+
+    /// Removes the elements from `n` to the end and returns them in a new [`Vec`]
+    ///
+    /// # Panics
+    ///
+    /// If `n` is greater than len
+    #[must_use = "If you don't need the split off elements use `Self::shrink` instead"]
+    pub fn split_off(&mut self, n: usize) -> Self
+    where
+        A: Clone,
+    {
+        assert!(n <= self.len);
+        let nlen = self.len - n;
+        let mut new = Self::with_capacity_in(nlen, self.alloc.clone());
+        unsafe {
+            self.set_len(n);
+        }
+        let src = unsafe { self.ptr.as_ptr().add(n) };
+        let dst = new.ptr.as_ptr();
+        for i in 0..nlen {
+            unsafe { dst.add(i).write(src.add(i).read()) }
+        }
+        unsafe {
+            new.set_len(nlen);
+        }
+        new
+    }
+
+    /// Removes the last `n` returns them in a new [`Vec`]
+    ///
+    /// # Panics
+    ///
+    /// If `n` is greater than len
+    #[must_use = "If you don't need the split off elements use `Self::shrink` instead"]
+    pub fn split_off_back(&mut self, n: usize) -> Self
+    where
+        A: Clone,
+    {
+        assert!(n <= self.len);
+        let nlen = self.len - n;
+        let mut new = Self::with_capacity_in(n, self.alloc.clone());
+        unsafe {
+            self.set_len(nlen);
+        }
+        let src = unsafe { self.ptr.as_ptr().add(nlen) };
+        let dst = new.ptr.as_ptr();
+        for i in 0..n {
+            unsafe { dst.add(i).write(src.add(i).read()) }
+        }
+        unsafe {
+            new.set_len(n);
+        }
+        new
+    }
+
+    ///
+    /// Resizes the vector, shrinking it to `nlen`, dropping any excees elements
+    ///
+    /// # Panics
+    /// Panics if `nlen` is greater than than `self.len()`
+    pub fn shrink(&mut self, new_len: usize) {
+        assert!(new_len <= self.len);
+
+        let old_len = self.len;
+
+        unsafe {
+            self.set_len(new_len);
+        }
+
+        if core::mem::needs_drop::<T>() {
+            let ptr = self.ptr.as_ptr();
+            for i in new_len..old_len {
+                unsafe { core::ptr::drop_in_place(ptr.add(i)) }
+            }
+        }
     }
 }
 

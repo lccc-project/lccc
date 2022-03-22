@@ -1,8 +1,8 @@
-use xlang::prelude::v1::{Box, HashMap, None as XLangNone, Pair, Some as XLangSome};
+use xlang::prelude::v1::{Box, HashMap, None as XLangNone, Pair, Some as XLangSome, Vec};
 use xlang_struct::{
-    AggregateDefinition, BinaryOp, Block, BlockItem, File, FunctionDeclaration, OverflowBehaviour,
-    Path, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, StackItem, StackValueKind,
-    StaticDefinition, Type,
+    AggregateDefinition, BinaryOp, Block, BlockItem, Expr, File, FunctionDeclaration, LValueOp,
+    OverflowBehaviour, Path, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, StackItem,
+    StackValueKind, StaticDefinition, Type,
 };
 
 struct TypeState {
@@ -13,12 +13,11 @@ struct TypeState {
 impl TypeState {
     pub fn get_field_type<'a>(&'a self, ty: &'a Type, name: &str) -> Option<&'a Type> {
         match ty {
-            Type::TaggedType(_, ty) => self.get_field_type(ty, name),
+            Type::TaggedType(_, ty) | Type::Aligned(_, ty) => self.get_field_type(ty, name),
             Type::Product(tys) => {
                 let v = name.parse::<usize>().unwrap();
                 Some(&tys[v])
             }
-            Type::Aligned(_, ty) => self.get_field_type(ty, name),
             Type::Aggregate(n) => Some(
                 n.fields
                     .iter()
@@ -27,8 +26,9 @@ impl TypeState {
                     .next()
                     .unwrap(),
             ),
-            Type::Named(p) => {
-                if let Some(ag) = self.aggregate.get(p).map(Option::as_ref) {
+            Type::Named(p) => self.aggregate.get(p).map(Option::as_ref).map_or_else(
+                || self.get_field_type(&self.tys[p], name),
+                |ag| {
                     Some(
                         ag.unwrap()
                             .fields
@@ -38,41 +38,51 @@ impl TypeState {
                             .next()
                             .unwrap(),
                     )
-                } else {
-                    self.get_field_type(&self.tys[p], name)
-                }
-            }
+                },
+            ),
             _ => None,
+        }
+    }
+
+    pub fn refiy_type<'a>(&'a self, ty: &'a Type) -> &'a Type {
+        match ty {
+            Type::Named(p) => self.tys.get(p).unwrap_or(ty),
+            Type::TaggedType(_, ty) | Type::Aligned(_, ty) => ty,
+            ty => ty,
         }
     }
 }
 
 fn tycheck_function(x: &mut FunctionDeclaration, tys: &TypeState) {
-    match x {
-        FunctionDeclaration {
-            ty,
-            body: XLangSome(body),
-        } => {
-            let local_tys = ty
-                .params
-                .iter()
-                .cloned()
-                .chain(body.locals.iter().cloned())
-                .collect::<Vec<_>>();
-            let ret = tycheck_block(&mut body.block, tys, &local_tys, 0);
-            if ty.ret == Type::Void {
-                assert_eq!(ret.len(), 0);
-            } else {
-                assert_eq!(ret.len(), 1);
-                check_unify(&ret[0].ty, &ty.ret, tys)
-            }
+    if let FunctionDeclaration {
+        ty,
+        body: XLangSome(body),
+    } = x
+    {
+        let local_tys = ty
+            .params
+            .iter()
+            .cloned()
+            .chain(body.locals.iter().cloned())
+            .collect::<Vec<_>>();
+        let ret = tycheck_block(&mut body.block, tys, &local_tys, &mut Vec::new());
+        if ty.ret == Type::Void {
+            assert_eq!(ret.len(), 0);
+        } else {
+            assert_eq!(ret.len(), 1);
+            check_unify(&ret[0].ty, &ty.ret, tys);
         }
-        _ => {}
     }
 }
 
-fn check_unify(ty1: &Type, ty2: &Type, _tys: &TypeState) {
-    assert_eq!(ty1, ty2, "Could not unify types {:?},{:?}", ty1, ty2);
+fn check_unify(ty1: &Type, ty2: &Type, type_state: &TypeState) {
+    assert_eq!(
+        type_state.refiy_type(ty1),
+        type_state.refiy_type(ty2),
+        "Could not unify types {:?},{:?}",
+        ty1,
+        ty2
+    );
 }
 
 fn check_unify_stack(stack: &[StackItem], target: &[StackItem], tys: &TypeState) {
@@ -90,63 +100,119 @@ fn check_unify_stack(stack: &[StackItem], target: &[StackItem], tys: &TypeState)
     }
 }
 
-fn tycheck_block(block: &mut Block, tys: &TypeState, locals: &[Type], n: u32) -> Vec<StackItem> {
-    let mut vstack = Vec::new();
+#[allow(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    clippy::similar_names
+)] // What does clippy want, for me to change the value kinds in xir
+fn tycheck_expr(
+    expr: &mut Expr,
+    locals: &[Type],
+    block_exits: &mut Vec<Option<Vec<StackItem>>>,
+    vstack: &mut Vec<StackItem>,
+    targets: &HashMap<u32, Vec<StackItem>>,
+    tys: &TypeState,
+) -> bool {
+    match expr {
+        xlang_struct::Expr::Const(v) => match v {
+            xlang_struct::Value::Invalid(ty)
+            | xlang_struct::Value::String { ty, .. }
+            | xlang_struct::Value::Uninitialized(ty) => vstack.push(StackItem {
+                ty: ty.clone(),
+                kind: StackValueKind::RValue,
+            }),
+            xlang_struct::Value::GenericParameter(_) => todo!(),
+            xlang_struct::Value::Integer { ty, .. } => vstack.push(StackItem {
+                ty: Type::Scalar(*ty),
+                kind: StackValueKind::RValue,
+            }),
+            xlang_struct::Value::GlobalAddress { ty, item } => {
+                if let Type::Null = ty {
+                    if let Some(t) = tys.tys.get(item) {
+                        *ty = t.clone();
+                    }
+                }
 
-    let mut targets = HashMap::<_, _>::new();
-    let mut diverged = false;
-
-    let mut exit = None;
-
-    for item in &block.items {
-        if let BlockItem::Target { num, stack } = item {
-            if let Some(_) = targets.insert(*num, stack.clone()) {
-                panic!("Target @{} redeclared", num);
+                vstack.push(StackItem {
+                    ty: Type::Pointer(PointerType {
+                        inner: Box::new(ty.clone()),
+                        ..Default::default()
+                    }),
+                    kind: StackValueKind::RValue,
+                });
+            }
+            xlang_struct::Value::ByteString { .. } => vstack.push(StackItem {
+                ty: Type::Pointer(PointerType {
+                    inner: Box::new(Type::Scalar(ScalarType {
+                        header: ScalarTypeHeader {
+                            bitsize: 8,
+                            ..Default::default()
+                        },
+                        kind: ScalarTypeKind::Integer {
+                            signed: false,
+                            min: XLangNone,
+                            max: XLangNone,
+                        },
+                    })),
+                    ..Default::default()
+                }),
+                kind: StackValueKind::RValue,
+            }),
+            xlang_struct::Value::LabelAddress(n) => {
+                assert_eq!(targets[n].len(), 0);
+                vstack.push(StackItem {
+                    ty: Type::Pointer(PointerType {
+                        inner: Box::new(Type::Void),
+                        ..Default::default()
+                    }),
+                    kind: StackValueKind::RValue,
+                });
+            }
+        },
+        xlang_struct::Expr::ExitBlock { blk, values } => {
+            let exit = &mut block_exits[*blk as usize];
+            let pos = vstack.len().checked_sub(*values as usize).unwrap();
+            let stack = vstack.split_off(pos);
+            match exit {
+                None => *exit = Some(stack),
+                Some(items) => {
+                    assert!(items.len() == (*values).into());
+                    check_unify_stack(&stack, items, tys);
+                }
             }
         }
-    }
+        xlang_struct::Expr::BinaryOp(op, v) => {
+            let val1 = vstack.pop().unwrap();
+            let val2 = vstack.pop().unwrap();
 
-    for item in &mut block.items {
-        match item {
-            BlockItem::Expr(expr) => match expr {
-                xlang_struct::Expr::Null => {}
-                xlang_struct::Expr::Const(v) => match v {
-                    xlang_struct::Value::Invalid(ty) => vstack.push(StackItem {
-                        ty: ty.clone(),
-                        kind: StackValueKind::RValue,
-                    }),
-                    xlang_struct::Value::Uninitialized(ty) => vstack.push(StackItem {
-                        ty: ty.clone(),
-                        kind: StackValueKind::RValue,
-                    }),
-                    xlang_struct::Value::GenericParameter(_) => todo!(),
-                    xlang_struct::Value::Integer { ty, .. } => vstack.push(StackItem {
-                        ty: Type::Scalar(*ty),
-                        kind: StackValueKind::RValue,
-                    }),
-                    xlang_struct::Value::GlobalAddress { ty, item } => {
-                        match ty {
-                            Type::Null => {
-                                if let Some(t) = tys.tys.get(item) {
-                                    *ty = t.clone();
-                                }
-                            }
-                            _ => {}
-                        }
-
-                        vstack.push(StackItem {
-                            ty: Type::Pointer(PointerType {
-                                inner: Box::new(ty.clone()),
+            assert_eq!(val1.kind, StackValueKind::RValue);
+            assert_eq!(val2.kind, StackValueKind::RValue);
+            match tys.refiy_type(&val1.ty) {
+                Type::Scalar(_) => match *op {
+                    BinaryOp::CmpInt | BinaryOp::Cmp => vstack.push(StackItem {
+                        ty: Type::Scalar(ScalarType {
+                            header: ScalarTypeHeader {
+                                bitsize: 32,
                                 ..Default::default()
-                            }),
-                            kind: StackValueKind::RValue,
-                        })
-                    }
-                    xlang_struct::Value::ByteString { .. } => vstack.push(StackItem {
-                        ty: Type::Pointer(PointerType {
-                            inner: Box::new(Type::Scalar(ScalarType {
+                            },
+                            kind: ScalarTypeKind::Integer {
+                                signed: true,
+                                min: XLangNone,
+                                max: XLangNone,
+                            },
+                        }),
+                        kind: StackValueKind::RValue,
+                    }),
+                    BinaryOp::CmpLt
+                    | BinaryOp::CmpLe
+                    | BinaryOp::CmpGt
+                    | BinaryOp::CmpGe
+                    | BinaryOp::CmpNe
+                    | BinaryOp::CmpEq => {
+                        vstack.push(StackItem {
+                            ty: Type::Scalar(ScalarType {
                                 header: ScalarTypeHeader {
-                                    bitsize: 8,
+                                    bitsize: 1,
                                     ..Default::default()
                                 },
                                 kind: ScalarTypeKind::Integer {
@@ -154,208 +220,336 @@ fn tycheck_block(block: &mut Block, tys: &TypeState, locals: &[Type], n: u32) ->
                                     min: XLangNone,
                                     max: XLangNone,
                                 },
-                            })),
-                            ..Default::default()
-                        }),
-                        kind: StackValueKind::RValue,
-                    }),
-                    xlang_struct::Value::String { ty, .. } => vstack.push(StackItem {
-                        ty: ty.clone(),
-                        kind: StackValueKind::RValue,
-                    }),
-                    xlang_struct::Value::LabelAddress(n) => {
-                        assert_eq!(targets[n].len(), 0);
-                        vstack.push(StackItem {
-                            ty: Type::Pointer(PointerType {
-                                inner: Box::new(Type::Void),
-                                ..Default::default()
                             }),
                             kind: StackValueKind::RValue,
                         });
                     }
-                },
-                xlang_struct::Expr::ExitBlock { blk, values } => {
-                    if *blk == n {
-                        let pos = vstack.len().checked_sub(*values as usize).unwrap();
-                        let stack = vstack.split_off(pos);
-                        match &exit {
-                            None => exit = Some(stack),
-                            Some(items) => {
-                                assert!(items.len() == (*values).into());
-                                check_unify_stack(&stack, &items, tys);
-                            }
-                        }
-                    }
-                }
-                xlang_struct::Expr::BinaryOp(op, v) => {
-                    let val1 = vstack.pop().unwrap();
-                    let val2 = vstack.pop().unwrap();
-
-                    assert_eq!(val1.kind, StackValueKind::RValue);
-                    assert_eq!(val2.kind, StackValueKind::RValue);
-                    match &val1.ty {
-                        Type::Scalar(_) => match *op {
-                            BinaryOp::CmpInt | BinaryOp::Cmp => vstack.push(StackItem {
+                    _ => match *v {
+                        OverflowBehaviour::Checked => {
+                            vstack.push(val1);
+                            vstack.push(StackItem {
                                 ty: Type::Scalar(ScalarType {
                                     header: ScalarTypeHeader {
-                                        bitsize: 32,
+                                        bitsize: 1,
                                         ..Default::default()
                                     },
                                     kind: ScalarTypeKind::Integer {
-                                        signed: true,
+                                        signed: false,
                                         min: XLangNone,
                                         max: XLangNone,
                                     },
                                 }),
                                 kind: StackValueKind::RValue,
-                            }),
-                            BinaryOp::CmpLt
-                            | BinaryOp::CmpLe
-                            | BinaryOp::CmpGt
-                            | BinaryOp::CmpGe
-                            | BinaryOp::CmpNe
-                            | BinaryOp::CmpEq => {
-                                vstack.push(StackItem {
-                                    ty: Type::Scalar(ScalarType {
-                                        header: ScalarTypeHeader {
-                                            bitsize: 1,
-                                            ..Default::default()
-                                        },
-                                        kind: ScalarTypeKind::Integer {
-                                            signed: false,
-                                            min: XLangNone,
-                                            max: XLangNone,
-                                        },
-                                    }),
-                                    kind: StackValueKind::RValue,
-                                });
-                            }
-                            _ => match *v {
-                                OverflowBehaviour::Checked => {
-                                    vstack.push(val1);
-                                    vstack.push(StackItem {
-                                        ty: Type::Scalar(ScalarType {
-                                            header: ScalarTypeHeader {
-                                                bitsize: 1,
-                                                ..Default::default()
-                                            },
-                                            kind: ScalarTypeKind::Integer {
-                                                signed: false,
-                                                min: XLangNone,
-                                                max: XLangNone,
-                                            },
-                                        }),
-                                        kind: StackValueKind::RValue,
-                                    });
-                                }
-                                _ => vstack.push(val1),
-                            },
-                        },
-                        x => todo!("{} {:?}", op, x),
-                    }
-                }
-                xlang_struct::Expr::UnaryOp(_, _) => todo!(),
-                xlang_struct::Expr::CallFunction(_) | xlang_struct::Expr::Tailcall(_) => todo!(),
-                xlang_struct::Expr::Branch { .. } => todo!(),
-                xlang_struct::Expr::BranchIndirect => todo!(),
-                xlang_struct::Expr::Convert(_, _) => todo!(),
-                xlang_struct::Expr::Derive(_, _) => todo!(),
-                xlang_struct::Expr::Local(n) => vstack.push(StackItem {
-                    ty: locals[(*n) as usize].clone(),
-                    kind: StackValueKind::LValue,
-                }),
-                xlang_struct::Expr::Pop(n) => {
-                    let back = vstack.len().checked_sub((*n) as usize).unwrap();
-                    vstack.drain(back..).for_each(core::mem::drop);
-                }
-                xlang_struct::Expr::Dup(n) => {
-                    let back = vstack.len().checked_sub((*n) as usize).unwrap();
-                    let stack = vstack.split_off(back);
-                    vstack.extend(stack);
-                }
-                xlang_struct::Expr::Pivot(n, m) => {
-                    let back1 = vstack.len().checked_sub((*m) as usize).unwrap();
-                    let back2 = back1.checked_sub((*n) as usize).unwrap();
-                    let stack1 = vstack.split_off(back1);
-                    let stack2 = vstack.split_off(back2);
-                    vstack.extend(stack1);
-                    vstack.extend(stack2);
-                }
-                xlang_struct::Expr::Aggregate(ctor) => {
-                    let ty = &ctor.ty;
-                    let back = vstack.len().checked_sub(ctor.fields.len()).unwrap();
-                    let values = vstack.split_off(back);
-                    for (field, item) in ctor.fields.iter().zip(values) {
-                        assert_eq!(item.kind, StackValueKind::RValue);
-                        check_unify(tys.get_field_type(ty, field).unwrap(), &item.ty, tys);
-                    }
-
-                    vstack.push(StackItem {
-                        ty: ty.clone(),
-                        kind: StackValueKind::RValue,
-                    });
-                }
-                xlang_struct::Expr::Member(name) => {
-                    let val = vstack.pop().unwrap();
-
-                    assert_eq!(val.kind, StackValueKind::LValue);
-
-                    let ty = tys.get_field_type(&val.ty, name).unwrap();
-
-                    vstack.push(StackItem {
-                        ty: ty.clone(),
-                        kind: StackValueKind::LValue,
-                    });
-                }
-                xlang_struct::Expr::MemberIndirect(name) => {
-                    let mut val = vstack.pop().unwrap();
-
-                    assert_eq!(val.kind, StackValueKind::RValue);
-
-                    match &mut val.ty {
-                        Type::Pointer(ptr) => {
-                            let ty = tys.get_field_type(&ptr.inner, name).unwrap().clone();
-
-                            *ptr = PointerType {
-                                inner: Box::new(ty),
-                                ..Default::default()
-                            };
+                            });
                         }
-                        ty => panic!("Cannot use member indirect {} on {:?}", name, ty),
+                        _ => vstack.push(val1),
+                    },
+                },
+                x => todo!("{} {:?}", op, x),
+            }
+        }
+        xlang_struct::Expr::UnaryOp(_, _) => todo!("unary op"),
+        xlang_struct::Expr::CallFunction(_) | xlang_struct::Expr::Tailcall(_) => {
+            todo!("call")
+        }
+        xlang_struct::Expr::Branch { .. } => todo!("branch"),
+        xlang_struct::Expr::BranchIndirect => todo!("branch indirect"),
+        xlang_struct::Expr::Convert(_, _) => todo!("convert"),
+        xlang_struct::Expr::Derive(pty, expr) => {
+            tycheck_expr(expr, locals, block_exits, vstack, targets, tys);
+            let mut ptr = vstack.pop().unwrap();
+            assert_eq!(ptr.kind, StackValueKind::RValue);
+            match &mut ptr.ty {
+                Type::Pointer(ptrty) => {
+                    check_unify(&pty.inner, &ptrty.inner, tys);
+                    ptrty.alias = pty.alias;
+                    ptrty.valid_range = pty.valid_range;
+                    ptrty.decl = pty.decl;
+                }
+                ty => panic!("Cannot apply derive to {:?}", ty),
+            }
+        }
+        xlang_struct::Expr::Local(n) => vstack.push(StackItem {
+            ty: locals[(*n) as usize].clone(),
+            kind: StackValueKind::LValue,
+        }),
+        xlang_struct::Expr::Pop(n) => {
+            let back = vstack.len().checked_sub((*n) as usize).unwrap();
+            vstack.shrink(back);
+        }
+        xlang_struct::Expr::Dup(n) => {
+            let back = vstack.len().checked_sub((*n) as usize).unwrap();
+            let stack = vstack.split_off(back);
+            vstack.extend(stack);
+        }
+        xlang_struct::Expr::Pivot(n, m) => {
+            let back1 = vstack.len().checked_sub((*m) as usize).unwrap();
+            let back2 = back1.checked_sub((*n) as usize).unwrap();
+            let stack1 = vstack.split_off(back1);
+            let stack2 = vstack.split_off(back2);
+            vstack.extend(stack1);
+            vstack.extend(stack2);
+        }
+        xlang_struct::Expr::Aggregate(ctor) => {
+            let ty = &ctor.ty;
+            let back = vstack.len().checked_sub(ctor.fields.len()).unwrap();
+            let values = vstack.split_off(back);
+            for (field, item) in ctor.fields.iter().zip(values) {
+                assert_eq!(item.kind, StackValueKind::RValue);
+                check_unify(tys.get_field_type(ty, field).unwrap(), &item.ty, tys);
+            }
+
+            vstack.push(StackItem {
+                ty: ty.clone(),
+                kind: StackValueKind::RValue,
+            });
+        }
+        xlang_struct::Expr::Member(name) => {
+            let val = vstack.pop().unwrap();
+
+            assert_eq!(val.kind, StackValueKind::LValue);
+
+            let ty = tys.get_field_type(&val.ty, name).unwrap();
+
+            vstack.push(StackItem {
+                ty: ty.clone(),
+                kind: StackValueKind::LValue,
+            });
+        }
+        xlang_struct::Expr::MemberIndirect(name) => {
+            let mut val = vstack.pop().unwrap();
+
+            assert_eq!(val.kind, StackValueKind::RValue);
+
+            match &mut val.ty {
+                Type::Pointer(ptr) => {
+                    let ty = tys.get_field_type(&ptr.inner, name).unwrap().clone();
+
+                    *ptr = PointerType {
+                        inner: Box::new(ty),
+                        ..Default::default()
+                    };
+                }
+                ty => panic!("Cannot use member indirect {} on {:?}", name, ty),
+            }
+
+            vstack.push(val);
+        }
+        xlang_struct::Expr::Block { n, block } => {
+            assert!((*n as usize) == block_exits.len());
+            let res = tycheck_block(block, tys, locals, block_exits);
+
+            vstack.extend(res);
+        }
+        xlang_struct::Expr::Assign(_) => {
+            let rvalue = vstack.pop().unwrap();
+            let lvalue = vstack.pop().unwrap();
+
+            assert_eq!(rvalue.kind, StackValueKind::RValue);
+            assert_eq!(lvalue.kind, StackValueKind::LValue);
+
+            check_unify(&rvalue.ty, &lvalue.ty, tys);
+        }
+        xlang_struct::Expr::AsRValue(_) => {
+            let val = vstack.pop().unwrap();
+            assert_eq!(val.kind, StackValueKind::LValue);
+
+            vstack.push(StackItem {
+                ty: val.ty,
+                kind: StackValueKind::RValue,
+            });
+        }
+        xlang_struct::Expr::CompoundAssign(op, v, _) => {
+            let rvalue = vstack.pop().unwrap();
+            let lvalue = vstack.pop().unwrap();
+
+            assert_eq!(rvalue.kind, StackValueKind::RValue);
+            assert_eq!(lvalue.kind, StackValueKind::LValue);
+
+            check_unify(&lvalue.ty, &rvalue.ty, tys);
+
+            match tys.refiy_type(&lvalue.ty) {
+                Type::Scalar(_) => {
+                    if *v == OverflowBehaviour::Checked {
+                        vstack.push(StackItem {
+                            ty: Type::Scalar(ScalarType {
+                                header: ScalarTypeHeader {
+                                    bitsize: 1,
+                                    ..Default::default()
+                                },
+                                kind: ScalarTypeKind::Integer {
+                                    signed: false,
+                                    min: XLangNone,
+                                    max: XLangNone,
+                                },
+                            }),
+                            kind: StackValueKind::RValue,
+                        });
                     }
-
-                    vstack.push(val);
                 }
-                xlang_struct::Expr::Block { n, block } => {
-                    let res = tycheck_block(block, tys, locals, *n);
+                ty => todo!("compound_assign {}: {:?}", op, ty),
+            }
+        }
+        xlang_struct::Expr::LValueOp(op, v, _) => match *op {
+            LValueOp::Xchg => {
+                let val1 = vstack.pop().unwrap();
+                let val2 = vstack.pop().unwrap();
 
-                    vstack.extend(res);
+                assert_eq!(val1.kind, StackValueKind::LValue);
+                assert_eq!(val2.kind, StackValueKind::LValue);
+
+                check_unify(&val1.ty, &val2.ty, tys);
+            }
+            LValueOp::Cmpxchg | LValueOp::Wcmpxchg => {
+                let control = vstack.pop().unwrap();
+                let swap = vstack.pop().unwrap();
+                let dest = vstack.pop().unwrap();
+
+                assert_eq!(dest.kind, StackValueKind::LValue);
+                assert_eq!(swap.kind, StackValueKind::LValue);
+                assert_eq!(control.kind, StackValueKind::RValue);
+
+                check_unify(&dest.ty, &control.ty, tys);
+                check_unify(&dest.ty, &swap.ty, tys);
+
+                vstack.push(StackItem {
+                    ty: Type::Scalar(ScalarType {
+                        header: ScalarTypeHeader {
+                            bitsize: 1,
+                            ..Default::default()
+                        },
+                        kind: ScalarTypeKind::Integer {
+                            signed: false,
+                            min: XLangNone,
+                            max: XLangNone,
+                        },
+                    }),
+                    kind: StackValueKind::RValue,
+                });
+            }
+            LValueOp::PreDec | LValueOp::PreInc => {
+                let lvalue = vstack.pop().unwrap();
+
+                assert_eq!(lvalue.kind, StackValueKind::LValue);
+
+                match tys.refiy_type(&lvalue.ty) {
+                    Type::Scalar(_) => {
+                        vstack.push(lvalue);
+                        if *v == OverflowBehaviour::Checked {
+                            vstack.push(StackItem {
+                                ty: Type::Scalar(ScalarType {
+                                    header: ScalarTypeHeader {
+                                        bitsize: 1,
+                                        ..Default::default()
+                                    },
+                                    kind: ScalarTypeKind::Integer {
+                                        signed: false,
+                                        min: XLangNone,
+                                        max: XLangNone,
+                                    },
+                                }),
+                                kind: StackValueKind::RValue,
+                            });
+                        }
+                    }
+                    ty => panic!("Cannot use {:?} on {:?}", op, ty),
                 }
-                xlang_struct::Expr::Assign(_) => {
-                    let rvalue = vstack.pop().unwrap();
-                    let lvalue = vstack.pop().unwrap();
+            }
+            LValueOp::PostDec | LValueOp::PostInc => {
+                let mut lvalue = vstack.pop().unwrap();
 
-                    assert_eq!(rvalue.kind, StackValueKind::RValue);
-                    assert_eq!(lvalue.kind, StackValueKind::LValue);
+                assert_eq!(lvalue.kind, StackValueKind::LValue);
 
-                    check_unify(&rvalue.ty, &lvalue.ty, tys);
+                match tys.refiy_type(&lvalue.ty) {
+                    Type::Scalar(_) => {
+                        if *v == OverflowBehaviour::Checked {
+                            lvalue.kind = StackValueKind::RValue;
+                            vstack.push(lvalue);
+                            vstack.push(StackItem {
+                                ty: Type::Scalar(ScalarType {
+                                    header: ScalarTypeHeader {
+                                        bitsize: 1,
+                                        ..Default::default()
+                                    },
+                                    kind: ScalarTypeKind::Integer {
+                                        signed: false,
+                                        min: XLangNone,
+                                        max: XLangNone,
+                                    },
+                                }),
+                                kind: StackValueKind::RValue,
+                            });
+                        } else {
+                            vstack.push(lvalue);
+                        }
+                    }
+                    ty => panic!("Cannot use {:?} on {:?}", op, ty),
                 }
-                xlang_struct::Expr::AsRValue(_) => {
-                    let val = vstack.pop().unwrap();
-                    assert_eq!(val.kind, StackValueKind::LValue);
+            }
+            op => todo!("{:?}", op),
+        },
+        xlang_struct::Expr::Indirect => {
+            let mut val = vstack.pop().unwrap();
 
-                    vstack.push(StackItem {
-                        ty: val.ty,
-                        kind: StackValueKind::RValue,
-                    });
+            assert_eq!(val.kind, StackValueKind::RValue);
+
+            match val.ty {
+                Type::Pointer(ptr) => {
+                    val.ty = Box::into_inner(ptr.inner);
+                    val.kind = StackValueKind::LValue;
                 }
-                xlang_struct::Expr::CompoundAssign(_, _, _) => todo!(),
-                xlang_struct::Expr::LValueOp(_, _, _) => todo!(),
-                xlang_struct::Expr::Indirect => todo!(),
-                xlang_struct::Expr::AddrOf => todo!(),
-                xlang_struct::Expr::Sequence(_) | xlang_struct::Expr::Fence(_) => {}
-                xlang_struct::Expr::Switch(_) => todo!(),
-            },
+                ty => panic!("Cannot use indirect on {:?}", ty),
+            }
+
+            vstack.push(val);
+        }
+        xlang_struct::Expr::AddrOf => {
+            let mut val = vstack.pop().unwrap();
+
+            assert_eq!(val.kind, StackValueKind::LValue);
+
+            val.ty = Type::Pointer(PointerType {
+                inner: Box::new(val.ty),
+                ..Default::default()
+            });
+
+            vstack.push(val);
+        }
+        xlang_struct::Expr::Null
+        | xlang_struct::Expr::Sequence(_)
+        | xlang_struct::Expr::Fence(_) => {}
+        xlang_struct::Expr::Switch(_) => todo!("switch"),
+    }
+    false
+}
+
+fn tycheck_block(
+    block: &mut Block,
+    tys: &TypeState,
+    locals: &[Type],
+    block_exits: &mut Vec<Option<Vec<StackItem>>>,
+) -> Vec<StackItem> {
+    block_exits.push(None);
+    let mut vstack = Vec::new();
+
+    let mut targets = HashMap::<_, _>::new();
+    let mut diverged = false;
+
+    for item in &block.items {
+        if let BlockItem::Target { num, stack } = item {
+            assert!(
+                targets.insert(*num, stack.clone()).is_some(),
+                "Target @{} redeclared",
+                num
+            );
+        }
+    }
+
+    for item in &mut block.items {
+        match item {
+            BlockItem::Expr(expr) => {
+                diverged = tycheck_expr(expr, locals, block_exits, &mut vstack, &targets, tys);
+            }
             BlockItem::Target { stack, .. } => {
                 if !diverged {
                     check_unify_stack(&vstack, stack, tys);
@@ -367,7 +561,7 @@ fn tycheck_block(block: &mut Block, tys: &TypeState, locals: &[Type], n: u32) ->
         }
     }
 
-    exit.unwrap_or_else(Vec::new)
+    block_exits.pop().unwrap().unwrap_or_default()
 }
 
 pub fn tycheck(x: &mut File) {

@@ -1,4 +1,4 @@
-use xlang::ir::{Block, FunctionBody, Expr};
+use xlang::ir::{Block, Expr, FunctionBody};
 
 pub mod cfg;
 pub mod expr;
