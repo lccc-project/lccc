@@ -1,8 +1,9 @@
 use xlang::prelude::v1::{Box, HashMap, None as XLangNone, Pair, Some as XLangSome, Vec};
 use xlang_struct::{
-    AggregateDefinition, BinaryOp, Block, BlockItem, Expr, File, FunctionDeclaration, LValueOp,
-    OverflowBehaviour, Path, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, StackItem,
-    StackValueKind, StaticDefinition, Type,
+    AggregateDefinition, BinaryOp, Block, BlockItem, BranchCondition, Expr, File,
+    FunctionDeclaration, LValueOp, OverflowBehaviour, Path, PointerType, ScalarType,
+    ScalarTypeHeader, ScalarTypeKind, StackItem, StackValueKind, StaticDefinition, Type, UnaryOp,
+    Value,
 };
 
 struct TypeState {
@@ -76,13 +77,133 @@ fn tycheck_function(x: &mut FunctionDeclaration, tys: &TypeState) {
 }
 
 fn check_unify(ty1: &Type, ty2: &Type, type_state: &TypeState) {
-    assert_eq!(
-        type_state.refiy_type(ty1),
-        type_state.refiy_type(ty2),
-        "Could not unify types {:?},{:?}",
-        ty1,
-        ty2
-    );
+    match (type_state.refiy_type(ty1), type_state.refiy_type(ty2)) {
+        (Type::Null, _) | (_, Type::Null) => {}
+        (Type::Scalar(sty1), Type::Scalar(sty2)) => {
+            assert_eq!(
+                sty1.header.bitsize, sty2.header.bitsize,
+                "cannot unify types {:?} and {:?}",
+                ty1, ty2
+            );
+            assert_eq!(
+                sty1.header.vectorsize, sty2.header.vectorsize,
+                "cannot unify types {:?} and {:?}",
+                ty1, ty2
+            );
+
+            match (sty1.kind, sty2.kind) {
+                (
+                    ScalarTypeKind::Integer {
+                        signed: signed1, ..
+                    },
+                    ScalarTypeKind::Integer {
+                        signed: signed2, ..
+                    },
+                ) => assert_eq!(
+                    signed1, signed2,
+                    "cannot unify types {:?} and {:?}",
+                    ty1, ty2
+                ),
+                (
+                    ScalarTypeKind::Fixed {
+                        fractbits: fractbits1,
+                    },
+                    ScalarTypeKind::Fixed {
+                        fractbits: fractbits2,
+                    },
+                ) => assert_eq!(
+                    fractbits1, fractbits2,
+                    "cannot unify types {:?} and {:?}",
+                    ty1, ty2
+                ),
+                (
+                    ScalarTypeKind::Char { flags: flags1 },
+                    ScalarTypeKind::Char { flags: flags2 },
+                ) => assert_eq!(flags1, flags2, "cannot unify types {:?} and {:?}", ty1, ty2),
+                (
+                    ScalarTypeKind::Float { decimal: dec1 },
+                    ScalarTypeKind::Float { decimal: dec2 },
+                ) => assert_eq!(dec1, dec2, "cannot unify types {:?} and {:?}", ty1, ty2),
+                (ScalarTypeKind::LongFloat, ScalarTypeKind::LongFloat) => {}
+                (_, _) => panic!("cannot unify types {:?} and {:?}", ty1, ty2),
+            }
+        }
+        (Type::FnType(fnty1), Type::FnType(fnty2)) => {
+            assert_eq!(
+                fnty1.tag, fnty2.tag,
+                "cannot unify types {:?} and {:?}",
+                ty1, ty2
+            );
+
+            assert_eq!(
+                fnty1.variadic, fnty2.variadic,
+                "cannot unify types {:?} and {:?}",
+                ty1, ty2
+            );
+
+            assert_eq!(
+                fnty1.params.len(),
+                fnty2.params.len(),
+                "cannot unify types {:?} and {:?}",
+                ty1,
+                ty2
+            );
+
+            fnty1
+                .params
+                .iter()
+                .zip(&fnty2.params)
+                .for_each(|(ty1, ty2)| check_unify(ty1, ty2, type_state));
+            check_unify(&fnty1.ret, &fnty2.ret, type_state);
+        }
+        (Type::Pointer(pty1), Type::Pointer(pty2)) => {
+            check_unify(&pty1.inner, &pty2.inner, type_state)
+        }
+        (Type::Product(tys1), Type::Product(tys2)) => tys1
+            .iter()
+            .zip(tys2)
+            .for_each(|(ty1, ty2)| check_unify(ty1, ty2, type_state)),
+        (Type::Aggregate(defn1), Type::Aggregate(defn2)) => {
+            assert_eq!(
+                defn1.kind, defn2.kind,
+                "cannot unify types {:?} and {:?}",
+                ty1, ty2
+            );
+
+            assert_eq!(
+                defn1.annotations, defn2.annotations,
+                "cannot unify types {:?} and {:?}",
+                ty1, ty2
+            );
+
+            defn1.fields.iter().zip(&defn2.fields).for_each(
+                |(Pair(name1, ty1), Pair(name2, ty2))| {
+                    check_unify(ty1, ty2, type_state);
+                    assert_eq!(name1, name2, "cannot unify types {:?} and {:?}", ty1, ty2);
+                },
+            );
+        }
+        (Type::Array(arr1), Type::Array(arr2)) => match (&arr1.len, &arr2.len) {
+            (
+                Value::Integer {
+                    ty: sty1,
+                    val: val1,
+                },
+                Value::Integer {
+                    ty: sty2,
+                    val: val2,
+                },
+            ) => {
+                check_unify(&Type::Scalar(*sty1), &Type::Scalar(*sty2), type_state);
+                assert_eq!(val1, val2, "Cannot unify types {:?} and {:?}", ty1, ty2);
+            }
+            (_, _) => panic!("Cannot unify types {:?} and {:?}", ty1, ty2),
+        },
+        (Type::Named(n1), Type::Named(n2)) => {
+            assert_eq!(n1, n2, "Cannot unify types {:?} and {:?}", ty1, ty2)
+        }
+        (ty1, ty2) => panic!("Cannot unify types {:?} and {:?}", ty1, ty2),
+    }
 }
 
 fn check_unify_stack(stack: &[StackItem], target: &[StackItem], tys: &TypeState) {
@@ -248,12 +369,155 @@ fn tycheck_expr(
                 x => todo!("{} {:?}", op, x),
             }
         }
-        xlang_struct::Expr::UnaryOp(_, _) => todo!("unary op"),
-        xlang_struct::Expr::CallFunction(_) | xlang_struct::Expr::Tailcall(_) => {
-            todo!("call")
+        xlang_struct::Expr::UnaryOp(op, v) => {
+            let val = vstack.pop().unwrap();
+
+            assert_eq!(
+                val.kind,
+                StackValueKind::RValue,
+                "Cannot apply {:?} to {:?}",
+                op,
+                val
+            );
+
+            match &val.ty {
+                Type::Scalar(_) => match *op {
+                    UnaryOp::Minus => {
+                        vstack.push(val);
+                        match *v {
+                            OverflowBehaviour::Checked => {
+                                vstack.push(StackItem {
+                                    ty: Type::Scalar(ScalarType {
+                                        header: ScalarTypeHeader {
+                                            bitsize: 1,
+                                            ..Default::default()
+                                        },
+                                        kind: ScalarTypeKind::Integer {
+                                            signed: false,
+                                            min: XLangNone,
+                                            max: XLangNone,
+                                        },
+                                    }),
+                                    kind: StackValueKind::RValue,
+                                });
+                            }
+                            _ => {}
+                        }
+                    }
+                    UnaryOp::LogicNot => {
+                        vstack.push(StackItem {
+                            ty: Type::Scalar(ScalarType {
+                                header: ScalarTypeHeader {
+                                    bitsize: 1,
+                                    ..Default::default()
+                                },
+                                kind: ScalarTypeKind::Integer {
+                                    signed: false,
+                                    min: XLangNone,
+                                    max: XLangNone,
+                                },
+                            }),
+                            kind: StackValueKind::RValue,
+                        });
+                    }
+                    UnaryOp::BitNot => {
+                        vstack.push(val);
+                    }
+                    op => panic!("Cannot apply {:?}", op),
+                },
+                ty => panic!("Cannot apply {:?} to {:?}", op, ty),
+            }
         }
-        xlang_struct::Expr::Branch { .. } => todo!("branch"),
-        xlang_struct::Expr::BranchIndirect => todo!("branch indirect"),
+        xlang_struct::Expr::Tailcall(_) => todo!("tailcall"),
+        xlang_struct::Expr::CallFunction(fnty) => {
+            let params = vstack.split_off_back(fnty.params.len());
+            let dest = vstack.pop().unwrap();
+
+            assert!(!fnty.variadic, "Cannot call with variadic signature");
+            assert_eq!(dest.kind, StackValueKind::RValue, "Cannot call {:?}", dest);
+
+            let destty = dest.ty;
+
+            match tys.refiy_type(&destty) {
+                Type::Pointer(ty) => match tys.refiy_type(&ty.inner) {
+                    Type::FnType(ty) => {
+                        if ty.variadic {
+                            assert!(ty.params.len() <= fnty.params.len());
+                        } else {
+                            assert!(fnty.params.len() == fnty.params.len());
+                        }
+
+                        ty.params
+                            .iter()
+                            .zip(&fnty.params)
+                            .for_each(|(ty1, ty2)| check_unify(ty1, ty2, tys));
+
+                        check_unify(&ty.ret, &fnty.ret, tys);
+
+                        params.iter().zip(&fnty.params).for_each(|(ty1, ty2)| {
+                            assert_eq!(
+                                ty1.kind,
+                                StackValueKind::RValue,
+                                "Cannot pass {:?} to {:?}",
+                                ty1,
+                                fnty
+                            );
+                            check_unify(&ty1.ty, ty2, tys);
+                        });
+                    }
+                    ty => panic!("Cannot call {:?}", ty),
+                },
+                ty => panic!("Cannot call {:?}", ty),
+            }
+
+            vstack.push(StackItem {
+                kind: StackValueKind::RValue,
+                ty: fnty.ret.clone(),
+            });
+        }
+        xlang_struct::Expr::Branch { cond, target } => {
+            match *cond {
+                BranchCondition::Always | BranchCondition::Never => {}
+                _ => {
+                    let ctrl = vstack.pop().unwrap();
+                    assert_eq!(
+                        ctrl.kind,
+                        StackValueKind::RValue,
+                        "Cannot branch on {:?}",
+                        ctrl
+                    );
+
+                    match tys.refiy_type(&ctrl.ty) {
+                        Type::Scalar(ScalarType {
+                            kind: ScalarTypeKind::Integer { .. },
+                            ..
+                        }) => {}
+                        ty => panic!("Cannot branch on {:?}", ty),
+                    }
+                }
+            }
+
+            let tstack = &targets[target];
+            check_unify_stack(vstack, tstack, tys);
+        }
+        xlang_struct::Expr::BranchIndirect => {
+            let target = vstack.pop().unwrap();
+            assert_eq!(
+                target.kind,
+                StackValueKind::RValue,
+                "Cannot branch to {:?}",
+                target
+            );
+
+            check_unify(
+                &target.ty,
+                &Type::Pointer(PointerType {
+                    inner: Box::new(Type::Void),
+                    ..Default::default()
+                }),
+                tys,
+            );
+        }
         xlang_struct::Expr::Convert(_, _) => todo!("convert"),
         xlang_struct::Expr::Derive(pty, expr) => {
             tycheck_expr(expr, locals, block_exits, vstack, targets, tys);
@@ -280,7 +544,8 @@ fn tycheck_expr(
         xlang_struct::Expr::Dup(n) => {
             let back = vstack.len().checked_sub((*n) as usize).unwrap();
             let stack = vstack.split_off(back);
-            vstack.extend(stack);
+            vstack.extend(stack.clone());
+            vstack.extend(stack.clone());
         }
         xlang_struct::Expr::Pivot(n, m) => {
             let back1 = vstack.len().checked_sub((*m) as usize).unwrap();
@@ -518,7 +783,60 @@ fn tycheck_expr(
         xlang_struct::Expr::Null
         | xlang_struct::Expr::Sequence(_)
         | xlang_struct::Expr::Fence(_) => {}
-        xlang_struct::Expr::Switch(_) => todo!("switch"),
+        xlang_struct::Expr::Switch(switch) => {
+            let ctrl = vstack.pop().unwrap();
+
+            assert_eq!(
+                ctrl.kind,
+                StackValueKind::RValue,
+                "Cannot switch on {:?}",
+                ctrl
+            );
+
+            match tys.refiy_type(&ctrl.ty) {
+                Type::Scalar(ScalarType {
+                    kind: ScalarTypeKind::Integer { .. },
+                    ..
+                }) => {}
+                ty => panic!("Cannot switch on {:?}", ty),
+            }
+
+            let mut ustack = None::<&Vec<StackItem>>;
+
+            match switch {
+                xlang_struct::Switch::Hash(h) => {
+                    for Pair(val, targ) in &h.cases {
+                        match val {
+                            Value::Integer { ty, val: _ } => {
+                                check_unify(&ctrl.ty, &Type::Scalar(*ty), tys);
+                            }
+                            val => panic!("Cannot switch on case {:?}", val),
+                        }
+
+                        let tstack = &targets[targ];
+
+                        if let Some(stack) = ustack {
+                            assert_eq!(
+                                stack.len(),
+                                tstack.len(),
+                                "Cannot unify stack for target @{} ({:?}) with switch stack {:?}",
+                                targ,
+                                tstack,
+                                stack
+                            );
+                            stack.iter().zip(tstack).for_each(|(ty1,ty2)| {
+                                assert_eq!(ty1.kind,ty2.kind,"Cannot unify stack for target @{} ({:?}) with switch stack {:?}",targ,tstack,stack);
+                                check_unify(&ty1.ty,&ty2.ty,tys);
+                            })
+                        } else {
+                            check_unify_stack(vstack, tstack, tys);
+                            ustack = Some(tstack);
+                        }
+                    }
+                }
+                xlang_struct::Switch::Linear(_) => todo!(),
+            }
+        }
     }
     false
 }
@@ -538,7 +856,7 @@ fn tycheck_block(
     for item in &block.items {
         if let BlockItem::Target { num, stack } = item {
             assert!(
-                targets.insert(*num, stack.clone()).is_some(),
+                targets.insert(*num, stack.clone()).is_none(),
                 "Target @{} redeclared",
                 num
             );
