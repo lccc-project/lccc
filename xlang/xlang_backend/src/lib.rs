@@ -447,7 +447,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     self.move_val(
                         VStackValue::Constant(Value::String {
                             encoding,
-                            utf8: utf8.clone(),
+                            utf8,
                             ty: ty.clone(),
                         }),
                         loc.clone(),
@@ -473,12 +473,12 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             VStackValue::LValue(ty, lval) => {
                 let loc = self.inner.allocate_lvalue(false);
                 self.move_val(VStackValue::LValue(ty.clone(), lval), loc.clone());
-                VStackValue::LValue(ty, LValue::OpaquePointer(loc.clone()))
+                VStackValue::LValue(ty, LValue::OpaquePointer(loc))
             }
             VStackValue::Pointer(ty, lval) => {
                 let loc = self.inner.allocate_lvalue(false);
                 self.move_val(VStackValue::Pointer(ty.clone(), lval), loc.clone());
-                VStackValue::Pointer(ty, LValue::OpaquePointer(loc.clone()))
+                VStackValue::Pointer(ty, LValue::OpaquePointer(loc))
             }
             VStackValue::OpaqueScalar(sty, loc) => VStackValue::OpaqueScalar(sty, loc),
             VStackValue::AggregatePieced(ty, pieces) => {
@@ -1660,7 +1660,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 self.inner
                     .get_callconv()
                     .find_param(&fnty, &fnty, u32::try_from(i).unwrap(), true);
-            let val = self.opaque_value(&ty, loc);
+            let val = self.opaque_value(ty, loc);
             self.locals.push((val, ty.clone()));
         }
 

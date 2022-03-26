@@ -76,6 +76,7 @@ fn tycheck_function(x: &mut FunctionDeclaration, tys: &TypeState) {
     }
 }
 
+#[allow(clippy::too_many_lines, clippy::similar_names)]
 fn check_unify(ty1: &Type, ty2: &Type, type_state: &TypeState) {
     match (type_state.refiy_type(ty1), type_state.refiy_type(ty2)) {
         (Type::Null, _) | (_, Type::Null) => {}
@@ -157,7 +158,7 @@ fn check_unify(ty1: &Type, ty2: &Type, type_state: &TypeState) {
             check_unify(&fnty1.ret, &fnty2.ret, type_state);
         }
         (Type::Pointer(pty1), Type::Pointer(pty2)) => {
-            check_unify(&pty1.inner, &pty2.inner, type_state)
+            check_unify(&pty1.inner, &pty2.inner, type_state);
         }
         (Type::Product(tys1), Type::Product(tys2)) => tys1
             .iter()
@@ -200,7 +201,7 @@ fn check_unify(ty1: &Type, ty2: &Type, type_state: &TypeState) {
             (_, _) => panic!("Cannot unify types {:?} and {:?}", ty1, ty2),
         },
         (Type::Named(n1), Type::Named(n2)) => {
-            assert_eq!(n1, n2, "Cannot unify types {:?} and {:?}", ty1, ty2)
+            assert_eq!(n1, n2, "Cannot unify types {:?} and {:?}", ty1, ty2);
         }
         (ty1, ty2) => panic!("Cannot unify types {:?} and {:?}", ty1, ty2),
     }
@@ -384,24 +385,21 @@ fn tycheck_expr(
                 Type::Scalar(_) => match *op {
                     UnaryOp::Minus => {
                         vstack.push(val);
-                        match *v {
-                            OverflowBehaviour::Checked => {
-                                vstack.push(StackItem {
-                                    ty: Type::Scalar(ScalarType {
-                                        header: ScalarTypeHeader {
-                                            bitsize: 1,
-                                            ..Default::default()
-                                        },
-                                        kind: ScalarTypeKind::Integer {
-                                            signed: false,
-                                            min: XLangNone,
-                                            max: XLangNone,
-                                        },
-                                    }),
-                                    kind: StackValueKind::RValue,
-                                });
-                            }
-                            _ => {}
+                        if *v == OverflowBehaviour::Checked {
+                            vstack.push(StackItem {
+                                ty: Type::Scalar(ScalarType {
+                                    header: ScalarTypeHeader {
+                                        bitsize: 1,
+                                        ..Default::default()
+                                    },
+                                    kind: ScalarTypeKind::Integer {
+                                        signed: false,
+                                        min: XLangNone,
+                                        max: XLangNone,
+                                    },
+                                }),
+                                kind: StackValueKind::RValue,
+                            });
                         }
                     }
                     UnaryOp::LogicNot => {
@@ -545,7 +543,7 @@ fn tycheck_expr(
             let back = vstack.len().checked_sub((*n) as usize).unwrap();
             let stack = vstack.split_off(back);
             vstack.extend(stack.clone());
-            vstack.extend(stack.clone());
+            vstack.extend(stack);
         }
         xlang_struct::Expr::Pivot(n, m) => {
             let back1 = vstack.len().checked_sub((*m) as usize).unwrap();
@@ -815,6 +813,7 @@ fn tycheck_expr(
 
                         let tstack = &targets[targ];
 
+                        #[allow(clippy::option_if_let_else)]
                         if let Some(stack) = ustack {
                             assert_eq!(
                                 stack.len(),
@@ -827,7 +826,7 @@ fn tycheck_expr(
                             stack.iter().zip(tstack).for_each(|(ty1,ty2)| {
                                 assert_eq!(ty1.kind,ty2.kind,"Cannot unify stack for target @{} ({:?}) with switch stack {:?}",targ,tstack,stack);
                                 check_unify(&ty1.ty,&ty2.ty,tys);
-                            })
+                            });
                         } else {
                             check_unify_stack(vstack, tstack, tys);
                             ustack = Some(tstack);
