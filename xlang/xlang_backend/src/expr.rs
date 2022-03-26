@@ -66,6 +66,20 @@ pub enum VStackValue<Loc: ValLocation> {
     Trapped,
 }
 
+impl<Loc: ValLocation> VStackValue<Loc> {
+    /// If the value is opaque, returns the location the value is present in
+    /// Otherwise returns [`None`]
+    pub fn opaque_location(&self) -> Option<&Loc> {
+        match self {
+            VStackValue::LValue(_, LValue::OpaquePointer(loc))
+            | VStackValue::Pointer(_, LValue::OpaquePointer(loc))
+            | VStackValue::OpaqueAggregate(_, loc)
+            | VStackValue::OpaqueScalar(_, loc) => Some(loc),
+            _ => None,
+        }
+    }
+}
+
 /// Enum for Trap conditions, generated in certain places. May be no-ops in some cases
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Trap {

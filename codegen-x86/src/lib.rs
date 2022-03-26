@@ -1,6 +1,7 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
 
 pub mod callconv;
+pub mod mc;
 
 use std::convert::TryInto;
 use std::ops::Deref;
@@ -735,7 +736,12 @@ impl X86CodegenState {
 
     #[allow(dead_code)]
     fn move_reg2reg(&mut self, dest: X86Register, src: X86Register) {
+        if dest == src {
+            return;
+        }
+
         let src = ModRM::Direct(src);
+
         match dest.class() {
             X86RegisterClass::Byte | X86RegisterClass::ByteRex => {
                 self.insns
@@ -1560,10 +1566,7 @@ mod test {
                     ],
                 },
             },
-            &[
-                0xB8, 0x01, 0x00, 0x00, 0x00, 0x8B, 0xC8, 0x81, 0xC1, 0xFF, 0xFF, 0xFF, 0xFF, 0x8B,
-                0xC1, 0xC3,
-            ],
+            &[0x31, 0xC0, 0xC3],
             Target::parse("x86_64-pc-linux-gnu"),
         )
     }

@@ -17,7 +17,7 @@ use ty::TypeInformation;
 use xlang::{
     abi::string::StringView,
     ir::{
-        AccessClass, BinaryOp, Block, BranchCondition, Expr, FnType, FunctionBody,
+        AccessClass, BinaryOp, Block, BranchCondition, CharFlags, Expr, FnType, FunctionBody,
         OverflowBehaviour, Path, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind,
         ScalarValidity, StackItem, StackValueKind, Switch, Type, Value,
     },
@@ -203,8 +203,9 @@ pub struct FunctionCodegen<F: FunctionRawCodegen> {
     properties: &'static TargetProperties,
     targets: HashMap<u32, Vec<(F::Loc, StackItem)>>,
     diverged: bool,
-    locals: Vec<(F::Loc, Type)>,
+    locals: Vec<(VStackValue<F::Loc>, Type)>,
     fnty: FnType,
+    locals_opaque: bool,
     _tys: Rc<TypeInformation>,
 }
 
@@ -225,6 +226,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             diverged: false,
             locals: Vec::new(),
             fnty,
+            locals_opaque: false,
             _tys: tys,
         }
     }
@@ -372,23 +374,131 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         self.vstack.extend(vals);
     }
 
-    /// Pushes an opaque value of the given type
-    pub fn push_opaque(&mut self, ty: &Type, loc: F::Loc) {
+    /// Obtains an opaque value of the given type that is placed in `loc`
+    pub fn opaque_value(&mut self, ty: &Type, loc: F::Loc) -> VStackValue<F::Loc> {
         match ty {
             Type::Null | Type::Void | Type::FnType(_) => panic!("Invalid type"),
-            Type::Scalar(sty) => self.push_value(VStackValue::OpaqueScalar(*sty, loc)),
-            Type::Pointer(pty) => self.push_value(VStackValue::Pointer(
-                pty.clone(),
-                LValue::OpaquePointer(loc),
-            )),
+            Type::Scalar(sty) => VStackValue::OpaqueScalar(*sty, loc),
+            Type::Pointer(pty) => VStackValue::Pointer(pty.clone(), LValue::OpaquePointer(loc)),
             Type::Array(_) => todo!("array"),
-            Type::TaggedType(_, ty) => self.push_opaque(ty, loc),
-            Type::Product(_) | Type::Aggregate(_) => {
-                self.push_value(VStackValue::OpaqueAggregate(ty.clone(), loc))
-            }
-            Type::Aligned(_, ty) => self.push_opaque(ty, loc),
+            Type::TaggedType(_, ty) => self.opaque_value(ty, loc),
+            Type::Product(_) | Type::Aggregate(_) => VStackValue::OpaqueAggregate(ty.clone(), loc),
+            Type::Aligned(_, ty) => self.opaque_value(ty, loc),
             Type::Named(path) => todo!("named type {:?}", path),
         }
+    }
+
+    /// Makes the given value opaque, if it is not alreayd.
+    pub fn make_opaque(&mut self, val: VStackValue<F::Loc>) -> VStackValue<F::Loc> {
+        match val {
+            VStackValue::Constant(v) => match v {
+                Value::Invalid(ty) => {
+                    self.inner.write_trap(Trap::Unreachable);
+                    let loc = self.inner.allocate(&ty, false);
+                    self.opaque_value(&ty, loc)
+                }
+                Value::Uninitialized(ty) => {
+                    let loc = self.inner.allocate(&ty, false);
+                    self.opaque_value(&ty, loc)
+                }
+                Value::GenericParameter(_) => todo!("generic parameters"),
+                Value::Integer { ty, val } => {
+                    let loc = self.inner.allocate(&Type::Scalar(ty), false);
+                    self.move_val(
+                        VStackValue::Constant(Value::Integer { ty, val }),
+                        loc.clone(),
+                    );
+                    VStackValue::OpaqueScalar(ty, loc)
+                }
+                Value::GlobalAddress { ty, item } => {
+                    let pty = PointerType {
+                        inner: Box::new(ty.clone()),
+                        ..Default::default()
+                    };
+                    let loc = self.inner.allocate(&Type::Pointer(pty.clone()), false);
+                    self.move_val(
+                        VStackValue::Constant(Value::GlobalAddress { ty, item }),
+                        loc.clone(),
+                    );
+                    VStackValue::Pointer(pty, LValue::OpaquePointer(loc))
+                }
+                Value::ByteString { content } => {
+                    let pty = PointerType {
+                        inner: Box::new(Type::Scalar(ScalarType {
+                            header: ScalarTypeHeader {
+                                bitsize: 8,
+                                ..Default::default()
+                            },
+                            kind: ScalarTypeKind::Char {
+                                flags: CharFlags::empty(),
+                            },
+                        })),
+                        ..Default::default()
+                    };
+                    let loc = self.inner.allocate(&Type::Pointer(pty.clone()), false);
+                    self.move_val(
+                        VStackValue::Constant(Value::ByteString { content }),
+                        loc.clone(),
+                    );
+                    VStackValue::Pointer(pty, LValue::OpaquePointer(loc))
+                }
+                Value::String { encoding, utf8, ty } => {
+                    let loc = self.inner.allocate(&ty, false);
+                    self.move_val(
+                        VStackValue::Constant(Value::String {
+                            encoding,
+                            utf8: utf8.clone(),
+                            ty: ty.clone(),
+                        }),
+                        loc.clone(),
+                    );
+                    self.opaque_value(&ty, loc)
+                }
+                Value::LabelAddress(n) => {
+                    let pty = PointerType {
+                        inner: Box::new(Type::Void),
+                        ..Default::default()
+                    };
+                    let loc = self.inner.allocate(&Type::Pointer(pty.clone()), false);
+                    self.move_val(VStackValue::Constant(Value::LabelAddress(n)), loc.clone());
+                    VStackValue::Pointer(pty, LValue::OpaquePointer(loc))
+                }
+            },
+            VStackValue::LValue(ty, LValue::OpaquePointer(loc)) => {
+                VStackValue::LValue(ty, LValue::OpaquePointer(loc))
+            }
+            VStackValue::Pointer(ty, LValue::OpaquePointer(loc)) => {
+                VStackValue::Pointer(ty, LValue::OpaquePointer(loc))
+            }
+            VStackValue::LValue(ty, lval) => {
+                let loc = self.inner.allocate_lvalue(false);
+                self.move_val(VStackValue::LValue(ty.clone(), lval), loc.clone());
+                VStackValue::LValue(ty, LValue::OpaquePointer(loc.clone()))
+            }
+            VStackValue::Pointer(ty, lval) => {
+                let loc = self.inner.allocate_lvalue(false);
+                self.move_val(VStackValue::Pointer(ty.clone(), lval), loc.clone());
+                VStackValue::Pointer(ty, LValue::OpaquePointer(loc.clone()))
+            }
+            VStackValue::OpaqueScalar(sty, loc) => VStackValue::OpaqueScalar(sty, loc),
+            VStackValue::AggregatePieced(ty, pieces) => {
+                let loc = self.inner.allocate(&ty, false);
+                self.move_val(
+                    VStackValue::AggregatePieced(ty.clone(), pieces),
+                    loc.clone(),
+                );
+                VStackValue::OpaqueAggregate(ty, loc)
+            }
+            VStackValue::OpaqueAggregate(ty, loc) => VStackValue::OpaqueAggregate(ty, loc),
+            VStackValue::CompareResult(_, _) => todo!("compare results"),
+            VStackValue::Trapped => VStackValue::Trapped,
+        }
+    }
+
+    /// Pushes an opaque value of the given type
+    pub fn push_opaque(&mut self, ty: &Type, loc: F::Loc) {
+        let val = self.opaque_value(ty, loc);
+        self.push_value(val);
     }
 
     /// Clears the expression stack
@@ -1207,6 +1317,20 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     for ((loc, _), val) in self.targets[target].clone().into_iter().zip(values) {
                         self.move_val(val, loc);
                     }
+
+                    if !self.locals_opaque {
+                        let mut locals = std::mem::take(&mut self.locals);
+
+                        for (local, _) in &mut locals {
+                            let val = core::mem::replace(local, VStackValue::Trapped);
+
+                            *local = self.make_opaque(val);
+                        }
+
+                        self.locals = locals;
+                        self.locals_opaque = true;
+                    }
+
                     self.diverged = true;
                     self.inner.branch_unconditional(*target);
                 }
@@ -1364,15 +1488,21 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         self.push_value(VStackValue::Trapped);
                     }
                     (LValue::Local(n), val) => {
-                        let param_cnt = u32::try_from(self.fnty.params.len()).unwrap();
-                        let loc = if n < param_cnt {
-                            self.inner
-                                .get_callconv()
-                                .find_param(&self.fnty, &self.fnty, n, true)
-                        } else {
-                            self.locals[(n - param_cnt) as usize].0.clone()
-                        };
-                        self.move_val(val, loc)
+                        let loc = self.locals[n as usize].0.clone();
+
+                        match loc {
+                            VStackValue::Trapped => {
+                                self.push_value(VStackValue::Trapped);
+                            }
+                            VStackValue::OpaqueScalar(_, loc)
+                            | VStackValue::OpaqueAggregate(_, loc)
+                            | VStackValue::Pointer(_, LValue::OpaquePointer(loc)) => {
+                                self.move_val(val, loc);
+                            }
+                            _ => {
+                                self.locals[n as usize].0 = val;
+                            }
+                        }
                     }
                     (LValue::OpaquePointer(loc), val) => todo!("store [{:?}] <- {:?}", loc, val),
                     (a, b) => todo!("store {:?} <- {:?}", a, b),
@@ -1394,17 +1524,14 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     LValue::OpaquePointer(loc) => todo!("as_rvalue [{:?}]", loc),
 
                     LValue::Local(n) => {
-                        let param_cnt = u32::try_from(self.fnty.params.len()).unwrap();
-                        let loc = if n < param_cnt {
-                            self.inner
-                                .get_callconv()
-                                .find_param(&self.fnty, &self.fnty, n, true)
+                        let local = self.locals[n as usize].0.clone();
+                        if let Some(loc) = local.opaque_location() {
+                            let dst = self.inner.allocate(&ty, false);
+                            self.inner.move_val(loc.clone(), dst.clone());
+                            self.push_opaque(&ty, dst);
                         } else {
-                            self.locals[(n - param_cnt) as usize].0.clone()
-                        };
-                        let dst = self.inner.allocate(&ty, false);
-                        self.inner.move_val(loc, dst.clone());
-                        self.push_opaque(&ty, dst);
+                            self.push_value(local)
+                        }
                     }
                     LValue::GlobalAddress(_) => todo!("as_rvalue global_address"),
                     LValue::Label(_) => {
@@ -1525,10 +1652,24 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
 
     /// Writes the body of a function to the codegen
     pub fn write_function_body(&mut self, body: &FunctionBody) {
+        let fnty = self.fnty.clone();
+        self.locals.reserve(fnty.params.len());
+
+        for (i, ty) in fnty.params.iter().enumerate() {
+            let loc =
+                self.inner
+                    .get_callconv()
+                    .find_param(&fnty, &fnty, u32::try_from(i).unwrap(), true);
+            let val = self.opaque_value(&ty, loc);
+            self.locals.push((val, ty.clone()));
+        }
+
         self.locals.reserve(body.locals.len());
         for ty in &body.locals {
-            let loc = self.inner.allocate(ty, false);
-            self.locals.push((loc, ty.clone()))
+            self.locals.push((
+                VStackValue::Constant(Value::Uninitialized(ty.clone())),
+                ty.clone(),
+            ))
         }
         self.write_block(&body.block, 0);
         if !self.diverged {
@@ -1561,6 +1702,18 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             match item {
                 xlang::ir::BlockItem::Expr(expr) => self.write_expr(expr),
                 xlang::ir::BlockItem::Target { num, .. } => {
+                    if !self.locals_opaque {
+                        let mut locals = std::mem::take(&mut self.locals);
+
+                        for (local, _) in &mut locals {
+                            let val = core::mem::replace(local, VStackValue::Trapped);
+
+                            *local = self.make_opaque(val);
+                        }
+
+                        self.locals = locals;
+                        self.locals_opaque = true;
+                    }
                     if !self.diverged {
                         let locs = self.targets[num].clone();
                         let vals = self.pop_values(locs.len()).unwrap();
