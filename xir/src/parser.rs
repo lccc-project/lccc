@@ -802,18 +802,8 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
         Token::Ident(id) if id == "exit" => {
             it.next();
             match it.next().unwrap() {
-                Token::Ident(id) if id == "block" => match it.next().unwrap() {
-                    Token::Ident(id) if id.starts_with('$') => {
-                        let blk = id[1..].parse::<u32>().unwrap();
-                        match it.next().unwrap() {
-                            Token::IntLiteral(values) => Expr::ExitBlock {
-                                blk,
-                                values: values.try_into().unwrap(),
-                            },
-                            tok => panic!("Unexpected Token {:?}", tok),
-                        }
-                    }
-                    tok => panic!("Unexpected Token {:?}", tok),
+                Token::IntLiteral(values) => Expr::Exit {
+                    values: values.try_into().unwrap(),
                 },
                 tok => panic!("Unexpected Token {:?}", tok),
             }
@@ -1113,28 +1103,6 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
             match it.next().unwrap() {
                 Token::Ident(id) if id == "switch" => Expr::Switch(switch),
                 tok => panic!("Unexpected token {:?}", tok),
-            }
-        }
-        Token::Ident(id) if id == "begin" => {
-            it.next();
-            match it.next().unwrap() {
-                Token::Ident(id) if id == "block" => {
-                    let n = match it.next().unwrap() {
-                        Token::Ident(id) if id.starts_with('$') => id[1..].parse().unwrap(),
-                        tok => panic!("Unexpected token {:?}", tok),
-                    };
-                    let block = parse_block(it);
-                    match it.next().unwrap() {
-                        Token::Ident(id) if id == "end" => {}
-                        tok => panic!("Unexpected token {:?}", tok),
-                    }
-                    match it.next().unwrap() {
-                        Token::Ident(id) if id == "block" => {}
-                        tok => panic!("Unexpected token {:?}", tok),
-                    }
-                    Expr::Block { n, block }
-                }
-                tok => todo!("begin {:?}", tok),
             }
         }
         tok => todo!("{:?}", tok),

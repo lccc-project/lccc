@@ -9,11 +9,11 @@ function main() -> int(32){
     end switch
     target @0 []
     const int(32) 0
-    exit block $0 1
+    exit 1
     target @1 []
     const int(32) 1
-    exit block $0 1
+    exit 1
     target @2 []
     const undef invalid int(32)
-    exit block $0 1
+    exit 1
 }

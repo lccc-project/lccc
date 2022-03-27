@@ -212,10 +212,7 @@ impl XLangPlugin for CFrontend {
                                 ty: int_type,
                                 val: 0,
                             })));
-                            block.push(ir::BlockItem::Expr(ir::Expr::ExitBlock {
-                                blk: 0,
-                                values: 1,
-                            }));
+                            block.push(ir::BlockItem::Expr(ir::Expr::Exit { values: 1 }));
                         }
                         ir::Block { items: block }
                     } else {

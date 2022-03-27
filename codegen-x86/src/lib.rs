@@ -1376,7 +1376,7 @@ mod test {
                 block: xlang_struct::Block {
                     items: xlang::abi::vec![
                         BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 0 })),
-                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 })
+                        BlockItem::Expr(Expr::Exit { values: 1 })
                     ],
                 },
             },
@@ -1410,7 +1410,7 @@ mod test {
                 block: xlang_struct::Block {
                     items: xlang::abi::vec![
                         BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 1 })),
-                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 })
+                        BlockItem::Expr(Expr::Exit { values: 1 })
                     ],
                 },
             },
@@ -1446,7 +1446,7 @@ mod test {
                         BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 1 })),
                         BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: !0 })),
                         BlockItem::Expr(Expr::BinaryOp(BinaryOp::Add, OverflowBehaviour::Wrap)),
-                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 })
+                        BlockItem::Expr(Expr::Exit { values: 1 })
                     ],
                 },
             },
@@ -1482,7 +1482,7 @@ mod test {
                         BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 1 })),
                         BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: 2 })),
                         BlockItem::Expr(Expr::BinaryOp(BinaryOp::Add, OverflowBehaviour::Wrap)),
-                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 })
+                        BlockItem::Expr(Expr::Exit { values: 1 })
                     ],
                 },
             },
@@ -1523,7 +1523,7 @@ mod test {
                             BinaryOp::Mod,
                             OverflowBehaviour::Unchecked
                         )),
-                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 })
+                        BlockItem::Expr(Expr::Exit { values: 1 })
                     ],
                 },
             },
@@ -1562,7 +1562,7 @@ mod test {
                         BlockItem::Expr(Expr::AsRValue(AccessClass::Normal)),
                         BlockItem::Expr(Expr::Const(Value::Integer { ty: sty, val: !0 })),
                         BlockItem::Expr(Expr::BinaryOp(BinaryOp::Add, OverflowBehaviour::Wrap)),
-                        BlockItem::Expr(Expr::ExitBlock { blk: 0, values: 1 })
+                        BlockItem::Expr(Expr::Exit { values: 1 })
                     ],
                 },
             },

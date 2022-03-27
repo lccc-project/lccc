@@ -6,5 +6,5 @@ function main() -> int(32){
     call function(*const char(8))->int(32)
     pop
     const int(32) 0
-    exit block $0 1
+    exit 1
 }

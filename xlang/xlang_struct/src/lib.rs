@@ -471,15 +471,14 @@ pub enum Expr {
     /// Operands: [..]=>[..,Value]
     Const(Value),
 
-    /// Exits the `blk`th nested block with the given number of values
+    /// Exits the function
     ///
     /// # Stack
     ///
     /// Type Checking: [..,T1,T2,...,Tn]=>diverged
     ///
-    /// Operands: [..,v1,v2,...,vn]=>divereged
-    ExitBlock {
-        blk: u32,
+    /// Operands: [..,v1,v2,...,vn]=>diverged
+    Exit {
         values: u16,
     },
 
@@ -500,10 +499,6 @@ pub enum Expr {
     Aggregate(AggregateCtor),
     Member(String),
     MemberIndirect(String),
-    Block {
-        n: u32,
-        block: Block,
-    },
     Assign(AccessClass),
     AsRValue(AccessClass),
     CompoundAssign(BinaryOp, OverflowBehaviour, AccessClass),

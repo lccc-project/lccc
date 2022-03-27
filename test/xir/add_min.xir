@@ -2,5 +2,5 @@ function main() -> int(32){
     const int(32) -2147483648
     const int(32) -2147483648
     add
-    exit block $0 1
+    exit 1
 }

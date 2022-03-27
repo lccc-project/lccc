@@ -3,5 +3,5 @@ function main() -> int(32){
     dup
     branch equal @0
     target @0 [int(32)]
-    exit block $0 1
+    exit 1
 }

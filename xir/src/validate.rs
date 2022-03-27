@@ -66,7 +66,9 @@ fn tycheck_function(x: &mut FunctionDeclaration, tys: &TypeState) {
             .cloned()
             .chain(body.locals.iter().cloned())
             .collect::<Vec<_>>();
-        let ret = tycheck_block(&mut body.block, tys, &local_tys, &mut Vec::new());
+        let mut ret = None;
+        tycheck_block(&mut body.block, tys, &local_tys, &mut ret);
+        let ret = ret.unwrap_or_default();
         if ty.ret == Type::Void {
             assert_eq!(ret.len(), 0);
         } else {
@@ -230,7 +232,7 @@ fn check_unify_stack(stack: &[StackItem], target: &[StackItem], tys: &TypeState)
 fn tycheck_expr(
     expr: &mut Expr,
     locals: &[Type],
-    block_exits: &mut Vec<Option<Vec<StackItem>>>,
+    exit: &mut Option<Vec<StackItem>>,
     vstack: &mut Vec<StackItem>,
     targets: &HashMap<u32, Vec<StackItem>>,
     tys: &TypeState,
@@ -291,8 +293,7 @@ fn tycheck_expr(
                 });
             }
         },
-        xlang_struct::Expr::ExitBlock { blk, values } => {
-            let exit = &mut block_exits[*blk as usize];
+        xlang_struct::Expr::Exit { values } => {
             let pos = vstack.len().checked_sub(*values as usize).unwrap();
             let stack = vstack.split_off(pos);
             match exit {
@@ -518,7 +519,7 @@ fn tycheck_expr(
         }
         xlang_struct::Expr::Convert(_, _) => todo!("convert"),
         xlang_struct::Expr::Derive(pty, expr) => {
-            tycheck_expr(expr, locals, block_exits, vstack, targets, tys);
+            tycheck_expr(expr, locals, exit, vstack, targets, tys);
             let mut ptr = vstack.pop().unwrap();
             assert_eq!(ptr.kind, StackValueKind::RValue);
             match &mut ptr.ty {
@@ -597,12 +598,6 @@ fn tycheck_expr(
             }
 
             vstack.push(val);
-        }
-        xlang_struct::Expr::Block { n, block } => {
-            assert!((*n as usize) == block_exits.len());
-            let res = tycheck_block(block, tys, locals, block_exits);
-
-            vstack.extend(res);
         }
         xlang_struct::Expr::Assign(_) => {
             let rvalue = vstack.pop().unwrap();
@@ -844,9 +839,8 @@ fn tycheck_block(
     block: &mut Block,
     tys: &TypeState,
     locals: &[Type],
-    block_exits: &mut Vec<Option<Vec<StackItem>>>,
-) -> Vec<StackItem> {
-    block_exits.push(None);
+    exit: &mut Option<Vec<StackItem>>,
+) {
     let mut vstack = Vec::new();
 
     let mut targets = HashMap::<_, _>::new();
@@ -865,7 +859,7 @@ fn tycheck_block(
     for item in &mut block.items {
         match item {
             BlockItem::Expr(expr) => {
-                diverged = tycheck_expr(expr, locals, block_exits, &mut vstack, &targets, tys);
+                diverged = tycheck_expr(expr, locals, exit, &mut vstack, &targets, tys);
             }
             BlockItem::Target { stack, .. } => {
                 if !diverged {
@@ -877,8 +871,6 @@ fn tycheck_block(
             }
         }
     }
-
-    block_exits.pop().unwrap().unwrap_or_default()
 }
 
 pub fn tycheck(x: &mut File) {

@@ -263,19 +263,20 @@ fn irgen_expr(
             block,
             ty: Some(ty),
         } => {
-            let mut result = vec![ir::BlockItem::Expr(ir::Expr::Block {
-                n: n + 1,
-                block: irgen_block(block, n + 1, locals),
-            })];
-            if ty.is_unit() {
-                result.push(ir::BlockItem::Expr(ir::Expr::Aggregate(
-                    ir::AggregateCtor {
-                        ty: irgen_type(ty),
-                        fields: abi::vec::Vec::new(),
-                    },
-                )));
-            }
-            result
+            todo!("block")
+            // let mut result = vec![ir::BlockItem::Expr(ir::Expr::Block {
+            //     n: n + 1,
+            //     block: irgen_block(block, n + 1, locals),
+            // })];
+            // if ty.is_unit() {
+            //     result.push(ir::BlockItem::Expr(ir::Expr::Aggregate(
+            //         ir::AggregateCtor {
+            //             ty: irgen_type(ty),
+            //             fields: abi::vec::Vec::new(),
+            //         },
+            //     )));
+            // }
+            // result
         }
         _ => todo!("{:?}", expr),
     }
@@ -313,17 +314,18 @@ fn irgen_block(
             }
         }
     }
-    if has_expr {
-        result.push(ir::BlockItem::Expr(ir::Expr::ExitBlock {
-            blk: block_num,
-            values: 1,
-        }));
-    } else {
-        result.push(ir::BlockItem::Expr(ir::Expr::ExitBlock {
-            blk: block_num,
-            values: 0,
-        }));
-    }
+    // if has_expr {
+    //     result.push(ir::BlockItem::Expr(ir::Expr::ExitBlock {
+    //         blk: block_num,
+    //         values: 1,
+    //     }));
+    // } else {
+    //     result.push(ir::BlockItem::Expr(ir::Expr::ExitBlock {
+    //         blk: block_num,
+    //         values: 0,
+    //     }));
+    // }
+    todo!("exit block");
     ir::Block {
         items: result.into(),
     }
