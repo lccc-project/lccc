@@ -49,10 +49,6 @@ pub mod mangle;
 pub trait FunctionRawCodegen {
     /// The type for Locations
     type Loc: ValLocation;
-    /// The type of the writer to pass to the [`FunctionRawCodegen::write_output`] function
-    type Writer;
-    /// The type of errors returned from the [`FunctionRawCodegen::write_output`] function
-    type Error: Debug;
 
     /// The type of calling conventions used by this backend
     type CallConv: CallingConvention<Loc = Self::Loc> + ?Sized;

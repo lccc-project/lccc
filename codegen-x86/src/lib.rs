@@ -149,10 +149,6 @@ pub struct X86CodegenState {
 impl FunctionRawCodegen for X86CodegenState {
     type Loc = ValLocation;
 
-    type Writer = Section;
-
-    type Error = std::io::Error;
-
     fn write_trap(&mut self, trap: xlang_backend::expr::Trap) {
         match trap {
             xlang_backend::expr::Trap::Unreachable if !self.trap_unreachable => {}
