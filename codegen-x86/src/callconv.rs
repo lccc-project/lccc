@@ -210,7 +210,6 @@ impl<S: std::hash::BuildHasher + Clone + 'static> X86CallConv for SysV64CC<S> {
     #[allow(clippy::unnested_or_patterns)]
     fn find_return_val(&self, ty: &Type) -> Option<ValLocation> {
         match (classify_type(ty), self.2.type_size(ty)) {
-            (None, None) => None,
             (None, Some(_)) | (Some(_), None) => unreachable!(),
             (Some(TypeClass::Zero), Some(0)) => Some(ValLocation::Null),
             (Some(TypeClass::Zero), Some(_)) => {

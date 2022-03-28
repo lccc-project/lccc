@@ -72,6 +72,7 @@ impl<T, E> Result<T, E> {
     }
 
     /// Maps self by returning a reference to the contained value, if any, or a reference to the contained error otherwise
+    #[allow(clippy::needless_match)] // False positive
     pub const fn as_ref(&self) -> Result<&T, &E> {
         match self {
             Ok(x) => Ok(x),
@@ -80,6 +81,7 @@ impl<T, E> Result<T, E> {
     }
 
     /// Maps self by returning a mutable reference to the contained value, if any, or a mutable reference to the contained error otherwise
+    #[allow(clippy::needless_match)] // False positive
     pub fn as_mut(&mut self) -> Result<&mut T, &mut E> {
         match self {
             Ok(x) => Ok(x),

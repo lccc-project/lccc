@@ -63,27 +63,27 @@ impl ValLocation {
             X86Mode::Long => X86RegisterClass::Quad,
         };
         match self {
-            ValLocation::BpDisp(disp) => Some(ModRM::IndirectDisp32 {
+            Self::BpDisp(disp) => Some(ModRM::IndirectDisp32 {
                 size,
                 mode: ModRMRegOrSib::Reg(X86Register::from_class(addrclass, 5).unwrap()),
                 disp32: *disp,
             }),
-            ValLocation::SpDisp(disp) => Some(ModRM::IndirectDisp32 {
+            Self::SpDisp(disp) => Some(ModRM::IndirectDisp32 {
                 size,
                 mode: ModRMRegOrSib::Reg(X86Register::from_class(addrclass, 4).unwrap()),
                 disp32: *disp,
             }),
-            ValLocation::Register(r) => Some(ModRM::Direct(*r)),
-            ValLocation::Regs(_) => None,
-            ValLocation::ImpliedPtr(r) => Some(ModRM::Indirect {
+            Self::Register(r) => Some(ModRM::Direct(*r)),
+            Self::Regs(_) => None,
+            Self::ImpliedPtr(r) => Some(ModRM::Indirect {
                 size: mode.largest_gpr(),
                 mode: ModRMRegOrSib::Reg(*r),
             }),
-            ValLocation::Null => Some(ModRM::Indirect {
+            Self::Null => Some(ModRM::Indirect {
                 size: mode.largest_gpr(),
                 mode: ModRMRegOrSib::Abs(Address::Abs(1)),
             }),
-            ValLocation::Unassigned(_) => panic!("Unassigned"),
+            Self::Unassigned(_) => panic!("Unassigned"),
         }
     }
 }

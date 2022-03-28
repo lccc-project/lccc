@@ -124,13 +124,16 @@ impl<T> Option<T> {
     }
 
     /// Maps `self` into an Option containing a reference to the inner value if `self` is `Some` or `None` otherwise
+    #[allow(clippy::needless_match)] // False positive
     pub const fn as_ref(&self) -> Option<&T> {
         match self {
             Some(x) => Some(x),
             None => None,
         }
     }
+
     /// Maps `self` into an Option containing a mutable reference to the inner value if `self` is `Some` or `None` otherwise
+    #[allow(clippy::needless_match)] // False positive
     pub fn as_mut(&mut self) -> Option<&mut T> {
         match self {
             Some(x) => Some(x),
@@ -139,6 +142,7 @@ impl<T> Option<T> {
     }
 
     /// Maps `self` into an Option dereferencing the inner value if `self` is `Some`, or `None` otherwise.
+    #[allow(clippy::needless_match)] // False positive
     pub fn as_deref(&self) -> Option<&<T as Deref>::Target>
     where
         T: Deref,
@@ -150,6 +154,7 @@ impl<T> Option<T> {
     }
 
     /// Maps `self` into an Option mutably dereferencing the inner value if `self` is `Some`, or `None` otherwise.
+    #[allow(clippy::needless_match)] // False positive
     pub fn as_deref_mut(&mut self) -> Option<&<T as Deref>::Target>
     where
         T: DerefMut,
