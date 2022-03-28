@@ -186,6 +186,78 @@ pub struct ScalarType {
     pub kind: ScalarTypeKind,
 }
 
+impl core::fmt::Display for ScalarType {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self.kind {
+            ScalarTypeKind::Empty => panic!(),
+            ScalarTypeKind::Integer { signed, min, max } => {
+                if !signed {
+                    f.write_str("u")?;
+                }
+
+                f.write_str("int")?;
+
+                if let Some(min) = min {
+                    f.write_str(" min")?;
+                    f.write_str("(")?;
+                    min.fmt(f)?;
+                    f.write_str(")")?;
+                }
+                if let Some(max) = max {
+                    f.write_str(" max")?;
+                    f.write_str("(")?;
+                    max.fmt(f)?;
+                    f.write_str(")")?;
+                }
+            }
+            ScalarTypeKind::Float { decimal } => {
+                if decimal {
+                    f.write_str("dec")?;
+                }
+                f.write_str("float")?;
+            }
+            ScalarTypeKind::LongFloat => f.write_str("lfloat")?,
+            ScalarTypeKind::Fixed { fractbits } => {
+                f.write_str("fixed")?;
+                f.write_str("(")?;
+                fractbits.fmt(f)?;
+                f.write_str(")")?;
+            }
+            ScalarTypeKind::Char { flags } => {
+                if flags.contains(CharFlags::SIGNED) {
+                    f.write_str("s")?;
+                }
+                f.write_str("char")?;
+
+                if flags.contains(CharFlags::UNICODE) {
+                    f.write_str(" utf")?;
+                }
+            }
+        }
+
+        if self.header.validity.contains(ScalarValidity::NONZERO) {
+            f.write_str(" nonzero")?;
+        }
+
+        if self.header.validity.contains(ScalarValidity::FINITE) {
+            f.write_str(" finite")?;
+        } else if self.header.validity.contains(ScalarValidity::NONNAN) {
+            f.write_str(" nonnan")?;
+        }
+
+        if let Some(vectorsize) = self.header.vectorsize {
+            f.write_str(" vectorsize")?;
+            f.write_str("(")?;
+            vectorsize.fmt(f)?;
+            f.write_str(")")?;
+        }
+
+        f.write_str("(")?;
+        self.header.bitsize.fmt(f)?;
+        f.write_str(")")
+    }
+}
+
 impl TryFrom<Type> for ScalarType {
     type Error = ();
     fn try_from(other: Type) -> std::result::Result<Self, ()> {

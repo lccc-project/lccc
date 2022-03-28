@@ -3,5 +3,5 @@ function __lccc_main()->int(32);
 function main()->int(32){
     const global_address __lccc_main
     call function()->int(32)
-    exit block $0 1
+    exit 1
 }
