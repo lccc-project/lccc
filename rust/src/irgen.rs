@@ -263,20 +263,16 @@ fn irgen_expr(
             block,
             ty: Some(ty),
         } => {
-            todo!("block")
-            // let mut result = vec![ir::BlockItem::Expr(ir::Expr::Block {
-            //     n: n + 1,
-            //     block: irgen_block(block, n + 1, locals),
-            // })];
-            // if ty.is_unit() {
-            //     result.push(ir::BlockItem::Expr(ir::Expr::Aggregate(
-            //         ir::AggregateCtor {
-            //             ty: irgen_type(ty),
-            //             fields: abi::vec::Vec::new(),
-            //         },
-            //     )));
-            // }
-            // result
+            let mut result = irgen_block(block, n + 1, locals, false);
+            if ty.is_unit() {
+                result.push(ir::BlockItem::Expr(ir::Expr::Aggregate(
+                    ir::AggregateCtor {
+                        ty: irgen_type(ty),
+                        fields: abi::vec::Vec::new(),
+                    },
+                )));
+            }
+            result
         }
         _ => todo!("{:?}", expr),
     }
@@ -286,7 +282,8 @@ fn irgen_block(
     block: Vec<Statement>,
     block_num: u32,
     locals: &mut Vec<(Identifier, ir::Type)>,
-) -> ir::Block {
+    exit: bool,
+) -> Vec<ir::BlockItem> {
     let mut result = Vec::new();
     let mut has_expr = false;
     for statement in block {
@@ -314,21 +311,18 @@ fn irgen_block(
             }
         }
     }
-    // if has_expr {
-    //     result.push(ir::BlockItem::Expr(ir::Expr::ExitBlock {
-    //         blk: block_num,
-    //         values: 1,
-    //     }));
-    // } else {
-    //     result.push(ir::BlockItem::Expr(ir::Expr::ExitBlock {
-    //         blk: block_num,
-    //         values: 0,
-    //     }));
-    // }
-    todo!("exit block");
-    ir::Block {
-        items: result.into(),
+    if exit {
+        if has_expr {
+            result.push(ir::BlockItem::Expr(ir::Expr::Exit {
+                values: 1,
+            }));
+        } else {
+            result.push(ir::BlockItem::Expr(ir::Expr::Exit {
+                values: 0,
+            }));
+        }
     }
+    result.into()
 }
 
 fn sig_to_fn_type(sig: FunctionSignature) -> ir::FnType {
@@ -357,7 +351,7 @@ pub fn irgen_definition(
         .unwrap()
     {
         let mut locals = Vec::new();
-        let block = irgen_block(body.clone(), 0, &mut locals);
+        let block = ir::Block { items: irgen_block(body.clone(), 0, &mut locals, true).into() };
         file.root.members.insert(
             identifier_to_path(name.clone(), Some(sig)),
             ir::ScopeMember {
