@@ -313,13 +313,9 @@ fn irgen_block(
     }
     if exit {
         if has_expr {
-            result.push(ir::BlockItem::Expr(ir::Expr::Exit {
-                values: 1,
-            }));
+            result.push(ir::BlockItem::Expr(ir::Expr::Exit { values: 1 }));
         } else {
-            result.push(ir::BlockItem::Expr(ir::Expr::Exit {
-                values: 0,
-            }));
+            result.push(ir::BlockItem::Expr(ir::Expr::Exit { values: 0 }));
         }
     }
     result.into()
@@ -351,7 +347,9 @@ pub fn irgen_definition(
         .unwrap()
     {
         let mut locals = Vec::new();
-        let block = ir::Block { items: irgen_block(body.clone(), 0, &mut locals, true).into() };
+        let block = ir::Block {
+            items: irgen_block(body.clone(), 0, &mut locals, true).into(),
+        };
         file.root.members.insert(
             identifier_to_path(name.clone(), Some(sig)),
             ir::ScopeMember {
