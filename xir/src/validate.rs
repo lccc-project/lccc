@@ -260,7 +260,7 @@ fn tycheck_expr(
                 vstack.push(StackItem {
                     ty: Type::Pointer(PointerType {
                         inner: Box::new(ty.clone()),
-                        ..Default::default()
+                        ..PointerType::default()
                     }),
                     kind: StackValueKind::RValue,
                 });
@@ -270,7 +270,7 @@ fn tycheck_expr(
                     inner: Box::new(Type::Scalar(ScalarType {
                         header: ScalarTypeHeader {
                             bitsize: 8,
-                            ..Default::default()
+                            ..ScalarTypeHeader::default()
                         },
                         kind: ScalarTypeKind::Integer {
                             signed: false,
@@ -278,7 +278,7 @@ fn tycheck_expr(
                             max: XLangNone,
                         },
                     })),
-                    ..Default::default()
+                    ..PointerType::default()
                 }),
                 kind: StackValueKind::RValue,
             }),
@@ -287,7 +287,7 @@ fn tycheck_expr(
                 vstack.push(StackItem {
                     ty: Type::Pointer(PointerType {
                         inner: Box::new(Type::Void),
-                        ..Default::default()
+                        ..PointerType::default()
                     }),
                     kind: StackValueKind::RValue,
                 });
@@ -317,7 +317,7 @@ fn tycheck_expr(
                         ty: Type::Scalar(ScalarType {
                             header: ScalarTypeHeader {
                                 bitsize: 32,
-                                ..Default::default()
+                                ..ScalarTypeHeader::default()
                             },
                             kind: ScalarTypeKind::Integer {
                                 signed: true,
@@ -337,7 +337,7 @@ fn tycheck_expr(
                             ty: Type::Scalar(ScalarType {
                                 header: ScalarTypeHeader {
                                     bitsize: 1,
-                                    ..Default::default()
+                                    ..ScalarTypeHeader::default()
                                 },
                                 kind: ScalarTypeKind::Integer {
                                     signed: false,
@@ -355,7 +355,7 @@ fn tycheck_expr(
                                 ty: Type::Scalar(ScalarType {
                                     header: ScalarTypeHeader {
                                         bitsize: 1,
-                                        ..Default::default()
+                                        ..ScalarTypeHeader::default()
                                     },
                                     kind: ScalarTypeKind::Integer {
                                         signed: false,
@@ -392,7 +392,7 @@ fn tycheck_expr(
                                 ty: Type::Scalar(ScalarType {
                                     header: ScalarTypeHeader {
                                         bitsize: 1,
-                                        ..Default::default()
+                                        ..ScalarTypeHeader::default()
                                     },
                                     kind: ScalarTypeKind::Integer {
                                         signed: false,
@@ -409,7 +409,7 @@ fn tycheck_expr(
                             ty: Type::Scalar(ScalarType {
                                 header: ScalarTypeHeader {
                                     bitsize: 1,
-                                    ..Default::default()
+                                    ..ScalarTypeHeader::default()
                                 },
                                 kind: ScalarTypeKind::Integer {
                                     signed: false,
@@ -518,7 +518,7 @@ fn tycheck_expr(
                 &target.ty,
                 &Type::Pointer(PointerType {
                     inner: Box::new(Type::Void),
-                    ..Default::default()
+                    ..PointerType::default()
                 }),
                 tys,
             );
@@ -597,7 +597,7 @@ fn tycheck_expr(
 
                     *ptr = PointerType {
                         inner: Box::new(ty),
-                        ..Default::default()
+                        ..PointerType::default()
                     };
                 }
                 ty => panic!("Cannot use member indirect {} on {:?}", name, ty),
@@ -639,7 +639,7 @@ fn tycheck_expr(
                             ty: Type::Scalar(ScalarType {
                                 header: ScalarTypeHeader {
                                     bitsize: 1,
-                                    ..Default::default()
+                                    ..ScalarTypeHeader::default()
                                 },
                                 kind: ScalarTypeKind::Integer {
                                     signed: false,
@@ -680,7 +680,7 @@ fn tycheck_expr(
                     ty: Type::Scalar(ScalarType {
                         header: ScalarTypeHeader {
                             bitsize: 1,
-                            ..Default::default()
+                            ..ScalarTypeHeader::default()
                         },
                         kind: ScalarTypeKind::Integer {
                             signed: false,
@@ -704,7 +704,7 @@ fn tycheck_expr(
                                 ty: Type::Scalar(ScalarType {
                                     header: ScalarTypeHeader {
                                         bitsize: 1,
-                                        ..Default::default()
+                                        ..ScalarTypeHeader::default()
                                     },
                                     kind: ScalarTypeKind::Integer {
                                         signed: false,
@@ -733,7 +733,7 @@ fn tycheck_expr(
                                 ty: Type::Scalar(ScalarType {
                                     header: ScalarTypeHeader {
                                         bitsize: 1,
-                                        ..Default::default()
+                                        ..ScalarTypeHeader::default()
                                     },
                                     kind: ScalarTypeKind::Integer {
                                         signed: false,
@@ -774,7 +774,7 @@ fn tycheck_expr(
 
             val.ty = Type::Pointer(PointerType {
                 inner: Box::new(val.ty),
-                ..Default::default()
+                ..PointerType::default()
             });
 
             vstack.push(val);
