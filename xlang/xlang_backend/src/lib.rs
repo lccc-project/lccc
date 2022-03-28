@@ -1668,6 +1668,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         .fallthrough_from = self.ctarg;
 
                     self.ctarg = *num;
+
                     let values = stack
                         .iter()
                         .map(|item| match item {
@@ -1738,11 +1739,12 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 },
             }
         }
-
+        self.ctarg = !0; // reset block position
         for item in &block.items {
             match item {
                 xlang::ir::BlockItem::Expr(expr) => self.write_expr(expr),
                 xlang::ir::BlockItem::Target { num, .. } => {
+                    self.ctarg = *num;
                     if !self.locals_opaque {
                         let mut locals = std::mem::take(&mut self.locals);
 

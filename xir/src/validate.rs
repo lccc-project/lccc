@@ -303,6 +303,7 @@ fn tycheck_expr(
                     check_unify_stack(&stack, items, tys);
                 }
             }
+            return true;
         }
         xlang_struct::Expr::BinaryOp(op, v) => {
             let val1 = vstack.pop().unwrap();
@@ -498,6 +499,11 @@ fn tycheck_expr(
 
             let tstack = &targets[target];
             check_unify_stack(vstack, tstack, tys);
+
+            if *cond == BranchCondition::Always {
+                vstack.clear();
+                return true;
+            }
         }
         xlang_struct::Expr::BranchIndirect => {
             let target = vstack.pop().unwrap();
@@ -859,7 +865,9 @@ fn tycheck_block(
     for item in &mut block.items {
         match item {
             BlockItem::Expr(expr) => {
-                diverged = tycheck_expr(expr, locals, exit, &mut vstack, &targets, tys);
+                if !diverged {
+                    diverged = tycheck_expr(expr, locals, exit, &mut vstack, &targets, tys);
+                }
             }
             BlockItem::Target { stack, .. } => {
                 if !diverged {

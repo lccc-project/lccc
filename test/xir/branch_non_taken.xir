@@ -1,7 +1,7 @@
-function main() -> int(32){
+function main()->int(32){
     const int(32) 0
     dup
-    branch equal @0
+    branch not_equal @0
     exit 1
     target @0 [int(32)]
     exit 1
