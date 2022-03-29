@@ -271,3 +271,12 @@ pub static I686: ArchProperties = ArchProperties {
     default_machine: &machines::MI686,
     arch_names: span![const_sv!("i686"), const_sv!("x86")],
 };
+
+pub static I86: ArchProperties = ArchProperties {
+    lock_free_atomic_masks: 0x3,
+    builtin_names: X86_BUILTINS,
+    target_features: X86_FEATURES,
+    machines: X86_MACHINES,
+    default_machine: &machines::MI86,
+    arch_names: span![const_sv!("i86"), const_sv!("i8086")],
+};

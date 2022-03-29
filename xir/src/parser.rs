@@ -12,7 +12,7 @@ use xlang_struct::{
     Abi, AccessClass, AnnotatedElement, BinaryOp, Block, BlockItem, BranchCondition, CharFlags,
     Expr, File, FnType, FunctionBody, FunctionDeclaration, HashSwitch, LinearSwitch,
     MemberDeclaration, OverflowBehaviour, Path, PathComponent, PointerAliasingRule,
-    PointerDeclarationType, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind,
+    PointerDeclarationType, PointerKind, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind,
     ScalarValidity, Scope, ScopeMember, StackItem, StringEncoding, Switch, Type, UnaryOp,
     ValidRangeType, Value, Visibility,
 };
@@ -250,6 +250,7 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreIterator<I>) -
             let mut alias = PointerAliasingRule::default();
             let valid_range = Pair::<ValidRangeType, u64>::default();
             let mut decl = PointerDeclarationType::default();
+            let mut kind = PointerKind::default();
             loop {
                 match stream.peek().unwrap() {
                     Token::Ident(id) if id == "const" => decl |= PointerDeclarationType::CONST,
@@ -269,6 +270,12 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreIterator<I>) -
                     Token::Ident(id) if id == "read_shallow" => {
                         alias |= PointerAliasingRule::READ_SHALLOW;
                     }
+                    Token::Ident(id) if id == "near" => {
+                        kind = PointerKind::Near;
+                    }
+                    Token::Ident(id) if id == "far" => {
+                        kind = PointerKind::Far;
+                    }
                     Token::Ident(id) if id == "dereferenceable" => todo!("*dereferenceable"),
                     Token::Ident(id) if id == "dereference_write" => todo!("*dereference_write"),
                     Token::Ident(id) if id == "write_only" => todo!("*write_only"),
@@ -284,6 +291,7 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreIterator<I>) -
                             alias,
                             valid_range,
                             decl,
+                            kind,
                             inner: xlang::abi::boxed::Box::new(parse_type(stream).unwrap()),
                         }))
                     }

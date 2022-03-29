@@ -1,6 +1,11 @@
 use xlang_abi::{const_sv, span};
 
-use super::{clever::CLEVER, w65::W65, x86::X86_64, OperatingSystemProperties, TargetProperties};
+use super::{
+    clever::CLEVER,
+    w65::W65,
+    x86::{I86, X86_64},
+    OperatingSystemProperties, TargetProperties,
+};
 
 pub static BARE_ELF: OperatingSystemProperties = OperatingSystemProperties {
     is_unix_like: false,
@@ -23,6 +28,9 @@ pub static X86_64_ELF: TargetProperties = TargetProperties {
     longbits: 64,
     llongbits: 64,
     ptrbits: 64,
+    fnptrbits: 64,
+    nearptrbits: 64,
+    farptrbits: 64,
     max_align: 16,
     ptralign: 8,
     intmaxbits: 8,
@@ -46,6 +54,9 @@ pub static CLEVER_ELF: TargetProperties = TargetProperties {
     longbits: 64,
     llongbits: 64,
     ptrbits: 64,
+    fnptrbits: 64,
+    nearptrbits: 64,
+    farptrbits: 64,
     max_align: 16,
     ptralign: 8,
     intmaxbits: 64,
@@ -70,6 +81,9 @@ pub static W65_ELF: TargetProperties = TargetProperties {
     llongbits: 64,
     ptrbits: 32,
     ptralign: 4,
+    fnptrbits: 32,
+    nearptrbits: 32,
+    farptrbits: 32,
     max_align: 2,
     intmaxbits: 128,
     sizebits: 16,
@@ -77,6 +91,32 @@ pub static W65_ELF: TargetProperties = TargetProperties {
     ldbl_align: 2,
     ldbl_format: super::LongDoubleFormat::IEEE64,
     arch: &W65,
+    os: &BARE_ELF,
+    libdirs: span![const_sv!("lib")],
+    default_libs: span![],
+    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
+    endfiles: span![const_sv!("crtn.o")],
+    enabled_features: span![],
+    available_formats: span![],
+    interp: const_sv!(""),
+};
+
+pub static I86_NEAR: TargetProperties = TargetProperties {
+    intbits: 16,
+    longbits: 32,
+    llongbits: 64,
+    ptrbits: 16,
+    ptralign: 2,
+    fnptrbits: 16,
+    nearptrbits: 16,
+    farptrbits: 32,
+    max_align: 2,
+    intmaxbits: 128,
+    sizebits: 16,
+    lock_free_atomic_mask: 0x3,
+    ldbl_align: 4,
+    ldbl_format: super::LongDoubleFormat::X87,
+    arch: &I86,
     os: &BARE_ELF,
     libdirs: span![const_sv!("lib")],
     default_libs: span![],

@@ -5,6 +5,9 @@ use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 use xlang_abi::prelude::v1::*;
 use xlang_targets::Target;
 
+#[doc(hidden)]
+pub mod macros;
+
 #[repr(u16)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum PathComponent {
@@ -352,12 +355,23 @@ bitflags::bitflags! {
     }
 }
 
+fake_enum::fake_enum! {
+    #[repr(u16)]
+    #[derive(Default, Hash)]
+    pub enum struct PointerKind{
+        Default = 0,
+        Near = 1,
+        Far = 2,
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
 pub struct PointerType {
     pub alias: PointerAliasingRule,
     pub valid_range: Pair<ValidRangeType, u64>,
     pub decl: PointerDeclarationType,
+    pub kind: PointerKind,
     pub inner: Box<Type>,
 }
 

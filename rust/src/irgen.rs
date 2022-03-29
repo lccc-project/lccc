@@ -88,6 +88,7 @@ fn irgen_type(ty: Type) -> ir::Type {
         } => ir::Type::Pointer(ir::PointerType {
             alias: ir::PointerAliasingRule::default(),
             valid_range: abi::pair::Pair::default(),
+            kind: ir::PointerKind::default(),
             decl: match mutability {
                 Mutability::Const => ir::PointerDeclarationType::CONST,
                 Mutability::Mut => ir::PointerDeclarationType::empty(),
@@ -100,6 +101,7 @@ fn irgen_type(ty: Type) -> ir::Type {
         } => ir::Type::Pointer(ir::PointerType {
             alias: ir::PointerAliasingRule::READ_ONLY,
             valid_range: abi::pair::Pair(ir::ValidRangeType::Dereference, 0),
+            kind: ir::PointerKind::default(),
             decl: match mutability {
                 Mutability::Const => {
                     ir::PointerDeclarationType::CONST | ir::PointerDeclarationType::REF

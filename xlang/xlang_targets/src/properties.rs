@@ -141,10 +141,18 @@ pub struct TargetProperties {
     pub llongbits: u16,
     /// The size (in bits) used by the C `void*` type. This is also the size (in bits) used by the `intptr_t` and `uintptr_t` typedefs
     pub ptrbits: u16,
-    /// The maximum fundamental alignment requirement (in bytes). All primitive types up to this size use their size as their aliandgnment (other than pointers)
+    /// The maximum fundamental alignment requirement (in bytes). All primitive types up to this size use their size as their alignment (other than pointers)
     pub max_align: u16,
-    /// The alignment requirement of pointer types
+    /// The maximum alignment requirement of pointer types
     pub ptralign: u16,
+
+    /// The size (in bits) used by the C `void(*)(void)` type
+    pub fnptrbits: u16,
+    /// The size (in bits) used by near pointers
+    pub nearptrbits: u16,
+    /// The size (in bits) used by near pointers
+    pub farptrbits: u16,
+
     /// The size (in bits) used by the `intmax_t` and `uintmax_t` typedefs
     pub intmaxbits: u16,
     /// The size (in bits) used by the `size_t` and `ptrdiff_t` typedefs
@@ -212,6 +220,7 @@ pub fn __get_properties(targ: Target) -> Option<&'static TargetProperties> {
             i586-*-linux-gnu => Some(&linux::I586_LINUX_GNU),
             i686-*-linux-gnu => Some(&linux::I686_LINUX_GNU),
             w65-*-elf => Some(&elf::W65_ELF),
+            i86-*-near => Some(&elf::I86_NEAR),
             * => None
         }
     }
