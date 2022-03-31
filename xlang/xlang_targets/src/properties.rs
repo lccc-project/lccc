@@ -206,6 +206,7 @@ pub fn __get_properties(targ: Target) -> Option<&'static TargetProperties> {
     target_tuples::match_targets! {
         match (targ.into()){
             x86_64-*-linux-gnu => Some(&linux::X86_64_LINUX_GNU),
+            x86_64-*-linux-musl => Some(&linux::X86_64_LINUX_MUSL),
             x86_64-*-elf => Some(&elf::X86_64_ELF),
             x86_64-*-linux-gnux32 => Some(&linux::X86_64_LINUX_GNUX32),
             x86_64v2-*-linux-gnu => Some(&linux::X86_64V2_LINUX_GNU),
