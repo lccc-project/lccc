@@ -448,7 +448,7 @@ impl core::fmt::Display for PointerType {
                 f.write_fmt(format_args!("dereference_write({}) ", n))?;
             }
             Pair(ValidRangeType::WriteOnly, n) => {
-                f.write_fmt(format_args!("write_only({}) ", n))?
+                f.write_fmt(format_args!("write_only({}) ", n))?;
             }
             Pair(ValidRangeType::NullOrDereference, n) => {
                 f.write_fmt(format_args!("null_or_dereferenceable({}) ", n))?;
