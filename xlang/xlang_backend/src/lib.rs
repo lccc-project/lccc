@@ -241,7 +241,8 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
 
     fn print_vstack(&self) {
         let mut iter = self.vstack.iter();
-        let mut stdout = std::io::stdout().lock();
+        let stdout = std::io::stdout();
+        let mut stdout = stdout.lock();
         core::write!(stdout, "[").unwrap();
         if let StdSome(val) = iter.next() {
             core::write!(stdout, "{}", val).unwrap();
