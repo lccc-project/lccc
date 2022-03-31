@@ -42,7 +42,6 @@ pub enum LValue<Loc: ValLocation> {
 }
 
 impl<Loc: ValLocation> core::fmt::Display for LValue<Loc> {
-    #[allow(clippy::len_zero)]
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             LValue::OpaquePointer(loc) => f.write_fmt(format_args!("opaque({:?})", loc)),
@@ -61,7 +60,7 @@ impl<Loc: ValLocation> core::fmt::Display for LValue<Loc> {
                     Err(mut e) => {
                         let mut bytes = &bytes[..];
                         f.write_str(" \"")?;
-                        while bytes.len() != 0 {
+                        while !bytes.is_empty() {
                             let (l, r) = bytes.split_at(e.valid_up_to());
                             core::fmt::Display::fmt(
                                 &core::str::from_utf8(l).unwrap().escape_default(),

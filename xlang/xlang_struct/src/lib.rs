@@ -558,7 +558,6 @@ pub enum Value {
 }
 
 impl core::fmt::Display for Value {
-    #[allow(clippy::len_zero)] // No `<[u8]>::empty()` clippy
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             Value::Invalid(ty) => f.write_fmt(format_args!("invalid {}", ty)),
@@ -573,7 +572,7 @@ impl core::fmt::Display for Value {
                 Err(mut err) => {
                     let mut bytes = &content[..];
                     f.write_str(" \"")?;
-                    while bytes.len() != 0 {
+                    while !bytes.is_empty() {
                         let (left, right) = bytes.split_at(err.valid_up_to());
                         core::str::from_utf8(left)
                             .unwrap()
