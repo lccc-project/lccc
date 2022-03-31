@@ -62,3 +62,7 @@ pub mod span;
 pub mod string;
 /// Implementation of `std::string::String` that uses [`alloc::Allocator`], and is ABI safe.
 pub mod vec;
+
+pub use xlang_host::primitives;
+
+pub use xlang_host::rustcall;

@@ -157,9 +157,9 @@ pub struct AbiSafeVTableHead {
     /// The alignment of the type
     pub align: usize,
     /// Either a pointer to a function that, when called, drops the value at the pointer in place, or None.
-    pub destructor: Option<unsafe extern "C" fn(*mut ())>,
+    pub destructor: Option<xlang_host::rustcall!(unsafe extern "rustcall" fn(*mut ()))>,
     /// A function pointer that should be set to None.
-    pub reserved_deallocate: Option<unsafe extern "C" fn(*mut ())>,
+    pub reserved_deallocate: Option<xlang_host::rustcall!(unsafe extern "rustcall" fn(*mut ()))>,
 }
 
 /// Types which are `VTables` for
