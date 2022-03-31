@@ -418,6 +418,12 @@ impl<T: Ord, A: Allocator> Ord for Box<T, A> {
     }
 }
 
+impl<T: core::fmt::Display, A: Allocator> core::fmt::Display for Box<T, A> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        <T as core::fmt::Display>::fmt(self, f)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::Box;

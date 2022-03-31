@@ -288,6 +288,38 @@ pub enum Type {
     Named(Path),
 }
 
+impl core::fmt::Display for Type {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Self::Null => Ok(()),
+            Self::Scalar(st) => st.fmt(f),
+            Self::Void => f.write_str("void()"),
+            Self::TaggedType(tag, ty) => {
+                f.write_str("tagged(")?;
+                tag.fmt(f)?;
+                f.write_str(") ")?;
+                ty.fmt(f)
+            }
+            Self::Product(tys) => {
+                f.write_str("product(")?;
+                let mut iter = tys.iter();
+                if let core::option::Option::Some(first) = iter.next() {
+                    first.fmt(f)?;
+                }
+                for ty in iter {
+                    f.write_str(", ")?;
+                    ty.fmt(f)?;
+                }
+
+                f.write_str(")")
+            }
+            Self::FnType(fnty) => fnty.fmt(f),
+            Self::Pointer(pty) => pty.fmt(f),
+            _ => todo!(),
+        }
+    }
+}
+
 #[repr(u16)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum AggregateKind {
@@ -325,8 +357,6 @@ bitflags::bitflags! {
         const READ_SHALLOW = 8;
         const INVALID = 16;
         const NONNULL = 32;
-        const VOLATILE = 64;
-        const VOLATILE_WRITE = 128;
         const NULL_OR_INVALID = 256;
     }
 }
@@ -375,6 +405,71 @@ pub struct PointerType {
     pub inner: Box<Type>,
 }
 
+impl core::fmt::Display for PointerType {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_str("*")?;
+
+        if self.decl.contains(PointerDeclarationType::REF) {
+            f.write_str("ref ")?;
+        }
+        if self.decl.contains(PointerDeclarationType::VOLATILE) {
+            f.write_str("volatile ")?;
+        }
+        if self.decl.contains(PointerDeclarationType::CONST) {
+            f.write_str("const ")?;
+        }
+
+        if self.alias.contains(PointerAliasingRule::UNIQUE) {
+            f.write_str("unique ")?;
+        }
+        if self.alias.contains(PointerAliasingRule::READ_ONLY) {
+            f.write_str("readonly ")?;
+        }
+        if self.alias.contains(PointerAliasingRule::READ_SHALLOW) {
+            f.write_str("read_shallow ")?;
+        }
+        if self.alias.contains(PointerAliasingRule::INVALID) {
+            f.write_str("invalid ")?;
+        }
+        if self.alias.contains(PointerAliasingRule::NONNULL) {
+            f.write_str("nonnull ")?;
+        }
+        if self.alias.contains(PointerAliasingRule::NULL_OR_INVALID) {
+            f.write_str("null_or_invalid ")?;
+        }
+
+        match self.valid_range {
+            Pair(ValidRangeType::None, _) => {}
+            Pair(ValidRangeType::Dereference, n) => {
+                f.write_fmt(format_args!("dereferenceable({})", n))?;
+            }
+            Pair(ValidRangeType::DereferenceWrite, n) => {
+                f.write_fmt(format_args!("dereference_write({})", n))?;
+            }
+            Pair(ValidRangeType::WriteOnly, n) => f.write_fmt(format_args!("write_only({})", n))?,
+            Pair(ValidRangeType::NullOrDereference, n) => {
+                f.write_fmt(format_args!("null_or_dereferenceable({})", n))?;
+            }
+            Pair(ValidRangeType::NullOrDereferenceWrite, n) => {
+                f.write_fmt(format_args!("null_or_dereference_write({})", n))?;
+            }
+            Pair(ValidRangeType::NullOrWriteOnly, n) => {
+                f.write_fmt(format_args!("null_or_write_only({})", n))?;
+            }
+            Pair(ty, n) => panic!("{:?}({}) is invalid", ty, n),
+        }
+
+        match self.kind {
+            PointerKind::Default => {}
+            PointerKind::Near => f.write_str("near ")?,
+            PointerKind::Far => f.write_str("far ")?,
+            kind => panic!("{:?} is invalid", kind),
+        }
+
+        self.inner.fmt(f)
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Default, Debug, Hash, PartialEq, Eq)]
 pub struct FnType {
@@ -382,6 +477,31 @@ pub struct FnType {
     pub params: Vec<Type>,
     pub variadic: bool,
     pub tag: Abi,
+}
+
+impl core::fmt::Display for FnType {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_str("function(")?;
+
+        let mut params = self.params.iter();
+
+        if let core::option::Option::Some(first) = params.next() {
+            first.fmt(f)?;
+            for param in params {
+                f.write_str(", ")?;
+                param.fmt(f)?;
+            }
+
+            if self.variadic {
+                f.write_str(",...")?;
+            }
+        } else if self.variadic {
+            f.write_str("...")?;
+        }
+        f.write_str(")")?;
+        f.write_str(" -> ")?;
+        self.ret.fmt(f)
+    }
 }
 
 #[repr(u32)]
@@ -395,6 +515,21 @@ pub enum StringEncoding {
     Wtf8,
     Wtf16BE,
     Wtf16LE,
+}
+
+impl core::fmt::Display for StringEncoding {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Self::Utf8 => f.write_str("utf8"),
+            Self::Utf16LE => f.write_str("utf16le"),
+            Self::Utf16BE => f.write_str("utf16be"),
+            Self::Wtf8 => f.write_str("wtf8"),
+            Self::Wtf16LE => f.write_str("wtf16le"),
+            Self::Wtf16BE => f.write_str("wtf16be"),
+            Self::Utf32LE => f.write_str("utf32le"),
+            Self::Utf32BE => f.write_str("utf32be"),
+        }
+    }
 }
 
 #[repr(u16)]
@@ -420,6 +555,62 @@ pub enum Value {
         ty: Type,
     },
     LabelAddress(u32),
+}
+
+impl core::fmt::Display for Value {
+    #[allow(clippy::len_zero)] // No `<[u8]>::empty()` clippy
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Value::Invalid(ty) => f.write_fmt(format_args!("invalid {}", ty)),
+            Value::Uninitialized(ty) => f.write_fmt(format_args!("uninit {}", ty)),
+            Value::GenericParameter(n) => f.write_fmt(format_args!("%{}", n)),
+            Value::Integer { ty, val } => f.write_fmt(format_args!("{} {}", ty, val)),
+            Value::GlobalAddress { ty, item } => {
+                f.write_fmt(format_args!("global_address {} ({})", item, ty))
+            }
+            Value::ByteString { content } => match core::str::from_utf8(content) {
+                Ok(s) => f.write_fmt(format_args!(" \"{}\"", s.escape_default())),
+                Err(mut err) => {
+                    let mut bytes = &content[..];
+                    f.write_str(" \"")?;
+                    while bytes.len() != 0 {
+                        let (left, right) = bytes.split_at(err.valid_up_to());
+                        core::str::from_utf8(left)
+                            .unwrap()
+                            .escape_default()
+                            .fmt(f)?;
+                        if let core::option::Option::Some(len) = err.error_len() {
+                            let (err_bytes, rest) = right.split_at(len);
+                            bytes = rest;
+                            for b in err_bytes {
+                                f.write_fmt(format_args!("\\x{:02x}", b))?;
+                            }
+                        } else {
+                            let err_bytes = core::mem::take(&mut bytes);
+                            for b in err_bytes {
+                                f.write_fmt(format_args!("\\x{:02x}", b))?;
+                            }
+                        }
+                        match core::str::from_utf8(bytes) {
+                            Ok(s) => {
+                                s.escape_default().fmt(f)?;
+                                break;
+                            }
+                            Err(next_err) => err = next_err,
+                        }
+                    }
+                    f.write_str("\"")
+                }
+            },
+            Value::String { encoding, utf8, ty } => f.write_fmt(format_args!(
+                "{} {} {}",
+                ty,
+                encoding,
+                utf8.escape_default()
+            )),
+            Value::LabelAddress(n) => f.write_fmt(format_args!("label_address @{}", n)),
+        }
+    }
 }
 
 fake_enum::fake_enum! {
@@ -724,6 +915,16 @@ pub enum StackValueKind {
 pub struct StackItem {
     pub ty: Type,
     pub kind: StackValueKind,
+}
+
+impl core::fmt::Display for StackItem {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        if StackValueKind::LValue == self.kind {
+            f.write_str("lvalue ")?;
+        }
+
+        self.ty.fmt(f)
+    }
 }
 
 #[repr(u8)]

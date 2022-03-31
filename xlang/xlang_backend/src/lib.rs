@@ -5,6 +5,7 @@ use std::{
     collections::{HashSet, VecDeque},
     convert::{TryFrom, TryInto},
     fmt::Debug,
+    io::Write,
     mem::MaybeUninit,
     option::Option::Some as StdSome,
     rc::Rc,
@@ -236,6 +237,21 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             ctarg: !0,
             cfg: HashMap::new(),
         }
+    }
+
+    fn print_vstack(&self) {
+        let mut iter = self.vstack.iter();
+        let mut stdout = std::io::stdout().lock();
+        core::write!(stdout, "[").unwrap();
+        if let StdSome(val) = iter.next() {
+            core::write!(stdout, "{}", val).unwrap();
+        }
+
+        for val in iter {
+            core::write!(stdout, ", {}", val).unwrap();
+        }
+
+        core::writeln!(stdout, "]").unwrap();
     }
 
     /// Obtains the target properties.
@@ -1348,6 +1364,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         if self.diverged {
             return;
         }
+        self.print_vstack();
         match expr {
             Expr::Null => {}
             Expr::Const(v) => self.push_value(VStackValue::Constant(v.clone())),

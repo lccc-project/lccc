@@ -102,11 +102,12 @@ impl TypeInformation {
             align = falign.max(align);
             let fsize = self.type_size(&ty).unwrap();
 
-            if (falign != 1 || fsize != 0) && is_transparent {
-                if core::mem::replace(&mut transparent_over, Some(ty.clone())).is_some() {
-                    panic!("Cannot be transparent over multiple non- 1-ZST fields")
-                }
-            }
+            assert!(
+                (falign != 1 || fsize != 0)
+                    && is_transparent
+                    && core::mem::replace(&mut transparent_over, Some(ty.clone())).is_some(),
+                "Cannot be transparent over multiple non- 1-ZST fields"
+            );
             match defn.kind {
                 AggregateKind::Struct => {
                     size = align_size(size, falign);

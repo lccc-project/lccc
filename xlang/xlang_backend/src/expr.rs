@@ -41,6 +41,62 @@ pub enum LValue<Loc: ValLocation> {
     Null,
 }
 
+impl<Loc: ValLocation> core::fmt::Display for LValue<Loc> {
+    #[allow(clippy::len_zero)]
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            LValue::OpaquePointer(loc) => f.write_fmt(format_args!("opaque({:?})", loc)),
+            LValue::Temporary(val) => f.write_fmt(format_args!("temporary({})", val)),
+            LValue::Local(n) => f.write_fmt(format_args!("_{}", n)),
+            LValue::GlobalAddress(path) => f.write_fmt(format_args!("global_addr({})", path)),
+            LValue::Label(n) => f.write_fmt(format_args!("&&@{}", n)),
+            LValue::Field(ty, lval, name) => {
+                f.write_fmt(format_args!("{}.({})::{}", lval, ty, name))
+            }
+            LValue::StringLiteral(enc, bytes) => {
+                core::fmt::Display::fmt(enc, f)?;
+                f.write_str(" ")?;
+                match core::str::from_utf8(bytes) {
+                    Ok(s) => f.write_fmt(format_args!(" \"{}\"", s.escape_default())),
+                    Err(mut e) => {
+                        let mut bytes = &bytes[..];
+                        f.write_str(" \"")?;
+                        while bytes.len() != 0 {
+                            let (l, r) = bytes.split_at(e.valid_up_to());
+                            core::fmt::Display::fmt(
+                                &core::str::from_utf8(l).unwrap().escape_default(),
+                                f,
+                            )?;
+                            if let core::option::Option::Some(len) = e.error_len() {
+                                let (ebytes, rest) = r.split_at(len);
+                                bytes = rest;
+                                for b in ebytes {
+                                    f.write_fmt(format_args!("\\x{:02x}", b))?;
+                                }
+                            } else {
+                                let ebytes = core::mem::take(&mut bytes);
+                                for b in ebytes {
+                                    f.write_fmt(format_args!("\\x{:02x}", b))?;
+                                }
+                            }
+                            match core::str::from_utf8(bytes) {
+                                Ok(s) => {
+                                    core::fmt::Display::fmt(&s.escape_default(), f)?;
+                                    break;
+                                }
+                                Err(next_err) => e = next_err,
+                            }
+                        }
+                        f.write_str("\"")
+                    }
+                }
+            }
+            LValue::Offset(loc, off) => f.write_fmt(format_args!("{}+{}", loc, off)),
+            LValue::Null => f.write_str("null"),
+        }
+    }
+}
+
 /// Represents a value on the stack for codegen
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum VStackValue<Loc: ValLocation> {
@@ -64,6 +120,41 @@ pub enum VStackValue<Loc: ValLocation> {
 
     /// Placeholder for a value that's already caused a [`Trap`]
     Trapped,
+}
+
+impl<Loc: ValLocation> core::fmt::Display for VStackValue<Loc> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            VStackValue::Constant(val) => f.write_fmt(format_args!("const {}", val)),
+            VStackValue::LValue(ty, lval) => f.write_fmt(format_args!("lvalue {} => {}", ty, lval)),
+            VStackValue::Pointer(pty, lval) => f.write_fmt(format_args!("{} => {}", pty, lval)),
+            VStackValue::OpaqueScalar(ty, loc) => {
+                f.write_fmt(format_args!("{} (opaque({:?})", ty, loc))
+            }
+            VStackValue::AggregatePieced(ty, fields) => {
+                core::fmt::Display::fmt(ty, f)?;
+                f.write_str(" {")?;
+
+                let mut fields = fields.iter();
+
+                if let core::option::Option::Some(first) = fields.next() {
+                    f.write_fmt(format_args!("{}: {}", first.0, first.1))?;
+                }
+
+                for Pair(name, val) in fields {
+                    f.write_fmt(format_args!(", {}: {}", name, val))?;
+                }
+                f.write_str("}")
+            }
+            VStackValue::OpaqueAggregate(ty, loc) => {
+                f.write_fmt(format_args!("{} (opaque({:?})", ty, loc))
+            }
+            VStackValue::CompareResult(l, r) => {
+                f.write_fmt(format_args!("cmp result ({},{})", l, r))
+            }
+            VStackValue::Trapped => f.write_str("trapped"),
+        }
+    }
 }
 
 impl<Loc: ValLocation> VStackValue<Loc> {

@@ -81,7 +81,7 @@ fn tycheck_function(x: &mut FunctionDeclaration, tys: &TypeState) {
 #[allow(clippy::too_many_lines, clippy::similar_names)]
 fn check_unify(ty1: &Type, ty2: &Type, type_state: &TypeState) {
     match (type_state.refiy_type(ty1), type_state.refiy_type(ty2)) {
-        (Type::Null, _) | (_, Type::Null) => {}
+        (Type::Null, _) | (_, Type::Null) | (Type::Void, Type::Void) => {}
         (Type::Scalar(sty1), Type::Scalar(sty2)) => {
             assert_eq!(
                 sty1.header.bitsize, sty2.header.bitsize,
