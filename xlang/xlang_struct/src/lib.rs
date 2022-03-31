@@ -402,6 +402,7 @@ pub struct PointerType {
     pub valid_range: Pair<ValidRangeType, u64>,
     pub decl: PointerDeclarationType,
     pub kind: PointerKind,
+    pub addr_space: u32,
     pub inner: Box<Type>,
 }
 
@@ -441,22 +442,28 @@ impl core::fmt::Display for PointerType {
         match self.valid_range {
             Pair(ValidRangeType::None, _) => {}
             Pair(ValidRangeType::Dereference, n) => {
-                f.write_fmt(format_args!("dereferenceable({})", n))?;
+                f.write_fmt(format_args!("dereferenceable({}) ", n))?;
             }
             Pair(ValidRangeType::DereferenceWrite, n) => {
-                f.write_fmt(format_args!("dereference_write({})", n))?;
+                f.write_fmt(format_args!("dereference_write({}) ", n))?;
             }
-            Pair(ValidRangeType::WriteOnly, n) => f.write_fmt(format_args!("write_only({})", n))?,
+            Pair(ValidRangeType::WriteOnly, n) => {
+                f.write_fmt(format_args!("write_only({}) ", n))?
+            }
             Pair(ValidRangeType::NullOrDereference, n) => {
-                f.write_fmt(format_args!("null_or_dereferenceable({})", n))?;
+                f.write_fmt(format_args!("null_or_dereferenceable({}) ", n))?;
             }
             Pair(ValidRangeType::NullOrDereferenceWrite, n) => {
-                f.write_fmt(format_args!("null_or_dereference_write({})", n))?;
+                f.write_fmt(format_args!("null_or_dereference_write({}) ", n))?;
             }
             Pair(ValidRangeType::NullOrWriteOnly, n) => {
-                f.write_fmt(format_args!("null_or_write_only({})", n))?;
+                f.write_fmt(format_args!("null_or_write_only({}) ", n))?;
             }
             Pair(ty, n) => panic!("{:?}({}) is invalid", ty, n),
+        }
+
+        if self.addr_space != 0 {
+            f.write_fmt(format_args!("addr_space({}) ", self.addr_space))?;
         }
 
         match self.kind {

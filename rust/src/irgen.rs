@@ -89,6 +89,7 @@ fn irgen_type(ty: Type) -> ir::Type {
             alias: ir::PointerAliasingRule::default(),
             valid_range: abi::pair::Pair::default(),
             kind: ir::PointerKind::default(),
+            addr_space: 0,
             decl: match mutability {
                 Mutability::Const => ir::PointerDeclarationType::CONST,
                 Mutability::Mut => ir::PointerDeclarationType::empty(),
@@ -108,6 +109,7 @@ fn irgen_type(ty: Type) -> ir::Type {
                 }
                 Mutability::Mut => ir::PointerDeclarationType::REF,
             },
+            addr_space: 0,
             inner: abi::boxed::Box::new(irgen_type((*underlying).clone())),
         }),
         Type::Struct { fields, .. } => ir::Type::Aggregate(ir::AggregateDefinition {

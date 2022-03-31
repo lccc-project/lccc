@@ -251,6 +251,7 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreIterator<I>) -
             let valid_range = Pair::<ValidRangeType, u64>::default();
             let mut decl = PointerDeclarationType::default();
             let mut kind = PointerKind::default();
+            let addr_space = 0;
             loop {
                 match stream.peek().unwrap() {
                     Token::Ident(id) if id == "const" => decl |= PointerDeclarationType::CONST,
@@ -292,6 +293,7 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreIterator<I>) -
                             valid_range,
                             decl,
                             kind,
+                            addr_space,
                             inner: xlang::abi::boxed::Box::new(parse_type(stream).unwrap()),
                         }))
                     }
