@@ -622,6 +622,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
 
     /// Writes the exit point of the given block with the given number of values
     pub fn write_exit(&mut self, values: u16) {
+        self.diverged = true;
         if values == 1 {
             let val = self.pop_value().unwrap();
             match val {
@@ -641,8 +642,6 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         } else {
             panic!("Attempt to exit function with more than one value");
         }
-
-        self.diverged = true;
     }
 
     /// Writes the given binary operator to the stream
