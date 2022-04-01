@@ -275,7 +275,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     },
                 });
             }
-            ';' | '#' | ',' => {
+            '@' | ',' | ';' | '#' | '$' | '?' => {
                 file.next();
                 result.push(Lexeme::Token {
                     ty: TokenType::Symbol,
@@ -306,7 +306,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     },
                 });
             }
-            '*' | '!' => {
+            '+' | '*' | '%' | '^' | '!' => {
                 let mut tok = String::from(x);
                 file.next();
                 if file.peek() == Some('=') {
@@ -330,6 +330,68 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     file.next();
                     tok.push('&');
                 } else if file.peek() == Some('=') {
+                    file.next();
+                    tok.push('=');
+                }
+                result.push(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    span: Span {
+                        begin,
+                        end: file.pos,
+                        path: String::from("<todo>"),
+                    },
+                });
+            }
+            '|' => {
+                let mut tok = String::from(x);
+                file.next();
+                if file.peek() == Some('|') {
+                    file.next();
+                    tok.push('|');
+                } else if file.peek() == Some('=') {
+                    file.next();
+                    tok.push('=');
+                }
+                result.push(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    span: Span {
+                        begin,
+                        end: file.pos,
+                        path: String::from("<todo>"),
+                    },
+                });
+            }
+            '<' => {
+                let mut tok = String::from(x);
+                file.next();
+                if file.peek() == Some('<') {
+                    file.next();
+                    tok.push('<');
+                }
+                if file.peek() == Some('=') {
+                    file.next();
+                    tok.push('=');
+                }
+                result.push(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    span: Span {
+                        begin,
+                        end: file.pos,
+                        path: String::from("<todo>"),
+                    },
+                });
+            }
+            '>' => {
+                let mut tok = String::from(x);
+                file.next();
+                if file.peek() == Some('>') {
+                    file.next();
+                    tok.push('>');
+                }
+                if file.peek() == Some('=') {
                     file.next();
                     tok.push('=');
                 }
