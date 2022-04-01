@@ -1566,4 +1566,39 @@ mod test {
             Target::parse("x86_64-pc-linux-gnu"),
         )
     }
+
+    #[test]
+    pub fn return_invalid() {
+        let sty = ScalarType {
+            header: ScalarTypeHeader {
+                bitsize: 32,
+                ..Default::default()
+            },
+            kind: ScalarTypeKind::Integer {
+                signed: true,
+                min: XLangNone,
+                max: XLangNone,
+            },
+        };
+
+        run_codegen_test(
+            FnType {
+                ret: Type::Scalar(sty),
+                params: xlang::abi::vec![],
+                variadic: false,
+                tag: Abi::C,
+            },
+            &FunctionBody {
+                locals: xlang::abi::vec![],
+                block: xlang_struct::Block {
+                    items: xlang::abi::vec![
+                        BlockItem::Expr(Expr::Const(Value::Invalid(Type::Scalar(sty)))),
+                        BlockItem::Expr(Expr::Exit { values: 1 })
+                    ],
+                },
+            },
+            &[0x0F, 0x0B],
+            Target::parse("x86_64-pc-linux-gnu"),
+        )
+    }
 }
