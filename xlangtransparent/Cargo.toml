@@ -11,3 +11,7 @@ xlang = {path="../xlang"}
 
 [lib]
 crate-type = ["cdylib"]
+
+[package.metadata.'install-targets'.transparent]
+type = "shared"
+install-dir = "<libdir>/lccc/xlang/plugins"

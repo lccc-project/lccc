@@ -89,7 +89,7 @@ fn main() -> std::io::Result<()> {
     println!("cargo:rustc-env=lccc_dir={}", cfg.paths.lccc_dir.display());
     println!(
         "cargo:rustc-env=xlang_plugin_dir={}",
-        cfg.paths.lccc_dir.display()
+        cfg.paths.xlang_plugin_dir.display()
     );
     println!(
         "cargo:rustc-env=default_target={}",

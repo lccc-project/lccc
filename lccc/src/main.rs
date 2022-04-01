@@ -24,6 +24,7 @@ pub enum DumpMode {
     TargetProperties,
     OsProperties,
     ArchProperties,
+    PluginDirs,
 }
 
 #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -233,6 +234,7 @@ fn main() {
                         "machine-properties" => dump_modes.push(DumpMode::MachineProperties),
                         "arch-properties" => dump_modes.push(DumpMode::ArchProperties),
                         "os-properties" => dump_modes.push(DumpMode::OsProperties),
+                        "plugin-dirs" => dump_modes.push(DumpMode::PluginDirs),
                         m => {
                             eprintln!("Unrecognized dump mode {}", m);
                             std::process::exit(1)
@@ -345,6 +347,7 @@ fn main() {
                 DumpMode::TargetProperties => println!("Target Properties:\n{:#?}", properties),
                 DumpMode::OsProperties => println!("OS Properties:\n{:#?}", properties.os),
                 DumpMode::ArchProperties => println!("Arch Properties:\n{:#?}", properties.arch),
+                DumpMode::PluginDirs => println!("XLang Plugin Dirs:\n{:?}", search_paths),
             }
         }
         std::process::exit(1);

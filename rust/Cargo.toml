@@ -15,3 +15,7 @@ lazy_static = "1"
 
 [lib]
 crate-type = ["cdylib"]
+
+[package.metadata.'install-targets'.frontend_rust]
+type = "shared"
+install-dir = "<libdir>/lccc/xlang/plugins"

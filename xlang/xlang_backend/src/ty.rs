@@ -179,7 +179,7 @@ impl TypeInformation {
                 Some(scalar_align(raw_size, self.properties.max_align))
             }
             Type::Pointer(pty) => {
-                let raw_size = match pty.kind {
+                let raw_size = u64::from(match pty.kind {
                     PointerKind::Default => {
                         if let Type::FnType(_) = &*pty.inner {
                             self.properties.fnptrbits
@@ -190,8 +190,7 @@ impl TypeInformation {
                     PointerKind::Near => self.properties.nearptrbits,
                     PointerKind::Far => self.properties.farptrbits,
                     kind => panic!("Invalid pointer kind {:?}", kind),
-                }
-                .into();
+                }) / 8;
 
                 Some(scalar_align(raw_size, self.properties.ptralign))
             }
@@ -225,7 +224,7 @@ impl TypeInformation {
                 }
             }
             Type::Pointer(ty) => {
-                let raw_size = match ty.kind {
+                let raw_size = u64::from(match ty.kind {
                     PointerKind::Default => {
                         if let Type::FnType(_) = &*ty.inner {
                             self.properties.fnptrbits
@@ -236,8 +235,7 @@ impl TypeInformation {
                     PointerKind::Near => self.properties.nearptrbits,
                     PointerKind::Far => self.properties.farptrbits,
                     kind => panic!("Invalid pointer kind {:?}", kind),
-                }
-                .into();
+                }) / 8;
 
                 Some(align_size(
                     raw_size,

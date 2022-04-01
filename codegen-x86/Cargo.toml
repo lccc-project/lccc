@@ -16,3 +16,7 @@ target-tuples = "0.5.5"
 
 [lib]
 crate-type = ["cdylib"]
+
+[package.metadata.'install-targets'.codegen_x86]
+type = "shared"
+install-dir = "<libdir>/lccc/xlang/plugins"
