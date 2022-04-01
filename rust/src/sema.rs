@@ -703,6 +703,9 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
         crate::parse::Expr::TypeAscription(_, _) => todo!("type ascription"),
         crate::parse::Expr::Try(_) => todo!("try"),
         crate::parse::Expr::CharLiteral(_, _) => todo!("char literal"),
+        crate::parse::Expr::RangeFull => todo!("range full"),
+        crate::parse::Expr::ArrayCtor(_) => todo!("array ctor"),
+        crate::parse::Expr::TupleCtor(_) => todo!("tuple ctor"),
     }
 }
 

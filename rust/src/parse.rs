@@ -339,12 +339,15 @@ pub enum UnaryOp {
     Not,
     Ref(Mutability),
     RawRef(Mutability),
+    RangeTo,
+    RangeFrom,
+    RangeToInclusive,
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BinaryOp {
     Range,
-    RangeTo,
+    RangeInclusive,
     BooleanOr,
     BooleanAnd,
     CompareEq,
@@ -418,8 +421,17 @@ pub enum Expr {
         base: Box<Expr>,
         index: Box<Expr>,
     },
+    ArrayCtor(Box<ArrayCtor>),
     TypeAscription(Box<Expr>, Type),
     Try(Box<Expr>),
+    RangeFull,
+    TupleCtor(Vec<Expr>),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum ArrayCtor {
+    Repeat { expr: Expr, quantity: Expr },
+    List(Vec<Expr>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -3111,6 +3123,14 @@ pub fn parse_block<I: Iterator<Item = Lexeme>>(it: I) -> Vec<BlockItem> {
     ret
 }
 
+pub fn parse_opt_expr<I: Iterator<Item = Lexeme>>(
+    it: &mut PeekMoreIterator<I>,
+    allows_block: bool,
+) -> Option<Expr> {
+    it.peek()?;
+    Some(parse_expr(it, allows_block))
+}
+
 pub fn parse_expr<I: Iterator<Item = Lexeme>>(
     it: &mut PeekMoreIterator<I>,
     allows_block: bool,
@@ -3134,6 +3154,8 @@ lazy_static::lazy_static! {
         map.insert("^=",(1,2,BinaryOp::XorAssign));
         map.insert("<<=",(1,2,BinaryOp::LshAssign));
         map.insert(">>=",(1,2,BinaryOp::RshAssign));
+        map.insert("..",(4,3,BinaryOp::Range));
+        map.insert("..=",(4,3,BinaryOp::RangeInclusive));
         map.insert("||",(5,6,BinaryOp::BooleanOr));
         map.insert("&&",(7,8,BinaryOp::BooleanAnd));
         map.insert("==",(10,9,BinaryOp::CompareEq));
@@ -3197,6 +3219,12 @@ pub fn parse_binary_expr<I: Iterator<Item = Lexeme>>(
                                 _,
                                 _,
                             ),
+                        ) => {
+                            panic!("Cannot chain comparison operators")
+                        }
+                        (
+                            BinaryOp::Range | BinaryOp::RangeInclusive,
+                            Expr::BinaryOp(BinaryOp::Range | BinaryOp::RangeInclusive, _, _),
                         ) => {
                             panic!("Cannot chain comparison operators")
                         }
@@ -3303,6 +3331,28 @@ pub fn parse_unary_expr<I: Iterator<Item = Lexeme>>(
                     Box::new(parse_unary_expr(it, allows_block)),
                 ),
             }
+        }
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        } if tok == ".." => {
+            it.next();
+            Expr::UnaryOp(
+                UnaryOp::RangeTo,
+                Box::new(parse_unary_expr(it, allows_block)),
+            )
+        }
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
+            ..
+        } if tok == "..=" => {
+            it.next();
+            Expr::UnaryOp(
+                UnaryOp::RangeToInclusive,
+                Box::new(parse_unary_expr(it, allows_block)),
+            )
         }
         _ => parse_field_expr(it, allows_block),
     };
@@ -3437,18 +3487,13 @@ pub fn parse_simple_expr<I: Iterator<Item = Lexeme>>(
                 _ => panic!("Invalid token"),
             }
         }
-        Lexeme::Group {
-            ty: GroupType::Braces,
+        Lexeme::Token {
+            ty: TokenType::Symbol,
+            tok,
             ..
-        } => todo!("Block exprs"),
-        Lexeme::Group {
-            ty: GroupType::Parentheses,
-            inner,
-            ..
-        } => {
-            let mut iter = inner.clone().into_iter().peekmore();
+        } if tok == ".." => {
             it.next();
-            Expr::Parentheses(Box::new(parse_expr(&mut iter, true)))
+            Expr::RangeFull
         }
         Lexeme::Token {
             ty: TokenType::String(ty),
@@ -3494,7 +3539,323 @@ pub fn parse_simple_expr<I: Iterator<Item = Lexeme>>(
                 tok => panic!("Unexpected token {:?}", tok),
             }
         }
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "if" => {
+            it.next();
+            let ctrl = parse_expr(it, false);
+            let block = match it.next().unwrap() {
+                Lexeme::Group {
+                    ty: GroupType::Braces,
+                    inner,
+                    ..
+                } => {
+                    let mut iter = inner.into_iter().peekmore();
+                    parse_block(&mut iter)
+                }
+                tok => panic!("Unexpected token {:?}", tok),
+            };
 
+            let mut elses = Vec::new();
+
+            loop {
+                match it.peek() {
+                    Some(Lexeme::Token {
+                        ty: TokenType::Keyword,
+                        tok,
+                        ..
+                    }) if tok == "else" => {
+                        it.next();
+                        match it.next().unwrap() {
+                            Lexeme::Group {
+                                ty: GroupType::Braces,
+                                inner,
+                                ..
+                            } => {
+                                let mut iter = inner.into_iter().peekmore();
+                                let block = parse_block(&mut iter);
+                                elses.push(ElseBlock::Else(block));
+                                break;
+                            }
+                            Lexeme::Token {
+                                ty: TokenType::Keyword,
+                                tok,
+                                ..
+                            } if tok == "if" => {
+                                it.next();
+                                let ctrl = parse_expr(it, false);
+                                match it.next().unwrap() {
+                                    Lexeme::Group {
+                                        ty: GroupType::Braces,
+                                        inner,
+                                        ..
+                                    } => {
+                                        let mut iter = inner.into_iter().peekmore();
+                                        let block = parse_block(&mut iter);
+                                        elses.push(ElseBlock::ElseIf {
+                                            control: Box::new(ctrl),
+                                            block,
+                                        });
+                                        continue;
+                                    }
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                }
+                            }
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+                    }
+                    _ => break,
+                }
+            }
+            Expr::If {
+                control: Box::new(ctrl),
+                block,
+                elses,
+            }
+        }
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "while" => {
+            it.next();
+            let ctrl = parse_expr(it, false);
+            match it.next().unwrap() {
+                Lexeme::Group {
+                    ty: GroupType::Braces,
+                    inner,
+                    ..
+                } => {
+                    let mut iter = inner.into_iter().peekmore();
+                    let block = parse_block(&mut iter);
+                    Expr::While {
+                        control: Box::new(ctrl),
+                        block,
+                    }
+                }
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+        }
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "loop" => {
+            it.next();
+            match it.next().unwrap() {
+                Lexeme::Group {
+                    ty: GroupType::Braces,
+                    inner,
+                    ..
+                } => {
+                    let mut iter = inner.into_iter().peekmore();
+                    let block = parse_block(&mut iter);
+                    Expr::Loop(block)
+                }
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+        }
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "yield" => {
+            it.next();
+            match it.peek() {
+                Some(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                }) if tok == ";" => Expr::Yield(None),
+                Some(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                }) if tok == "," => Expr::Yield(None),
+                None => Expr::Yield(None),
+                Some(_) => Expr::Yield(Some(Box::new(parse_expr(it, allows_block)))),
+            }
+        }
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "return" => {
+            it.next();
+            match it.peek() {
+                Some(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                }) if tok == ";" => Expr::Yield(None),
+                Some(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                }) if tok == "," => Expr::Yield(None),
+                None => Expr::Yield(None),
+                Some(_) => Expr::Return(Some(Box::new(parse_expr(it, allows_block)))),
+            }
+        }
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "continue" => {
+            it.next();
+            let life = parse_lifetime(it);
+
+            match &life {
+                Some(Lifetime::Static) => panic!("Cannot use 'static in a label"),
+                Some(Lifetime::Inferred) => panic!("Cannot use '_ in a label"),
+                _ => {}
+            }
+
+            Expr::Continue(life)
+        }
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "break" => {
+            it.next();
+            let life = parse_lifetime(it);
+
+            match &life {
+                Some(Lifetime::Static) => panic!("Cannot use 'static in a label"),
+                Some(Lifetime::Inferred) => panic!("Cannot use '_ in a label"),
+                _ => {}
+            }
+
+            let expr = match it.peek() {
+                Some(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                }) if tok == ";" => None,
+                Some(Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                }) if tok == "," => None,
+                None => None,
+                Some(_) => Some(Box::new(parse_expr(it, allows_block))),
+            };
+
+            Expr::Break(life, expr)
+        }
+        Lexeme::Group { .. } => match it.next().unwrap() {
+            Lexeme::Group {
+                ty: GroupType::Parentheses,
+                inner,
+                ..
+            } => {
+                let mut it = inner.into_iter().peekmore();
+                let expr = parse_opt_expr(&mut it, true);
+
+                if let Some(expr) = expr {
+                    match it.next() {
+                        Some(Lexeme::Token {
+                            ty: TokenType::Symbol,
+                            tok,
+                            ..
+                        }) if tok == "," => {
+                            let mut exprs = vec![expr];
+                            loop {
+                                if let Some(expr) = parse_opt_expr(&mut it, true) {
+                                    exprs.push(expr);
+                                } else {
+                                    break;
+                                }
+
+                                match it.next() {
+                                    Some(Lexeme::Token {
+                                        ty: TokenType::Symbol,
+                                        tok,
+                                        ..
+                                    }) if tok == "," => continue,
+                                    Some(tok) => panic!("Unexpected token {:?}", tok),
+                                    None => break,
+                                }
+                            }
+
+                            Expr::TupleCtor(exprs)
+                        }
+                        Some(tok) => panic!("Unexpected token {:?}", tok),
+                        None => Expr::Parentheses(Box::new(expr)),
+                    }
+                } else {
+                    Expr::TupleCtor(Vec::new())
+                }
+            }
+            Lexeme::Group {
+                ty: GroupType::Brackets,
+                inner,
+                ..
+            } => {
+                let mut it = inner.into_iter().peekmore();
+                let expr = parse_opt_expr(&mut it, true);
+
+                let ctor = if let Some(expr) = expr {
+                    match it.next() {
+                        Some(Lexeme::Token {
+                            ty: TokenType::Symbol,
+                            tok,
+                            ..
+                        }) if tok == ";" => {
+                            let repeat = parse_expr(&mut it, true);
+
+                            ArrayCtor::Repeat {
+                                expr,
+                                quantity: repeat,
+                            }
+                        }
+                        Some(Lexeme::Token {
+                            ty: TokenType::Symbol,
+                            tok,
+                            ..
+                        }) if tok == "," => {
+                            let mut exprs = vec![expr];
+                            loop {
+                                if let Some(expr) = parse_opt_expr(&mut it, true) {
+                                    exprs.push(expr);
+                                } else {
+                                    break;
+                                }
+
+                                match it.next() {
+                                    Some(Lexeme::Token {
+                                        ty: TokenType::Symbol,
+                                        tok,
+                                        ..
+                                    }) if tok == "," => continue,
+                                    Some(tok) => panic!("Unexpected token {:?}", tok),
+                                    None => break,
+                                }
+                            }
+                            ArrayCtor::List(exprs)
+                        }
+                        Some(tok) => panic!("Unexpected token {:?}", tok),
+                        None => ArrayCtor::List(vec![expr]),
+                    }
+                } else {
+                    ArrayCtor::List(Vec::new())
+                };
+                Expr::ArrayCtor(Box::new(ctor))
+            }
+            Lexeme::Group {
+                ty: GroupType::Braces,
+                inner,
+                ..
+            } => {
+                let mut iter = inner.into_iter().peekmore();
+                let block = parse_block(&mut iter);
+                Expr::Block(block)
+            }
+            _ => unreachable!(),
+        },
         _ => {
             let path = parse_path(it);
             match it.peek() {
