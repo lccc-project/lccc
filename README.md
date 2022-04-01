@@ -19,6 +19,7 @@ Frontends in Tree:
 
 Backends in Tree:
 - x86
+- Clever-ISA
 
 ## License
 
