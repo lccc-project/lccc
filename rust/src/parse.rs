@@ -3195,10 +3195,11 @@ pub fn parse_binary_expr<I: Iterator<Item = Lexeme>>(
                 ..
             }) => {
                 if let Some((lbp, rbp, op)) = OPERATOR_MAP.get(&**tok).copied() {
+                    it.next();
                     if lbp < precedence {
                         continue;
                     }
-                    it.next();
+
                     let rhs = parse_binary_expr(it, allows_block, Some(rbp));
 
                     match (op, &rhs) {
