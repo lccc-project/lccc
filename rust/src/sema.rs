@@ -1137,7 +1137,10 @@ fn typeck_expr(
                 } else if let Type::Integer(ty) = ty {
                     *int_ty = Some(*ty);
                 } else {
-                    panic!("attempt to infer integer ({}) as non-integer type ({})", val, ty);
+                    panic!(
+                        "attempt to infer integer ({}) as non-integer type ({})",
+                        val, ty
+                    );
                 }
             } else if *val <= 0xFF {
                 *int_ty = Some(IntType::U8);
