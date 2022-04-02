@@ -9,6 +9,8 @@ use crate::{
 
 pub use crate::lex::{CharType, StrType};
 
+use std::fmt::{self, Display, Formatter};
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Visibility {
     None,
@@ -377,6 +379,44 @@ pub enum BinaryOp {
     MulAssign,
     DivAssign,
     ModAssign,
+}
+
+impl Display for BinaryOp {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Self::Range => write!(f, ".."),
+            Self::RangeInclusive => write!(f, "..="),
+            Self::BooleanOr => write!(f, "||"),
+            Self::BooleanAnd => write!(f, "&&"),
+            Self::CompareEq => write!(f, "=="),
+            Self::CompareNe => write!(f, "!="),
+            Self::CompareLt => write!(f, "<"),
+            Self::CompareGt => write!(f, ">"),
+            Self::CompareLe => write!(f, "<="),
+            Self::CompareGe => write!(f, ">="),
+            Self::And => write!(f, "&"),
+            Self::Or => write!(f, "|"),
+            Self::Xor => write!(f, "^"),
+            Self::Lsh => write!(f, "<<"),
+            Self::Rsh => write!(f, ">>"),
+            Self::Add => write!(f, "+"),
+            Self::Subtract => write!(f, "-"),
+            Self::Multiply => write!(f, "*"),
+            Self::Divide => write!(f, "/"),
+            Self::Modulus => write!(f, "%"),
+            Self::Assign => write!(f, "="),
+            Self::AndAssign => write!(f, "&="),
+            Self::OrAssign => write!(f, "|="),
+            Self::XorAssign => write!(f, "^="),
+            Self::LshAssign => write!(f, "<<="),
+            Self::RshAssign => write!(f, ">>="),
+            Self::AddAssign => write!(f, "+="),
+            Self::SubAssign => write!(f, "-="),
+            Self::MulAssign => write!(f, "*="),
+            Self::DivAssign => write!(f, "/="),
+            Self::ModAssign => write!(f, "%="),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

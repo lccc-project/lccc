@@ -2,7 +2,7 @@
 
 pub use crate::lex::StrType; // TODO: `pub use` this in `crate::parse`
 use crate::parse::{
-    FieldName, FnParam, Item, Mod, Path, PathComponent, Pattern, StructBody, TypeTag,
+    BinaryOp, FieldName, FnParam, Item, Mod, Path, PathComponent, Pattern, StructBody, TypeTag,
 };
 pub use crate::parse::{Meta, Mutability, Safety, SimplePath, Visibility};
 use std::collections::hash_map::{Entry, HashMap};
@@ -337,6 +337,12 @@ impl Display for Declaration {
 #[allow(dead_code)]
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub enum Expression {
+    BinaryExpression {
+        lhs: Box<Expression>,
+        op: BinaryOp,
+        rhs: Box<Expression>,
+        ty: Option<Type>,
+    },
     Cast {
         expr: Box<Expression>,
         target: Type,
@@ -377,6 +383,13 @@ impl Expression {
     #[allow(dead_code)]
     pub fn ty(&self) -> Type {
         match self {
+            Expression::BinaryExpression { ty, .. }
+            | Expression::FieldAccess { ty, .. }
+            | Expression::Identifier { ty, .. }
+            | Expression::UnsafeBlock { ty, .. } => ty
+                .as_ref()
+                .expect("typeck forgot to resolve type of expression; this is an ICE")
+                .clone(),
             Expression::Cast { target: ty, .. } | Expression::StructInitializer { ty, .. } => {
                 ty.clone()
             }
@@ -390,12 +403,6 @@ impl Expression {
                     panic!("attempted to call a value that isn't a function, uncaught by typeck; this is an ICE");
                 }
             }
-            Expression::FieldAccess { ty, .. }
-            | Expression::Identifier { ty, .. }
-            | Expression::UnsafeBlock { ty, .. } => ty
-                .as_ref()
-                .expect("typeck forgot to resolve type of expression; this is an ICE")
-                .clone(),
             Expression::IntegerLiteral { ty, .. } => Type::Integer(
                 *ty.as_ref()
                     .expect("typeck forgot to resolve type of expression; this is an ICE"),
@@ -415,6 +422,9 @@ impl Display for Expression {
     #[allow(clippy::cast_possible_wrap)] // u128 as i128, deliberate wrapping cast
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Expression::BinaryExpression { lhs, op, rhs, .. } => {
+                write!(f, "({} {} {})", lhs, op, rhs)
+            }
             Expression::Cast { expr, target } => {
                 write!(f, "{} as {}", expr, target)
             }
@@ -697,7 +707,12 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
         crate::parse::Expr::Break(_, _) => todo!("break"),
         crate::parse::Expr::Continue(_) => todo!("continue"),
         crate::parse::Expr::Yield(_) => todo!("yield"),
-        crate::parse::Expr::BinaryOp(_, _, _) => todo!("binary op"),
+        crate::parse::Expr::BinaryOp(op, lhs, rhs) => Expression::BinaryExpression {
+            lhs: Box::new(convert_expr(named_types, lhs)),
+            op: *op,
+            rhs: Box::new(convert_expr(named_types, rhs)),
+            ty: None,
+        },
         crate::parse::Expr::UnaryOp(_, _) => todo!("unary op"),
         crate::parse::Expr::ArrayIndex { .. } => todo!("array"),
         crate::parse::Expr::TypeAscription(_, _) => todo!("type ascription"),
@@ -1011,6 +1026,21 @@ fn typeck_expr(
     return_ty: Option<&Type>,
 ) -> Type {
     match expr {
+        Expression::BinaryExpression {
+            lhs,
+            op,
+            rhs,
+            ty: expr_ty,
+        } => match op {
+            BinaryOp::Add | BinaryOp::Divide | BinaryOp::Multiply | BinaryOp::Subtract => {
+                let lhs_ty = typeck_expr(declarations, lhs, safety, ty, return_ty);
+                let rhs_ty = typeck_expr(declarations, rhs, safety, Some(&lhs_ty), return_ty);
+                assert!(lhs_ty == rhs_ty);
+                *expr_ty = Some(rhs_ty.clone());
+                rhs_ty.clone()
+            }
+            _ => todo!("{}", op),
+        },
         Expression::Cast { expr, target } => {
             let expr_ty = typeck_expr(declarations, expr, safety, None, return_ty);
             match (expr_ty.clone(), &target) {
@@ -1107,7 +1137,7 @@ fn typeck_expr(
                 } else if let Type::Integer(ty) = ty {
                     *int_ty = Some(*ty);
                 } else {
-                    panic!("attempt to infer integer as non-integer type");
+                    panic!("attempt to infer integer ({}) as non-integer type ({})", val, ty);
                 }
             } else if *val <= 0xFF {
                 *int_ty = Some(IntType::U8);
