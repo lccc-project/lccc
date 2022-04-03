@@ -1,8 +1,8 @@
 #![allow(clippy::module_name_repetitions)]
 
 use crate::sema::{
-    Abi, Declaration, Definition, Expression, FunctionSignature, Identifier, IntType, LangItem,
-    Mangling, Mutability, Program, Safety, Statement, Type, Visibility,
+    Abi, BinaryOp, Declaration, Definition, Expression, FunctionSignature, Identifier, IntType,
+    LangItem, Mangling, Mutability, Program, Safety, Statement, Type, Visibility,
 };
 
 use std::convert::TryInto; // TODO: Remove when we move to edition 2021
@@ -169,6 +169,21 @@ fn irgen_expr(
     locals: &mut Vec<(Identifier, ir::Type)>,
 ) -> Vec<ir::BlockItem> {
     match expr {
+        Expression::BinaryExpression { lhs, op, rhs, .. } => {
+            let mut result = irgen_expr(*lhs, n, locals);
+            result.append(&mut irgen_expr(*rhs, n, locals));
+            result.push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
+                match op {
+                    BinaryOp::Add => ir::BinaryOp::Add,
+                    BinaryOp::Divide => ir::BinaryOp::Div,
+                    BinaryOp::Multiply => ir::BinaryOp::Mul,
+                    BinaryOp::Subtract => ir::BinaryOp::Sub,
+                    x => todo!("{}", x),
+                },
+                ir::OverflowBehaviour::Wrap,
+            )));
+            result
+        }
         Expression::Cast { expr, target } => {
             let mut result = irgen_expr(*expr, n, locals);
             result.push(ir::BlockItem::Expr(ir::Expr::Convert(
