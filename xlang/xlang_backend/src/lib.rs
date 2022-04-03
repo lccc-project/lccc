@@ -694,10 +694,10 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     }),
                 ))),
                 _ => match v {
-                    OverflowBehaviour::Wrap => {
+                    OverflowBehaviour::Wrap | OverflowBehaviour::Unchecked => {
                         self.push_value(VStackValue::Constant(Value::Uninitialized(ty)))
                     }
-                    OverflowBehaviour::Trap | OverflowBehaviour::Unchecked => {
+                    OverflowBehaviour::Trap => {
                         self.inner.write_trap(Trap::Unreachable);
                         self.push_value(VStackValue::Trapped);
                     }
