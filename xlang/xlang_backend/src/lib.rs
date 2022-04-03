@@ -606,7 +606,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 header: header @ ScalarTypeHeader { bitsize: 0, .. },
             }) if header.validity.contains(ScalarValidity::NONZERO) => {
                 // special case uint nonzero(0)/int nonzero(0)
-                self.push_value(VStackValue::Constant(Value::Uninitialized(Type::Scalar(
+                self.push_value(VStackValue::Constant(Value::Invalid(Type::Scalar(
                     ScalarType {
                         kind: *kind,
                         header: *header,
@@ -1465,7 +1465,17 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 self.push_value(VStackValue::LValue(ty, LValue::Local(*n)))
             }
             Expr::Pop(n) => {
-                self.pop_values((*n).try_into().unwrap());
+                for val in self.pop_values((*n).try_into().unwrap()).unwrap() {
+                    match val {
+                        VStackValue::Constant(Value::Invalid(_)) => {
+                            self.inner.write_trap(Trap::Unreachable);
+                            self.diverged = true;
+                            break;
+                        }
+                        VStackValue::Trapped => self.diverged = true,
+                        _ => {}
+                    }
+                }
             }
             Expr::Dup(n) => {
                 let values = self.pop_values((*n).try_into().unwrap()).unwrap();
