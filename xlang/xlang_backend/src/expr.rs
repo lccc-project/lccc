@@ -146,7 +146,7 @@ impl<Loc: ValLocation> core::fmt::Display for VStackValue<Loc> {
                 f.write_str("}")
             }
             VStackValue::OpaqueAggregate(ty, loc) => {
-                f.write_fmt(format_args!("{} (opaque({:?})", ty, loc))
+                f.write_fmt(format_args!("{} (opaque({:?}))", ty, loc))
             }
             VStackValue::CompareResult(l, r) => {
                 f.write_fmt(format_args!("cmp result ({},{})", l, r))
