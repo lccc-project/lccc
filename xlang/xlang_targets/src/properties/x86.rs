@@ -208,6 +208,7 @@ pub static X86_64: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64,
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
+    byte_order: super::ByteOrder::LittleEndian,
 };
 
 pub static X86_64_V2: ArchProperties = ArchProperties {
@@ -217,6 +218,7 @@ pub static X86_64_V2: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64_V2,
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
+    byte_order: super::ByteOrder::LittleEndian,
 };
 
 pub static X86_64_V3: ArchProperties = ArchProperties {
@@ -226,6 +228,7 @@ pub static X86_64_V3: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64_V3,
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
+    byte_order: super::ByteOrder::LittleEndian,
 };
 
 pub static X86_64_V4: ArchProperties = ArchProperties {
@@ -235,6 +238,7 @@ pub static X86_64_V4: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64_V4,
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
+    byte_order: super::ByteOrder::LittleEndian,
 };
 
 pub static I386: ArchProperties = ArchProperties {
@@ -244,6 +248,7 @@ pub static I386: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MI386,
     arch_names: span![const_sv!("i386"), const_sv!("x86")],
+    byte_order: super::ByteOrder::LittleEndian,
 };
 
 pub static I486: ArchProperties = ArchProperties {
@@ -253,6 +258,7 @@ pub static I486: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MI486,
     arch_names: span![const_sv!("i486"), const_sv!("x86")],
+    byte_order: super::ByteOrder::LittleEndian,
 };
 pub static I586: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xF,
@@ -261,6 +267,7 @@ pub static I586: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MI586,
     arch_names: span![const_sv!("i586"), const_sv!("x86")],
+    byte_order: super::ByteOrder::LittleEndian,
 };
 
 pub static I686: ArchProperties = ArchProperties {
@@ -270,6 +277,7 @@ pub static I686: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MI686,
     arch_names: span![const_sv!("i686"), const_sv!("x86")],
+    byte_order: super::ByteOrder::LittleEndian,
 };
 
 pub static I86: ArchProperties = ArchProperties {
@@ -279,4 +287,5 @@ pub static I86: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MI86,
     arch_names: span![const_sv!("i86"), const_sv!("i8086")],
+    byte_order: super::ByteOrder::LittleEndian,
 };

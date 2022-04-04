@@ -133,4 +133,5 @@ pub static CLEVER: ArchProperties = ArchProperties {
     machines: CLEVER_MACHINES,
     default_machine: &machines::MCLEVER1_0,
     arch_names: span![const_sv!("clever")],
+    byte_order: super::ByteOrder::LittleEndian,
 };

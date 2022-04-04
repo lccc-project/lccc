@@ -64,6 +64,18 @@ pub enum SharedLibraryStyle {
     Linkable,
 }
 
+/// The Order of bytes in a scalar value
+#[repr(i32)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum ByteOrder {
+    /// Little Endian (LSB first) byte order
+    LittleEndian,
+    /// Big Endian (MSB first) byte order
+    BigEndian,
+    /// Mixed Endian byte order
+    MiddleEndian,
+}
+
 ///
 /// Properties about the architecture, shared between targets that use this architecture
 #[repr(C)]
@@ -82,9 +94,11 @@ pub struct ArchProperties {
     pub machines: Span<'static, Pair<StringView<'static>, &'static MachineProperties>>,
     /// The default set of machine properties to use when compiling for this architecture
     pub default_machine: &'static MachineProperties,
-
     /// The list of names aliasing the architecture
     pub arch_names: Span<'static, StringView<'static>>,
+
+    /// Byte Order
+    pub byte_order: ByteOrder,
 }
 
 ///

@@ -101,4 +101,5 @@ pub static W65: ArchProperties = ArchProperties {
         const_sv!("65c816"),
         const_sv!("wdc65c816")
     ],
+    byte_order: super::ByteOrder::LittleEndian,
 };
