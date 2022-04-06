@@ -182,7 +182,9 @@ impl Type {
     pub fn constrain(&mut self, constraint: Constraint) {
         match (&constraint, self) {
             (_, Self::Partial(constraints)) => constraints.push(constraint),
-            (Constraint::Integer { .. }, Self::Integer(_)) => todo!("constraining integer to other integer"),
+            (Constraint::Integer { .. }, Self::Integer(_)) => {
+                todo!("constraining integer to other integer")
+            }
             (Constraint::Type(ty), ty2) if ty == ty2 => {}
             (Constraint::Type(ty), ty2) => {
                 panic!("couldn't resolve `{}` as `{}`", ty2, ty);
@@ -742,7 +744,9 @@ pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> 
                 (Pattern::Discard, None, Some(value)) => {
                     result.push(Statement::Discard(convert_expr(named_types, value)))
                 }
-                (Pattern::Ident(_), None, None) => todo!("variable declaration without initializer"),
+                (Pattern::Ident(_), None, None) => {
+                    todo!("variable declaration without initializer")
+                }
                 (Pattern::Ident(name), None, Some(value)) => {
                     result.push(Statement::Bind {
                         target: Identifier::Basic {
