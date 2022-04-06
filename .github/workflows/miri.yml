@@ -22,17 +22,17 @@ jobs:
     - name: Run Miri
       run: cargo +nightly miri test
   hardmode_miri:
-  runs-on: ubuntu-20.04
-  steps:
-  - uses: actions/checkout@v2
-    with:
-      submodules: true
-  - name: Install miri
-    run: |
-      rustup toolchain add nightly --component miri
-      rustup update
-  - name: Run Miri
-    env:  
-      RUSTFLAGS: -Z randomize-layout
-      MIRIFLAGS: -Zmiri-symbolic-alignment-check -Zmiri-check-number-validity -Zmiri-tag-raw-pointers
-    run: cargo +nightly miri test
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+    - name: Install miri
+      run: |
+        rustup toolchain add nightly --component miri
+        rustup update
+    - name: Run Miri
+      env:  
+        RUSTFLAGS: -Z randomize-layout
+        MIRIFLAGS: -Zmiri-symbolic-alignment-check -Zmiri-check-number-validity -Zmiri-tag-raw-pointers
+      run: cargo +nightly miri test
