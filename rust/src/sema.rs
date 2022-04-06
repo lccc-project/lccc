@@ -12,6 +12,7 @@ use std::fmt::{self, Display, Formatter};
 pub enum Identifier {
     Basic {
         mangling: Option<Mangling>,
+        link_name: Option<String>,
         name: String,
     },
 }
@@ -616,6 +617,7 @@ pub fn convert_id(id: &Path) -> Identifier {
     } else if let PathComponent::Id(name) = &id.components[0] {
         Identifier::Basic {
             mangling: None,
+            link_name: None,
             name: name.clone(),
         }
     } else {
@@ -680,6 +682,7 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
                     (
                         Identifier::Basic {
                             mangling: None,
+                            link_name: None,
                             name: match &arg.name {
                                 FieldName::Id(str) => str.clone(),
                                 FieldName::Tuple(id) => format!("${}", id),
@@ -751,6 +754,7 @@ pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> 
                     result.push(Statement::Bind {
                         target: Identifier::Basic {
                             mangling: Some(Mangling::Local),
+                            link_name: None,
                             name: name.clone(),
                         },
                         value: convert_expr(named_types, value),
@@ -839,6 +843,7 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
             named_types.push(Type::Struct {
                 name: Identifier::Basic {
                     mangling: Some(Mangling::Rust),
+                    link_name: None,
                     name: structure.name.clone(),
                 },
                 fields: None,
@@ -892,8 +897,37 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                 return_ty,
                 block,
             } => {
+                let mut link_name = None;
+                for attr in attrs {
+                    match attr {
+                        Meta::KeyValue(path, value) // For the record, deref patterns would make this a million times easier
+                            if *path
+                                == SimplePath {
+                                    root: false,
+                                    idents: vec![String::from("link_name")],
+                                } =>
+                        {
+                            if let Meta::String(value) = &**value {
+                                link_name = Some(value.clone());
+                            } else {
+                                panic!("expected string for link_name, got {:?}", value);
+                            }
+                        }
+                        Meta::KeyValue(path, value)
+                            if *path
+                                == SimplePath {
+                                    root: false,
+                                    idents: vec![String::from("lang")],
+                                }
+                                && **value == Meta::String(String::from("main")) =>
+                        {
+                        }
+                        x => todo!("#[{:?}]", attr),
+                    }
+                }
                 let name = Identifier::Basic {
                     name: name.clone(),
+                    link_name: link_name.clone(),
                     mangling: Some(if abi.is_some() {
                         Mangling::C
                     } else {
@@ -902,7 +936,7 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                 };
                 for attr in attrs {
                     match attr {
-                        Meta::KeyValue(path, value) // For the record, deref patterns would make this a million times easier
+                        Meta::KeyValue(path, value)
                             if *path
                                 == SimplePath {
                                     root: false,
@@ -912,6 +946,12 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                         {
                             lang_items.insert(LangItem::Main, name.clone());
                         }
+                        Meta::KeyValue(path, value)
+                            if *path
+                                == SimplePath {
+                                    root: false,
+                                    idents: vec![String::from("link_name")],
+                                } => {}
                         x => todo!("#[{:?}]", attr),
                     }
                 }
@@ -967,6 +1007,7 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
         for declaration in &declarations {
             if declaration.name().matches(&Identifier::Basic {
                 mangling: None,
+                link_name: None,
                 name: String::from("main"),
             }) {
                 entry.insert(declaration.name().clone());
@@ -1005,6 +1046,7 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                     } else {
                         Mangling::Rust
                     }),
+                    link_name: None,
                 },
                 return_ty: return_ty
                     .as_ref()
