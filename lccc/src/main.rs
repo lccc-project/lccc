@@ -40,6 +40,8 @@ fn main() {
     let mut plugin_overrides = HashMap::<_, _>::new();
     let mut userplugins = Vec::new();
 
+    let mut libdirs = Vec::new();
+
     let argspecs = xlang::vec![
         ArgSpec::new(
             "output",
@@ -138,6 +140,20 @@ fn main() {
             Vec::new(),
             TakesArg::Always,
             true
+        ),
+        ArgSpec::new(
+            "lib-dir",
+            Vec::new(),
+            xlang::vec!['L'],
+            TakesArg::Always,
+            false
+        ),
+        ArgSpec::new(
+            "wopt",
+            Vec::new(),
+            xlang::vec!['W'],
+            TakesArg::Always,
+            false
         )
     ];
 
@@ -242,6 +258,10 @@ fn main() {
                     }
                 }
             }
+            "lib-dir" => {
+                libdirs.push(arg.value.clone().unwrap());
+            }
+            "wopt" => {}
             _ => panic!(),
         }
     }
@@ -577,7 +597,7 @@ fn main() {
             LinkOutput::Executable | LinkOutput::Pie => {
                 let mut link_args = Vec::<String>::new();
 
-                let mut libdirs = Vec::new();
+                let mut libdirs = libdirs.iter().map(PathBuf::from).collect::<Vec<_>>();
 
                 for basedir in properties.os.base_dirs {
                     for libdir in properties.libdirs {

@@ -315,7 +315,14 @@ impl core::fmt::Display for Type {
             }
             Self::FnType(fnty) => fnty.fmt(f),
             Self::Pointer(pty) => pty.fmt(f),
-            _ => todo!(),
+            Self::Array(arrty) => {
+                f.write_str("[")?;
+                arrty.ty.fmt(f)?;
+                f.write_str(";")?;
+                arrty.len.fmt(f)?;
+                f.write_str("]")
+            }
+            ty => todo!("{:?}", ty),
         }
     }
 }
