@@ -32,7 +32,11 @@ fn signature_component(signature: &FunctionSignature) -> ir::PathComponent {
 
 #[allow(clippy::single_match_else)]
 fn identifier_to_path(id: Identifier, signature: Option<&FunctionSignature>) -> ir::Path {
-    let Identifier::Basic { mangling, name, link_name } = id;
+    let Identifier::Basic {
+        mangling,
+        name,
+        link_name,
+    } = id;
     match (link_name, mangling) {
         (Some(name), _) => ir::Path {
             components: abi::vec![ir::PathComponent::Text(abi::string::String::from(&name))],
@@ -209,39 +213,34 @@ fn irgen_expr(
             result.push(ir::BlockItem::Expr(ir::Expr::CallFunction(fn_type)));
             result
         }
-        Expression::Identifier {
-            id,
-            ty: Some(ty),
-        } => {
-            match id.mangling() {
-                Some(Mangling::Local) => vec![
-                    ir::BlockItem::Expr(ir::Expr::Local(
-                        locals
-                            .iter()
-                            .enumerate()
-                            .rev()
-                            .find(|(_, (local_id, _))| *local_id == id)
-                            .unwrap()
-                            .0
-                            .try_into()
-                            .unwrap(),
-                    )),
-                    ir::BlockItem::Expr(ir::Expr::AsRValue(ir::AccessClass::Normal)),
-                ],
-                _ => vec![ir::BlockItem::Expr(ir::Expr::Const(
-                    ir::Value::GlobalAddress {
-                        ty: irgen_type(ty.clone()),
-                        item: identifier_to_path(
-                            id,
-                            match &ty {
-                                Type::Function(sig) => Some(sig),
-                                _ => None,
-                            },
-                        ),
-                    },
-                ))],
-            }
-        }
+        Expression::Identifier { id, ty: Some(ty) } => match id.mangling() {
+            Some(Mangling::Local) => vec![
+                ir::BlockItem::Expr(ir::Expr::Local(
+                    locals
+                        .iter()
+                        .enumerate()
+                        .rev()
+                        .find(|(_, (local_id, _))| *local_id == id)
+                        .unwrap()
+                        .0
+                        .try_into()
+                        .unwrap(),
+                )),
+                ir::BlockItem::Expr(ir::Expr::AsRValue(ir::AccessClass::Normal)),
+            ],
+            _ => vec![ir::BlockItem::Expr(ir::Expr::Const(
+                ir::Value::GlobalAddress {
+                    ty: irgen_type(ty.clone()),
+                    item: identifier_to_path(
+                        id,
+                        match &ty {
+                            Type::Function(sig) => Some(sig),
+                            _ => None,
+                        },
+                    ),
+                },
+            ))],
+        },
         ref x @ Expression::IntegerLiteral { .. } => {
             let ty = irgen_type(x.ty());
             if let Expression::IntegerLiteral { val, .. } = x {
@@ -378,10 +377,7 @@ pub fn irgen_definition(
             items: irgen_block(body.clone(), 0, &mut locals, true).into(),
         };
         file.root.members.insert(
-            identifier_to_path(
-                name.clone(),
-                Some(sig),
-            ),
+            identifier_to_path(name.clone(), Some(sig)),
             ir::ScopeMember {
                 vis: ir::Visibility::Public,
                 member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration {
