@@ -72,7 +72,7 @@ fn main() {
         match arg.name {
             "output" => output = Some(arg.value.unwrap()),
             "optimize" => opt = OptimizeLevel::Integer(2),
-            opt => todo!("{}", opt),
+            opt => todo!("unsupported option: {}", opt),
         }
     }
 }

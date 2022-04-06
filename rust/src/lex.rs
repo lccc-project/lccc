@@ -193,7 +193,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                             },
                         });
                     }
-                    "r" => todo!(),
+                    "r" => todo!("raw string, or raw identifier, or something like that"),
                     _ => result.push(Lexeme::Token {
                         ty: match &id as &str {
                             "as" | "async" | "await" | "break" | "const" | "continue" | "crate"

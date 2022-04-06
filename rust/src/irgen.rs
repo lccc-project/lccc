@@ -21,11 +21,11 @@ fn signature_component(signature: &FunctionSignature) -> ir::PathComponent {
     if signature.params.is_empty() {
         result.push_str("void");
     } else {
-        todo!()
+        todo!("functions with parameters")
     }
     result.push(')');
     if !signature.return_ty.is_unit() {
-        todo!()
+        todo!("functions with non-unit return types")
     }
     ir::PathComponent::SpecialComponent(result)
 }
@@ -72,7 +72,7 @@ fn irgen_type(ty: Type) -> ir::Type {
                     IntType::I16 | IntType::U16 => 16,
                     IntType::I32 | IntType::U32 => 32,
                     IntType::I64 | IntType::U64 | IntType::Isize | IntType::Usize => 64,
-                    _ => todo!(),
+                    _ => todo!("unsupported integer type"),
                 },
                 ..ir::ScalarTypeHeader::default()
             },

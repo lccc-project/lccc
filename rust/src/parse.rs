@@ -1332,7 +1332,7 @@ pub fn parse_item<I: Iterator<Item = Lexeme>>(
                     tok => panic!("Unexpected token {:?}", tok),
                 }
             }
-            _ => todo!(),
+            x => todo!("{:?}", x),
         },
         tok => todo!("{:?}", tok),
     }

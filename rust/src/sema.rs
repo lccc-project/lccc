@@ -182,7 +182,7 @@ impl Type {
     pub fn constrain(&mut self, constraint: Constraint) {
         match (&constraint, self) {
             (_, Self::Partial(constraints)) => constraints.push(constraint),
-            (Constraint::Integer { .. }, Self::Integer(_)) => todo!(),
+            (Constraint::Integer { .. }, Self::Integer(_)) => todo!("constraining integer to other integer"),
             (Constraint::Type(ty), ty2) if ty == ty2 => {}
             (Constraint::Type(ty), ty2) => {
                 panic!("couldn't resolve `{}` as `{}`", ty2, ty);
@@ -200,7 +200,7 @@ impl Type {
                 let mut result = None;
                 for constraint in constraints {
                     match constraint {
-                        Constraint::Integer { .. } => todo!(),
+                        Constraint::Integer { .. } => todo!("resolving integer constraints"),
                         Constraint::Type(ty) => {
                             if let Some(result) = result.as_ref() {
                                 if result != ty {
@@ -602,22 +602,22 @@ pub fn resolve_named_type(named_types: &[Type], name: &Identifier) -> Type {
             .unwrap()
             .clone()
     } else {
-        todo!();
+        todo!("resolving namespaced identifiers");
     }
 }
 
 pub fn convert_id(id: &Path) -> Identifier {
     if id.root.is_some() {
-        todo!()
+        todo!("converting namespaced identifiers")
     } else if id.components.is_empty() || id.components.len() > 1 {
-        todo!()
+        todo!("converting namespaced identifiers")
     } else if let PathComponent::Id(name) = &id.components[0] {
         Identifier::Basic {
             mangling: None,
             name: name.clone(),
         }
     } else {
-        todo!()
+        todo!("converting non-trivial identifiers")
     }
 }
 
@@ -742,7 +742,7 @@ pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> 
                 (Pattern::Discard, None, Some(value)) => {
                     result.push(Statement::Discard(convert_expr(named_types, value)))
                 }
-                (Pattern::Ident(_), None, None) => todo!(),
+                (Pattern::Ident(_), None, None) => todo!("variable declaration without initializer"),
                 (Pattern::Ident(name), None, Some(value)) => {
                     result.push(Statement::Bind {
                         target: Identifier::Basic {
@@ -855,7 +855,7 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                             .push((field.name.clone(), convert_ty(&named_types, &field.ty)));
                     }
                 }
-                StructBody::Tuple(_) => todo!(),
+                StructBody::Tuple(_) => todo!("tuple struct fields"),
                 StructBody::Unit => {}
             }
             if let Some(Type::Struct { fields, .. }) = named_types
@@ -918,7 +918,7 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                         abi: abi.map_or(Abi::Rust, |x| match x {
                             "C" => Abi::C,
                             "Rust" => Abi::Rust,
-                            _ => todo!(),
+                            _ => todo!("unknown ABI"),
                         }),
                         params: params
                             .iter()
@@ -984,7 +984,7 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
         {
             let mut body = Vec::new();
             for param in params {
-                todo!(); // TODO: Support functions with parameters
+                todo!("functions with parameters"); // TODO: Support functions with parameters
             }
             body.append(&mut convert_block(&named_types, block));
             if *safety == Safety::Unsafe {
@@ -1079,7 +1079,7 @@ fn typeck_expr(
                     panic!("type {:?} doesn't have a field named {}", &lhs_ty, name);
                 }
             } else {
-                todo!();
+                todo!("field access of non-structs");
             }
         }
         Expression::FunctionCall { func, args } => {
