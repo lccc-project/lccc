@@ -439,6 +439,7 @@ impl<K: Clone, V: Clone, H: BuildHasher + Clone, A: Allocator + Clone> Clone
                         .write((&*obucket.entries[j].as_ptr()).clone());
                 }
             }
+            bucket.ecount = obucket.ecount;
         }
         Self {
             htab: unsafe { Unique::new_nonnull_unchecked(htab) },
@@ -899,6 +900,17 @@ mod test {
         map.insert("Hi", 0);
         map.insert("Hello", 1);
         let mut iter = map.iter();
+        assert!(iter.any(|Pair(s, _)| *s == "Hello"));
+        assert!(!iter.any(|Pair(s, _)| *s == "Hello"));
+    }
+
+    #[test]
+    fn test_hash_map_clone() {
+        let mut map = HashMap::<&str, i32>::new();
+        map.insert("Hi", 0);
+        map.insert("Hello", 1);
+        let map2 = map.clone();
+        let mut iter = map2.iter();
         assert!(iter.any(|Pair(s, _)| *s == "Hello"));
         assert!(!iter.any(|Pair(s, _)| *s == "Hello"));
     }
