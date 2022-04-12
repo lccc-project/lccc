@@ -282,9 +282,9 @@ dependencies = [
 
 [[package]]
 name = "target-tuples"
-version = "0.5.5"
+version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25261724592734b5619df41651407f098517c3405015009c3857f58059044cb9"
+checksum = "fcd09c90260f9bfbf7b7d3086df6559a3898a6e4c4a9e1473a98e41e3ed8be28"
 
 [[package]]
 name = "temp-file"
@@ -346,7 +346,7 @@ dependencies = [
 
 [[package]]
 name = "xlang_abi"
-version = "0.1.3"
+version = "0.1.5"
 dependencies = [
  "xlang_host",
 ]

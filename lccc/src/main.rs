@@ -428,7 +428,7 @@ fn main() {
     for codegen_handle in &codegen_handles {
         let initializer: lccc::CodegenInit =
             unsafe { codegen_handle.function_sym("xlang_backend_main") }
-                .expect("frontend library missing required entry point");
+                .expect("codegen library missing required entry point");
         codegens.push(initializer());
     }
 
