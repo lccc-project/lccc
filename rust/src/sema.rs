@@ -707,7 +707,7 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
         crate::parse::Expr::Loop(_) => todo!("loop"),
         crate::parse::Expr::While { .. } => todo!("while"),
         crate::parse::Expr::If { .. } => todo!("if"),
-        crate::parse::Expr::LetExpr(_, _, _) => todo!("let"),
+        crate::parse::Expr::LetExpr(_, _) => todo!("let"),
         crate::parse::Expr::Return(_) => todo!("return"),
         crate::parse::Expr::Break(_, _) => todo!("break"),
         crate::parse::Expr::Continue(_) => todo!("continue"),
@@ -726,6 +726,7 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
         crate::parse::Expr::RangeFull => todo!("range full"),
         crate::parse::Expr::ArrayCtor(_) => todo!("array ctor"),
         crate::parse::Expr::TupleCtor(_) => todo!("tuple ctor"),
+        crate::parse::Expr::Match { .. } => todo!("match"),
     }
 }
 

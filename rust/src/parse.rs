@@ -433,7 +433,7 @@ pub enum Expr {
         block: Vec<BlockItem>,
         elses: Vec<ElseBlock>,
     },
-    LetExpr(Pattern, Option<Type>, Box<Expr>),
+    LetExpr(Pattern, Box<Expr>),
     Id(Path),
     FunctionCall {
         func: Box<Self>,
@@ -466,6 +466,30 @@ pub enum Expr {
     Try(Box<Expr>),
     RangeFull,
     TupleCtor(Vec<Expr>),
+    Match {
+        ctrl: Box<Expr>,
+        arms: Vec<MatchArm>,
+    },
+}
+
+impl Expr {
+    pub fn is_block(&self) -> bool {
+        matches!(
+            self,
+            Self::Block(_)
+                | Self::UnsafeBlock(_)
+                | Self::Loop(_)
+                | Self::If { .. }
+                | Self::While { .. }
+        )
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct MatchArm {
+    discrim: Pattern,
+    cond: Option<Expr>,
+    res: Expr,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -3514,7 +3538,7 @@ pub fn parse_simple_expr<I: Iterator<Item = Lexeme>>(
             ty: TokenType::Keyword,
             tok,
             ..
-        } if tok == "unsafe" && allows_block => {
+        } if tok == "unsafe" => {
             drop(it.next().unwrap());
             match it.next().unwrap() {
                 Lexeme::Group {
@@ -3898,6 +3922,96 @@ pub fn parse_simple_expr<I: Iterator<Item = Lexeme>>(
             }
             _ => unreachable!(),
         },
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "let" => {
+            it.next();
+            let pat = parse_pattern(it).unwrap();
+
+            let expr = match it.next().unwrap() {
+                Lexeme::Token {
+                    ty: TokenType::Symbol,
+                    tok,
+                    ..
+                } if tok == "=" => {
+                    it.next();
+                    parse_expr(it, allows_block)
+                }
+                tok => panic!("Unexpected token {:?}", tok),
+            };
+
+            Expr::LetExpr(pat, Box::new(expr))
+        }
+        Lexeme::Token {
+            ty: TokenType::Keyword,
+            tok,
+            ..
+        } if tok == "match" => {
+            it.next();
+            let ctrl = parse_expr(it, false);
+            match it.next().unwrap() {
+                Lexeme::Group {
+                    ty: GroupType::Braces,
+                    inner,
+                    ..
+                } => {
+                    let mut arms = Vec::new();
+                    let mut it = inner.into_iter().peekmore();
+                    loop {
+                        let pat = if let Some(pat) = parse_pattern(&mut it) {
+                            pat
+                        } else {
+                            break;
+                        };
+
+                        let cond = match it.peek().unwrap() {
+                            Lexeme::Token {
+                                ty: TokenType::Keyword,
+                                tok,
+                                ..
+                            } if tok == "if" => {
+                                it.next();
+                                Some(parse_expr(&mut it, true))
+                            }
+                            _ => None,
+                        };
+
+                        match it.next().unwrap() {
+                            Lexeme::Token {
+                                ty: TokenType::Symbol,
+                                tok,
+                                ..
+                            } if tok == "=>" => {}
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+
+                        let value = parse_expr(&mut it, true);
+
+                        match it.peek() {
+                            Some(Lexeme::Token {
+                                ty: TokenType::Symbol,
+                                tok,
+                                ..
+                            }) if tok == "," => {
+                                it.next();
+                            }
+                            None => break,
+                            _ if value.is_block() => {}
+                            Some(tok) => {
+                                panic!("Unexpected token {:?}", tok)
+                            }
+                        }
+                    }
+                    Expr::Match {
+                        ctrl: Box::new(ctrl),
+                        arms,
+                    }
+                }
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+        }
         _ => {
             let path = parse_path(it);
             match it.peek() {
