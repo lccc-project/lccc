@@ -57,6 +57,7 @@ impl<R: ?Sized + Read> Read for Box<R> {
 }
 
 /// The `VTable` used for the [`Read`] trait
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct ReadVTable {
     size: usize,
@@ -410,6 +411,7 @@ impl<S: ?Sized + Seek> Seek for Box<S> {
 }
 
 /// The `VTable` used for the [`Seek`] trait
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct SeekVTable {
     size: usize,
@@ -559,6 +561,158 @@ impl<S: self::Seek> std::io::Seek for SeekAdapter<S> {
 }
 
 impl<S: std::io::Seek> self::Seek for SeekAdapter<S> {
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        self.0.seek(pos.into()).map_err(Into::into).into()
+    }
+}
+
+/// An abi safe combination of the [`std::io::Read`] and [`std::io::Seek`] traits
+pub trait ReadSeek: Read + Seek {}
+
+impl<T: Read + Seek> ReadSeek for T {}
+
+/// The `VTable` used for the [`ReadSeek`] helper trait
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct ReadSeekVTable {
+    read: ReadVTable,
+    seek: SeekVTable,
+}
+
+unsafe impl<'a> AbiSafeVTable<dyn ReadSeek + 'a> for ReadSeekVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn ReadSeek + Send + 'a> for ReadSeekVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn ReadSeek + Sync + 'a> for ReadSeekVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn ReadSeek + Send + Sync + 'a> for ReadSeekVTable {}
+
+unsafe impl<'a> AbiSafeTrait for dyn ReadSeek + 'a {
+    type VTable = ReadSeekVTable;
+}
+unsafe impl<'a> AbiSafeTrait for dyn ReadSeek + Send + 'a {
+    type VTable = ReadSeekVTable;
+}
+unsafe impl<'a> AbiSafeTrait for dyn ReadSeek + Sync + 'a {
+    type VTable = ReadSeekVTable;
+}
+unsafe impl<'a> AbiSafeTrait for dyn ReadSeek + Send + Sync + 'a {
+    type VTable = ReadSeekVTable;
+}
+
+unsafe impl<'a, T: ReadSeek + 'a> AbiSafeUnsize<T> for dyn ReadSeek + 'a {
+    fn construct_vtable_for() -> &'static Self::VTable {
+        &ReadSeekVTable {
+            read: ReadVTable {
+                size: core::mem::size_of::<T>(),
+                align: core::mem::align_of::<T>(),
+                destructor: Some(vtbl_destroy::<T>),
+                reserved_dealloc: None,
+                read: vtbl_read::<T>,
+            },
+            seek: SeekVTable {
+                size: core::mem::size_of::<T>(),
+                align: core::mem::align_of::<T>(),
+                destructor: Some(vtbl_destroy::<T>),
+                reserved_dealloc: None,
+                seek: vtbl_seek::<T>,
+            },
+        }
+    }
+}
+unsafe impl<'a, T: ReadSeek + 'a> AbiSafeUnsize<T> for dyn ReadSeek + Send + 'a {
+    fn construct_vtable_for() -> &'static Self::VTable {
+        &ReadSeekVTable {
+            read: ReadVTable {
+                size: core::mem::size_of::<T>(),
+                align: core::mem::align_of::<T>(),
+                destructor: Some(vtbl_destroy::<T>),
+                reserved_dealloc: None,
+                read: vtbl_read::<T>,
+            },
+            seek: SeekVTable {
+                size: core::mem::size_of::<T>(),
+                align: core::mem::align_of::<T>(),
+                destructor: Some(vtbl_destroy::<T>),
+                reserved_dealloc: None,
+                seek: vtbl_seek::<T>,
+            },
+        }
+    }
+}
+unsafe impl<'a, T: ReadSeek + 'a> AbiSafeUnsize<T> for dyn ReadSeek + Sync + 'a {
+    fn construct_vtable_for() -> &'static Self::VTable {
+        &ReadSeekVTable {
+            read: ReadVTable {
+                size: core::mem::size_of::<T>(),
+                align: core::mem::align_of::<T>(),
+                destructor: Some(vtbl_destroy::<T>),
+                reserved_dealloc: None,
+                read: vtbl_read::<T>,
+            },
+            seek: SeekVTable {
+                size: core::mem::size_of::<T>(),
+                align: core::mem::align_of::<T>(),
+                destructor: Some(vtbl_destroy::<T>),
+                reserved_dealloc: None,
+                seek: vtbl_seek::<T>,
+            },
+        }
+    }
+}
+unsafe impl<'a, T: ReadSeek + 'a> AbiSafeUnsize<T> for dyn ReadSeek + Send + Sync + 'a {
+    fn construct_vtable_for() -> &'static Self::VTable {
+        &ReadSeekVTable {
+            read: ReadVTable {
+                size: core::mem::size_of::<T>(),
+                align: core::mem::align_of::<T>(),
+                destructor: Some(vtbl_destroy::<T>),
+                reserved_dealloc: None,
+                read: vtbl_read::<T>,
+            },
+            seek: SeekVTable {
+                size: core::mem::size_of::<T>(),
+                align: core::mem::align_of::<T>(),
+                destructor: Some(vtbl_destroy::<T>),
+                reserved_dealloc: None,
+                seek: vtbl_seek::<T>,
+            },
+        }
+    }
+}
+
+/// A type fusing [`ReadAdapter`] and [`SeekAdapter`]
+pub struct ReadSeekAdapter<T>(T);
+
+impl<T> ReadSeekAdapter<T> {
+    /// Produces a new [`ReadSeekAdapter`] over `t`
+    pub const fn new(t: T) -> Self {
+        Self(t)
+    }
+
+    /// Obtains the inner `ReadSeek`er contained by `self`\
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+
+impl<R: self::Read> std::io::Read for ReadSeekAdapter<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0.read(SpanMut::new(buf)).map_err(Into::into).into()
+    }
+}
+
+impl<R: std::io::Read> self::Read for ReadSeekAdapter<R> {
+    fn read(&mut self, mut buf: SpanMut<u8>) -> Result<usize> {
+        self.0.read(&mut buf).map_err(Into::into).into()
+    }
+}
+
+impl<S: self::Seek> std::io::Seek for ReadSeekAdapter<S> {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.0.seek(pos.into()).map_err(Into::into).into()
+    }
+}
+
+impl<S: std::io::Seek> self::Seek for ReadSeekAdapter<S> {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
         self.0.seek(pos.into()).map_err(Into::into).into()
     }
