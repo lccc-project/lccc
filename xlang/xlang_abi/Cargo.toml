@@ -1,6 +1,6 @@
 [package]
 name = "xlang_abi"
-version = "0.1.6"
+version = "0.1.7"
 authors = ["Connor Horman <chorman64@gmail.com>", "Ray Redondo <rdredondo@lcdev.xyz>"]
 edition = "2018"
 license = "BSD-2-Clause-Patent"
