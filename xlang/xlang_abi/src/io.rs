@@ -360,6 +360,210 @@ impl<R: std::io::Read> self::Read for ReadAdapter<R> {
     }
 }
 
+#[repr(u8)]
+/// Enumeration of possible methods to seek within an I/O object.
+pub enum SeekFrom {
+    /// Sets the offset to the provided number of bytes.
+    Start(u64),
+    /// Sets the offset to the size of this object plus the specified number of bytes.
+    End(i64),
+    /// Sets the offset to the current position plus the specified number of bytes.
+    Current(i64),
+}
+
+impl From<std::io::SeekFrom> for SeekFrom {
+    fn from(other: std::io::SeekFrom) -> Self {
+        match other {
+            std::io::SeekFrom::Start(x) => Self::Start(x),
+            std::io::SeekFrom::End(x) => Self::End(x),
+            std::io::SeekFrom::Current(x) => Self::Current(x),
+        }
+    }
+}
+
+impl From<SeekFrom> for std::io::SeekFrom {
+    fn from(other: SeekFrom) -> Self {
+        match other {
+            SeekFrom::Start(x) => Self::Start(x),
+            SeekFrom::End(x) => Self::End(x),
+            SeekFrom::Current(x) => Self::Current(x),
+        }
+    }
+}
+
+/// ABI Safe version of the [`std::io::Seek`] trait
+pub trait Seek {
+    /// Seek to an offset, in bytes, in a stream.
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64>;
+}
+
+impl<S: ?Sized + Seek> Seek for &mut S {
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        S::seek(self, pos)
+    }
+}
+
+impl<S: ?Sized + Seek> Seek for Box<S> {
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        S::seek(self, pos)
+    }
+}
+
+/// The `VTable` used for the [`Seek`] trait
+#[repr(C)]
+pub struct SeekVTable {
+    size: usize,
+    align: usize,
+    destructor: Option<unsafe extern "C" fn(*mut ())>,
+    reserved_dealloc: Option<unsafe extern "C" fn(*mut ())>,
+    seek: unsafe extern "C" fn(*mut (), SeekFrom) -> Result<u64>,
+}
+
+unsafe impl<'a> AbiSafeVTable<dyn Seek + 'a> for SeekVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn Seek + Send + 'a> for SeekVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn Seek + Sync + 'a> for SeekVTable {}
+unsafe impl<'a> AbiSafeVTable<dyn Seek + Send + Sync + 'a> for SeekVTable {}
+
+unsafe impl<'a> AbiSafeTrait for dyn Seek + 'a {
+    type VTable = SeekVTable;
+}
+unsafe impl<'a> AbiSafeTrait for dyn Seek + Send + 'a {
+    type VTable = SeekVTable;
+}
+unsafe impl<'a> AbiSafeTrait for dyn Seek + Sync + 'a {
+    type VTable = SeekVTable;
+}
+unsafe impl<'a> AbiSafeTrait for dyn Seek + Send + Sync + 'a {
+    type VTable = SeekVTable;
+}
+
+unsafe extern "C" fn vtbl_seek<T: Seek>(this: *mut (), pos: SeekFrom) -> Result<u64> {
+    <T as Seek>::seek(&mut *(this.cast::<T>()), pos)
+}
+
+unsafe impl<'a, T: Seek + 'a> AbiSafeUnsize<T> for dyn Seek + 'a {
+    fn construct_vtable_for() -> &'static Self::VTable {
+        &SeekVTable {
+            size: core::mem::size_of::<T>(),
+            align: core::mem::align_of::<T>(),
+            destructor: Some(vtbl_destroy::<T>),
+            reserved_dealloc: None,
+            seek: vtbl_seek::<T>,
+        }
+    }
+}
+unsafe impl<'a, T: Seek + Send + 'a> AbiSafeUnsize<T> for dyn Seek + Send + 'a {
+    fn construct_vtable_for() -> &'static Self::VTable {
+        &SeekVTable {
+            size: core::mem::size_of::<T>(),
+            align: core::mem::align_of::<T>(),
+            destructor: Some(vtbl_destroy::<T>),
+            reserved_dealloc: None,
+            seek: vtbl_seek::<T>,
+        }
+    }
+}
+unsafe impl<'a, T: Seek + Send + 'a> AbiSafeUnsize<T> for dyn Seek + Sync + 'a {
+    fn construct_vtable_for() -> &'static Self::VTable {
+        &SeekVTable {
+            size: core::mem::size_of::<T>(),
+            align: core::mem::align_of::<T>(),
+            destructor: Some(vtbl_destroy::<T>),
+            reserved_dealloc: None,
+            seek: vtbl_seek::<T>,
+        }
+    }
+}
+unsafe impl<'a, T: Seek + Send + 'a> AbiSafeUnsize<T> for dyn Seek + Send + Sync + 'a {
+    fn construct_vtable_for() -> &'static Self::VTable {
+        &SeekVTable {
+            size: core::mem::size_of::<T>(),
+            align: core::mem::align_of::<T>(),
+            destructor: Some(vtbl_destroy::<T>),
+            reserved_dealloc: None,
+            seek: vtbl_seek::<T>,
+        }
+    }
+}
+
+impl<'a, 'lt> Seek for dyn DynPtrSafe<dyn Seek + 'a> + 'lt
+where
+    'a: 'lt,
+{
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        unsafe { (self.vtable().seek)(self.as_raw_mut(), pos) }
+    }
+}
+impl<'a, 'lt> Seek for dyn DynPtrSafe<dyn Seek + Send + 'a> + 'lt
+where
+    'a: 'lt,
+{
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        unsafe { (self.vtable().seek)(self.as_raw_mut(), pos) }
+    }
+}
+impl<'a, 'lt> Seek for dyn DynPtrSafe<dyn Seek + Sync + 'a> + 'lt
+where
+    'a: 'lt,
+{
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        unsafe { (self.vtable().seek)(self.as_raw_mut(), pos) }
+    }
+}
+impl<'a, 'lt> Seek for dyn DynPtrSafe<dyn Seek + Send + Sync + 'a> + 'lt
+where
+    'a: 'lt,
+{
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        unsafe { (self.vtable().seek)(self.as_raw_mut(), pos) }
+    }
+}
+impl<'lt, T: ?Sized + AbiSafeTrait> Seek for DynMut<'lt, T>
+where
+    dyn DynPtrSafe<T> + 'lt: Seek,
+{
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        <dyn DynPtrSafe<T> as Seek>::seek(&mut **self, pos)
+    }
+}
+impl<'lt, T: ?Sized + AbiSafeTrait + 'static, A: Allocator> Seek for DynBox<T, A>
+where
+    dyn DynPtrSafe<T> + 'lt: Seek,
+{
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        <dyn DynPtrSafe<T> as Seek>::seek(&mut **self, pos)
+    }
+}
+
+/// A type which Adapts [`std::io::Seek`]ers into [`self::Seek`]ers and [`self::Seek`]ers into
+/// [`std::io::Seek`]ers
+pub struct SeekAdapter<S>(S);
+
+impl<S> SeekAdapter<S> {
+    /// Produces a new [`SeekAdapter`] over `s`
+    pub const fn new(s: S) -> Self {
+        Self(s)
+    }
+
+    /// Obtains the inner `Seek`er contained by `self`
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn into_inner(self) -> S {
+        self.0
+    }
+}
+
+impl<S: self::Seek> std::io::Seek for SeekAdapter<S> {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.0.seek(pos.into()).map_err(Into::into).into()
+    }
+}
+
+impl<S: std::io::Seek> self::Seek for SeekAdapter<S> {
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        self.0.seek(pos.into()).map_err(Into::into).into()
+    }
+}
+
 /// An abi safe version of the [`std::io::Write`] trait
 pub trait Write {
     /// Writes the bytes in `buf` into `self` and returns the number of bytes written, or an error if the write fails
