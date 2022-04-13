@@ -677,43 +677,67 @@ unsafe impl<'a, T: ReadSeek + 'a> AbiSafeUnsize<T> for dyn ReadSeek + Send + Syn
         }
     }
 }
-impl<'a, 'lt> Read for dyn DynPtrSafe<dyn ReadSeek + 'a> + 'lt where 'a: 'lt {
+impl<'a, 'lt> Read for dyn DynPtrSafe<dyn ReadSeek + 'a> + 'lt
+where
+    'a: 'lt,
+{
     fn read(&mut self, buf: SpanMut<u8>) -> Result<usize> {
         unsafe { (self.vtable().read.read)(self.as_raw_mut(), buf) }
     }
 }
-impl<'a, 'lt> Read for dyn DynPtrSafe<dyn ReadSeek + Send + 'a> + 'lt where 'a: 'lt {
+impl<'a, 'lt> Read for dyn DynPtrSafe<dyn ReadSeek + Send + 'a> + 'lt
+where
+    'a: 'lt,
+{
     fn read(&mut self, buf: SpanMut<u8>) -> Result<usize> {
         unsafe { (self.vtable().read.read)(self.as_raw_mut(), buf) }
     }
 }
-impl<'a, 'lt> Read for dyn DynPtrSafe<dyn ReadSeek + Sync + 'a> + 'lt where 'a: 'lt {
+impl<'a, 'lt> Read for dyn DynPtrSafe<dyn ReadSeek + Sync + 'a> + 'lt
+where
+    'a: 'lt,
+{
     fn read(&mut self, buf: SpanMut<u8>) -> Result<usize> {
         unsafe { (self.vtable().read.read)(self.as_raw_mut(), buf) }
     }
 }
-impl<'a, 'lt> Read for dyn DynPtrSafe<dyn ReadSeek + Send + Sync + 'a> + 'lt where 'a: 'lt {
+impl<'a, 'lt> Read for dyn DynPtrSafe<dyn ReadSeek + Send + Sync + 'a> + 'lt
+where
+    'a: 'lt,
+{
     fn read(&mut self, buf: SpanMut<u8>) -> Result<usize> {
         unsafe { (self.vtable().read.read)(self.as_raw_mut(), buf) }
     }
 }
 
-impl<'a, 'lt> Seek for dyn DynPtrSafe<dyn ReadSeek + 'a> + 'lt where 'a: 'lt {
+impl<'a, 'lt> Seek for dyn DynPtrSafe<dyn ReadSeek + 'a> + 'lt
+where
+    'a: 'lt,
+{
     fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
         unsafe { (self.vtable().seek.seek)(self.as_raw_mut(), pos) }
     }
 }
-impl<'a, 'lt> Seek for dyn DynPtrSafe<dyn ReadSeek + Send + 'a> + 'lt where 'a: 'lt {
+impl<'a, 'lt> Seek for dyn DynPtrSafe<dyn ReadSeek + Send + 'a> + 'lt
+where
+    'a: 'lt,
+{
     fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
         unsafe { (self.vtable().seek.seek)(self.as_raw_mut(), pos) }
     }
 }
-impl<'a, 'lt> Seek for dyn DynPtrSafe<dyn ReadSeek + Sync + 'a> + 'lt where 'a: 'lt {
+impl<'a, 'lt> Seek for dyn DynPtrSafe<dyn ReadSeek + Sync + 'a> + 'lt
+where
+    'a: 'lt,
+{
     fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
         unsafe { (self.vtable().seek.seek)(self.as_raw_mut(), pos) }
     }
 }
-impl<'a, 'lt> Seek for dyn DynPtrSafe<dyn ReadSeek + Send + Sync + 'a> + 'lt where 'a: 'lt {
+impl<'a, 'lt> Seek for dyn DynPtrSafe<dyn ReadSeek + Send + Sync + 'a> + 'lt
+where
+    'a: 'lt,
+{
     fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
         unsafe { (self.vtable().seek.seek)(self.as_raw_mut(), pos) }
     }
