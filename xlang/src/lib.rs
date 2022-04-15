@@ -22,10 +22,15 @@ pub use abi::vec;
 pub struct XLangVersion<'a>(StringView<'a>);
 
 impl<'a> XLangVersion<'a> {
+    /// Constructs a version from it's string representation
+    ///
+    /// Functions on this type may have unpredictable results if this is not a string consisting solely of period separated integers
+    #[must_use]
     pub const fn from_string(str: StringView<'a>) -> Self {
         Self(str)
     }
 
+    #[must_use]
     pub fn version_string(&self) -> StringView {
         self.0
     }
@@ -41,12 +46,12 @@ impl<'a> Ord for XLangVersion<'a> {
     fn cmp(&self, other: &XLangVersion) -> Ordering {
         let lhs_components = self
             .0
-            .split(".")
+            .split('.')
             .map(u64::from_str)
             .chain(core::iter::repeat(Ok(0)));
         let rhs_components = other
             .0
-            .split(".")
+            .split('.')
             .map(u64::from_str)
             .chain(core::iter::repeat(Ok(0)));
 

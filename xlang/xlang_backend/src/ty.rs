@@ -9,6 +9,8 @@ use xlang::{
     targets::properties::TargetProperties,
 };
 
+use crate::expr::{NoOpaque, VStackValue};
+
 fn scalar_align(size: u64, max_align: u16) -> u64 {
     if size <= (max_align as u64) {
         size.next_power_of_two()
@@ -28,6 +30,7 @@ pub struct AggregateLayout {
     total_align: u64,
     fields: HashMap<String, (u64, Type)>,
     transparent_over: Option<Type>,
+    first_niche: Option<(Type, VStackValue<NoOpaque>)>,
 }
 
 ///
@@ -127,6 +130,7 @@ impl TypeInformation {
             total_align: align,
             fields,
             transparent_over,
+            first_niche: None,
         }
     }
 
@@ -155,6 +159,7 @@ impl TypeInformation {
                     total_align: align,
                     fields,
                     transparent_over: None,
+                    first_niche: None,
                 })
             }
             Type::Aggregate(defn) => Some(self.aggregate_layout_from_defn(defn)),

@@ -182,3 +182,66 @@ pub enum Trap {
     /// Overflow
     Overflow,
 }
+
+/// A ValLocation that cannot be instantiated - that is, no opaque values can be produced within this location
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum NoOpaque {}
+
+impl ValLocation for NoOpaque {
+    fn addressible(&self) -> bool {
+        match *self {}
+    }
+
+    fn unassigned(_: usize) -> Self {
+        panic!("Unassigned location")
+    }
+}
+
+impl VStackValue<NoOpaque> {
+    /// Converts a known-transparent [`VStackValue`] into one that is suitable for some other [`ValLocation`]
+    pub fn into_transparent_for<T: ValLocation>(self) -> VStackValue<T> {
+        match self {
+            VStackValue::Constant(v) => VStackValue::Constant(v),
+            VStackValue::LValue(ty, lval) => VStackValue::LValue(ty, lval.into_transparent_for()),
+            VStackValue::Pointer(pty, lval) => {
+                VStackValue::Pointer(pty, lval.into_transparent_for())
+            }
+            VStackValue::OpaqueScalar(_, loc) => match loc {},
+            VStackValue::AggregatePieced(ty, init) => VStackValue::AggregatePieced(
+                ty,
+                init.into_iter()
+                    .map(|Pair(name, val)| Pair(name, val.into_transparent_for()))
+                    .collect(),
+            ),
+            VStackValue::OpaqueAggregate(_, _) => todo!(),
+            VStackValue::CompareResult(_, _) => todo!(),
+            VStackValue::Trapped => todo!(),
+        }
+    }
+}
+
+impl LValue<NoOpaque> {
+    /// Converts a known-transparent [`LValue`] into one that is suitable for some other [`ValLocation`]
+    pub fn into_transparent_for<T: ValLocation>(self) -> LValue<T> {
+        match self {
+            LValue::OpaquePointer(val) => match val {},
+            LValue::Temporary(val) => {
+                LValue::Temporary(Box::new(Box::into_inner(val).into_transparent_for()))
+            }
+            LValue::Local(n) => LValue::Local(n),
+            LValue::GlobalAddress(path) => LValue::GlobalAddress(path),
+            LValue::Label(n) => LValue::Label(n),
+            LValue::Field(ty, base, field) => LValue::Field(
+                ty,
+                Box::new(Box::into_inner(base).into_transparent_for()),
+                field,
+            ),
+            LValue::StringLiteral(enc, bytes) => LValue::StringLiteral(enc, bytes),
+            LValue::Offset(base, bytes) => LValue::Offset(
+                Box::new(Box::into_inner(base).into_transparent_for()),
+                bytes,
+            ),
+            LValue::Null => LValue::Null,
+        }
+    }
+}

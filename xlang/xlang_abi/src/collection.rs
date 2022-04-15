@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::iter::{FromIterator, FusedIterator};
 use std::marker::PhantomData;
-use std::mem::MaybeUninit;
+use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::Index;
 
 use crate::pair::Pair;
@@ -446,6 +446,79 @@ impl<K: Clone, V: Clone, H: BuildHasher + Clone, A: Allocator + Clone> Clone
             buckets,
             hash,
             alloc,
+        }
+    }
+}
+
+impl<K, V, A: Allocator, H: BuildHasher> IntoIterator for HashMap<K, V, H, A> {
+    type Item = Pair<K, V>;
+
+    type IntoIter = IntoIter<K, V, A>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut this = ManuallyDrop::new(self);
+
+        let htab = unsafe { core::ptr::read(core::ptr::addr_of!(this.htab)) };
+        let buckets = this.buckets;
+        let alloc = unsafe { core::ptr::read(core::ptr::addr_of!(this.alloc)) };
+        unsafe { core::ptr::drop_in_place(core::ptr::addr_of_mut!(this.hash)) };
+
+        IntoIter {
+            htab,
+            buckets,
+            alloc,
+            pos: (0, 0),
+        }
+    }
+}
+
+/// A by-value iterator over the keys and values in a [`HashMap`]
+pub struct IntoIter<K, V, A: Allocator> {
+    htab: Unique<HashMapSlot<K, V>>,
+    buckets: usize,
+    alloc: A,
+    pos: (usize, usize),
+}
+
+impl<K, V, A: Allocator> Drop for IntoIter<K, V, A> {
+    fn drop(&mut self) {
+        if core::mem::needs_drop::<Pair<K, V>>() {
+            for i in &mut *self {
+                core::mem::drop(i);
+            }
+        }
+        unsafe {
+            self.alloc.deallocate(
+                self.htab.as_nonnull().cast(),
+                Layout::array::<HashMapSlot<K, V>>(self.buckets).unwrap(),
+            )
+        }
+    }
+}
+
+impl<K, V, A: Allocator> Iterator for IntoIter<K, V, A> {
+    type Item = Pair<K, V>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let (bucket, pos) = self.pos;
+            if bucket >= self.buckets {
+                break None;
+            }
+            // SAFETY:
+            // Check above ensures this is inbounds
+            let slot = unsafe { &mut *self.htab.as_ptr().add(bucket) };
+
+            if pos >= slot.ecount {
+                self.pos = (bucket + 1, 0);
+                continue;
+            }
+
+            self.pos = (bucket, pos + 1);
+
+            // SAFETY:
+            // We're init and inbounds by the above check.
+            break Some(unsafe { core::ptr::read(slot.entries.as_ptr().add(pos).cast()) });
         }
     }
 }
@@ -913,5 +986,23 @@ mod test {
         let mut iter = map2.iter();
         assert!(iter.any(|Pair(s, _)| *s == "Hello"));
         assert!(!iter.any(|Pair(s, _)| *s == "Hello"));
+    }
+
+    #[test]
+    fn test_hash_map_into_iter_count() {
+        let mut map = HashMap::<&str, i32>::new();
+        map.insert("Hi", 0);
+        map.insert("Hello", 1);
+        let iter = map.into_iter();
+        assert_eq!(iter.count(), 2);
+    }
+
+    #[test]
+    fn test_hash_map_into_iter() {
+        let mut map = HashMap::<&str, i32>::new();
+        map.insert("Hi", 0);
+        map.insert("Hello", 1);
+        let mut iter = map.into_iter();
+        assert!(iter.any(|Pair(s, _)| s == "Hello"));
     }
 }
