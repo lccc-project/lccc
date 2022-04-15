@@ -346,7 +346,7 @@ dependencies = [
 
 [[package]]
 name = "xlang_abi"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "xlang_host",
 ]

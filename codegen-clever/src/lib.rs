@@ -1022,3 +1022,5 @@ pub extern "rustcall" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
         features: HashSet::new()
     }))
 }}
+
+xlang::plugin_abi_version!("0.1");
