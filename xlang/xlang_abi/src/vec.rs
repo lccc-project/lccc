@@ -652,11 +652,11 @@ macro_rules! vec{
     [$elem:expr ; $repeat:expr] => {
         {
             let __repeat: ::core::primitive::usize = $repeat;
-            fn __check<T: ::core::clone::Clone>(x: &T) {}
+            fn __check<T: ::core::clone::Clone>(_: &T) {}
             let val = $elem;
             __check(&val);
             let mut vec = $crate::vec::Vec::with_capacity(__repeat);
-            for i in 0..($repeat){
+            for _ in 0..($repeat){
                 vec.push(val.clone());
             }
             vec
@@ -679,6 +679,24 @@ mod test {
     fn test_vec_empty() {
         let vec: Vec<u32> = vec![];
         assert_eq!(vec.len(), 0);
+    }
+
+    #[test]
+    fn test_vec_with_data() {
+        let vec: Vec<u32> = vec![314, 159, 265];
+        assert_eq!(vec.len(), 3);
+        assert_eq!(vec[0], 314);
+        assert_eq!(vec[1], 159);
+        assert_eq!(vec[2], 265);
+    }
+
+    #[test]
+    fn test_vec_with_len() {
+        let vec: Vec<u32> = vec![42; 7];
+        assert_eq!(vec.len(), 7);
+        assert_eq!(vec[0], 42);
+        assert_eq!(vec[1], 42);
+        assert_eq!(vec[5], 42);
     }
 
     #[test]
