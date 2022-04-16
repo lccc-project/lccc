@@ -651,13 +651,13 @@ macro_rules! vec{
     };
     [$elem:expr ; $repeat:expr] => {
         {
-            let __repeat: ::core::primitive::usize = $repeat
-            fn __check<T: ::core::clone::Clone>(x: &T){}
+            let __repeat: ::core::primitive::usize = $repeat;
+            fn __check<T: ::core::clone::Clone>(x: &T) {}
             let val = $elem;
             __check(&val);
             let mut vec = $crate::vec::Vec::with_capacity(__repeat);
             for i in 0..($repeat){
-                vec.push_back(val.clone())
+                vec.push(val.clone());
             }
             vec
         }
