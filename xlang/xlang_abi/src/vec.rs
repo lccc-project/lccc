@@ -209,6 +209,7 @@ impl<T, A: Allocator> Vec<T, A> {
     ///
     /// # Panics
     /// Panics if the new capacity in bytes exceeds [`isize::MAX`]
+    #[inline]
     pub fn push(&mut self, val: T) {
         if self.len == self.cap {
             let ncap = (self.cap + 1).checked_next_power_of_two().unwrap();
