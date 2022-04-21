@@ -44,4 +44,9 @@ Operands:
 
 Behaviour:
 - Forms 1 and 2: Computes the result of `a+b` (add) or `a-b` (sub).
-- Form 3: Computes the result of `a+b` or `a-b` on pointers. For `unchecked`, both the pointer operand and the result must be inbounds of the same array, and must be mutually reachable from each other.
+- Form 3: Computes the result of `a+b` or `a-b` on pointers. For `unchecked`, both the pointer operand and the result must be inbounds of the same array, and must be mutually reachable from each other, or the pointer operand must be a valid pointer and the integer operand must be the value `0`.
+- Form 4: Computes the result of `a-b` on pointers. For unchecked, both operands must be inbounds of the same array, or both the same valid pointer (the result is the same pointer). For `wrap`, the operation is not valid in a constant expression.
+
+Form 3 causes an implicit derive operation in the following cases:
+- Both the pointer operand and the pointer result are valid pointers and are not the same pointer, or
+- The incoming pointer type has any non-trivial validity attributes, other than those declaring a valid range.

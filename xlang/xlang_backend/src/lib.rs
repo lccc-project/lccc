@@ -341,6 +341,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             }
             VStackValue::OpaqueAggregate(_, loc2) => self.inner.move_val(loc2, loc),
             VStackValue::CompareResult(_, _) => todo!("compare result"),
+            VStackValue::ArrayRepeat(_, _) => todo!("array repeat"),
         }
     }
 
@@ -516,6 +517,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             VStackValue::OpaqueAggregate(ty, loc) => VStackValue::OpaqueAggregate(ty, loc),
             VStackValue::CompareResult(_, _) => todo!("compare results"),
             VStackValue::Trapped => VStackValue::Trapped,
+            VStackValue::ArrayRepeat(_, _) => todo!("array repeat"),
         }
     }
 
@@ -1411,6 +1413,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     VStackValue::OpaqueAggregate(_, _) => todo!(),
                     VStackValue::CompareResult(_, _) => todo!(),
                     VStackValue::Trapped => self.push_value(VStackValue::Trapped),
+                    VStackValue::ArrayRepeat(_, _) => todo!(),
                 }
             }
             Expr::Branch { cond, target } => self.write_branch(*cond, *target),

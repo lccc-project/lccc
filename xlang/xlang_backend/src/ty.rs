@@ -2,14 +2,14 @@ use std::convert::TryInto;
 
 use xlang::{
     ir::{
-        AggregateDefinition, AggregateKind, AnnotationItem, Path, PointerKind, ScalarType,
-        ScalarTypeHeader, ScalarTypeKind, Type, Value,
+        AggregateDefinition, AggregateKind, AnnotationItem, Path, PointerAliasingRule, PointerKind,
+        ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type, ValidRangeType, Value,
     },
-    prelude::v1::{HashMap, Pair, Some as XLangSome},
+    prelude::v1::{format, Box, HashMap, Pair, Some as XLangSome},
     targets::properties::TargetProperties,
 };
 
-use crate::expr::{NoOpaque, VStackValue};
+use crate::expr::{LValue, NoOpaque, VStackValue};
 
 fn scalar_align(size: u64, max_align: u16) -> u64 {
     if size <= (max_align as u64) {
@@ -49,6 +49,128 @@ impl TypeInformation {
             properties,
             aliases: HashMap::new(),
             aggregates: HashMap::new(),
+        }
+    }
+
+    /// Computes the first niche value of `ty`, returning the replacement type and the value of that type that fills that niche
+    pub fn first_niche_for(&self, ty: &Type) -> Option<(Type, VStackValue<NoOpaque>)> {
+        match ty {
+            Type::Null => None,
+            Type::Scalar(sty) => match *sty {
+                ScalarType { mut header, kind }
+                    if header.validity.contains(ScalarValidity::NONZERO) =>
+                {
+                    header.validity -= ScalarValidity::NONZERO;
+                    Some((
+                        Type::Scalar(ScalarType { header, kind }),
+                        VStackValue::Constant(Value::Integer {
+                            ty: ScalarType { header, kind },
+                            val: 0,
+                        }),
+                    ))
+                }
+                ScalarType {
+                    header,
+                    kind:
+                        ScalarTypeKind::Integer {
+                            signed,
+                            min,
+                            max: XLangSome(max),
+                        },
+                } => {
+                    let next = (max as u128) + 1;
+                    let ty_max = u128::MAX
+                        >> (128u16
+                            .saturating_sub(header.bitsize)
+                            .saturating_add(signed as u16) as u32);
+
+                    if (((max as u128) >= ty_max) && !signed)
+                        || ((max >= (ty_max as i128)) && signed)
+                    {
+                        None
+                    } else {
+                        let sty = ScalarType {
+                            header,
+                            kind: ScalarTypeKind::Integer {
+                                signed,
+                                min,
+                                max: XLangSome(next as i128),
+                            },
+                        };
+                        Some((
+                            Type::Scalar(sty),
+                            VStackValue::Constant(Value::Integer { ty: sty, val: next }),
+                        ))
+                    }
+                }
+                _ => None,
+            },
+            Type::Void => todo!(),
+            Type::FnType(_) => todo!(),
+            Type::Pointer(_) => todo!(),
+            Type::Array(_) => todo!(),
+            Type::TaggedType(_, _) => todo!(),
+            Type::Product(_) => todo!(),
+            Type::Aligned(_, _) => todo!(),
+            Type::Aggregate(_) => todo!(),
+            Type::Named(_) => todo!(),
+        }
+    }
+
+    /// Produces the zero-init value of `ty`
+    pub fn zero_init(&self, ty: &Type) -> Option<VStackValue<NoOpaque>> {
+        match ty {
+            Type::Null => None,
+            Type::Scalar(sty) => {
+                if sty.header.validity.contains(ScalarValidity::NONZERO) {
+                    Some(VStackValue::Constant(Value::Invalid(Type::Scalar(*sty))))
+                } else {
+                    Some(VStackValue::Constant(Value::Integer { ty: *sty, val: 0 }))
+                }
+            }
+            Type::Void => None,
+            Type::FnType(_) => None,
+            Type::Pointer(pty) => {
+                if pty.alias.contains(PointerAliasingRule::NONNULL)
+                    || pty.alias.contains(PointerAliasingRule::INVALID)
+                {
+                    Some(VStackValue::Constant(Value::Invalid(Type::Pointer(
+                        pty.clone(),
+                    ))))
+                } else if let Pair(
+                    ValidRangeType::Dereference
+                    | ValidRangeType::DereferenceWrite
+                    | ValidRangeType::WriteOnly,
+                    _,
+                ) = pty.valid_range
+                {
+                    Some(VStackValue::Constant(Value::Invalid(Type::Pointer(
+                        pty.clone(),
+                    ))))
+                } else {
+                    Some(VStackValue::Pointer(pty.clone(), LValue::Null))
+                }
+            }
+            Type::Array(arrty) => {
+                let repeat = arrty.len.clone();
+                let val = self.zero_init(&arrty.ty)?;
+                Some(VStackValue::ArrayRepeat(Box::new(val), repeat))
+            }
+            Type::TaggedType(_, ty) => self.zero_init(ty),
+            Type::Product(prod) => {
+                let fields = prod
+                    .iter()
+                    .enumerate()
+                    .map(|(field, b)| Some((format!("{}", field), self.zero_init(b)?)))
+                    .collect::<Option<_>>()?;
+                Some(VStackValue::AggregatePieced(
+                    Type::Product(prod.clone()),
+                    fields,
+                ))
+            }
+            Type::Aligned(_, _) => todo!(),
+            Type::Aggregate(_) => todo!(),
+            Type::Named(_) => todo!(),
         }
     }
 

@@ -119,6 +119,9 @@ pub enum VStackValue<Loc: ValLocation> {
 
     /// Placeholder for a value that's already caused a [`Trap`]
     Trapped,
+
+    /// Array repeat constant
+    ArrayRepeat(Box<VStackValue<Loc>>, Value),
 }
 
 impl<Loc: ValLocation> core::fmt::Display for VStackValue<Loc> {
@@ -152,6 +155,9 @@ impl<Loc: ValLocation> core::fmt::Display for VStackValue<Loc> {
                 f.write_fmt(format_args!("cmp result ({},{})", l, r))
             }
             VStackValue::Trapped => f.write_str("trapped"),
+            VStackValue::ArrayRepeat(value, count) => {
+                f.write_fmt(format_args!("[{};{}]", value, count))
+            }
         }
     }
 }
@@ -213,9 +219,16 @@ impl VStackValue<NoOpaque> {
                     .map(|Pair(name, val)| Pair(name, val.into_transparent_for()))
                     .collect(),
             ),
-            VStackValue::OpaqueAggregate(_, _) => todo!(),
-            VStackValue::CompareResult(_, _) => todo!(),
-            VStackValue::Trapped => todo!(),
+            VStackValue::OpaqueAggregate(_, loc) => match loc {},
+            VStackValue::CompareResult(left, right) => VStackValue::CompareResult(
+                Box::new(Box::into_inner(left).into_transparent_for()),
+                Box::new(Box::into_inner(right).into_transparent_for()),
+            ),
+            VStackValue::Trapped => VStackValue::Trapped,
+            VStackValue::ArrayRepeat(val, count) => VStackValue::ArrayRepeat(
+                Box::new(Box::into_inner(val).into_transparent_for()),
+                count,
+            ),
         }
     }
 }
