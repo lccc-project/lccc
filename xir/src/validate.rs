@@ -523,7 +523,36 @@ fn tycheck_expr(
                 tys,
             );
         }
-        xlang_struct::Expr::Convert(_, _) => todo!("convert"),
+        xlang_struct::Expr::Convert(str, ty) => {
+            let val = vstack.pop().unwrap();
+            assert_eq!(val.kind, StackValueKind::RValue, "Cannot convert {:?}", val);
+            match str {
+                xlang_struct::ConversionStrength::Strong => todo!("strong convert"),
+                xlang_struct::ConversionStrength::Weak => todo!("weak convert"),
+                xlang_struct::ConversionStrength::Reinterpret => match (&*ty, &val.ty) {
+                    (Type::Pointer(_), Type::Pointer(_)) => {}
+                    (
+                        Type::Scalar(ScalarType {
+                            kind: ScalarTypeKind::Integer { .. },
+                            ..
+                        }),
+                        Type::Pointer(_),
+                    ) => {}
+                    (
+                        Type::Pointer(_),
+                        Type::Scalar(ScalarType {
+                            kind: ScalarTypeKind::Integer { .. },
+                            ..
+                        }),
+                    ) => {}
+                    (ty1, ty2) => panic!("Cannot convert between {} and {}", ty1, ty2),
+                },
+            }
+            vstack.push(StackItem {
+                ty: ty.clone(),
+                kind: StackValueKind::RValue,
+            })
+        }
         xlang_struct::Expr::Derive(pty, expr) => {
             tycheck_expr(expr, locals, exit, vstack, targets, tys);
             let mut ptr = vstack.pop().unwrap();

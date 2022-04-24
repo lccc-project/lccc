@@ -1,0 +1,7 @@
+function main() -> int(32){
+    const label_address @0
+    branch indirect
+    target @0 []
+    const int(32) 0
+    exit 1
+}

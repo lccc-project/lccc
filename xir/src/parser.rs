@@ -10,8 +10,8 @@ use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
 use xlang::targets::Target;
 use xlang_struct::{
     Abi, AccessClass, AnnotatedElement, BinaryOp, Block, BlockItem, BranchCondition, CharFlags,
-    Expr, File, FnType, FunctionBody, FunctionDeclaration, HashSwitch, LinearSwitch,
-    MemberDeclaration, OverflowBehaviour, Path, PathComponent, PointerAliasingRule,
+    ConversionStrength, Expr, File, FnType, FunctionBody, FunctionDeclaration, HashSwitch,
+    LinearSwitch, MemberDeclaration, OverflowBehaviour, Path, PathComponent, PointerAliasingRule,
     PointerDeclarationType, PointerKind, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind,
     ScalarValidity, Scope, ScopeMember, StackItem, StringEncoding, Switch, Type, UnaryOp,
     ValidRangeType, Value, Visibility,
@@ -646,6 +646,18 @@ pub fn parse_const<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> V
                 item: parse_path(it),
             }
         }
+        Token::Ident(id) if id == "label_address" => {
+            it.next();
+            match it.next().unwrap() {
+                Token::Sigil('@') => {}
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+
+            match it.next().unwrap() {
+                Token::IntLiteral(n) => Value::LabelAddress(n.try_into().unwrap()),
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+        }
         _ => {
             let ty = parse_type(it).unwrap();
             match it.next().unwrap() {
@@ -829,6 +841,7 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
                 Token::Ident(id) if id == "greater" => BranchCondition::Greater,
                 Token::Ident(id) if id == "less_equal" => BranchCondition::LessEqual,
                 Token::Ident(id) if id == "greater_equal" => BranchCondition::GreaterEqual,
+                Token::Ident(id) if id == "indirect" => return Expr::BranchIndirect,
                 tok => panic!("Unexpected token {:?}", tok),
             };
             match it.next().unwrap() {
@@ -1114,6 +1127,16 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
                 Token::Ident(id) if id == "switch" => Expr::Switch(switch),
                 tok => panic!("Unexpected token {:?}", tok),
             }
+        }
+        Token::Ident(id) if id == "convert" => {
+            it.next();
+            let str = match it.next().unwrap() {
+                Token::Ident(id) if id == "weak" => ConversionStrength::Weak,
+                Token::Ident(id) if id == "strong" => ConversionStrength::Strong,
+                Token::Ident(id) if id == "reinterpret" => ConversionStrength::Reinterpret,
+                tok => panic!("Unexpected token {:?}", tok),
+            };
+            Expr::Convert(str, parse_type(it).unwrap())
         }
         tok => todo!("{:?}", tok),
     }

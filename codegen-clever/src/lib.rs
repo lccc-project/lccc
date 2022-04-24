@@ -436,22 +436,33 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
     fn move_imm(&mut self, src: u128, dest: Self::Loc, ty: &xlang_struct::Type) {
         match (dest, self.tys.type_size(ty).unwrap()) {
             (CleverValLocation::Register { size, reg }, tysize @ 1..=8) => {
-                let imm_size = (64 - (src.leading_zeros().min((tysize * 8) as u32)));
+                let imm_size = (128 - (src.leading_zeros())).min((tysize * 8) as u32);
                 let imm_val = if imm_size <= 12 {
                     CleverImmediate::Short(src as u16)
                 } else {
                     CleverImmediate::Long((((imm_size + 15) / 16) * 16) as u16, src as u64)
                 };
-                self.insns.push(
-                    CleverInstruction::new(
-                        CleverOpcode::Mov,
-                        vec![
-                            CleverOperand::Register { size, reg },
-                            CleverOperand::Immediate(imm_val),
-                        ],
-                    )
-                    .into(),
-                );
+
+                if reg.0 < 16 {
+                    self.insns.push(
+                        CleverInstruction::new(
+                            CleverOpcode::MovRD { r: reg },
+                            vec![CleverOperand::Immediate(imm_val)],
+                        )
+                        .into(),
+                    );
+                } else {
+                    self.insns.push(
+                        CleverInstruction::new(
+                            CleverOpcode::Mov,
+                            vec![
+                                CleverOperand::Register { size, reg },
+                                CleverOperand::Immediate(imm_val),
+                            ],
+                        )
+                        .into(),
+                    );
+                }
             }
             (loc, size) => todo!("move of size {} into {:?}", size, loc),
         }
@@ -490,7 +501,10 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
     }
 
     fn write_target(&mut self, target: u32) {
-        todo!()
+        self.insns.push(CleverInstructionOrLabel::Label(format!(
+            "{}._T{}",
+            self.name, target
+        )))
     }
 
     fn call_direct(&mut self, path: &xlang_struct::Path) {

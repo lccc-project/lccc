@@ -1390,8 +1390,8 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         self.inner.write_trap(Trap::Unreachable);
                         self.push_value(VStackValue::Trapped);
                     }
-                    VStackValue::Constant(v) => panic!("Invalid Value {:?}", v),
-                    VStackValue::LValue(ty, lvalue) => {
+                    VStackValue::Pointer(pty, lvalue) => {
+                        let ty = &*pty.inner;
                         let realty = match &ty {
                             Type::FnType(ty) => &**ty,
                             _ => fnty,
@@ -1407,17 +1407,29 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                             }
                         }
                     }
-                    VStackValue::Pointer(_, _) => todo!(),
-                    VStackValue::OpaqueScalar(_, _) => todo!(),
-                    VStackValue::AggregatePieced(_, _) => todo!(),
-                    VStackValue::OpaqueAggregate(_, _) => todo!(),
-                    VStackValue::CompareResult(_, _) => todo!(),
-                    VStackValue::Trapped => self.push_value(VStackValue::Trapped),
-                    VStackValue::ArrayRepeat(_, _) => todo!(),
+                    val => panic!("Invalid value {}", val),
                 }
             }
             Expr::Branch { cond, target } => self.write_branch(*cond, *target),
-            Expr::BranchIndirect => todo!(),
+            Expr::BranchIndirect => {
+                let val = self.pop_value().unwrap();
+
+                match val {
+                    VStackValue::Constant(Value::LabelAddress(n)) => {
+                        self.branch_to(n);
+                    }
+                    VStackValue::Pointer(_, LValue::Label(n)) => self.branch_to(n),
+                    VStackValue::Pointer(_, LValue::OpaquePointer(loc)) => {
+                        self.inner.branch_indirect(loc);
+                    }
+                    VStackValue::Pointer(_, _) => {
+                        self.inner.write_trap(Trap::Unreachable);
+                        self.diverged = true;
+                    }
+                    VStackValue::Trapped => self.diverged = true,
+                    val => panic!("Invalid value {}", val),
+                }
+            }
 
             Expr::Convert(_, Type::Pointer(pty)) => match self.pop_value().unwrap() {
                 VStackValue::Constant(Value::LabelAddress(n)) => {
