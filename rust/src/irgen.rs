@@ -122,20 +122,10 @@ fn irgen_type(ty: Type) -> ir::Type {
         Type::Struct { fields, .. } => ir::Type::Aggregate(ir::AggregateDefinition {
             annotations: ir::AnnotatedElement {
                 annotations: abi::vec![ir::Annotation {
-                    items: abi::vec![ir::AnnotationItem::Meta(
-                        ir::Path {
-                            components: abi::vec![ir::PathComponent::Text(
-                                abi::string::String::from("sort_layout")
-                            )]
-                        },
-                        abi::boxed::Box::new(ir::Annotation {
-                            items: abi::vec![ir::AnnotationItem::Identifier(ir::Path {
-                                components: abi::vec![ir::PathComponent::Text(
-                                    abi::string::String::from("alignment")
-                                )]
-                            })]
-                        })
-                    )]
+                    inner: ir::AnnotationItem::Meta(
+                        ir::simple_path!(sort_layout),
+                        abi::vec![ir::AnnotationItem::Identifier(ir::simple_path!(alignment))]
+                    )
                 }],
             },
             kind: ir::AggregateKind::Struct,

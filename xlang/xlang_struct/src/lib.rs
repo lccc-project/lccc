@@ -50,13 +50,41 @@ impl core::fmt::Display for Path {
 pub enum AnnotationItem {
     Identifier(Path),
     Value(Path, Value),
-    Meta(Path, Box<Annotation>),
+    Meta(Path, Vec<AnnotationItem>),
+}
+
+impl core::fmt::Display for AnnotationItem {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            AnnotationItem::Identifier(id) => id.fmt(f),
+            AnnotationItem::Value(id, val) => f.write_fmt(format_args!("{} = {}", id, val)),
+            AnnotationItem::Meta(id, rest) => {
+                id.fmt(f)?;
+                f.write_str("(")?;
+                let mut sep = "";
+                for a in rest {
+                    f.write_str(sep)?;
+                    a.fmt(f)?;
+                    sep = ", ";
+                }
+                f.write_str(")")
+            }
+        }
+    }
 }
 
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Annotation {
-    pub items: Vec<AnnotationItem>,
+    pub inner: AnnotationItem,
+}
+
+impl core::fmt::Display for Annotation {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_str("#[")?;
+        self.inner.fmt(f)?;
+        f.write_str("]")
+    }
 }
 
 #[repr(C)]
@@ -322,6 +350,8 @@ impl core::fmt::Display for Type {
                 arrty.len.fmt(f)?;
                 f.write_str("]")
             }
+            Self::Named(name) => f.write_fmt(format_args!("({})", name)),
+            Self::Aggregate(defn) => defn.fmt(f),
             ty => todo!("{:?}", ty),
         }
     }
@@ -340,6 +370,31 @@ pub struct AggregateDefinition {
     pub annotations: AnnotatedElement,
     pub kind: AggregateKind,
     pub fields: Vec<Pair<String, Type>>,
+}
+
+impl core::fmt::Display for AggregateDefinition {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self.kind {
+            AggregateKind::Struct => f.write_str("struct")?,
+            AggregateKind::Union => f.write_str("union")?,
+        }
+
+        for a in &self.annotations.annotations {
+            f.write_str(" ")?;
+            a.fmt(f)?;
+        }
+
+        f.write_str("{")?;
+        let mut sep = " ";
+        for Pair(name, ty) in &self.fields {
+            f.write_str(sep)?;
+            sep = ", ";
+            f.write_str(name)?;
+            f.write_str(": ")?;
+            ty.fmt(f)?;
+        }
+        f.write_str(" }")
+    }
 }
 
 impl Default for Type {

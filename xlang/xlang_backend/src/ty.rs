@@ -195,10 +195,10 @@ impl TypeInformation {
         let mut sort_align = false;
 
         for attr in &defn.annotations.annotations {
-            match &*attr.items {
-                [AnnotationItem::Meta(m, an)] => {
+            match &attr.inner {
+                AnnotationItem::Meta(m, an) => {
                     if *m == xlang::ir::simple_path!(sort_layout) {
-                        match &*an.items {
+                        match &an[..] {
                             [AnnotationItem::Identifier(id)]
                                 if *id == xlang::ir::simple_path!(alignment) =>
                             {
@@ -208,7 +208,7 @@ impl TypeInformation {
                         }
                     }
                 }
-                [AnnotationItem::Identifier(id)] if *id == xlang::ir::simple_path!(transparent) => {
+                AnnotationItem::Identifier(id) if *id == xlang::ir::simple_path!(transparent) => {
                     is_transparent = true;
                 }
                 _ => {}
