@@ -530,17 +530,14 @@ fn tycheck_expr(
                 xlang_struct::ConversionStrength::Strong => todo!("strong convert"),
                 xlang_struct::ConversionStrength::Weak => todo!("weak convert"),
                 xlang_struct::ConversionStrength::Reinterpret => match (&*ty, &val.ty) {
-                    (Type::Pointer(_), Type::Pointer(_)) => {}
                     (
-                        Type::Scalar(ScalarType {
+                        Type::Pointer(_)
+                        | Type::Scalar(ScalarType {
                             kind: ScalarTypeKind::Integer { .. },
                             ..
                         }),
-                        Type::Pointer(_),
-                    ) => {}
-                    (
-                        Type::Pointer(_),
-                        Type::Scalar(ScalarType {
+                        Type::Pointer(_)
+                        | Type::Scalar(ScalarType {
                             kind: ScalarTypeKind::Integer { .. },
                             ..
                         }),
@@ -551,7 +548,7 @@ fn tycheck_expr(
             vstack.push(StackItem {
                 ty: ty.clone(),
                 kind: StackValueKind::RValue,
-            })
+            });
         }
         xlang_struct::Expr::Derive(pty, expr) => {
             tycheck_expr(expr, locals, exit, vstack, targets, tys);

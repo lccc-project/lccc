@@ -251,7 +251,7 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreIterator<I>) -
             }
             "union" => {
                 stream.next();
-                let defn = parse_aggregate_body(stream, AggregateKind::Struct).unwrap();
+                let defn = parse_aggregate_body(stream, AggregateKind::Union).unwrap();
                 Some(Type::Aggregate(defn))
             }
             _ => Some(Type::Named(parse_path(stream))),
@@ -1240,10 +1240,7 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
         Token::Ident(id) if id == "member" => {
             it.next();
 
-            let indirect = match it.peek().unwrap() {
-                Token::Ident(id) if id == "indirect" => true,
-                _ => false,
-            };
+            let indirect = matches!(it.peek().unwrap(), Token::Ident(id) if id == "indirect");
 
             let id = parse_ident_with_parens(it);
 

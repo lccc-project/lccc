@@ -50,7 +50,7 @@ impl core::fmt::Display for Path {
 pub enum AnnotationItem {
     Identifier(Path),
     Value(Path, Value),
-    Meta(Path, Vec<AnnotationItem>),
+    Meta(Path, Vec<Self>),
 }
 
 impl core::fmt::Display for AnnotationItem {
@@ -352,7 +352,9 @@ impl core::fmt::Display for Type {
             }
             Self::Named(name) => f.write_fmt(format_args!("({})", name)),
             Self::Aggregate(defn) => defn.fmt(f),
-            ty => todo!("{:?}", ty),
+            Self::Aligned(alignment, base) => {
+                f.write_fmt(format_args!("aligned({}) {}", alignment, base))
+            }
         }
     }
 }

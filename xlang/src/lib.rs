@@ -31,7 +31,7 @@ impl<'a> XLangVersion<'a> {
     }
 
     #[must_use]
-    pub fn version_string(&self) -> StringView {
+    pub const fn version_string(&self) -> StringView {
         self.0
     }
 }

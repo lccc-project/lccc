@@ -407,7 +407,6 @@ impl TypeInformation {
         self.aggregate_layout(ty)
             .map(|layout| layout.fields)
             .map(|fields| fields.get(name).cloned().map(|(_, ty)| ty))
-            .map(Into::into)
-            .flatten()
+            .and_then(Into::into)
     }
 }

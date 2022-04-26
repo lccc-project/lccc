@@ -1645,7 +1645,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                             if let StdSome(Pair(_, inner)) = inner {
                                 inner
                             } else {
-                                let fty = self._tys.get_field_type(&base, &f).unwrap();
+                                let fty = self._tys.get_field_type(&base, f).unwrap();
                                 self._tys.zero_init(&fty).unwrap().into_transparent_for()
                             }
                         }

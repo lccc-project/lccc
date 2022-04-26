@@ -212,7 +212,7 @@ impl CallingConvention for CleverCallConv {
         ][..];
 
         let mut last_loc = CleverValLocation::Unassigned(0);
-        if let Some(_) = self.pass_return_place(&fnty.ret) {
+        if self.pass_return_place(&fnty.ret).is_some() {
             int_regs = &int_regs[1..];
         }
         for (i, ty) in fnty
