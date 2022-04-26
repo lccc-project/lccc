@@ -29,7 +29,7 @@ use xlang_backend::{
     FunctionCodegen, FunctionRawCodegen,
 };
 use xlang_struct::{
-    AccessClass, AggregateDefinition, FunctionDeclaration, ScalarType, ScalarTypeHeader,
+    AccessClass, AggregateDefinition, FnType, FunctionDeclaration, ScalarType, ScalarTypeHeader,
     ScalarTypeKind, Type,
 };
 
@@ -507,7 +507,7 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
         )))
     }
 
-    fn call_direct(&mut self, path: &xlang_struct::Path) {
+    fn call_direct(&mut self, path: &xlang_struct::Path, _realty: &FnType) {
         todo!()
     }
 

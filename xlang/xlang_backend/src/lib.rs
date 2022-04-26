@@ -114,7 +114,7 @@ pub trait FunctionRawCodegen {
     /// Writes a new target at the current location
     fn write_target(&mut self, target: u32);
     /// Performs a direct call to a named function
-    fn call_direct(&mut self, path: &Path);
+    fn call_direct(&mut self, path: &Path, realty: &FnType);
     /// Performs an indirect call to the pointer stored in `value`
     fn call_indirect(&mut self, value: Self::Loc);
 
@@ -600,7 +600,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             self.move_val(val, param_loc);
         }
 
-        self.inner.call_direct(path);
+        self.inner.call_direct(path, realty);
         match &callty.ret {
             Type::Void => {}
             Type::Scalar(ScalarType {

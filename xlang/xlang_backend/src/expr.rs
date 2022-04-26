@@ -8,7 +8,7 @@ use core::{fmt::Debug, hash::Hash};
 use crate::str::Encoding;
 
 /// Represents the location of opaque values both as locals and on the value stack
-pub trait ValLocation: Eq + Hash + Debug + Clone {
+pub trait ValLocation: Eq + Debug + Clone {
     /// Checks if this location is addressable (is not a register)
     fn addressible(&self) -> bool;
 

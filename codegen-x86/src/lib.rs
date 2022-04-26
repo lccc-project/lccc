@@ -199,7 +199,7 @@ impl FunctionRawCodegen for X86CodegenState {
     }
 
     #[allow(clippy::match_wildcard_for_single_variants)]
-    fn call_direct(&mut self, path: &Path) {
+    fn call_direct(&mut self, path: &Path, realty: &FnType) {
         let name = match &*path.components {
             [PathComponent::Root, PathComponent::Text(name)] | [PathComponent::Text(name)] => {
                 name.to_string()
@@ -209,12 +209,35 @@ impl FunctionRawCodegen for X86CodegenState {
             }
         };
 
+        // FIXME:
+        // hacks because we don't use the stack or float registers yet
+        if realty.variadic {
+            self.move_imm2reg(0, X86Register::Eax);
+        }
+
+        self.insns
+            .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                X86Opcode::SubGImm8,
+                vec![
+                    X86Operand::Register(X86Register::Rsp),
+                    X86Operand::Immediate(8),
+                ],
+            )));
+
         let addr = Address::PltSym { name };
 
         self.insns
             .push(X86InstructionOrLabel::Insn(X86Instruction::new(
                 X86Opcode::Call,
                 vec![X86Operand::RelAddr(addr)],
+            )));
+        self.insns
+            .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                X86Opcode::AddGImm8,
+                vec![
+                    X86Operand::Register(X86Register::Rsp),
+                    X86Operand::Immediate(8),
+                ],
             )));
     }
 
@@ -559,8 +582,11 @@ impl FunctionRawCodegen for X86CodegenState {
         self.insns.push(X86InstructionOrLabel::FunctionEpilogue);
     }
 
-    fn prepare_call_frame(&mut self, _: &FnType, _: &FnType) {
-        /* todo */
+    fn prepare_call_frame(&mut self, _callty: &FnType, _realty: &FnType) {
+        if (self.frame_size & 16) != 0 {
+            // Ensure stack alignment
+            self.frame_size = ((self.frame_size + 15) / 16) * 16;
+        }
     }
 
     fn store_indirect(&mut self, lvalue: Self::Loc, loc: Self::Loc, _: &Type) {
