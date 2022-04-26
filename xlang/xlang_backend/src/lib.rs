@@ -1361,6 +1361,31 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         }
     }
 
+    fn get_field_paths(
+        &self,
+        lval: LValue<F::Loc>,
+        ty: &Type,
+    ) -> (Type, LValue<F::Loc>, Vec<String>) {
+        match lval {
+            LValue::Field(base_ty, base, field) => {
+                let base_type = self._tys.get_field_type(&base_ty, &field).unwrap();
+                if &base_type == ty {
+                    let (inner_ty, base, mut fields) =
+                        self.get_field_paths(Box::into_inner(base), &base_ty);
+                    fields.push(field);
+                    (inner_ty, base, fields)
+                } else {
+                    (
+                        ty.clone(),
+                        LValue::Field(base_ty, base, field),
+                        xlang::abi::vec![],
+                    )
+                }
+            }
+            lval => (ty.clone(), lval, xlang::abi::vec![]),
+        }
+    }
+
     /// Writes an expression in linear order into the codegen
     pub fn write_expr(&mut self, expr: &Expr) {
         if self.diverged {
@@ -1510,7 +1535,25 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     ctor.fields.iter().cloned().zip(vals).collect(),
                 ));
             }
-            Expr::Member(_) => todo!(),
+            Expr::Member(m) => {
+                let val = self.pop_value().unwrap();
+
+                match val {
+                    VStackValue::LValue(ty, lval) => {
+                        let layout = self._tys.aggregate_layout(&ty).unwrap();
+                        let inner_ty = layout.fields.get(&m.to_string());
+
+                        match inner_ty {
+                            StdSome((_, inner_ty)) => self.push_value(VStackValue::LValue(
+                                inner_ty.clone(),
+                                LValue::Field(ty, Box::new(lval), m.clone()),
+                            )),
+                            _ => panic!("Cannot get member {} of {}", m, ty),
+                        }
+                    }
+                    val => panic!("cannot get member {} of {}", m, val),
+                }
+            }
             Expr::MemberIndirect(_) => todo!(),
             Expr::Assign(_) => {
                 let value = self.vstack.pop_back().unwrap();
@@ -1560,12 +1603,14 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     val => panic!("Invalid value for as_rvalue {:?}", val),
                 };
 
-                match lvalue {
+                let (_, base, path) = self.get_field_paths(lvalue, &ty);
+
+                let mut val = match base {
                     LValue::Null => {
                         self.inner.write_trap(Trap::Unreachable);
-                        self.push_value(VStackValue::Trapped);
+                        VStackValue::Trapped
                     }
-                    LValue::Temporary(val) => self.push_value(Box::into_inner(val)),
+                    LValue::Temporary(val) => Box::into_inner(val),
                     LValue::OpaquePointer(loc) => todo!("as_rvalue [{:?}]", loc),
 
                     LValue::Local(n) => {
@@ -1573,20 +1618,44 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         if let Some(loc) = local.opaque_location() {
                             let dst = self.inner.allocate(&ty, false);
                             self.inner.move_val(loc.clone(), dst.clone());
-                            self.push_opaque(&ty, dst);
+                            self.opaque_value(&ty, dst)
                         } else {
-                            self.push_value(local)
+                            local
                         }
                     }
                     LValue::GlobalAddress(_) => todo!("as_rvalue global_address"),
                     LValue::Label(_) => {
                         self.inner.write_trap(Trap::Unreachable);
-                        self.push_value(VStackValue::Trapped);
+                        VStackValue::Trapped
                     }
                     LValue::Field(_, _, _) => todo!("as_rvalue field"),
                     LValue::StringLiteral(_, _) => todo!("as_rvalue string_literal"),
                     LValue::Offset(_, _) => todo!("as_rvalue offset"),
+                };
+
+                for f in &path {
+                    val = match val {
+                        VStackValue::Constant(_) => todo!(),
+                        VStackValue::LValue(_, _) => todo!(),
+                        VStackValue::Pointer(_, _) => todo!(),
+                        VStackValue::OpaqueScalar(_, _) => todo!(),
+                        VStackValue::AggregatePieced(base, mut fields) => {
+                            let inner = fields.remove(f);
+
+                            if let StdSome(Pair(_, inner)) = inner {
+                                inner
+                            } else {
+                                let fty = self._tys.get_field_type(&base, &f).unwrap();
+                                self._tys.zero_init(&fty).unwrap().into_transparent_for()
+                            }
+                        }
+                        VStackValue::OpaqueAggregate(_, _) => todo!(),
+                        VStackValue::CompareResult(_, _) => todo!(),
+                        VStackValue::Trapped => VStackValue::Trapped,
+                        VStackValue::ArrayRepeat(_, _) => todo!(),
+                    }
                 }
+                self.push_value(val);
             }
             Expr::CompoundAssign(_, _, _) => todo!(),
             Expr::LValueOp(_, _, _) => todo!(),

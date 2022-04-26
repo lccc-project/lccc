@@ -928,6 +928,7 @@ pub fn tycheck(x: &mut File) {
                 typestate.tys.insert(path.clone(), ty.clone());
             }
             xlang_struct::MemberDeclaration::AggregateDefinition(defn) => {
+                eprintln!("Encountered Aggregate {} ({})", path, defn);
                 typestate.aggregate.insert(path.clone(), Some(defn.clone()));
             }
             xlang_struct::MemberDeclaration::OpaqueAggregate(_) => {

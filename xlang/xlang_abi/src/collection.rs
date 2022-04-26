@@ -401,7 +401,8 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
 
             if key_val.0.borrow().eq(key) {
                 let val = unsafe { core::ptr::read(key_val) };
-                for j in i..(bucket.ecount - 1) {
+                bucket.ecount -= 1;
+                for j in i..bucket.ecount {
                     unsafe {
                         core::ptr::write(
                             bucket.entries.as_mut_ptr().add(j),
@@ -1004,5 +1005,20 @@ mod test {
         map.insert("Hello", 1);
         let mut iter = map.into_iter();
         assert!(iter.any(|Pair(s, _)| s == "Hello"));
+    }
+
+    #[test]
+    fn test_hash_map_remove() {
+        let mut map = HashMap::<String, String>::new();
+        map.insert("Hello".to_string(), "World".to_string());
+        assert!(map.remove("Hello").unwrap() == Pair("Hello", "World"));
+    }
+
+    #[test]
+    fn test_hash_map_remove_and_drop() {
+        let mut map = HashMap::<String, String>::new();
+        map.insert("Hello".to_string(), "World".to_string());
+        map.insert("Goodbye".to_string(), "Universe".to_string());
+        assert!(map.remove("Hello").unwrap() == Pair("Hello", "World"));
     }
 }

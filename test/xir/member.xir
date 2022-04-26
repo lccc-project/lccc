@@ -1,0 +1,16 @@
+
+struct X{
+    x: int(32)
+}
+
+function main() -> int(32){
+    declare _0: X;
+    local _0
+    dup
+    const int(32) 0
+    aggregate X {x}
+    assign
+    member x
+    as_rvalue
+    exit 1
+}

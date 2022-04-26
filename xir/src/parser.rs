@@ -9,12 +9,13 @@ use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
 
 use xlang::targets::Target;
 use xlang_struct::{
-    Abi, AccessClass, AnnotatedElement, BinaryOp, Block, BlockItem, BranchCondition, CharFlags,
-    ConversionStrength, Expr, File, FnType, FunctionBody, FunctionDeclaration, HashSwitch,
-    LinearSwitch, MemberDeclaration, OverflowBehaviour, Path, PathComponent, PointerAliasingRule,
-    PointerDeclarationType, PointerKind, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind,
-    ScalarValidity, Scope, ScopeMember, StackItem, StringEncoding, Switch, Type, UnaryOp,
-    ValidRangeType, Value, Visibility,
+    Abi, AccessClass, AggregateCtor, AggregateDefinition, AggregateKind, AnnotatedElement,
+    BinaryOp, Block, BlockItem, BranchCondition, CharFlags, ConversionStrength, Expr, File, FnType,
+    FunctionBody, FunctionDeclaration, HashSwitch, LinearSwitch, MemberDeclaration,
+    OverflowBehaviour, Path, PathComponent, PointerAliasingRule, PointerDeclarationType,
+    PointerKind, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Scope,
+    ScopeMember, StackItem, StringEncoding, Switch, Type, UnaryOp, ValidRangeType, Value,
+    Visibility,
 };
 
 use crate::lexer::{Group, Token};
@@ -243,7 +244,17 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreIterator<I>) -
                     }
                 }
             }
-            s => todo!("{}", s),
+            "struct " => {
+                stream.next();
+                let defn = parse_aggregate_body(stream, AggregateKind::Struct).unwrap();
+                Some(Type::Aggregate(defn))
+            }
+            "union" => {
+                stream.next();
+                let defn = parse_aggregate_body(stream, AggregateKind::Struct).unwrap();
+                Some(Type::Aggregate(defn))
+            }
+            _ => Some(Type::Named(parse_path(stream))),
         },
         Some(Token::Sigil('*')) => {
             stream.next();
@@ -301,7 +312,7 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreIterator<I>) -
                 stream.next();
             }
         }
-        Some(tok) => todo!("{:?}", tok),
+        Some(_) => Some(Type::Named(parse_path(stream))),
         None => None,
     }
 }
@@ -337,6 +348,47 @@ pub fn parse_path<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Pa
         } else {
             break Path { components: path };
         }
+    }
+}
+
+pub fn parse_aggregate_body<I: Iterator<Item = Token>>(
+    it: &mut PeekMoreIterator<I>,
+    kind: AggregateKind,
+) -> Option<AggregateDefinition> {
+    match it.next().unwrap() {
+        Token::Sigil(';') => None,
+        Token::Group(Group::Braces(tokens)) => {
+            let mut it = tokens.into_iter().peekmore();
+
+            let mut fields = Vec::new();
+            loop {
+                let id = match it.next() {
+                    Some(Token::Ident(id)) => id,
+                    None => break,
+                    Some(tok) => panic!("Unexpected token {:?}", tok),
+                };
+
+                match it.next().unwrap() {
+                    Token::Sigil(':') => {}
+                    tok => panic!("Unexpected token {:?}", tok),
+                }
+
+                let ty = parse_type(&mut it).unwrap();
+                fields.push(Pair(id, ty));
+                match it.next() {
+                    Some(Token::Sigil(',')) => continue,
+                    None => break,
+                    Some(tok) => panic!("Unexpected token {:?}", tok),
+                }
+            }
+
+            Some(AggregateDefinition {
+                annotations: AnnotatedElement::default(),
+                kind,
+                fields,
+            })
+        }
+        tok => panic!("Unexpected token {:?}", tok),
     }
 }
 
@@ -513,7 +565,29 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
             let _name = parse_path(it);
             todo!()
         }
+        Token::Ident(id) if id == "struct" => {
+            it.next();
+            let name = parse_path(it);
 
+            let aggr = parse_aggregate_body(it, AggregateKind::Struct);
+            if let Some(aggr) = aggr {
+                Some((
+                    name,
+                    ScopeMember {
+                        member_decl: MemberDeclaration::AggregateDefinition(aggr),
+                        ..ScopeMember::default()
+                    },
+                ))
+            } else {
+                Some((
+                    name,
+                    ScopeMember {
+                        member_decl: MemberDeclaration::OpaqueAggregate(AggregateKind::Struct),
+                        ..ScopeMember::default()
+                    },
+                ))
+            }
+        }
         tok => panic!("unexpected token {:?}", tok),
     }
 }
@@ -1138,7 +1212,59 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
             };
             Expr::Convert(str, parse_type(it).unwrap())
         }
+        Token::Ident(id) if id == "aggregate" => {
+            it.next();
+            let ty = parse_type(it).unwrap();
+            let mut fields = Vec::new();
+            match it.next().unwrap() {
+                Token::Group(Group::Braces(inner)) => {
+                    let mut it = inner.into_iter().peekmore();
+                    loop {
+                        match it.next() {
+                            Some(Token::Ident(id)) => fields.push(id),
+                            None => break,
+                            Some(tok) => panic!("Unexpected token {:?}", tok),
+                        }
+                        match it.next() {
+                            Some(Token::Sigil(',')) => continue,
+                            None => break,
+                            Some(tok) => panic!("Unexpected token {:?}", tok),
+                        }
+                    }
+                }
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+
+            Expr::Aggregate(AggregateCtor { ty, fields })
+        }
+        Token::Ident(id) if id == "member" => {
+            it.next();
+
+            let indirect = match it.peek().unwrap() {
+                Token::Ident(id) if id == "indirect" => true,
+                _ => false,
+            };
+
+            let id = parse_ident_with_parens(it);
+
+            if indirect {
+                Expr::MemberIndirect(id)
+            } else {
+                Expr::Member(id)
+            }
+        }
         tok => todo!("{:?}", tok),
+    }
+}
+
+pub fn parse_ident_with_parens<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> String {
+    match it.next().unwrap() {
+        Token::Ident(id) => id,
+        Token::Group(Group::Parenthesis(inner)) => {
+            let mut it = inner.into_iter().peekmore();
+            parse_ident_with_parens(&mut it)
+        }
+        tok => panic!("Unexpected token {:?}", tok),
     }
 }
 

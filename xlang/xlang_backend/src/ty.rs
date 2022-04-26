@@ -26,11 +26,16 @@ fn align_size(size: u64, align: u64) -> u64 {
 /// The layout of a particular aggregate type
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AggregateLayout {
-    total_size: u64,
-    total_align: u64,
-    fields: HashMap<String, (u64, Type)>,
-    transparent_over: Option<Type>,
-    first_niche: Option<(Type, VStackValue<NoOpaque>)>,
+    /// The total size of the aggregate type
+    pub total_size: u64,
+    /// The alignment of the aggregate type
+    pub total_align: u64,
+    /// A map between field names and the field offset/type
+    pub fields: HashMap<String, (u64, Type)>,
+    /// Set to the type the aggregate is transparent over, if any
+    pub transparent_over: Option<Type>,
+    /// Set to the first niche this type has and the new type that fills it, if any such niches are available
+    pub first_niche: Option<(Type, VStackValue<NoOpaque>)>,
 }
 
 ///
@@ -228,9 +233,9 @@ impl TypeInformation {
             let fsize = self.type_size(&ty).unwrap();
 
             assert!(
-                (falign != 1 || fsize != 0)
+                !((falign != 1 || fsize != 0)
                     && is_transparent
-                    && core::mem::replace(&mut transparent_over, Some(ty.clone())).is_some(),
+                    && core::mem::replace(&mut transparent_over, Some(ty.clone())).is_some()),
                 "Cannot be transparent over multiple non- 1-ZST fields"
             );
             match defn.kind {
@@ -285,7 +290,15 @@ impl TypeInformation {
                 })
             }
             Type::Aggregate(defn) => Some(self.aggregate_layout_from_defn(defn)),
-            Type::Named(_) => todo!(),
+            Type::Named(p) => {
+                if let Some(ty) = self.aliases.get(p) {
+                    self.aggregate_layout(ty)
+                } else if let Some(Some(defn)) = self.aggregates.get(p) {
+                    Some(self.aggregate_layout_from_defn(defn))
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
@@ -387,5 +400,14 @@ impl TypeInformation {
             Type::TaggedType(_, ty) => self.type_size(ty),
             ty => self.aggregate_layout(ty).map(|layout| layout.total_size),
         }
+    }
+
+    /// Gets the type of the field of `ty` with a given name
+    pub fn get_field_type(&self, ty: &Type, name: &str) -> Option<Type> {
+        self.aggregate_layout(ty)
+            .map(|layout| layout.fields)
+            .map(|fields| fields.get(name).cloned().map(|(_, ty)| ty))
+            .map(Into::into)
+            .flatten()
     }
 }
