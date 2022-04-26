@@ -251,6 +251,19 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     },
                 });
             }
+            '\'' => {
+                file.next();
+                result.push(Lexeme::Token {
+                    ty: TokenType::String(StrType::Default),
+                    tok: lex_single_char(file).to_string(),
+                    span: Span {
+                        begin,
+                        end: file.pos,
+                        path: String::from("<todo>"),
+                    },
+                });
+                todo!("{:?}", file.next());
+            }
             x if x.is_whitespace() => {
                 file.next();
             }
@@ -488,7 +501,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                     },
                 });
             }
-            _ => todo!("{}", x),
+            _ => todo!("{:?}", x),
         }
     }
     result
