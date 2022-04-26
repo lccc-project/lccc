@@ -492,7 +492,7 @@ impl<K, V, A: Allocator> Drop for IntoIter<K, V, A> {
             self.alloc.deallocate(
                 self.htab.as_nonnull().cast(),
                 Layout::array::<HashMapSlot<K, V>>(self.buckets).unwrap(),
-            )
+            );
         }
     }
 }
