@@ -702,6 +702,10 @@ impl FunctionRawCodegen for X86CodegenState {
     ) {
         todo!()
     }
+
+    fn call_absolute(&mut self, _: u128, _: &FnType) {
+        todo!("call abs")
+    }
 }
 
 impl X86CodegenState {

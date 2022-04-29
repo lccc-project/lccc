@@ -4,6 +4,7 @@ use xlang::{
 };
 
 use core::{fmt::Debug, hash::Hash};
+use std::num::NonZeroU128;
 
 use crate::str::Encoding;
 
@@ -39,6 +40,9 @@ pub enum LValue<Loc: ValLocation> {
 
     /// A Null pointer
     Null,
+
+    /// A raw Address
+    TransparentAddr(NonZeroU128),
 }
 
 impl<Loc: ValLocation> core::fmt::Display for LValue<Loc> {
@@ -92,6 +96,7 @@ impl<Loc: ValLocation> core::fmt::Display for LValue<Loc> {
             }
             LValue::Offset(loc, off) => f.write_fmt(format_args!("{}+{}", loc, off)),
             LValue::Null => f.write_str("null"),
+            LValue::TransparentAddr(addr) => f.write_fmt(format_args!("{:#x}", addr)),
         }
     }
 }
@@ -255,6 +260,7 @@ impl LValue<NoOpaque> {
                 bytes,
             ),
             LValue::Null => LValue::Null,
+            LValue::TransparentAddr(addr) => LValue::TransparentAddr(addr),
         }
     }
 }

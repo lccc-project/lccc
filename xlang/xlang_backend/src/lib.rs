@@ -21,7 +21,7 @@ use xlang::{
         AccessClass, BinaryOp, Block, BranchCondition, CharFlags, Expr, FnType, FunctionBody,
         HashSwitch, LinearSwitch, OverflowBehaviour, Path, PointerType, ScalarType,
         ScalarTypeHeader, ScalarTypeKind, ScalarValidity, StackItem, StackValueKind, Switch, Type,
-        Value,
+        UnaryOp, Value,
     },
     prelude::v1::*,
     targets::properties::TargetProperties,
@@ -117,6 +117,8 @@ pub trait FunctionRawCodegen {
     fn call_direct(&mut self, path: &Path, realty: &FnType);
     /// Performs an indirect call to the pointer stored in `value`
     fn call_indirect(&mut self, value: Self::Loc);
+    /// Performs a direct call to the given address
+    fn call_absolute(&mut self, addr: u128, realty: &FnType);
 
     /// Performs a guaranteed tail call to the target
     /// Note: The signature is assumed to be compatible with the current function
@@ -349,6 +351,9 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 }
                 LValue::Offset(_, _) => todo!("offset"),
                 LValue::Null => self.inner.move_imm(0, loc, &Type::Pointer(pty)),
+                LValue::TransparentAddr(addr) => {
+                    self.inner.move_imm(addr.get(), loc, &Type::Pointer(pty))
+                }
             },
             VStackValue::LValue(ty, lvalue) => {
                 let pty = PointerType {
@@ -367,6 +372,9 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     }
                     LValue::Offset(_, _) => todo!("offset"),
                     LValue::Null => self.inner.move_imm(0, loc, &Type::Pointer(pty)),
+                    LValue::TransparentAddr(addr) => {
+                        self.inner.move_imm(addr.get(), loc, &Type::Pointer(pty))
+                    }
                 }
             }
             VStackValue::OpaqueScalar(_, loc2) => self.inner.move_val(loc2, loc),
@@ -1422,6 +1430,143 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         }
     }
 
+    /// Writes a unary operator
+    pub fn write_unary_op(&mut self, op: UnaryOp, v: OverflowBehaviour) {
+        let val = self.pop_value().unwrap();
+        match val {
+            VStackValue::Constant(Value::Invalid(_)) => {
+                self.inner.write_trap(Trap::Unreachable);
+                self.push_value(VStackValue::Trapped);
+            }
+            VStackValue::Constant(Value::Uninitialized(ty)) => match v {
+                OverflowBehaviour::Checked => {
+                    let check_ty = ScalarType {
+                        header: ScalarTypeHeader {
+                            bitsize: 1,
+                            ..Default::default()
+                        },
+                        kind: ScalarTypeKind::Integer {
+                            signed: false,
+                            min: None,
+                            max: None,
+                        },
+                    };
+                    self.push_value(VStackValue::Constant(Value::Uninitialized(ty)));
+                    self.push_value(VStackValue::Constant(Value::Uninitialized(Type::Scalar(
+                        check_ty,
+                    ))));
+                }
+                OverflowBehaviour::Trap => {
+                    self.inner.write_trap(Trap::Unreachable);
+                    self.push_value(VStackValue::Trapped);
+                }
+                _ => self.push_value(VStackValue::Constant(Value::Uninitialized(ty))),
+            },
+            VStackValue::Constant(Value::Integer {
+                ty:
+                    sty @ ScalarType {
+                        kind: ScalarTypeKind::Integer { signed: false, .. },
+                        ..
+                    },
+                val,
+            }) => {
+                let base_val = match op {
+                    UnaryOp::Minus => (-(val as i128)) as u128,
+                    UnaryOp::BitNot => !val,
+                    UnaryOp::LogicNot => (val == 0) as u128,
+                    op => panic!("Invalid unary op {:?}", op),
+                };
+
+                let mask = (!0u128).wrapping_shr((128 - sty.header.bitsize) as u32);
+
+                self.push_value(VStackValue::Constant(Value::Integer {
+                    ty: sty,
+                    val: base_val & mask,
+                }));
+
+                if v == OverflowBehaviour::Checked {
+                    let check_ty = ScalarType {
+                        header: ScalarTypeHeader {
+                            bitsize: 1,
+                            ..Default::default()
+                        },
+                        kind: ScalarTypeKind::Integer {
+                            signed: false,
+                            min: None,
+                            max: None,
+                        },
+                    };
+                    self.push_value(VStackValue::Constant(Value::Integer {
+                        ty: check_ty,
+                        val: 1,
+                    }));
+                }
+            }
+
+            VStackValue::Constant(Value::Integer {
+                ty:
+                    sty @ ScalarType {
+                        kind: ScalarTypeKind::Integer { signed: true, .. },
+                        ..
+                    },
+                val,
+            }) => {
+                let base_val = match op {
+                    UnaryOp::Minus => (-(val as i128)) as u128,
+                    UnaryOp::BitNot => !val,
+                    UnaryOp::LogicNot => (val == 0) as u128,
+                    op => panic!("Invalid unary op {:?}", op),
+                };
+
+                let overflow = op == UnaryOp::Minus && (base_val == val);
+
+                let mask = (!0u128).wrapping_shr((128 - sty.header.bitsize) as u32);
+
+                let val = base_val & mask;
+
+                let val = (((val as i128) << ((128 - (sty.header.bitsize - 1)) as u32))
+                    >> ((128 - (sty.header.bitsize - 1)) as u32)) as u128;
+
+                match (v, overflow) {
+                    (OverflowBehaviour::Wrap | OverflowBehaviour::Saturate, _)
+                    | (OverflowBehaviour::Unchecked | OverflowBehaviour::Trap, false) => {
+                        self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
+                    }
+                    (OverflowBehaviour::Unchecked, true) => self.push_value(VStackValue::Constant(
+                        Value::Uninitialized(Type::Scalar(sty)),
+                    )),
+                    (OverflowBehaviour::Trap, true) => {
+                        self.inner.write_trap(Trap::Abort);
+                        self.push_value(VStackValue::Trapped);
+                    }
+                    (OverflowBehaviour::Checked, overflow) => {
+                        self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }));
+                        let check_ty = ScalarType {
+                            header: ScalarTypeHeader {
+                                bitsize: 1,
+                                ..Default::default()
+                            },
+                            kind: ScalarTypeKind::Integer {
+                                signed: false,
+                                min: None,
+                                max: None,
+                            },
+                        };
+                        self.push_value(VStackValue::Constant(Value::Integer {
+                            ty: check_ty,
+                            val: overflow as u128,
+                        }));
+                    }
+                    (v, _) => panic!("Invalid overflow behaviour {:?}", v),
+                }
+            }
+            VStackValue::OpaqueScalar(sty, loc) => {
+                todo!("OpaqueScalar({},{:?})", sty, loc);
+            }
+            val => panic!("Invalid value {}", val),
+        }
+    }
+
     /// Writes an expression in linear order into the codegen
     pub fn write_expr(&mut self, expr: &Expr) {
         if self.diverged {
@@ -1433,7 +1578,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             Expr::Const(v) => self.push_value(VStackValue::Constant(v.clone())),
             Expr::Exit { values } => self.write_exit(*values),
             Expr::BinaryOp(op, v) => self.write_binary_op(*op, *v),
-            Expr::UnaryOp(_, _) => todo!(),
+            Expr::UnaryOp(op, v) => self.write_unary_op(*op, *v),
             Expr::CallFunction(fnty) => {
                 let vals = self.pop_values(fnty.params.len()).unwrap();
                 let target = self.pop_value().unwrap();
@@ -1462,6 +1607,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                 self.call_indirect(fnty, realty, loc, vals)
                             }
                             LValue::GlobalAddress(path) => self.call_fn(fnty, realty, &path, vals),
+                            LValue::TransparentAddr(_) => todo!("call abs"),
                             _ => {
                                 self.inner.write_trap(Trap::Unreachable);
                                 self.push_value(VStackValue::Trapped);
@@ -1667,6 +1813,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     LValue::Field(_, _, _) => todo!("as_rvalue field"),
                     LValue::StringLiteral(_, _) => todo!("as_rvalue string_literal"),
                     LValue::Offset(_, _) => todo!("as_rvalue offset"),
+                    LValue::TransparentAddr(_) => todo!("absolute addr"),
                 };
 
                 for f in &path {

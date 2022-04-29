@@ -720,6 +720,20 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
     ) {
         todo!()
     }
+
+    fn call_absolute(&mut self, addr: u128, _: &FnType) {
+        let addr = Address::Abs(addr);
+
+        self.insns.push(
+            CleverInstruction::new(
+                CleverOpcode::CallR { ss: 2 },
+                vec![CleverOperand::Immediate(CleverImmediate::LongAddrRel(
+                    64, addr,
+                ))],
+            )
+            .into(),
+        );
+    }
 }
 
 impl CleverFunctionCodegen {

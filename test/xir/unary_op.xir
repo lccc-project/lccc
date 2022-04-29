@@ -1,0 +1,7 @@
+function main() -> int(32){
+    const int(32) 1
+    neg
+    const int(32) 1
+    add
+    exit 1
+}
