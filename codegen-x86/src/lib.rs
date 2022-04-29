@@ -655,6 +655,53 @@ impl FunctionRawCodegen for X86CodegenState {
             op => todo!("{:?}", op),
         }
     }
+
+    fn lockfree_use_libatomic(&mut self, _: u64) -> bool {
+        false
+    }
+
+    fn lockfree_cmpxchg_use_libatomic(&mut self, _: u64) -> bool {
+        false
+    }
+
+    fn has_wait_free_compound(&mut self, op: BinaryOp, size: u64) -> bool {
+        match op {
+            BinaryOp::Add
+            | BinaryOp::Sub
+            | BinaryOp::BitAnd
+            | BinaryOp::BitOr
+            | BinaryOp::BitXor
+            | BinaryOp::Lsh
+            | BinaryOp::Rsh => size < 128,
+            _ => false,
+        }
+    }
+
+    fn has_wait_free_compound_fetch(&mut self, op: BinaryOp, size: u64) -> bool {
+        op == BinaryOp::Add && size < 128
+    }
+
+    fn compare_exchange(
+        &mut self,
+        _dest: Self::Loc,
+        _ctrl: Self::Loc,
+        _val: Self::Loc,
+        _ty: &Type,
+        _: AccessClass,
+    ) {
+        todo!()
+    }
+
+    fn weak_compare_exchange(
+        &mut self,
+        _dest: Self::Loc,
+        _ctrl: Self::Loc,
+        _val: Self::Loc,
+        _ty: &Type,
+        _: AccessClass,
+    ) {
+        todo!()
+    }
 }
 
 impl X86CodegenState {

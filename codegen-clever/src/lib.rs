@@ -7,7 +7,7 @@ use arch_ops::{
         CleverEncoder, CleverExtension, CleverImmediate, CleverIndex, CleverInstruction,
         CleverOpcode, CleverOperand, CleverRegister,
     },
-    traits::InsnWrite,
+    traits::{Address, InsnWrite},
 };
 use binfmt::{
     fmt::{FileType, Section, SectionType},
@@ -25,12 +25,12 @@ use xlang::{
     targets::properties::{MachineProperties, TargetProperties},
 };
 use xlang_backend::{
-    callconv::CallingConvention, expr::ValLocation, str::StringMap, ty::TypeInformation,
-    FunctionCodegen, FunctionRawCodegen,
+    callconv::CallingConvention, expr::ValLocation, mangle::mangle_itanium, str::StringMap,
+    ty::TypeInformation, FunctionCodegen, FunctionRawCodegen,
 };
 use xlang_struct::{
-    AccessClass, AggregateDefinition, FnType, FunctionDeclaration, ScalarType, ScalarTypeHeader,
-    ScalarTypeKind, Type,
+    AccessClass, AggregateDefinition, BinaryOp, FnType, FunctionDeclaration, PathComponent,
+    ScalarType, ScalarTypeHeader, ScalarTypeKind, Type,
 };
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -215,13 +215,15 @@ impl CallingConvention for CleverCallConv {
         if self.pass_return_place(&fnty.ret).is_some() {
             int_regs = &int_regs[1..];
         }
+        eprintln!("Finding param {} of {}", param, fnty);
         for (i, ty) in fnty
             .params
             .iter()
             .chain(core::iter::repeat(&Type::Void))
-            .take(param as usize)
+            .take((param as usize) + 1)
             .enumerate()
         {
+            eprintln!("Classifying type {}", ty);
             match (classify_type(ty).unwrap(), self.tys.type_size(ty).unwrap()) {
                 (TypeClass::Zero, _) => last_loc = CleverValLocation::Null,
                 (TypeClass::Memory, _) => panic!("Memory value"),
@@ -508,7 +510,24 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
     }
 
     fn call_direct(&mut self, path: &xlang_struct::Path, _realty: &FnType) {
-        todo!()
+        let sym = match &*path.components {
+            [PathComponent::Text(n)] | [PathComponent::Root, PathComponent::Text(n)] => {
+                n.to_string()
+            }
+            [PathComponent::Root, rest @ ..] | [rest @ ..] => mangle_itanium(rest),
+        };
+
+        let addr = Address::PltSym { name: sym };
+
+        self.insns.push(
+            CleverInstruction::new(
+                CleverOpcode::CallR { ss: 2 },
+                vec![CleverOperand::Immediate(CleverImmediate::LongAddrRel(
+                    64, addr,
+                ))],
+            )
+            .into(),
+        );
     }
 
     fn call_indirect(&mut self, value: Self::Loc) {
@@ -586,7 +605,38 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
         bytes: xlang::vec::Vec<u8>,
         loc: Self::Loc,
     ) {
-        todo!()
+        let addr = self.strings.borrow_mut().get_string_symbol(bytes, enc);
+        let addr = Address::Symbol {
+            name: addr.to_string(),
+            disp: 0,
+        };
+        match loc {
+            CleverValLocation::Register { size, reg } => match (size, reg) {
+                (64, CleverRegister(0..=15)) => self.insns.push(
+                    CleverInstruction::new(
+                        CleverOpcode::LeaRD { r: reg },
+                        vec![CleverOperand::Immediate(CleverImmediate::LongMemRel(
+                            64, addr, 64,
+                        ))],
+                    )
+                    .into(),
+                ),
+                (size, reg) => self.insns.push(
+                    CleverInstruction::new(
+                        CleverOpcode::Lea,
+                        vec![
+                            CleverOperand::Register { size, reg },
+                            CleverOperand::Immediate(CleverImmediate::LongMemRel(64, addr, 64)),
+                        ],
+                    )
+                    .into(),
+                ),
+            },
+            CleverValLocation::Indirect { size, reg, offset } => todo!("indirect"),
+            CleverValLocation::Regs { size, regs } => todo!("registers"),
+            CleverValLocation::Null => {}
+            CleverValLocation::Unassigned(_) => panic!("Unassigned"),
+        }
     }
 
     fn free(&mut self, loc: Self::Loc) {
@@ -617,7 +667,57 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
         todo!()
     }
 
-    fn prepare_call_frame(&mut self, callty: &xlang_struct::FnType, realty: &xlang_struct::FnType) {
+    fn prepare_call_frame(&mut self, _: &xlang_struct::FnType, _: &xlang_struct::FnType) {
+        if self.frame_size & 15 != 0 {
+            self.frame_size = ((self.frame_size + 15) / 16) * 16;
+        }
+        /* TODO */
+    }
+
+    fn lockfree_use_libatomic(&mut self, _: u64) -> bool {
+        false
+    }
+
+    fn lockfree_cmpxchg_use_libatomic(&mut self, _: u64) -> bool {
+        false
+    }
+
+    fn has_wait_free_compound(&mut self, op: BinaryOp, size: u64) -> bool {
+        match op {
+            BinaryOp::Add
+            | BinaryOp::Sub
+            | BinaryOp::BitAnd
+            | BinaryOp::BitOr
+            | BinaryOp::BitXor
+            | BinaryOp::Lsh
+            | BinaryOp::Rsh => size < 128,
+            _ => false,
+        }
+    }
+
+    fn has_wait_free_compound_fetch(&mut self, op: BinaryOp, size: u64) -> bool {
+        false
+    }
+
+    fn compare_exchange(
+        &mut self,
+        dest: Self::Loc,
+        ctrl: Self::Loc,
+        val: Self::Loc,
+        ty: &Type,
+        ord: AccessClass,
+    ) {
+        todo!()
+    }
+
+    fn weak_compare_exchange(
+        &mut self,
+        dest: Self::Loc,
+        ctrl: Self::Loc,
+        val: Self::Loc,
+        ty: &Type,
+        ord: AccessClass,
+    ) {
         todo!()
     }
 }

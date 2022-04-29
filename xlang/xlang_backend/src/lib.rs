@@ -192,6 +192,42 @@ pub trait FunctionRawCodegen {
 
     /// Prepares the stack frame (as necessary) for a call to a function with the given `callty` and `realty`
     fn prepare_call_frame(&mut self, callty: &FnType, realty: &FnType);
+
+    /// Whether or not lock-free atomic ops of some size should issue a call to libatomic for this backend.
+    fn lockfree_use_libatomic(&mut self, size: u64) -> bool;
+
+    /// Whether or not lock-free atomic rmws use libatomic
+    fn lockfree_cmpxchg_use_libatomic(&mut self, size: u64) -> bool;
+
+    /// Whether or not BinaryOp can be implemented directly by the CPU
+    fn has_wait_free_compound(&mut self, op: BinaryOp, size: u64) -> bool;
+
+    /// Whether or not the fecth version of BinaryOp can be implemented directly by the CPU
+    fn has_wait_free_compound_fetch(&mut self, op: BinaryOp, size: u64) -> bool;
+
+    /// Writes a Compare Exchange Instruction, according to the atomic Access class in `ord`
+    /// Padding bytes in `ctrl` and `val` are zeroed prior to the call to this funtion
+    /// dest and ctrl both contain pointers to the destination and the compare
+    fn compare_exchange(
+        &mut self,
+        dest: Self::Loc,
+        ctrl: Self::Loc,
+        val: Self::Loc,
+        ty: &Type,
+        ord: AccessClass,
+    );
+
+    /// Writes a Weak Compare Exchange Instruction, according to the atomic Access class in `ord`
+    /// Padding bytes in `ctrl` and `val` are zeroed prior to the call to this funtion
+    /// dest and ctrl both contain pointers to the destination and the compare
+    fn weak_compare_exchange(
+        &mut self,
+        dest: Self::Loc,
+        ctrl: Self::Loc,
+        val: Self::Loc,
+        ty: &Type,
+        ord: AccessClass,
+    );
 }
 
 #[derive(Default, Debug)]
