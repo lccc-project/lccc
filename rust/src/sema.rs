@@ -1171,7 +1171,9 @@ fn typeck_lvalue(
             for decl in declarations {
                 if id.matches(decl.name()) {
                     *ty = Some(decl.ty());
-                    let Identifier::Basic { ref mut mangling, .. } = id;
+                    let Identifier::Basic {
+                        ref mut mangling, ..
+                    } = id;
                     *mangling = decl.name().mangling();
                     break;
                 }
@@ -1269,7 +1271,9 @@ fn typeck_expr(
             for decl in declarations {
                 if id.matches(decl.name()) {
                     *ty = Some(decl.ty());
-                    let Identifier::Basic { ref mut mangling, .. } = id;
+                    let Identifier::Basic {
+                        ref mut mangling, ..
+                    } = id;
                     *mangling = decl.name().mangling();
                     break;
                 }
