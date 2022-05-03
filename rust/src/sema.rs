@@ -172,6 +172,15 @@ impl Type {
         }
     }
 
+    pub fn is_fn(&self) -> bool {
+        match self {
+            Self::Function { .. } => true,
+            Self::Pointer { underlying, .. } => underlying.is_fn(),
+            Self::Reference { underlying, .. } => underlying.is_fn(),
+            _ => false,
+        }
+    }
+
     pub fn is_unit(&self) -> bool {
         if let Self::Tuple(types) = self {
             types.is_empty()
@@ -1162,6 +1171,8 @@ fn typeck_lvalue(
             for decl in declarations {
                 if id.matches(decl.name()) {
                     *ty = Some(decl.ty());
+                    let Identifier::Basic { ref mut mangling, .. } = id;
+                    *mangling = decl.name().mangling();
                     break;
                 }
             }
@@ -1258,6 +1269,8 @@ fn typeck_expr(
             for decl in declarations {
                 if id.matches(decl.name()) {
                     *ty = Some(decl.ty());
+                    let Identifier::Basic { ref mut mangling, .. } = id;
+                    *mangling = decl.name().mangling();
                     break;
                 }
             }
