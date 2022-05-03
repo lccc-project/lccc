@@ -863,6 +863,7 @@ fn tycheck_expr(
                 xlang_struct::Switch::Linear(_) => todo!(),
             }
         }
+        Expr::Asm(_) => todo!("asm"),
     }
     false
 }

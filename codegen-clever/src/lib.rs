@@ -734,6 +734,14 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
             .into(),
         );
     }
+
+    fn write_int_binary(&mut self, _a: Self::Loc, _b: Self::Loc, _ty: &Type, _op: BinaryOp) {
+        todo!()
+    }
+
+    fn write_unary(&mut self, _val: Self::Loc, _ty: &Type, _op: xlang_struct::UnaryOp) {
+        todo!()
+    }
 }
 
 impl CleverFunctionCodegen {

@@ -76,6 +76,11 @@ pub enum ByteOrder {
     MiddleEndian,
 }
 
+/// Properties about the assembly offered by the architecture
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct AsmProperties {}
+
 ///
 /// Properties about the architecture, shared between targets that use this architecture
 #[repr(C)]

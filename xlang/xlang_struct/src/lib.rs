@@ -856,6 +856,38 @@ pub enum Expr {
     Fence(AccessClass),
     Switch(Switch),
     Tailcall(FnType),
+    Asm(AsmExpr),
+}
+
+#[repr(u16)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum AsmConstraint {
+    AnyRegister,
+    AnyOfClass(String),
+    Register(String),
+    Flag(String),
+    Memory,
+    AnyVolatile(String),
+    AnyNonVolatile(String),
+}
+
+bitflags::bitflags! {
+    #[repr(transparent)]
+    pub struct AsmOptions : u32{
+        const VOLATILE = 0x00000001;
+        const TRANSPARENT = 0x00000002;
+        const NOSTACK = 0x00000004;
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct AsmExpr {
+    pub opts: AsmOptions,
+    pub annotations: AnnotatedElement,
+    pub clobbers: Vec<AsmConstraint>,
+    pub inputs: Vec<AsmConstraint>,
+    pub outputs: Vec<AsmConstraint>,
 }
 
 fake_enum::fake_enum! {

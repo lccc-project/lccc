@@ -66,8 +66,14 @@ pub trait FunctionRawCodegen {
     /// Writes a full thread fence for the given AccessClass
     fn write_barrier(&mut self, acc: AccessClass);
 
-    /// Performs a binary operatoration on a val location and a constant
+    /// Performs a binary operatation on a val location and a constant
     fn write_int_binary_imm(&mut self, a: Self::Loc, b: u128, ty: &Type, op: BinaryOp);
+
+    /// Performs a binary operatation on two val locations
+    fn write_int_binary(&mut self, a: Self::Loc, b: Self::Loc, ty: &Type, op: BinaryOp);
+
+    /// Performs a unary operation on  a val location
+    fn write_unary(&mut self, val: Self::Loc, ty: &Type, op: UnaryOp);
 
     /// Moves a value between two [`ValLocation`]s
     fn move_val(&mut self, src: Self::Loc, dest: Self::Loc);
@@ -1922,6 +1928,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 }
             }
             Expr::Tailcall(_) => todo!("tailcall"),
+            Expr::Asm(_) => todo!("asm"),
         }
     }
 

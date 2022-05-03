@@ -38,8 +38,8 @@ use xlang_backend::mangle::mangle_itanium;
 use xlang_backend::ty::TypeInformation;
 use xlang_backend::{expr::VStackValue, str::StringMap, FunctionCodegen, FunctionRawCodegen};
 use xlang_struct::{
-    AccessClass, BinaryOp, BranchCondition, FnType, FunctionDeclaration, Path, PathComponent, Type,
-    Value,
+    AccessClass, BinaryOp, BranchCondition, FnType, FunctionDeclaration, Path, PathComponent,
+    ScalarType, ScalarTypeHeader, ScalarTypeKind, Type, Value,
 };
 
 #[allow(dead_code)]
@@ -705,6 +705,67 @@ impl FunctionRawCodegen for X86CodegenState {
 
     fn call_absolute(&mut self, _: u128, _: &FnType) {
         todo!("call abs")
+    }
+
+    fn write_int_binary(&mut self, a: Self::Loc, b: Self::Loc, ty: &Type, op: BinaryOp) {
+        let (memsizebits, realsizebits, signed) = match ty {
+            Type::Scalar(ScalarType {
+                header: ScalarTypeHeader { bitsize, .. },
+                kind: ScalarTypeKind::Integer { signed, .. },
+            }) => (
+                self.tys.type_size(ty).unwrap() << 3,
+                *bitsize as u64,
+                signed,
+            ),
+            ty => panic!("Invalid type {}", ty),
+        };
+        match (a, b) {
+            (ValLocation::Null, _) | (_, ValLocation::Null) => {}
+            (ValLocation::Register(r1), loc) => {
+                let modrm = loc
+                    .as_modrm(
+                        self.mode,
+                        X86RegisterClass::gpr_size((memsizebits / 8) as usize, self.mode).unwrap(),
+                    )
+                    .unwrap();
+
+                let base_op = match (memsizebits, op) {
+                    (_, BinaryOp::Mul | BinaryOp::Div) => panic!("Handle mul/div properly"),
+                    (8, BinaryOp::Add) => X86Opcode::AddRM8,
+                    (16 | 32 | 64, BinaryOp::Add) => X86Opcode::AddRM,
+                    (8, BinaryOp::Sub) => X86Opcode::SubRM8,
+                    (16 | 32 | 64, BinaryOp::Sub) => X86Opcode::SubRM,
+                    (8, BinaryOp::BitAnd) => X86Opcode::AndRM8,
+                    (16 | 32 | 64, BinaryOp::BitAnd) => X86Opcode::AndRM,
+                    (8, BinaryOp::BitOr) => X86Opcode::OrRM8,
+                    (16 | 32 | 64, BinaryOp::BitOr) => X86Opcode::OrRM,
+                    (8, BinaryOp::BitXor) => X86Opcode::XorRM8,
+                    (16 | 32 | 64, BinaryOp::BitXor) => X86Opcode::XorRM,
+                    (size, op) => panic!("Invalid op/size {} {:?}", size, op),
+                };
+
+                self.insns
+                    .push(X86InstructionOrLabel::Insn(X86Instruction::new(
+                        base_op,
+                        vec![X86Operand::Register(r1), X86Operand::ModRM(modrm)],
+                    )));
+
+                if memsizebits != realsizebits {
+                    todo!(
+                        "Handling binary op {:?} (memsize {}, realsize {}, signed? {})",
+                        op,
+                        memsizebits,
+                        realsizebits,
+                        signed
+                    );
+                }
+            }
+            (_, _) => todo!(),
+        }
+    }
+
+    fn write_unary(&mut self, _val: Self::Loc, _ty: &Type, _op: xlang_struct::UnaryOp) {
+        todo!()
     }
 }
 
