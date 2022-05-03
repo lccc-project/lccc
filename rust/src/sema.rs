@@ -1,11 +1,11 @@
 #![allow(clippy::cognitive_complexity, clippy::too_many_lines)] // TODO: You figure it out rdr
 
-pub use crate::lex::StrType; // TODO: `pub use` this in `crate::parse`
-pub use crate::parse::{BinaryOp, Meta, Mutability, Safety, SimplePath, Visibility};
 use crate::parse::{
     FieldName, FnParam, Item, Mod, Path, PathComponent, Pattern, StructBody, TypeTag,
 };
+pub use crate::parse::{Meta, Mutability, Safety, SimplePath, StrType, Visibility};
 use std::collections::hash_map::{Entry, HashMap};
+use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -337,9 +337,102 @@ impl Display for Declaration {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+impl Display for BinaryOp {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Self::Add => '+',
+            Self::Sub => '-',
+            Self::Mul => '*',
+            Self::Div => '/',
+        }
+        .fmt(f)
+    }
+}
+
+impl TryFrom<crate::parse::BinaryOp> for BinaryOp {
+    type Error = ();
+    fn try_from(other: crate::parse::BinaryOp) -> Result<Self, ()> {
+        match other {
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum AssignOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Nop,
+}
+
+impl Display for AssignOp {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Self::Add => "+=",
+            Self::Sub => "-=",
+            Self::Mul => "*=",
+            Self::Div => "/=",
+            Self::Nop => "=",
+        }
+        .fmt(f)
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, Hash, PartialEq)]
+pub enum LValue {
+    FieldAccess {
+        lhs: Box<Expression>,
+        name: String,
+        ty: Option<Type>,
+    },
+    FunctionArg(usize),
+    Identifier {
+        id: Identifier,
+        ty: Option<Type>,
+    },
+}
+
+impl LValue {
+    pub fn ty(&self) -> Type {
+        match self {
+            Self::FieldAccess { ty, .. } | Self::Identifier { ty, .. } => {
+                ty.as_ref().unwrap().clone()
+            }
+            Self::FunctionArg(_) => todo!(),
+        }
+    }
+}
+
+impl Display for LValue {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Self::FieldAccess { lhs, name, .. } => write!(f, "{}.{}", lhs, name),
+            Self::FunctionArg(_) => todo!(),
+            Self::Identifier { id, .. } => id.fmt(f),
+        }
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub enum Expression {
+    AssignExpression {
+        lhs: Box<LValue>,
+        op: AssignOp,
+        rhs: Box<Expression>,
+        ty: Option<Type>,
+    },
     BinaryExpression {
         lhs: Box<Expression>,
         op: BinaryOp,
@@ -350,12 +443,6 @@ pub enum Expression {
         expr: Box<Expression>,
         target: Type,
     },
-    FieldAccess {
-        lhs: Box<Expression>,
-        name: String,
-        ty: Option<Type>,
-    },
-    FunctionArg(usize),
     FunctionCall {
         func: Box<Expression>,
         args: Vec<Expression>,
@@ -363,11 +450,13 @@ pub enum Expression {
     Identifier {
         id: Identifier,
         ty: Option<Type>,
+        is_place: bool,
     },
     IntegerLiteral {
         val: u128,
         ty: Option<IntType>,
     },
+    LValue(LValue),
     StringLiteral {
         kind: StrType,
         val: String,
@@ -386,18 +475,15 @@ impl Expression {
     #[allow(dead_code)]
     pub fn ty(&self) -> Type {
         match self {
-            Expression::BinaryExpression { ty, .. }
-            | Expression::FieldAccess { ty, .. }
-            | Expression::Identifier { ty, .. }
+            Expression::AssignExpression { ty, .. }
+            | Expression::BinaryExpression { ty, .. }
+            | Expression::Identifier { ty, .. } // TODO: Handle places correctly
             | Expression::UnsafeBlock { ty, .. } => ty
                 .as_ref()
                 .expect("typeck forgot to resolve type of expression; this is an ICE")
                 .clone(),
             Expression::Cast { target: ty, .. } | Expression::StructInitializer { ty, .. } => {
                 ty.clone()
-            }
-            Expression::FunctionArg(_) => {
-                todo!("Expression::FunctionArg(_).ty() currently unsopported")
             }
             Expression::FunctionCall { func, .. } => {
                 if let Type::Function(sig) = func.ty() {
@@ -410,6 +496,7 @@ impl Expression {
                 *ty.as_ref()
                     .expect("typeck forgot to resolve type of expression; this is an ICE"),
             ),
+            Expression::LValue(val) => val.ty(),
             Expression::StringLiteral { kind, val } => Type::Reference {
                 mutability: Mutability::Const,
                 underlying: Box::new(match kind {
@@ -425,19 +512,16 @@ impl Display for Expression {
     #[allow(clippy::cast_possible_wrap)] // u128 as i128, deliberate wrapping cast
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::BinaryExpression { lhs, op, rhs, .. } => {
+            Self::AssignExpression { lhs, op, rhs, .. } => {
                 write!(f, "({} {} {})", lhs, op, rhs)
             }
-            Expression::Cast { expr, target } => {
+            Self::BinaryExpression { lhs, op, rhs, .. } => {
+                write!(f, "({} {} {})", lhs, op, rhs)
+            }
+            Self::Cast { expr, target } => {
                 write!(f, "{} as {}", expr, target)
             }
-            Expression::FieldAccess { lhs, name, .. } => {
-                write!(f, "{}.{}", lhs, name)
-            }
-            Expression::FunctionArg(id) => {
-                write!(f, "<function arg {}>", id)
-            }
-            Expression::FunctionCall { func, args } => {
+            Self::FunctionCall { func, args } => {
                 write!(f, "{}(", func)?;
                 let mut comma = false;
                 for arg in args {
@@ -449,21 +533,22 @@ impl Display for Expression {
                 }
                 write!(f, ")")
             }
-            Expression::Identifier { id, .. } => id.fmt(f),
-            Expression::IntegerLiteral { val, ty } => {
+            Self::IntegerLiteral { val, ty } => {
                 if ty.unwrap().is_signed() {
                     (*val as i128).fmt(f)
                 } else {
                     val.fmt(f)
                 }
             }
-            Expression::StringLiteral { kind, val } => {
+            Self::Identifier { id, .. } => id.fmt(f),
+            Self::LValue(val) => val.fmt(f),
+            Self::StringLiteral { kind, val } => {
                 if *kind == StrType::Byte {
                     write!(f, "b")?;
                 }
                 write!(f, "\"{}\"", val)
             }
-            Expression::StructInitializer { args, ty, .. } => {
+            Self::StructInitializer { args, ty, .. } => {
                 write!(f, "{} {{", ty)?;
                 let mut comma = false;
                 for (name, arg) in args {
@@ -475,7 +560,7 @@ impl Display for Expression {
                 }
                 write!(f, "}}")
             }
-            Expression::UnsafeBlock { block, .. } => {
+            Self::UnsafeBlock { block, .. } => {
                 writeln!(f, "unsafe {{")?;
                 for statement in block {
                     writeln!(f, "{}", statement)?;
@@ -660,6 +745,7 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
         crate::parse::Expr::Id(id) => Expression::Identifier {
             id: convert_id(id),
             ty: None,
+            is_place: false,
         },
         crate::parse::Expr::IntLiteral(n) => Expression::IntegerLiteral {
             val: *n as u128,
@@ -694,14 +780,14 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
                 .collect(),
             ty: resolve_named_type(named_types, &convert_id(id)),
         },
-        crate::parse::Expr::Field(lhs, name) => Expression::FieldAccess {
+        crate::parse::Expr::Field(lhs, name) => Expression::LValue(LValue::FieldAccess {
             lhs: Box::new(convert_expr(named_types, lhs)),
             name: match name {
                 FieldName::Id(str) => str.clone(),
                 FieldName::Tuple(id) => format!("${}", id),
             },
             ty: None,
-        },
+        }),
         crate::parse::Expr::Await(_) => todo!("await"),
         crate::parse::Expr::Block(_) => todo!("block"),
         crate::parse::Expr::Loop(_) => todo!("loop"),
@@ -714,7 +800,7 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
         crate::parse::Expr::Yield(_) => todo!("yield"),
         crate::parse::Expr::BinaryOp(op, lhs, rhs) => Expression::BinaryExpression {
             lhs: Box::new(convert_expr(named_types, lhs)),
-            op: *op,
+            op: (*op).try_into().unwrap(),
             rhs: Box::new(convert_expr(named_types, rhs)),
             ty: None,
         },
@@ -1064,6 +1150,30 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
     }
 }
 
+fn typeck_lvalue(
+    declarations: &[Declaration],
+    lvalue: &mut LValue,
+    safety: Safety,
+    ty: Option<&Type>,
+    return_ty: Option<&Type>,
+) -> Type {
+    match lvalue {
+        LValue::Identifier { id, ty } => {
+            for decl in declarations {
+                if id.matches(decl.name()) {
+                    *ty = Some(decl.ty());
+                    break;
+                }
+            }
+            if ty.is_none() {
+                panic!("unresolved identifier {}", id);
+            }
+        }
+        x => todo!("{}", x),
+    }
+    lvalue.ty()
+}
+
 #[allow(unused_variables, clippy::option_if_let_else)]
 fn typeck_expr(
     declarations: &[Declaration],
@@ -1079,7 +1189,7 @@ fn typeck_expr(
             rhs,
             ty: expr_ty,
         } => match op {
-            BinaryOp::Add | BinaryOp::Divide | BinaryOp::Multiply | BinaryOp::Subtract => {
+            BinaryOp::Add | BinaryOp::Div | BinaryOp::Mul | BinaryOp::Sub => {
                 let lhs_ty = typeck_expr(declarations, lhs, safety, ty, return_ty);
                 let rhs_ty = typeck_expr(declarations, rhs, safety, Some(&lhs_ty), return_ty);
                 assert!(lhs_ty == rhs_ty);
@@ -1109,28 +1219,14 @@ fn typeck_expr(
                 (x, y) => todo!("{:?} to {:?}", x, y),
             }
         }
-        Expression::FieldAccess {
-            lhs,
-            name,
-            ty: field_ty,
-        } => {
-            let lhs_ty = typeck_expr(declarations, lhs, safety, None, return_ty);
-            if let Type::Struct { fields, .. } = &lhs_ty {
-                if let Some((_, ty)) = fields
-                    .as_ref()
-                    .map_or(None, |x| x.iter().find(|x| x.0 == *name))
-                {
-                    *field_ty = Some(ty.clone());
-                    ty.clone()
-                } else {
-                    panic!("type {:?} doesn't have a field named {}", &lhs_ty, name);
-                }
-            } else {
-                todo!("field access of non-structs");
-            }
-        }
         Expression::FunctionCall { func, args } => {
             let func_ty = typeck_expr(declarations, func, safety, None, return_ty);
+            if let Expression::Identifier {
+                ref mut is_place, ..
+            } = **func
+            {
+                *is_place = false;
+            }
             if let Type::Function(func_sig) = func_ty {
                 assert!(
                     func_sig.safety == Safety::Safe || safety == Safety::Unsafe,
@@ -1158,21 +1254,18 @@ fn typeck_expr(
                 panic!("tried to call a {:?} as a function", func_ty)
             }
         }
-        Expression::Identifier { id, ty: id_ty } => {
-            let mut result = None;
+        Expression::Identifier { id, ty, is_place } => {
             for decl in declarations {
-                if decl.name().matches(id) {
-                    *id = decl.name().clone();
-                    result = Some(decl.ty());
+                if id.matches(decl.name()) {
+                    *ty = Some(decl.ty());
+                    break;
                 }
             }
-            result.map_or_else(
-                || panic!("could not resolve identifier {:?}", id),
-                |result| {
-                    *id_ty = Some(result.clone());
-                    result
-                },
-            )
+            if ty.is_none() {
+                panic!("unresolved identifier {}", id);
+            }
+            *is_place = true; // Let other Expressions override this
+            ty.as_ref().unwrap().clone()
         }
         Expression::IntegerLiteral { val, ty: int_ty } => {
             if let Some(ty) = ty {
@@ -1202,6 +1295,7 @@ fn typeck_expr(
             }
             Type::Integer(int_ty.unwrap())
         }
+        Expression::LValue(val) => typeck_lvalue(declarations, val, safety, None, return_ty),
         Expression::StringLiteral { kind, val } => Type::Reference {
             mutability: Mutability::Const,
             underlying: Box::new(match kind {

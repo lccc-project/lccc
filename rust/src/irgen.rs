@@ -2,7 +2,7 @@
 
 use crate::sema::{
     Abi, BinaryOp, Declaration, Definition, Expression, FunctionSignature, Identifier, IntType,
-    LangItem, Mangling, Mutability, Program, Safety, Statement, Type, Visibility,
+    LValue, LangItem, Mangling, Mutability, Program, Safety, Statement, Type, Visibility,
 };
 
 use std::convert::TryInto; // TODO: Remove when we move to edition 2021
@@ -160,21 +160,36 @@ fn irgen_type(ty: Type) -> ir::Type {
     }
 }
 
-fn irgen_expr(
-    expr: Expression,
-    n: u32,
-    locals: &mut Vec<(Identifier, ir::Type)>,
-) -> Vec<ir::BlockItem> {
+fn irgen_lvalue(lvalue: LValue, locals: &mut Vec<(Identifier, ir::Type)>) -> Vec<ir::BlockItem> {
+    match lvalue {
+        LValue::Identifier { id, ty } => match id.mangling() {
+            Some(Mangling::Local) => todo!(),
+            _ => {
+                vec![
+                    ir::BlockItem::Expr(ir::Expr::Const(ir::Value::GlobalAddress {
+                        ty: irgen_type(ty.unwrap()),
+                        item: identifier_to_path(id, None),
+                    })),
+                    ir::BlockItem::Expr(ir::Expr::Indirect),
+                ]
+            }
+            x => todo!("{:?}", x),
+        },
+        x => todo!("{:?}", x),
+    }
+}
+
+fn irgen_expr(expr: Expression, locals: &mut Vec<(Identifier, ir::Type)>) -> Vec<ir::BlockItem> {
     match expr {
         Expression::BinaryExpression { lhs, op, rhs, .. } => {
-            let mut result = irgen_expr(*lhs, n, locals);
-            result.append(&mut irgen_expr(*rhs, n, locals));
+            let mut result = irgen_expr(*lhs, locals);
+            result.append(&mut irgen_expr(*rhs, locals));
             result.push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
                 match op {
                     BinaryOp::Add => ir::BinaryOp::Add,
-                    BinaryOp::Divide => ir::BinaryOp::Div,
-                    BinaryOp::Multiply => ir::BinaryOp::Mul,
-                    BinaryOp::Subtract => ir::BinaryOp::Sub,
+                    BinaryOp::Div => ir::BinaryOp::Div,
+                    BinaryOp::Mul => ir::BinaryOp::Mul,
+                    BinaryOp::Sub => ir::BinaryOp::Sub,
                     x => todo!("{}", x),
                 },
                 ir::OverflowBehaviour::Wrap,
@@ -182,7 +197,7 @@ fn irgen_expr(
             result
         }
         Expression::Cast { expr, target } => {
-            let mut result = irgen_expr(*expr, n, locals);
+            let mut result = irgen_expr(*expr, locals);
             result.push(ir::BlockItem::Expr(ir::Expr::Convert(
                 ir::ConversionStrength::Reinterpret,
                 irgen_type(target),
@@ -196,41 +211,13 @@ fn irgen_expr(
                 unreachable!()
             };
             let mut result = Vec::new();
-            result.append(&mut irgen_expr(*func, n, locals));
+            result.append(&mut irgen_expr(*func, locals));
             for arg in args {
-                result.append(&mut irgen_expr(arg, n, locals));
+                result.append(&mut irgen_expr(arg, locals));
             }
             result.push(ir::BlockItem::Expr(ir::Expr::CallFunction(fn_type)));
             result
         }
-        Expression::Identifier { id, ty: Some(ty) } => match id.mangling() {
-            Some(Mangling::Local) => vec![
-                ir::BlockItem::Expr(ir::Expr::Local(
-                    locals
-                        .iter()
-                        .enumerate()
-                        .rev()
-                        .find(|(_, (local_id, _))| *local_id == id)
-                        .unwrap()
-                        .0
-                        .try_into()
-                        .unwrap(),
-                )),
-                ir::BlockItem::Expr(ir::Expr::AsRValue(ir::AccessClass::Normal)),
-            ],
-            _ => vec![ir::BlockItem::Expr(ir::Expr::Const(
-                ir::Value::GlobalAddress {
-                    ty: irgen_type(ty.clone()),
-                    item: identifier_to_path(
-                        id,
-                        match &ty {
-                            Type::Function(sig) => Some(sig),
-                            _ => None,
-                        },
-                    ),
-                },
-            ))],
-        },
         ref x @ Expression::IntegerLiteral { .. } => {
             let ty = irgen_type(x.ty());
             if let Expression::IntegerLiteral { val, .. } = x {
@@ -242,12 +229,29 @@ fn irgen_expr(
                 unreachable!()
             }
         }
-        Expression::FieldAccess { lhs, name, ty } => {
-            let mut result = irgen_expr(*lhs, n, locals);
-            result.push(ir::BlockItem::Expr(ir::Expr::Member((&name).into())));
+        Expression::LValue(val) => {
+            let mut result = irgen_lvalue(val, locals);
             result.push(ir::BlockItem::Expr(ir::Expr::AsRValue(
                 ir::AccessClass::Normal,
             )));
+            result
+        }
+        Expression::Identifier { id, ty, is_place } => {
+            let mut result = match id.mangling() {
+                Some(Mangling::Local) => todo!(),
+                _ => {
+                    vec![ir::BlockItem::Expr(ir::Expr::Const(
+                        ir::Value::GlobalAddress {
+                            ty: irgen_type(ty.unwrap()),
+                            item: identifier_to_path(id, None),
+                        },
+                    ))]
+                }
+                x => todo!("{:?}", x),
+            };
+            if is_place {
+                result.push(ir::BlockItem::Expr(ir::Expr::Indirect));
+            }
             result
         }
         ref x @ Expression::StringLiteral { .. } => {
@@ -268,7 +272,7 @@ fn irgen_expr(
             let mut result = Vec::new();
             for (name, arg) in args {
                 fields.push((&name.to_string()).into());
-                result.append(&mut irgen_expr(arg, n, locals));
+                result.append(&mut irgen_expr(arg, locals));
             }
             result.push(ir::BlockItem::Expr(ir::Expr::Aggregate(
                 ir::AggregateCtor { ty, fields },
@@ -279,7 +283,7 @@ fn irgen_expr(
             block,
             ty: Some(ty),
         } => {
-            let mut result = irgen_block(block, n + 1, locals, false);
+            let mut result = irgen_block(block, locals, false);
             if ty.is_unit() {
                 result.push(ir::BlockItem::Expr(ir::Expr::Aggregate(
                     ir::AggregateCtor {
@@ -296,7 +300,6 @@ fn irgen_expr(
 
 fn irgen_block(
     block: Vec<Statement>,
-    block_num: u32,
     locals: &mut Vec<(Identifier, ir::Type)>,
     exit: bool,
 ) -> Vec<ir::BlockItem> {
@@ -310,7 +313,7 @@ fn irgen_block(
                 result.push(ir::BlockItem::Expr(ir::Expr::Local(
                     locals.len().try_into().unwrap(),
                 )));
-                result.append(&mut irgen_expr(value, block_num, locals));
+                result.append(&mut irgen_expr(value, locals));
                 result.push(ir::BlockItem::Expr(ir::Expr::Assign(
                     ir::AccessClass::Normal,
                 )));
@@ -318,12 +321,12 @@ fn irgen_block(
             }
             Statement::Discard(expr) => {
                 has_expr = false;
-                result.append(&mut irgen_expr(expr, block_num, locals));
+                result.append(&mut irgen_expr(expr, locals));
                 result.push(ir::BlockItem::Expr(ir::Expr::Pop(1)));
             }
             Statement::Expression(expr) => {
                 has_expr = true;
-                result.append(&mut irgen_expr(expr, block_num, locals));
+                result.append(&mut irgen_expr(expr, locals));
             }
         }
     }
@@ -364,7 +367,7 @@ pub fn irgen_definition(
     {
         let mut locals = Vec::new();
         let block = ir::Block {
-            items: irgen_block(body.clone(), 0, &mut locals, true).into(),
+            items: irgen_block(body.clone(), &mut locals, true).into(),
         };
         file.root.members.insert(
             identifier_to_path(name.clone(), Some(sig)),
@@ -396,6 +399,7 @@ pub fn irgen_main(main: &Identifier, declarations: &[Declaration], file: &mut ir
                 func: Box::new(Expression::Identifier {
                     id: main.clone(),
                     ty: Some(Type::Function(main_sig.clone())),
+                    is_place: false,
                 }),
                 args: Vec::new(),
             }),
