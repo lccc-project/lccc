@@ -864,6 +864,9 @@ fn tycheck_expr(
             }
         }
         Expr::Asm(_) => todo!("asm"),
+        Expr::BeginStorage(n) | Expr::EndStorage(n) => {
+            assert!(locals.len() > (*n as usize))
+        }
     }
     false
 }

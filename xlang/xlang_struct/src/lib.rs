@@ -857,6 +857,8 @@ pub enum Expr {
     Switch(Switch),
     Tailcall(FnType),
     Asm(AsmExpr),
+    BeginStorage(u32),
+    EndStorage(u32),
 }
 
 #[repr(u16)]
@@ -873,6 +875,7 @@ pub enum AsmConstraint {
 
 bitflags::bitflags! {
     #[repr(transparent)]
+    #[allow(clippy::unreadable_literal)]  // more like clippy::readable_literal
     pub struct AsmOptions : u32{
         const VOLATILE = 0x00000001;
         const TRANSPARENT = 0x00000002;
@@ -885,6 +888,7 @@ bitflags::bitflags! {
 pub struct AsmExpr {
     pub opts: AsmOptions,
     pub annotations: AnnotatedElement,
+    pub syntax: String,
     pub clobbers: Vec<AsmConstraint>,
     pub inputs: Vec<AsmConstraint>,
     pub outputs: Vec<AsmConstraint>,

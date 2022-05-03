@@ -1929,6 +1929,14 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             }
             Expr::Tailcall(_) => todo!("tailcall"),
             Expr::Asm(_) => todo!("asm"),
+            Expr::BeginStorage(n) => {
+                let local = &mut self.locals[(*n) as usize];
+                local.0 = VStackValue::Constant(Value::Uninitialized(local.1.clone()));
+            }
+            Expr::EndStorage(n) => {
+                let local = &mut self.locals[(*n) as usize];
+                local.0 = VStackValue::Constant(Value::Invalid(local.1.clone()));
+            }
         }
     }
 
