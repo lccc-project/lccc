@@ -236,32 +236,48 @@ fn irgen_expr(expr: Expression, locals: &mut Vec<(Identifier, ir::Type)>) -> Vec
             )));
             result
         }
-        Expression::Identifier { id, ty, is_place } => {
-            let mut result = match id.mangling() {
-                Some(Mangling::Local) => todo!(),
-                _ => {
-                    let sig = if ty.as_ref().unwrap().is_fn() {
-                        Some(match ty.as_ref().unwrap() {
-                            Type::Function(sig) => sig,
-                            _ => todo!(),
-                        })
-                    } else {
-                        None
-                    };
-                    vec![ir::BlockItem::Expr(ir::Expr::Const(
-                        ir::Value::GlobalAddress {
-                            ty: irgen_type(ty.as_ref().unwrap().clone()),
-                            item: identifier_to_path(id, sig),
-                        },
-                    ))]
+        Expression::Identifier { id, ty, is_place } => match id.mangling() {
+            Some(Mangling::Local) => {
+                let i = if let Some((i, _)) =
+                    locals.iter().enumerate().find(|(_, (x, _))| id.matches(x))
+                {
+                    i
+                } else {
+                    locals.push((id.clone(), irgen_type(ty.as_ref().unwrap().clone())));
+                    locals.len() - 1
+                };
+                let mut result = vec![ir::BlockItem::Expr(ir::Expr::Local(i as u32))];
+                if is_place {
+                    result.push(ir::BlockItem::Expr(ir::Expr::AsRValue(
+                        ir::AccessClass::Normal,
+                    )));
+                } else {
+                    result.push(ir::BlockItem::Expr(ir::Expr::AddrOf));
                 }
-                x => todo!("{:?}", x),
-            };
-            if is_place {
-                result.push(ir::BlockItem::Expr(ir::Expr::Indirect));
+                result
             }
-            result
-        }
+            _ => {
+                let sig = if ty.as_ref().unwrap().is_fn() {
+                    Some(match ty.as_ref().unwrap() {
+                        Type::Function(sig) => sig,
+                        _ => todo!(),
+                    })
+                } else {
+                    None
+                };
+                let mut result = vec![ir::BlockItem::Expr(ir::Expr::Const(
+                    ir::Value::GlobalAddress {
+                        ty: irgen_type(ty.as_ref().unwrap().clone()),
+                        item: identifier_to_path(id, sig),
+                    },
+                ))];
+                if is_place {
+                    result.push(ir::BlockItem::Expr(ir::Expr::Indirect));
+                }
+                result
+            }
+            x => todo!("{:?}", x),
+        },
         ref x @ Expression::StringLiteral { .. } => {
             let ty = irgen_type(x.ty());
             if let Expression::StringLiteral { val, .. } = x {
