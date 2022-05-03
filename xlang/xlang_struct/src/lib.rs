@@ -875,10 +875,13 @@ pub enum AsmConstraint {
 
 bitflags::bitflags! {
     #[repr(transparent)]
-    #[allow(clippy::unreadable_literal)]  // more like clippy::readable_literal
+      // more like clippy::readable_literal
     pub struct AsmOptions : u32{
+        #[allow(clippy::unreadable_literal)]
         const VOLATILE = 0x00000001;
+        #[allow(clippy::unreadable_literal)]
         const TRANSPARENT = 0x00000002;
+        #[allow(clippy::unreadable_literal)]
         const NOSTACK = 0x00000004;
     }
 }
