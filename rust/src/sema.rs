@@ -405,7 +405,7 @@ impl Display for AssignOp {
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub enum LValue {
     FieldAccess {
-        lhs: Box<Expression>,
+        lhs: Box<LValue>,
         name: String,
         ty: Option<Type>,
     },
@@ -742,6 +742,16 @@ pub fn convert_ty(named_types: &[Type], orig: &crate::parse::Type) -> Type {
     }
 }
 
+pub fn convert_lvalue(named_types: &[Type], orig: &crate::parse::Expr) -> LValue {
+    match orig {
+        crate::parse::Expr::Id(id) => LValue::Identifier {
+            id: convert_id(id),
+            ty: None,
+        },
+        x => todo!("{:?}", x),
+    }
+}
+
 pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expression {
     match orig {
         crate::parse::Expr::Cast(expr, target) => Expression::Cast {
@@ -794,7 +804,7 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
             ty: resolve_named_type(named_types, &convert_id(id)),
         },
         crate::parse::Expr::Field(lhs, name) => Expression::LValue(LValue::FieldAccess {
-            lhs: Box::new(convert_expr(named_types, lhs)),
+            lhs: Box::new(convert_lvalue(named_types, lhs)),
             name: match name {
                 FieldName::Id(str) => str.clone(),
                 FieldName::Tuple(id) => format!("${}", id),
@@ -1171,6 +1181,23 @@ fn typeck_lvalue(
     return_ty: Option<&Type>,
 ) -> Type {
     match lvalue {
+        LValue::FieldAccess { lhs, name, ty } => {
+            match typeck_lvalue(declarations, lhs, safety, ty.as_ref(), return_ty) {
+                Type::Struct {
+                    fields: Some(fields),
+                    ..
+                } => {
+                    let field_ty = fields
+                        .iter()
+                        .find(|(field_name, _)| field_name == name)
+                        .unwrap()
+                        .1
+                        .clone();
+                    *ty = Some(field_ty);
+                }
+                _ => todo!(),
+            }
+        }
         LValue::Identifier { id, ty } => {
             for decl in declarations {
                 if id.matches(decl.name()) {

@@ -162,8 +162,23 @@ fn irgen_type(ty: Type) -> ir::Type {
 
 fn irgen_lvalue(lvalue: LValue, locals: &mut Vec<(Identifier, ir::Type)>) -> Vec<ir::BlockItem> {
     match lvalue {
+        LValue::FieldAccess { lhs, name, ty } => {
+            let mut result = irgen_lvalue(*lhs, locals);
+            result.push(ir::BlockItem::Expr(ir::Expr::Member((&name).into())));
+            result
+        }
         LValue::Identifier { id, ty } => match id.mangling() {
-            Some(Mangling::Local) => todo!(),
+            Some(Mangling::Local) => {
+                let i = if let Some((i, _)) =
+                    locals.iter().enumerate().find(|(_, (x, _))| id.matches(x))
+                {
+                    i
+                } else {
+                    locals.push((id.clone(), irgen_type(ty.as_ref().unwrap().clone())));
+                    locals.len() - 1
+                };
+                vec![ir::BlockItem::Expr(ir::Expr::Local(i as u32))]
+            }
             _ => {
                 vec![
                     ir::BlockItem::Expr(ir::Expr::Const(ir::Value::GlobalAddress {
