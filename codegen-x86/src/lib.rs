@@ -714,7 +714,7 @@ impl FunctionRawCodegen for X86CodegenState {
                 kind: ScalarTypeKind::Integer { signed, .. },
             }) => (
                 self.tys.type_size(ty).unwrap() << 3,
-                *bitsize as u64,
+                (*bitsize).into(),
                 signed,
             ),
             ty => panic!("Invalid type {}", ty),
