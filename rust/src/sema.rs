@@ -172,6 +172,15 @@ impl Type {
         }
     }
 
+    pub fn is_fn(&self) -> bool {
+        match self {
+            Self::Function { .. } => true,
+            Self::Pointer { underlying, .. } => underlying.is_fn(),
+            Self::Reference { underlying, .. } => underlying.is_fn(),
+            _ => false,
+        }
+    }
+
     pub fn is_unit(&self) -> bool {
         if let Self::Tuple(types) = self {
             types.is_empty()
@@ -358,10 +367,14 @@ impl Display for BinaryOp {
 }
 
 impl TryFrom<crate::parse::BinaryOp> for BinaryOp {
-    type Error = ();
-    fn try_from(other: crate::parse::BinaryOp) -> Result<Self, ()> {
+    type Error = crate::parse::BinaryOp;
+    fn try_from(other: crate::parse::BinaryOp) -> Result<Self, crate::parse::BinaryOp> {
         match other {
-            _ => Err(()),
+            crate::parse::BinaryOp::Add => Ok(Self::Add),
+            crate::parse::BinaryOp::Divide => Ok(Self::Div),
+            crate::parse::BinaryOp::Multiply => Ok(Self::Mul),
+            crate::parse::BinaryOp::Subtract => Ok(Self::Sub),
+            _ => Err(other),
         }
     }
 }
@@ -1162,6 +1175,7 @@ fn typeck_lvalue(
             for decl in declarations {
                 if id.matches(decl.name()) {
                     *ty = Some(decl.ty());
+                    *id = decl.name().clone();
                     break;
                 }
             }
@@ -1258,6 +1272,7 @@ fn typeck_expr(
             for decl in declarations {
                 if id.matches(decl.name()) {
                     *ty = Some(decl.ty());
+                    *id = decl.name().clone();
                     break;
                 }
             }
