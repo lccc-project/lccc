@@ -367,10 +367,14 @@ impl Display for BinaryOp {
 }
 
 impl TryFrom<crate::parse::BinaryOp> for BinaryOp {
-    type Error = ();
-    fn try_from(other: crate::parse::BinaryOp) -> Result<Self, ()> {
+    type Error = crate::parse::BinaryOp;
+    fn try_from(other: crate::parse::BinaryOp) -> Result<Self, crate::parse::BinaryOp> {
         match other {
-            _ => Err(()),
+            crate::parse::BinaryOp::Add => Ok(Self::Add),
+            crate::parse::BinaryOp::Divide => Ok(Self::Div),
+            crate::parse::BinaryOp::Multiply => Ok(Self::Mul),
+            crate::parse::BinaryOp::Subtract => Ok(Self::Sub),
+            _ => Err(other),
         }
     }
 }
