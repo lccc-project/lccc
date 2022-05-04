@@ -39,7 +39,7 @@ impl TypeState {
                 AsmScalarKind::VectorFloat
             }
             ScalarTypeKind::Float { .. } | ScalarTypeKind::LongFloat => AsmScalarKind::Float,
-            _ => panic!("Empty scalar type"),
+            ScalarTypeKind::Empty => panic!("Empty scalar type"),
         };
 
         let total_size = if let XLangSome(vectorsize) = ty.header.vectorsize {
@@ -53,7 +53,7 @@ impl TypeState {
         let constraint_name_cache = self.constraint_name_cache.borrow();
 
         if let Some(validtys) = constraint_name_cache.get(constraint) {
-            return validtys.contains(&asm_ty);
+            validtys.contains(&asm_ty)
         } else {
             drop(constraint_name_cache);
             let register_aliases = self.register_aliases.borrow();
@@ -64,7 +64,7 @@ impl TypeState {
                         return true;
                     }
                 }
-                return false;
+                false
             } else {
                 drop(register_aliases);
                 let mut found = false;
@@ -72,7 +72,7 @@ impl TypeState {
                 for Pair(name, sty) in self.target_properties.arch.asm_propreties.constraints {
                     if name == constraint {
                         found = true;
-                        if let AsmScalarKind::Vector = sty.0 {
+                        if AsmScalarKind::Vector == sty.0 {
                             let bitsize = sty.1;
                             let _ =
                                 valid_tys.insert(AsmScalar(AsmScalarKind::VectorFloat, bitsize));
@@ -980,9 +980,11 @@ fn tycheck_expr(
                         break;
                     }
                 }
-                if !valid_syntax_name {
-                    panic!("Invalid assembly syntax name for target {}", syntax);
-                }
+                assert!(
+                    valid_syntax_name,
+                    "Invalid assembly syntax name for target {}",
+                    syntax
+                );
             }
 
             let inputs = &asm.inputs;
@@ -1029,7 +1031,7 @@ fn tycheck_expr(
                             tys.constraint_allowed_for_type(&sty, name),
                             "Invalid value {}",
                             pty
-                        )
+                        );
                     }
                     ty => panic!("Invalid value {}", ty),
                 }
@@ -1076,7 +1078,7 @@ fn tycheck_expr(
                             tys.constraint_allowed_for_type(&sty, name),
                             "Invalid value {}",
                             pty
-                        )
+                        );
                     }
                     ty => panic!("Invalid value {}", ty),
                 }

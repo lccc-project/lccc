@@ -5,7 +5,11 @@ use xlang_abi::{
     {span, span::Span},
 };
 
-use super::{ArchProperties, AsmProperties, AsmScalar, AsmScalarKind::{Float,Integer}, MachineProperties};
+use super::{
+    ArchProperties, AsmProperties, AsmScalar,
+    AsmScalarKind::{Float, Integer},
+    MachineProperties,
+};
 
 macro_rules! w65_machines{
     {

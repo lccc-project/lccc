@@ -220,7 +220,7 @@ impl<S: AsRef<str> + ?Sized> From<&S> for String {
 
 impl<'a> From<StringView<'a>> for String {
     fn from(s: StringView<'a>) -> Self {
-        let s = s.deref();
+        let s = &*s;
         if s.is_empty() {
             Self::new()
         } else {
@@ -233,7 +233,7 @@ impl<'a> From<StringView<'a>> for String {
 
 impl From<std::string::String> for String {
     fn from(s: std::string::String) -> Self {
-        let s = s.deref();
+        let s = &*s;
         if s.is_empty() {
             Self::new()
         } else {
@@ -346,7 +346,7 @@ impl core::hash::Hash for StringView<'_> {
 
 impl<S: AsRef<str> + ?Sized> PartialEq<S> for StringView<'_> {
     fn eq(&self, rhs: &S) -> bool {
-        self.deref() == rhs.as_ref()
+        &**self == rhs.as_ref()
     }
 }
 

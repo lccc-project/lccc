@@ -258,7 +258,8 @@ x86_constraints![
         Float @ 32 | 64 | 80 => x87_reg,
         Integer @ 32 | 64 => mmx_reg,
         Vector @ 32 | 64 => mmx_reg,
-        Integer @ 64 => kreg
+        Integer @ 64 => kreg,
+        Integer @ 1 => flag,
     ]
     x86_32: [
         Integer @ 16 | 32 => reg,
@@ -272,7 +273,8 @@ x86_constraints![
         Float @ 32 | 64 | 80 => x87_reg,
         Integer @ 32 | 64 => mmx_reg,
         Vector @ 32 | 64 => mmx_reg,
-        Integer @ 64 => kreg
+        Integer @ 64 => kreg,
+        Integer @ 1 => flag,
     ]
     x86_64: [
         Integer @ 16 | 32 | 64 => reg,
@@ -288,6 +290,7 @@ x86_constraints![
         Integer @ 32 | 64 => mmx_reg,
         Vector @ 32 | 64 => mmx_reg,
         Integer @ 64 => kreg,
+        Integer @ 1 => flag,
     ]
 ];
 
@@ -303,6 +306,7 @@ x86_register_groups![
         mmx_reg => mm0 | mm1 | mm2 | mm3 | mm4 | mm5 | mm6 | mm7,
         kreg => k1 | k2 | k3 | k4 | k5 | k6 | k7,
         kreg0 => k0 | k1 | k2 | k3 | k4 | k5 | k6 | k7,
+        flag => ZF | OF | CF | SF | PF,
     ]
     x86_32: [
         reg => ax | cx | dx | bx | di
@@ -317,6 +321,7 @@ x86_register_groups![
         mmx_reg => mm0 | mm1 | mm2 | mm3 | mm4 | mm5 | mm6 | mm7,
         kreg => k1 | k2 | k3 | k4 | k5 | k6 | k7,
         kreg0 => k0 | k1 | k2 | k3 | k4 | k5 | k6 | k7,
+        flag => ZF | OF | CF | SF | PF,
     ]
     x86_64: [
         reg => ax | cx | dx | si | di
@@ -346,6 +351,7 @@ x86_register_groups![
         mmx_reg => mm0 | mm1 | mm2 | mm3 | mm4 | mm5 | mm6 | mm7,
         kreg => k1 | k2 | k3 | k4 | k5 | k6 | k7,
         kreg0 => k0 | k1 | k2 | k3 | k4 | k5 | k6 | k7,
+        flag => ZF | OF | CF | SF | PF,
     ]
 ];
 

@@ -1395,11 +1395,7 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
                 tok => panic!("Unexpected token {:?}", tok),
             }
 
-            let syntax = if let Some(syntax) = syntax {
-                syntax
-            } else {
-                "".into()
-            };
+            let syntax = syntax.unwrap_or_else(|| "".into());
 
             Expr::Asm(AsmExpr {
                 opts,
@@ -1431,7 +1427,7 @@ pub fn parse_asm_constraint<I: Iterator<Item = Token>>(
             let mut it = inner.into_iter().peekmore();
             let constraint = parse_asm_constraint(&mut it).unwrap();
             if let Some(tok) = it.next() {
-                panic!("Unexpected token {:?}", tok)
+                panic!("Unexpected token {:?}", tok);
             }
 
             Some(constraint)
