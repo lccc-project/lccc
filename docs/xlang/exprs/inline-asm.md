@@ -67,3 +67,18 @@ options := class(<class>)
 
 7. An output operand has both a constraint name and a type. The constraint indicates the location the corresponding value can be located at, and the type gives the type of that value. Additionally, an output may specify the `late` qualifier. If this qualifier is given, then the implementation may assume that the constraint is only modified to produce the specified output after all inputs are read by the assembly expression.
 8. A program that specifies an unparenthesised output constraint with the name `late` given as an identifier is ill-formed. The identifier `late` given in an output constraint is the `late` specifier, rather than a constraint name. 
+
+### Assembly String
+
+`asm-str := \"([^\"{}]\\|<limited-escape-sequence>|<operand-specifier>|"{{"|"}}")*\"`
+
+1. The asm-str is a machine-specific string to be interpreted by the codegen in a codegen-specific manner according to the options specified. The form of the asm-str is unspecified, except that operand specifiers (specified) below are replaced with the corresponding input or output operand. 
+
+Syntax: `operand-specifier := "{"<integer>?{i,o}<class-specifier>?"}"`
+`class-specifier := ":"[a-zA-Z0-9]*`
+
+2. Each operand specifier contains 3 parts: an optional position, an input or output specifier, and an optional class specifier. The position is the zero indexed position in the corresponding (input or output) operand list and, if omitted, is filled with one more than the position last used for an operand specifier from the same list without a position indicator. An operand specifier with a position specifier that ends with `i` is an input operand specifier and refers to an operand from the input list. An operand specifier with a position specifier that ends with `o` is an output operand specifier and refers to an operand from the output list. The class-specifier indicates modifications to the operands and are machine-specific.
+
+`limited-escape-sequence := <escape-sequence>`
+
+3. The escape sequences allowed for asm-str shall only produce valid UTF-8. If an escape sequence expands either `{` or `}`, the program is ill-formed, no diagnostic required.
