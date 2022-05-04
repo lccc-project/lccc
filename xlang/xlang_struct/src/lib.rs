@@ -864,13 +864,19 @@ pub enum Expr {
 #[repr(u16)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum AsmConstraint {
-    AnyRegister,
-    AnyOfClass(String),
-    Register(String),
-    Flag(String),
+    CC,
     Memory,
-    AnyVolatile(String),
-    AnyNonVolatile(String),
+    ArchConstraint(String),
+}
+
+impl core::fmt::Display for AsmConstraint {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Self::CC => f.write_str("cc"),
+            Self::Memory => f.write_str("memory"),
+            Self::ArchConstraint(name) => f.write_str(name),
+        }
+    }
 }
 
 bitflags::bitflags! {
@@ -878,23 +884,36 @@ bitflags::bitflags! {
       // more like clippy::readable_literal
     pub struct AsmOptions : u32{
         #[allow(clippy::unreadable_literal)]
-        const VOLATILE = 0x00000001;
+        const PURE = 0x00000001;
         #[allow(clippy::unreadable_literal)]
         const TRANSPARENT = 0x00000002;
         #[allow(clippy::unreadable_literal)]
         const NOSTACK = 0x00000004;
+        #[allow(clippy::unreadable_literal)]
+        const NOMEM = 0x00000008;
+        #[allow(clippy::unreadable_literal)]
+        const NOEXIT = 0x00000010;
     }
+}
+
+#[repr(C)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct AsmOutput {
+    pub late: bool,
+    pub constraint: AsmConstraint,
+    pub ty: Type,
 }
 
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AsmExpr {
     pub opts: AsmOptions,
-    pub annotations: AnnotatedElement,
     pub syntax: String,
+    pub access_class: AccessClass,
+    pub string: String,
     pub clobbers: Vec<AsmConstraint>,
     pub inputs: Vec<AsmConstraint>,
-    pub outputs: Vec<AsmConstraint>,
+    pub outputs: Vec<AsmOutput>,
 }
 
 fake_enum::fake_enum! {

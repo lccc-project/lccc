@@ -1,0 +1,5 @@
+function main() -> int(32){
+    asm syntax(intel) noexit "ud2" [] []
+    const undef invalid int(32)
+    exit 1
+}

@@ -1,6 +1,6 @@
 use xlang_abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
 
-use super::{ArchProperties, MachineProperties};
+use super::{ArchProperties, AsmProperties, MachineProperties};
 
 macro_rules! clever_machines{
     {
@@ -126,6 +126,116 @@ clever_builtins![
     __rand_rpoll,
 ];
 
+macro_rules! clever_constraints{
+    [
+        $($kind:ident @ $($sizes:literal)|* => $name:ident),* $(,)?
+    ] => {
+        pub const CLEVER_ASM_CONSTRAINTS: Span<'static, Pair<StringView<'static>, AsmScalar>> = span![
+            $($(Pair(const_sv!(::std::stringify!($name)),AsmScalar($kind,$sizes)),)*)*
+        ];
+    }
+}
+
+macro_rules! clever_register_groups {
+    [
+        $($name:ident => $($regname:ident)|*),* $(,)?
+    ] => {
+        pub const CLEVER_ASM_REGISTER_GROUPS: Span<'static, Pair<StringView<'static>,Span<'static,StringView<'static>>>> = span![
+            $(Pair(const_sv!(::std::stringify!($name)),span![$(const_sv!(::std::stringify!($regname))),*])),*
+        ];
+    }
+}
+
+macro_rules! clever_overlaps {
+    [ $($name:ident => $($overlap_names:ident)|*),* $(,)?] => {
+        pub const CLEVER_ASM_REGISTER_OVERLAPS: Span<'static, Pair<StringView<'static>,StringView<'static>>> = span![
+            $($(Pair(const_sv!(::std::stringify!($name)),const_sv!(::std::stringify!($overlap_names)))),*),*
+        ];
+    }
+}
+
+use super::{
+    AsmScalar,
+    AsmScalarKind::{Float, Integer, Vector},
+};
+
+clever_constraints![
+    Integer @ 8 | 16 | 32 | 64 => general,
+    Float @ 8 | 16 | 32 | 64 => general,
+    Float @ 16 | 32 | 64 => float,
+    Integer @ 8 | 16 | 32 | 64 => vectorlo,
+    Integer @ 8 | 16 | 32 | 64 => vectorhi,
+    Integer @ 8 | 16 | 32 | 64 => vectorhalf,
+    Integer @ 8 | 16 | 32 | 64 | 128 => vector,
+    Float @ 8 | 16 | 32 | 64 => vectorlo,
+    Float @ 8 | 16 | 32 | 64 => vectorhi,
+    Float @ 8 | 16 | 32 | 64 => vectorhalf,
+    Float @ 8 | 16 | 32 | 64 | 128 => vector,
+    Vector @ 8 | 16 | 32 | 64 => vectorlo,
+    Vector @ 8 | 16 | 32 | 64 => vectorhi,
+    Vector @ 8 | 16 | 32 | 64 => vectorhalf,
+    Vector @ 8 | 16 | 32 | 64 | 128 => vector,
+    Integer @ 1 => flag,
+];
+
+clever_register_groups![
+    general => r0 | r1 | r2 | r3 | r4 | r5 | r8 | r9 | r10 | r11 | r12 | r13 | r15,
+    float => f0 | f1 | f2 | f3 | f4 | f5 | f6 | f7,
+    vectorlo => v0l | v1l | v2l | v3l | v4l | v5l | v6l | v7l | v8l | v9l | v10l | v11l | v12l | v13l | v14l | v15l
+        | v16l | v17l | v18l | v19l | v20l | v21l | v22l | v23l | v24l | v25l | v26l | v27l | v28l | v29l | v30l | v31l,
+    vectorhi => v0h | v1h | v2h | v3h | v4h | v5h | v6h | v7h | v8h | v9h | v10h | v11h | v12h | v13h | v14h | v15h
+        | v16h | v17h | v18h | v19h | v20h | v21h | v22h | v23h | v24h | v25h | v26h | v27h | v28h | v29h | v30h | v31h,
+    vectorhalf => v0l | v1l | v2l | v3l | v4l | v5l | v6l | v7l | v8l | v9l | v10l | v11l | v12l | v13l | v14l | v15l
+        | v16l | v17l | v18l | v19l | v20l | v21l | v22l | v23l | v24l | v25l | v26l | v27l | v28l | v29l | v30l | v31l
+        | v0h | v1h | v2h | v3h | v4h | v5h | v6h | v7h | v8h | v9h | v10h | v11h | v12h | v13h | v14h | v15h
+        | v16h | v17h | v18h | v19h | v20h | v21h | v22h | v23h | v24h | v25h | v26h | v27h | v28h | v29h | v30h | v31h,
+    vector => v0 | v1 | v2 | v3 | v4 | v5 | v6 | v7 | v8 | v9 | v10 | v11 | v12 | v13 | v14 | v15
+        | v16 | v17 | v18 | v19 | v20 | v21 | v22 | v23 | v24 | v25 | v26 | v27 | v28 | v29 | v30 | v31,
+    flag => z | v | c | n | p,
+];
+
+clever_overlaps![
+    v0 => v0l | v0h,
+    v1 => v1l | v1h,
+    v2 => v2l | v2h,
+    v3 => v3l | v3h,
+    v4 => v4l | v4h,
+    v5 => v5l | v5h,
+    v6 => v6l | v6h,
+    v7 => v7l | v7h,
+    v8 => v8l | v8h,
+    v9 => v9l | v9h,
+    v10 => v10l | v10h,
+    v11 => v11l | v11h,
+    v12 => v12l | v12h,
+    v13 => v13l | v13h,
+    v14 => v14l | v14h,
+    v15 => v15l | v15h,
+    v16 => v16l | v16h,
+    v17 => v17l | v17h,
+    v18 => v18l | v18h,
+    v19 => v19l | v19h,
+    v20 => v20l | v20h,
+    v21 => v21l | v21h,
+    v22 => v22l | v22h,
+    v23 => v23l | v23h,
+    v24 => v24l | v24h,
+    v25 => v25l | v25h,
+    v26 => v26l | v26h,
+    v27 => v27l | v27h,
+    v28 => v28l | v28h,
+    v29 => v29l | v29h,
+    v30 => v30l | v30h,
+    v31 => v31l | v31h,
+];
+
+pub static CLEVER_ASM: AsmProperties = AsmProperties {
+    syntax_names: span![const_sv!("standard"), const_sv!("official")],
+    constraints: CLEVER_ASM_CONSTRAINTS,
+    register_groups: CLEVER_ASM_REGISTER_GROUPS,
+    overlaps: CLEVER_ASM_REGISTER_OVERLAPS,
+};
+
 pub static CLEVER: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xff,
     builtin_names: CLEVER_BUILTINS,
@@ -134,4 +244,5 @@ pub static CLEVER: ArchProperties = ArchProperties {
     default_machine: &machines::MCLEVER1_0,
     arch_names: span![const_sv!("clever")],
     byte_order: super::ByteOrder::LittleEndian,
+    asm_propreties: &CLEVER_ASM,
 };

@@ -1,6 +1,12 @@
-use xlang::prelude::v1::{Box, HashMap, None as XLangNone, Pair, Some as XLangSome, Vec};
+use std::cell::RefCell;
+
+use xlang::{
+    abi::{collection::HashSet, string::StringView},
+    prelude::v1::{Box, HashMap, None as XLangNone, Pair, Some as XLangSome, Vec},
+    targets::properties::{AsmScalar, AsmScalarKind, TargetProperties},
+};
 use xlang_struct::{
-    AggregateDefinition, BinaryOp, Block, BlockItem, BranchCondition, Expr, File,
+    AggregateDefinition, AsmConstraint, BinaryOp, Block, BlockItem, BranchCondition, Expr, File,
     FunctionDeclaration, LValueOp, OverflowBehaviour, Path, PointerType, ScalarType,
     ScalarTypeHeader, ScalarTypeKind, StackItem, StackValueKind, StaticDefinition, Type, UnaryOp,
     Value,
@@ -9,9 +15,107 @@ use xlang_struct::{
 struct TypeState {
     tys: HashMap<Path, Type>,
     aggregate: HashMap<Path, Option<AggregateDefinition>>,
+    target_properties: &'static TargetProperties,
+    constraint_name_cache: RefCell<HashMap<String, HashSet<AsmScalar>>>,
+    register_aliases: RefCell<HashMap<String, Vec<StringView<'static>>>>,
 }
 
 impl TypeState {
+    pub fn constraint_allowed_for_type(&self, ty: &ScalarType, constraint: &str) -> bool {
+        let asm_ty_kind = match ty.kind {
+            ScalarTypeKind::Integer { .. }
+            | ScalarTypeKind::Char { .. }
+            | ScalarTypeKind::Fixed { .. }
+                if ty.header.vectorsize.is_some() =>
+            {
+                AsmScalarKind::VectorInt
+            }
+            ScalarTypeKind::Integer { .. }
+            | ScalarTypeKind::Char { .. }
+            | ScalarTypeKind::Fixed { .. } => AsmScalarKind::Integer,
+            ScalarTypeKind::Float { .. } | ScalarTypeKind::LongFloat
+                if ty.header.vectorsize.is_some() =>
+            {
+                AsmScalarKind::VectorFloat
+            }
+            ScalarTypeKind::Float { .. } | ScalarTypeKind::LongFloat => AsmScalarKind::Float,
+            _ => panic!("Empty scalar type"),
+        };
+
+        let total_size = if let XLangSome(vectorsize) = ty.header.vectorsize {
+            u32::from(ty.header.bitsize) * u32::from(vectorsize)
+        } else {
+            u32::from(ty.header.bitsize)
+        };
+
+        let asm_ty = AsmScalar(asm_ty_kind, total_size);
+
+        let constraint_name_cache = self.constraint_name_cache.borrow();
+
+        if let Some(validtys) = constraint_name_cache.get(constraint) {
+            return validtys.contains(&asm_ty);
+        } else {
+            drop(constraint_name_cache);
+            let register_aliases = self.register_aliases.borrow();
+
+            if let Some(classes) = register_aliases.get(constraint) {
+                for rconstraint in classes {
+                    if self.constraint_allowed_for_type(ty, rconstraint) {
+                        return true;
+                    }
+                }
+                return false;
+            } else {
+                drop(register_aliases);
+                let mut found = false;
+                let mut valid_tys = HashSet::<AsmScalar>::new();
+                for Pair(name, sty) in self.target_properties.arch.asm_propreties.constraints {
+                    if name == constraint {
+                        found = true;
+                        if let AsmScalarKind::Vector = sty.0 {
+                            let bitsize = sty.1;
+                            let _ =
+                                valid_tys.insert(AsmScalar(AsmScalarKind::VectorFloat, bitsize));
+                            let _ = valid_tys.insert(AsmScalar(AsmScalarKind::VectorInt, bitsize));
+                        } else {
+                            let _ = valid_tys.insert(*sty);
+                        }
+                    }
+                }
+
+                if found {
+                    let mut constraint_name_cache = self.constraint_name_cache.borrow_mut();
+                    let valid = valid_tys.contains(&asm_ty);
+                    constraint_name_cache.insert(constraint.into(), valid_tys);
+                    valid
+                } else {
+                    let mut class_list = Vec::new();
+                    for Pair(class, regnames) in
+                        self.target_properties.arch.asm_propreties.register_groups
+                    {
+                        for reg in regnames {
+                            if reg == constraint {
+                                class_list.push(*class);
+                                break;
+                            }
+                        }
+                    }
+
+                    let mut valid = false;
+                    for rconstraint in &class_list {
+                        if self.constraint_allowed_for_type(ty, rconstraint) {
+                            valid = true;
+                            break;
+                        }
+                    }
+                    let mut register_aliases = self.register_aliases.borrow_mut();
+
+                    register_aliases.insert(constraint.into(), class_list);
+                    valid
+                }
+            }
+        }
+    }
     pub fn get_field_type<'a>(&'a self, ty: &'a Type, name: &str) -> Option<&'a Type> {
         match ty {
             Type::TaggedType(_, ty) | Type::Aligned(_, ty) => self.get_field_type(ty, name),
@@ -863,7 +967,76 @@ fn tycheck_expr(
                 xlang_struct::Switch::Linear(_) => todo!(),
             }
         }
-        Expr::Asm(_) => todo!("asm"),
+        Expr::Asm(asm) => {
+            let syntax = &mut asm.syntax;
+
+            if syntax.is_empty() {
+                *syntax = tys.target_properties.arch.asm_propreties.syntax_names[0].into();
+            } else {
+                let mut valid_syntax_name = false;
+                for syn in tys.target_properties.arch.asm_propreties.syntax_names {
+                    if syn == syntax {
+                        valid_syntax_name = true;
+                        break;
+                    }
+                }
+                if !valid_syntax_name {
+                    panic!("Invalid assembly syntax name for target {}", syntax);
+                }
+            }
+
+            let inputs = &asm.inputs;
+
+            let input_stack = vstack.split_off_back(inputs.len());
+
+            for (constraint, val) in inputs.iter().zip(input_stack) {
+                let name = match constraint {
+                    AsmConstraint::Memory | AsmConstraint::CC => panic!(
+                        "Invalid constraint {} (only available for clobbers list)",
+                        constraint
+                    ),
+                    AsmConstraint::ArchConstraint(name) => name,
+                };
+
+                assert_eq!(val.kind, StackValueKind::RValue, "Invalid value {}", val);
+
+                match &val.ty {
+                    Type::Scalar(sty) => assert!(
+                        tys.constraint_allowed_for_type(sty, name),
+                        "Invalid value {}",
+                        sty
+                    ),
+                    ty => panic!("Invalid value {}", ty),
+                }
+            }
+
+            for output in &asm.outputs {
+                let constraint = &output.constraint;
+                let ty = &output.ty;
+
+                let name = match constraint {
+                    AsmConstraint::Memory | AsmConstraint::CC => panic!(
+                        "Invalid constraint {} (only available for clobbers list)",
+                        constraint
+                    ),
+                    AsmConstraint::ArchConstraint(name) => name,
+                };
+
+                match ty {
+                    Type::Scalar(sty) => assert!(
+                        tys.constraint_allowed_for_type(sty, name),
+                        "Invalid value {}",
+                        sty
+                    ),
+                    ty => panic!("Invalid value {}", ty),
+                }
+
+                vstack.push(StackItem {
+                    ty: ty.clone(),
+                    kind: StackValueKind::RValue,
+                });
+            }
+        }
         Expr::BeginStorage(n) | Expr::EndStorage(n) => {
             assert!(locals.len() > (*n as usize));
         }
@@ -912,9 +1085,13 @@ fn tycheck_block(
 }
 
 pub fn tycheck(x: &mut File) {
+    let targ = xlang::targets::properties::get_properties(x.target.clone()).unwrap();
     let mut typestate = TypeState {
         tys: HashMap::new(),
         aggregate: HashMap::new(),
+        target_properties: targ,
+        constraint_name_cache: RefCell::new(HashMap::new()),
+        register_aliases: RefCell::new(HashMap::new()),
     };
 
     // pass one, gather global address types

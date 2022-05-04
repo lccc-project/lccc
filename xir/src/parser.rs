@@ -10,12 +10,12 @@ use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
 use xlang::targets::Target;
 use xlang_struct::{
     Abi, AccessClass, AggregateCtor, AggregateDefinition, AggregateKind, AnnotatedElement,
-    BinaryOp, Block, BlockItem, BranchCondition, CharFlags, ConversionStrength, Expr, File, FnType,
-    FunctionBody, FunctionDeclaration, HashSwitch, LinearSwitch, MemberDeclaration,
-    OverflowBehaviour, Path, PathComponent, PointerAliasingRule, PointerDeclarationType,
-    PointerKind, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Scope,
-    ScopeMember, StackItem, StringEncoding, Switch, Type, UnaryOp, ValidRangeType, Value,
-    Visibility,
+    AsmConstraint, AsmExpr, AsmOptions, AsmOutput, BinaryOp, Block, BlockItem, BranchCondition,
+    CharFlags, ConversionStrength, Expr, File, FnType, FunctionBody, FunctionDeclaration,
+    HashSwitch, LinearSwitch, MemberDeclaration, OverflowBehaviour, Path, PathComponent,
+    PointerAliasingRule, PointerDeclarationType, PointerKind, PointerType, ScalarType,
+    ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Scope, ScopeMember, StackItem,
+    StringEncoding, Switch, Type, UnaryOp, ValidRangeType, Value, Visibility,
 };
 
 use crate::lexer::{Group, Token};
@@ -624,13 +624,6 @@ pub fn parse_block<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> B
     let mut items = Vec::new();
     loop {
         match it.peek() {
-            Some(Token::Ident(id)) if id == "end" => match it.peek_next().unwrap() {
-                Token::Ident(id) if id == "block" => {
-                    it.reset_cursor();
-                    break Block { items };
-                }
-                tok => todo!("end {:?}", tok),
-            },
             None => break Block { items },
             Some(Token::Ident(id)) if id == "target" => {
                 it.next();
@@ -1250,7 +1243,200 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
                 Expr::Member(id)
             }
         }
+        Token::Ident(id) if id == "asm" => {
+            it.next();
+
+            let mut opts = AsmOptions::empty();
+            let mut syntax = None;
+            let mut clobbers = Vec::new();
+            let mut inputs = Vec::new();
+            let mut outputs = Vec::new();
+            let mut access_class = AccessClass::Normal;
+
+            loop {
+                match it.peek().unwrap() {
+                    Token::Ident(id) if id == "nomem" => {
+                        it.next();
+                        opts |= AsmOptions::NOMEM;
+                    }
+                    Token::Ident(id) if id == "nostack" => {
+                        it.next();
+                        opts |= AsmOptions::NOSTACK;
+                    }
+                    Token::Ident(id) if id == "pure" => {
+                        it.next();
+                        opts |= AsmOptions::PURE;
+                    }
+                    Token::Ident(id) if id == "transparent" => {
+                        it.next();
+                        opts |= AsmOptions::TRANSPARENT;
+                    }
+                    Token::Ident(id) if id == "noexit" => {
+                        it.next();
+                        opts |= AsmOptions::NOEXIT;
+                    }
+                    Token::Ident(id) if id == "syntax" => {
+                        it.next();
+                        match it.next().unwrap() {
+                            Token::Group(Group::Parenthesis(inner)) => {
+                                let mut it = inner.into_iter().peekmore();
+                                syntax = Some(match it.next().unwrap() {
+                                    Token::Ident(id) => id,
+                                    Token::StringLiteral(st) => st,
+                                    tok => panic!("Unexpected token {:?}", tok),
+                                });
+                            }
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+                    }
+                    Token::Ident(id) if id == "class" => {
+                        it.next();
+                        match it.next().unwrap() {
+                            Token::Group(Group::Parenthesis(inner)) => {
+                                let mut it = inner.into_iter().peekmore();
+                                access_class = parse_access_class(&mut it);
+                            }
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+                    }
+                    _ => break,
+                }
+            }
+
+            let asm_str = match it.next().unwrap() {
+                Token::StringLiteral(lit) => literal_to_xir_bytes(&lit).unwrap(),
+                tok => panic!("Unexpected token {:?}", tok),
+            };
+
+            match it.peek().unwrap() {
+                Token::Ident(id) if id == "clobbers" => {
+                    it.next();
+                    match it.next().unwrap() {
+                        Token::Group(Group::Parenthesis(inner)) => {
+                            let mut it = inner.into_iter().peekmore();
+                            loop {
+                                match parse_asm_constraint(&mut it) {
+                                    Some(constraint) => clobbers.push(constraint),
+                                    None => break,
+                                }
+
+                                match it.next() {
+                                    Some(Token::Sigil(',')) => continue,
+                                    None => break,
+                                    Some(tok) => panic!("Unexpected token {:?}", tok),
+                                }
+                            }
+                        }
+                        tok => panic!("Unexpected token {:?}", tok),
+                    }
+                }
+                _ => {}
+            }
+
+            match it.next().unwrap() {
+                Token::Group(Group::Bracket(inner)) => {
+                    let mut it = inner.into_iter().peekmore();
+                    loop {
+                        match parse_asm_constraint(&mut it) {
+                            Some(constraint) => inputs.push(constraint),
+                            None => break,
+                        }
+
+                        match it.next() {
+                            Some(Token::Sigil(',')) => continue,
+                            None => break,
+                            Some(tok) => panic!("Unexpected token {:?}", tok),
+                        }
+                    }
+                }
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+            match it.next().unwrap() {
+                Token::Group(Group::Bracket(inner)) => {
+                    let mut it = inner.into_iter().peekmore();
+                    loop {
+                        let late = match it.peek() {
+                            Some(Token::Ident(id)) if id == "late" => {
+                                it.next();
+                                true
+                            }
+                            None => break,
+                            Some(_) => false,
+                        };
+                        let constraint = parse_asm_constraint(&mut it).unwrap();
+
+                        match it.next().unwrap() {
+                            Token::Sigil('=') => {}
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+
+                        match it.next().unwrap() {
+                            Token::Sigil('>') => {}
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+
+                        let ty = parse_type(&mut it).unwrap();
+
+                        let output = AsmOutput {
+                            late,
+                            constraint,
+                            ty,
+                        };
+
+                        outputs.push(output);
+
+                        match it.next() {
+                            Some(Token::Sigil(',')) => continue,
+                            None => break,
+                            Some(tok) => panic!("Unexpected token {:?}", tok),
+                        }
+                    }
+                }
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+
+            let syntax = if let Some(syntax) = syntax {
+                syntax
+            } else {
+                "".into()
+            };
+
+            Expr::Asm(AsmExpr {
+                opts,
+                syntax,
+                access_class,
+                string: asm_str,
+                clobbers,
+                inputs,
+                outputs,
+            })
+        }
         tok => todo!("{:?}", tok),
+    }
+}
+
+pub fn parse_asm_constraint<I: Iterator<Item = Token>>(
+    it: &mut PeekMoreIterator<I>,
+) -> Option<AsmConstraint> {
+    match it.next()? {
+        Token::Ident(id) if id == "memory" => Some(AsmConstraint::Memory),
+        Token::StringLiteral(id) if id == "memory" => Some(AsmConstraint::Memory),
+        Token::Ident(id) if id == "cc" => Some(AsmConstraint::CC),
+        Token::StringLiteral(id) if id == "cc" => Some(AsmConstraint::Memory),
+        Token::Ident(id) => Some(AsmConstraint::ArchConstraint(id)),
+        Token::StringLiteral(id) => Some(AsmConstraint::ArchConstraint(
+            literal_to_xir_bytes(&id).unwrap(),
+        )),
+        Token::Group(Group::Parenthesis(inner)) => {
+            let mut it = inner.into_iter().peekmore();
+            let constraint = parse_asm_constraint(&mut it).unwrap();
+            if let Some(tok) = it.next() {
+                panic!("Unexpected token {:?}", tok)
+            }
+
+            Some(constraint)
+        }
+        tok => panic!("Unexpected token {:?}", tok),
     }
 }
 

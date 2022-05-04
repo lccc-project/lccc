@@ -2,7 +2,10 @@ use xlang_abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
 
 use crate::properties::MachineProperties;
 
-use super::ArchProperties;
+use super::{
+    ArchProperties, AsmProperties, AsmScalar,
+    AsmScalarKind::{Float, Integer, Vector},
+};
 
 macro_rules! x86_machines{
     {
@@ -201,6 +204,292 @@ pub const X86_FEATURES: Span<'static, StringView<'static>> = span![
     const_sv!("mwait"),
 ];
 
+macro_rules! x86_constraints{
+    [
+        $($base_arch:ident: [$($kind:ident @ $($sizes:literal)|* => $name:ident),* $(,)?])*
+    ] => {
+        mod constraints{
+            use super::*;
+
+            $(pub mod $base_arch{
+                use super::*;
+                pub const ASM_CONSTRAINTS: Span<'static, Pair<StringView<'static>, AsmScalar>> = span![
+                    $($(Pair(const_sv!(::std::stringify!($name)),AsmScalar($kind,$sizes)),)*)*
+                ];
+            })*
+        }
+    }
+}
+
+macro_rules! x86_register_groups {
+    [
+        $($base_arch:ident: [$($name:ident => $($regname:ident)|*),* $(,)?])*
+    ] => {
+        mod reg_groups{
+            use super::*;
+            $(pub mod $base_arch{
+                use super::*;
+                pub const REGISTER_GROUPS: Span<'static, Pair<StringView<'static>,Span<'static,StringView<'static>>>> = span![
+                    $(Pair(const_sv!(::std::stringify!($name)),span![$(const_sv!(::std::stringify!($regname))),*])),*
+                ];
+            })*
+        }
+    }
+}
+
+macro_rules! x86_overlaps {
+    [ $($name:ident => $($overlap_names:ident)|*),* $(,)?] => {
+        pub const X86_ASM_REGISTER_OVERLAPS: Span<'static, Pair<StringView<'static>,StringView<'static>>> = span![
+            $($(Pair(const_sv!(::std::stringify!($name)),const_sv!(::std::stringify!($overlap_names)))),*),*
+        ];
+    }
+}
+
+x86_constraints![
+    x86_16: [
+        Integer @ 16 => reg,
+        Integer @ 16 => reg_abcd,
+        Integer @ 8 => reg_byte,
+        Vector @ 128 => xmm_reg,
+        Integer @ 8 | 16 | 32 | 64 | 128 => xmm_reg,
+        Float @ 32 | 64 | 128 => xmm_reg,
+        Vector @ 256 => ymm_reg,
+        Vector @ 512 => zmm_reg,
+        Float @ 32 | 64 | 80 => x87_reg,
+        Integer @ 32 | 64 => mmx_reg,
+        Vector @ 32 | 64 => mmx_reg,
+        Integer @ 64 => kreg
+    ]
+    x86_32: [
+        Integer @ 16 | 32 => reg,
+        Integer @ 16 | 32 => reg_abcd,
+        Integer @ 8 => reg_byte,
+        Vector @ 128 => xmm_reg,
+        Integer @ 8 | 16 | 32 | 64 | 128 => xmm_reg,
+        Float @ 32 | 64 | 128 => xmm_reg,
+        Vector @ 256 => ymm_reg,
+        Vector @ 512 => zmm_reg,
+        Float @ 32 | 64 | 80 => x87_reg,
+        Integer @ 32 | 64 => mmx_reg,
+        Vector @ 32 | 64 => mmx_reg,
+        Integer @ 64 => kreg
+    ]
+    x86_64: [
+        Integer @ 16 | 32 | 64 => reg,
+        Integer @ 16 | 32 | 64 => reg_abcd,
+        Integer @ 8 => reg_byte,
+        Vector @ 128 => xmm_reg,
+        Integer @ 8 | 16 | 32 | 64 | 128 => xmm_reg,
+        Float @ 32 | 64 | 128 => xmm_reg,
+        Vector @ 256 => ymm_reg,
+        Vector @ 512 => zmm_reg,
+        Vector @ 65536 => tmm_reg,
+        Float @ 32 | 64 | 80 => x87_reg,
+        Integer @ 32 | 64 => mmx_reg,
+        Vector @ 32 | 64 => mmx_reg,
+        Integer @ 64 => kreg,
+    ]
+];
+
+x86_register_groups![
+    x86_16: [
+        reg => ax | cx | dx | si | di,
+        reg_abcd => ax | cx | dx,
+        reg_byte => al | cl | dl | ah | ch | dh,
+        xmm_reg => xmm0 | xmm1 | xmm2 | xmm3 | xmm4 | xmm5 | xmm6 | xmm7,
+        ymm_reg => ymm0 | ymm1 | ymm2 | ymm3 | ymm4 | ymm5 | ymm6 | ymm7,
+        zmm_reg => zmm0 | zmm1 | zmm2 | zmm3 | zmm4 | zmm5 | zmm6 | zmm7,
+        x87_reg => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
+        mmx_reg => mm0 | mm1 | mm2 | mm3 | mm4 | mm5 | mm6 | mm7,
+        kreg => k1 | k2 | k3 | k4 | k5 | k6 | k7,
+        kreg0 => k0 | k1 | k2 | k3 | k4 | k5 | k6 | k7,
+    ]
+    x86_32: [
+        reg => ax | cx | dx | bx | di
+            | eax | ecx | edx | ebx | edi,
+        reg_abcd => ax | cx | dx | bx
+            | eax | ecx | edx | ebx,
+        reg_byte => al | cl | dl | bl | ah | ch | dh | bh,
+        xmm_reg => xmm0 | xmm1 | xmm2 | xmm3 | xmm4 | xmm5 | xmm6 | xmm7,
+        ymm_reg => ymm0 | ymm1 | ymm2 | ymm3 | ymm4 | ymm5 | ymm6 | ymm7,
+        zmm_reg => zmm0 | zmm1 | zmm2 | zmm3 | zmm4 | zmm5 | zmm6 | zmm7,
+        x87_reg => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
+        mmx_reg => mm0 | mm1 | mm2 | mm3 | mm4 | mm5 | mm6 | mm7,
+        kreg => k1 | k2 | k3 | k4 | k5 | k6 | k7,
+        kreg0 => k0 | k1 | k2 | k3 | k4 | k5 | k6 | k7,
+    ]
+    x86_64: [
+        reg => ax | cx | dx | si | di
+            | eax | ecx | edx | esi | edi
+            | rax | rcx | rdx | rsi | rdi
+            | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15
+            | r8d | r9d | r10d | r11d | r12d | r13d | r14d | r15d
+            | r8w | r9w | r10w | r11w | r12w | r13w | r14w | r15w,
+        reg_abcd => ax | cx | dx
+            | eax | ecx | edx
+            | rax | rcx | rdx,
+        reg_byte => al | cl | dl | sil | dil | r8b | r9b | r10b | r11b | r12b | r13b | r14b | r15b,
+        xmm_reg => xmm0 | xmm1 | xmm2 | xmm3 | xmm4 | xmm5 | xmm6 | xmm7
+            | xmm8 | xmm9 | xmm10 | xmm11 | xmm12 | xmm13 | xmm14 | xmm15
+            | xmm16 | xmm17 | xmm18 | xmm19 | xmm20 | xmm21 | xmm22 | xmm23
+            | xmm24 | xmm25 | xmm26 | xmm27 | xmm28 | xmm29 | xmm30 | xmm31,
+        ymm_reg => ymm0 | ymm1 | ymm2 | ymm3 | ymm4 | ymm5 | ymm6 | ymm7
+            | ymm8 | ymm9 | ymm10 | ymm11 | ymm12 | ymm13 | ymm14 | ymm15
+            | ymm16 | ymm17 | ymm18 | ymm19 | ymm20 | ymm21 | ymm22 | ymm23
+            | ymm24 | ymm25 | ymm26 | ymm27 | ymm28 | ymm29 | ymm30 | ymm31,
+        zmm_reg => zmm0 | zmm1 | zmm2 | zmm3 | zmm4 | zmm5 | zmm6 | zmm7
+            | zmm8 | zmm9 | zmm10 | zmm11 | zmm12 | zmm13 | zmm14 | zmm15
+            | zmm16 | zmm17 | zmm18 | zmm19 | zmm20 | zmm21 | zmm22 | zmm23
+            | zmm24 | zmm25 | zmm26 | zmm27 | zmm28 | zmm29 | zmm30 | zmm31,
+        tmm_reg => tmm0 | tmm1 | tmm2 | tmm3 | tmm4 | tmm5 | tmm6 | tmm7,
+        x87_reg => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
+        mmx_reg => mm0 | mm1 | mm2 | mm3 | mm4 | mm5 | mm6 | mm7,
+        kreg => k1 | k2 | k3 | k4 | k5 | k6 | k7,
+        kreg0 => k0 | k1 | k2 | k3 | k4 | k5 | k6 | k7,
+    ]
+];
+
+x86_overlaps![
+    rax => eax | ax | ah | al,
+    eax => ax | ah | al,
+     ax => ah | al,
+    rcx => ecx | cx | ch | cl,
+    ecx => cx | ch | cl,
+     cx => ch | cl,
+    rdx => edx | dx | dh | dl,
+    edx => dx | dh | dl,
+     dx => dh | dl,
+    rbx => ebx | bx | bh | bl,
+    ebx => bx | bh | bl,
+     bx => bh | bl,
+    rsi => esi | si | sil,
+    esi => si | sil,
+     si => sil,
+    rdi => edi | di | dil,
+    edi => di | dil,
+     di => dil,
+
+    r8  => r8d | r8w | r8b,
+    r8d => r8w | r8b,
+    r8w => r8b,
+    r9  => r9d | r9w | r9b,
+    r9d => r9w | r9b,
+    r9w => r9b,
+    r10  => r10d | r10w | r10b,
+    r10d => r10w | r10b,
+    r10w => r10b,
+    r11  => r11d | r11w | r11b,
+    r11d => r11w | r11b,
+    r11w => r11b,
+    r12  => r12d | r12w | r12b,
+    r12d => r12w | r12b,
+    r12w => r12b,
+    r13  => r13d | r13w | r13b,
+    r13d => r13w | r13b,
+    r13w => r13b,
+    r14  => r14d | r14w | r14b,
+    r14d => r14w | r14b,
+    r14w => r14b,
+    r15  => r15d | r15w | r15b,
+    r15d => r15w | r15b,
+    r15w => r15b,
+
+    zmm0 => ymm0 | xmm0,
+    ymm0 => xmm0,
+    zmm1 => ymm1 | xmm1,
+    ymm1 => xmm1,
+    zmm2 => ymm2 | xmm2,
+    ymm2 => xmm2,
+    zmm3 => ymm3 | xmm3,
+    ymm3 => xmm3,
+    zmm4 => ymm4 | xmm4,
+    ymm4 => xmm4,
+    zmm5 => ymm5 | xmm5,
+    ymm5 => xmm5,
+    zmm6 => ymm6 | xmm6,
+    ymm6 => xmm6,
+    zmm7 => ymm7 | xmm7,
+    ymm7 => xmm7,
+    zmm8 => ymm8 | xmm8,
+    ymm8 => xmm8,
+    zmm9 => ymm9 | xmm9,
+    ymm9 => xmm9,
+    zmm10 => ymm10 | xmm10,
+    ymm10 => xmm10,
+    zmm11 => ymm11 | xmm11,
+    ymm11 => xmm11,
+    zmm12 => ymm12 | xmm12,
+    ymm12 => xmm12,
+    zmm13 => ymm13 | xmm13,
+    ymm13 => xmm13,
+    zmm14 => ymm14 | xmm14,
+    ymm14 => xmm14,
+    zmm15 => ymm15 | xmm15,
+    ymm15 => xmm15,
+    zmm16 => ymm16 | xmm16,
+    ymm16 => xmm16,
+    zmm17 => ymm17 | xmm17,
+    ymm17 => xmm17,
+    zmm18 => ymm18 | xmm18,
+    ymm18 => xmm18,
+    zmm19 => ymm19 | xmm19,
+    ymm19 => xmm19,
+    zmm20 => ymm20 | xmm20,
+    ymm20 => xmm20,
+    zmm21 => ymm21 | xmm21,
+    ymm21 => xmm21,
+    zmm22 => ymm22 | xmm22,
+    ymm22 => xmm22,
+    zmm23 => ymm23 | xmm23,
+    ymm23 => xmm23,
+    zmm24 => ymm24 | xmm24,
+    ymm24 => xmm24,
+    zmm25 => ymm25 | xmm25,
+    ymm25 => xmm25,
+    zmm26 => ymm26 | xmm26,
+    ymm26 => xmm26,
+    zmm27 => ymm27 | xmm27,
+    ymm27 => xmm27,
+    zmm28 => ymm28 | xmm28,
+    ymm28 => xmm28,
+    zmm29 => ymm29 | xmm29,
+    ymm29 => xmm29,
+    zmm30 => ymm30 | xmm30,
+    ymm30 => xmm30,
+    zmm31 => ymm31 | xmm31,
+    ymm31 => xmm31,
+
+    mm0 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
+    mm1 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
+    mm2 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
+    mm3 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
+    mm4 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
+    mm5 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
+    mm6 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
+    mm7 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
+];
+
+pub static X86_16_ASM_PROPERTIES: AsmProperties = AsmProperties {
+    syntax_names: span![const_sv!("intel"), const_sv!("at&t")],
+    constraints: constraints::x86_16::ASM_CONSTRAINTS,
+    register_groups: reg_groups::x86_16::REGISTER_GROUPS,
+    overlaps: X86_ASM_REGISTER_OVERLAPS,
+};
+
+pub static X86_32_ASM_PROPERTIES: AsmProperties = AsmProperties {
+    syntax_names: span![const_sv!("intel"), const_sv!("at&t")],
+    constraints: constraints::x86_32::ASM_CONSTRAINTS,
+    register_groups: reg_groups::x86_32::REGISTER_GROUPS,
+    overlaps: X86_ASM_REGISTER_OVERLAPS,
+};
+
+pub static X86_64_ASM_PROPERTIES: AsmProperties = AsmProperties {
+    syntax_names: span![const_sv!("intel"), const_sv!("at&t")],
+    constraints: constraints::x86_64::ASM_CONSTRAINTS,
+    register_groups: reg_groups::x86_64::REGISTER_GROUPS,
+    overlaps: X86_ASM_REGISTER_OVERLAPS,
+};
+
 pub static X86_64: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xFF,
     builtin_names: X86_BUILTINS,
@@ -209,6 +498,7 @@ pub static X86_64: ArchProperties = ArchProperties {
     default_machine: &machines::MX86_64,
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
     byte_order: super::ByteOrder::LittleEndian,
+    asm_propreties: &X86_64_ASM_PROPERTIES,
 };
 
 pub static X86_64_V2: ArchProperties = ArchProperties {
@@ -219,6 +509,7 @@ pub static X86_64_V2: ArchProperties = ArchProperties {
     default_machine: &machines::MX86_64_V2,
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
     byte_order: super::ByteOrder::LittleEndian,
+    asm_propreties: &X86_64_ASM_PROPERTIES,
 };
 
 pub static X86_64_V3: ArchProperties = ArchProperties {
@@ -229,6 +520,7 @@ pub static X86_64_V3: ArchProperties = ArchProperties {
     default_machine: &machines::MX86_64_V3,
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
     byte_order: super::ByteOrder::LittleEndian,
+    asm_propreties: &X86_64_ASM_PROPERTIES,
 };
 
 pub static X86_64_V4: ArchProperties = ArchProperties {
@@ -239,6 +531,7 @@ pub static X86_64_V4: ArchProperties = ArchProperties {
     default_machine: &machines::MX86_64_V4,
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
     byte_order: super::ByteOrder::LittleEndian,
+    asm_propreties: &X86_64_ASM_PROPERTIES,
 };
 
 pub static I386: ArchProperties = ArchProperties {
@@ -249,6 +542,7 @@ pub static I386: ArchProperties = ArchProperties {
     default_machine: &machines::MI386,
     arch_names: span![const_sv!("i386"), const_sv!("x86")],
     byte_order: super::ByteOrder::LittleEndian,
+    asm_propreties: &X86_32_ASM_PROPERTIES,
 };
 
 pub static I486: ArchProperties = ArchProperties {
@@ -259,6 +553,7 @@ pub static I486: ArchProperties = ArchProperties {
     default_machine: &machines::MI486,
     arch_names: span![const_sv!("i486"), const_sv!("x86")],
     byte_order: super::ByteOrder::LittleEndian,
+    asm_propreties: &X86_32_ASM_PROPERTIES,
 };
 pub static I586: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xF,
@@ -268,6 +563,7 @@ pub static I586: ArchProperties = ArchProperties {
     default_machine: &machines::MI586,
     arch_names: span![const_sv!("i586"), const_sv!("x86")],
     byte_order: super::ByteOrder::LittleEndian,
+    asm_propreties: &X86_32_ASM_PROPERTIES,
 };
 
 pub static I686: ArchProperties = ArchProperties {
@@ -278,6 +574,7 @@ pub static I686: ArchProperties = ArchProperties {
     default_machine: &machines::MI686,
     arch_names: span![const_sv!("i686"), const_sv!("x86")],
     byte_order: super::ByteOrder::LittleEndian,
+    asm_propreties: &X86_32_ASM_PROPERTIES,
 };
 
 pub static I86: ArchProperties = ArchProperties {
@@ -288,4 +585,5 @@ pub static I86: ArchProperties = ArchProperties {
     default_machine: &machines::MI86,
     arch_names: span![const_sv!("i86"), const_sv!("i8086")],
     byte_order: super::ByteOrder::LittleEndian,
+    asm_propreties: &X86_16_ASM_PROPERTIES,
 };

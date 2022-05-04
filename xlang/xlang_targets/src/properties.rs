@@ -76,10 +76,43 @@ pub enum ByteOrder {
     MiddleEndian,
 }
 
+/// The kind of a scalar type that can be given to an asm block
+#[repr(u32)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum AsmScalarKind {
+    /// Integer type (includes fixed point and character types)
+    Integer,
+    /// Floating-point type (includes long double)
+    Float,
+    /// Vector type reguardless of component type
+    Vector,
+    /// Vector type (integer only)
+    VectorInt,
+    /// Vector type (floating-point only)
+    VectorFloat,
+}
+
+/// A Pair of an [`AsmScalarKind`] and a size (in bits) for the scalar type
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct AsmScalar(pub AsmScalarKind, pub u32);
+
 /// Properties about the assembly offered by the architecture
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub struct AsmProperties {}
+pub struct AsmProperties {
+    /// Names of syntax options available
+    pub syntax_names: Span<'static, StringView<'static>>,
+    /// Names of architecture-specific input, output, and clobbers constraints that are registers (or pseudo-registers)
+    pub constraints: Span<'static, Pair<StringView<'static>, AsmScalar>>,
+
+    /// Groups of registers by name
+    pub register_groups:
+        Span<'static, Pair<StringView<'static>, Span<'static, StringView<'static>>>>,
+
+    /// List of register names that overlap
+    pub overlaps: Span<'static, Pair<StringView<'static>, StringView<'static>>>,
+}
 
 ///
 /// Properties about the architecture, shared between targets that use this architecture
@@ -104,6 +137,9 @@ pub struct ArchProperties {
 
     /// Byte Order
     pub byte_order: ByteOrder,
+
+    /// Inline Assembly Properties
+    pub asm_propreties: &'static AsmProperties,
 }
 
 ///

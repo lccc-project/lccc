@@ -218,6 +218,32 @@ impl<S: AsRef<str> + ?Sized> From<&S> for String {
     }
 }
 
+impl<'a> From<StringView<'a>> for String {
+    fn from(s: StringView<'a>) -> Self {
+        let s = s.deref();
+        if s.is_empty() {
+            Self::new()
+        } else {
+            let mut bytes = crate::vec::Vec::with_capacity(s.len());
+            bytes.extend_from_slice(s.as_bytes());
+            Self(bytes)
+        }
+    }
+}
+
+impl From<std::string::String> for String {
+    fn from(s: std::string::String) -> Self {
+        let s = s.deref();
+        if s.is_empty() {
+            Self::new()
+        } else {
+            let mut bytes = crate::vec::Vec::with_capacity(s.len());
+            bytes.extend_from_slice(s.as_bytes());
+            Self(bytes)
+        }
+    }
+}
+
 impl<A: Allocator> Write for String<A> {
     fn write_str(&mut self, s: &str) -> std::fmt::Result {
         self.0.extend_from_slice(s.as_bytes());
@@ -318,27 +344,9 @@ impl core::hash::Hash for StringView<'_> {
     }
 }
 
-impl PartialEq for StringView<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        <str as PartialEq>::eq(self, other)
-    }
-}
-
-impl PartialEq<str> for StringView<'_> {
-    fn eq(&self, other: &str) -> bool {
-        <str as PartialEq>::eq(self, other)
-    }
-}
-
-impl PartialEq<&str> for StringView<'_> {
-    fn eq(&self, other: &&str) -> bool {
-        <str as PartialEq>::eq(self, other)
-    }
-}
-
-impl PartialEq<&mut str> for StringView<'_> {
-    fn eq(&self, other: &&mut str) -> bool {
-        <str as PartialEq>::eq(self, other)
+impl<S: AsRef<str> + ?Sized> PartialEq<S> for StringView<'_> {
+    fn eq(&self, rhs: &S) -> bool {
+        self.deref() == rhs.as_ref()
     }
 }
 

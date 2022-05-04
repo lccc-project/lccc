@@ -5,7 +5,7 @@ use xlang_abi::{
     {span, span::Span},
 };
 
-use super::{ArchProperties, MachineProperties};
+use super::{ArchProperties, AsmProperties, AsmScalar, AsmScalarKind::{Float,Integer}, MachineProperties};
 
 macro_rules! w65_machines{
     {
@@ -88,6 +88,54 @@ static W65_INTRINSICS: Span<StringView> = Span::new(
     &w65_arithmetic_intrinsics!([add,sub,mul,div,cmp]: [uint,int,fixed,float] @ [8,16,32,64,128]),
 );
 
+macro_rules! w65_constraints{
+    [
+        $($kind:ident @ $($sizes:literal)|* => $name:ident),* $(,)?
+    ] => {
+        pub const W65_ASM_CONSTRAINTS: Span<'static, Pair<StringView<'static>, AsmScalar>> = span![
+            $($(Pair(const_sv!(::std::stringify!($name)),AsmScalar($kind,$sizes)),)*)*
+        ];
+    }
+}
+
+macro_rules! w65_register_groups {
+    [
+        $($name:ident => $($regname:ident)|*),* $(,)?
+    ] => {
+        pub const W65_ASM_REGISTER_GROUPS: Span<'static, Pair<StringView<'static>,Span<'static,StringView<'static>>>> = span![
+            $(Pair(const_sv!(::std::stringify!($name)),span![$(const_sv!(::std::stringify!($regname))),*])),*
+        ];
+    }
+}
+
+w65_constraints![
+    Integer @ 8 | 16 => acc,
+    Integer @ 8 | 16 => idx,
+    Integer @ 8 | 16 | 32 => vreg,
+    Float  @ 8 | 16 | 32 => vreg,
+    Integer @ 64 => vreg64,
+    Float @ 64 => vreg64,
+];
+
+w65_register_groups![
+    acc => A,
+    idx => X | Y,
+    vreg => __r0 | __r1 |  __r2 | __r3 | __r4 | __r5 |  __r6 | __r7,
+    vreg64 => __r0 | __r2 | __r4 | __r6,
+];
+
+pub static W65_ASSEMBLY: AsmProperties = AsmProperties {
+    syntax_names: span![
+        const_sv!("snesdev"),
+        const_sv!("wladx"),
+        const_sv!("ca65"),
+        const_sv!("asar")
+    ],
+    constraints: W65_ASM_CONSTRAINTS,
+    register_groups: W65_ASM_REGISTER_GROUPS,
+    overlaps: span![],
+};
+
 pub static W65: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0x3,
     builtin_names: W65_INTRINSICS,
@@ -102,4 +150,5 @@ pub static W65: ArchProperties = ArchProperties {
         const_sv!("wdc65c816")
     ],
     byte_order: super::ByteOrder::LittleEndian,
+    asm_propreties: &W65_ASSEMBLY,
 };
