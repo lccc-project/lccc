@@ -7,7 +7,7 @@ use xlang::{
 };
 use xlang_struct::{
     AggregateDefinition, AsmConstraint, BinaryOp, Block, BlockItem, BranchCondition, Expr, File,
-    FunctionDeclaration, LValueOp, OverflowBehaviour, Path, PointerType, ScalarType,
+    FunctionDeclaration, LValueOp, OverflowBehaviour, Path, PointerKind, PointerType, ScalarType,
     ScalarTypeHeader, ScalarTypeKind, StackItem, StackValueKind, StaticDefinition, Type, UnaryOp,
     Value,
 };
@@ -1006,6 +1006,31 @@ fn tycheck_expr(
                         "Invalid value {}",
                         sty
                     ),
+                    Type::Pointer(pty) => {
+                        let bits = match (pty.kind, &*pty.inner) {
+                            (PointerKind::Near, _) => tys.target_properties.nearptrbits,
+                            (PointerKind::Far, _) => tys.target_properties.farptrbits,
+                            (_, Type::FnType(_)) => tys.target_properties.fnptrbits,
+                            _ => tys.target_properties.ptrbits,
+                        };
+
+                        let sty = ScalarType {
+                            header: ScalarTypeHeader {
+                                bitsize: bits,
+                                ..Default::default()
+                            },
+                            kind: ScalarTypeKind::Integer {
+                                signed: false,
+                                min: XLangNone,
+                                max: XLangNone,
+                            },
+                        };
+                        assert!(
+                            tys.constraint_allowed_for_type(&sty, name),
+                            "Invalid value {}",
+                            pty
+                        )
+                    }
                     ty => panic!("Invalid value {}", ty),
                 }
             }
@@ -1028,6 +1053,31 @@ fn tycheck_expr(
                         "Invalid value {}",
                         sty
                     ),
+                    Type::Pointer(pty) => {
+                        let bits = match (pty.kind, &*pty.inner) {
+                            (PointerKind::Near, _) => tys.target_properties.nearptrbits,
+                            (PointerKind::Far, _) => tys.target_properties.farptrbits,
+                            (_, Type::FnType(_)) => tys.target_properties.fnptrbits,
+                            _ => tys.target_properties.ptrbits,
+                        };
+
+                        let sty = ScalarType {
+                            header: ScalarTypeHeader {
+                                bitsize: bits,
+                                ..Default::default()
+                            },
+                            kind: ScalarTypeKind::Integer {
+                                signed: false,
+                                min: XLangNone,
+                                max: XLangNone,
+                            },
+                        };
+                        assert!(
+                            tys.constraint_allowed_for_type(&sty, name),
+                            "Invalid value {}",
+                            pty
+                        )
+                    }
                     ty => panic!("Invalid value {}", ty),
                 }
 
