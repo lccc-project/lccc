@@ -18,8 +18,8 @@ use ty::TypeInformation;
 use xlang::{
     abi::string::StringView,
     ir::{
-        AccessClass, BinaryOp, Block, BranchCondition, CharFlags, Expr, FnType, FunctionBody,
-        HashSwitch, LinearSwitch, OverflowBehaviour, Path, PointerType, ScalarType,
+        AccessClass, AsmExpr, BinaryOp, Block, BranchCondition, CharFlags, Expr, FnType,
+        FunctionBody, HashSwitch, LinearSwitch, OverflowBehaviour, Path, PointerType, ScalarType,
         ScalarTypeHeader, ScalarTypeKind, ScalarValidity, StackItem, StackValueKind, Switch, Type,
         UnaryOp, Value,
     },
@@ -1928,7 +1928,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 }
             }
             Expr::Tailcall(_) => todo!("tailcall"),
-            Expr::Asm(_) => todo!("asm"),
+            Expr::Asm(asm) => self.write_asm(asm),
             Expr::BeginStorage(n) => {
                 let local = &mut self.locals[(*n) as usize];
                 local.0 = VStackValue::Constant(Value::Uninitialized(local.1.clone()));
@@ -1938,6 +1938,11 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 local.0 = VStackValue::Constant(Value::Invalid(local.1.clone()));
             }
         }
+    }
+
+    /// Writes an asm-expr
+    pub fn write_asm(&mut self, asm: &AsmExpr) {
+        todo!("asm-expr: {}", asm);
     }
 
     /// Writes the body of a function to the codegen

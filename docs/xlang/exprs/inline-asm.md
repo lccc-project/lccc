@@ -35,19 +35,25 @@ options := nomem
 5. Indicates that the assembly expression does not modify any memory, except through pointer operands (this includes leaked addresses, and static variables).
 
 ```
+options := noexit
+```
+
+6. Indicates that the assembly expression does not complete. Note that this has no effect on type checking - expressions following the assembly expression are still type checked.
+
+```
 options := syntax(<name>)
 ```
 
-6. Indicates that the asm-str is written in the given named syntax (either an identifier or a string literal). What syntaxes are available and the default syntax are target-specific
+7. Indicates that the asm-str is written in the given named syntax (either an identifier or a string literal). What syntaxes are available and the default syntax are target-specific
 
 ```
 options := class(<class>)
 ```
 
-7. Indicates that the asm-str operates according to `class`. The atomic access class incidates that the assembly statement performs an atomic or synchronization operation consistent with `class`. `volatile` indicates that the assembly expression performs volatile accesses to memory or has other side effects. `nontemporal` and `freeze` have machine-specific semantics if they appear.
-8. The `volatile` access class cannot appear in a `pure` assembly expression. The behaviour of such an assembly expression is undefined. 
-9. If no atomic access class appears in `class` or no `class` is provided, then it is machine-specific whether the assembly expression is permitted to perform an atomic operation, but such an atomic operation does not have any synchronization effects. If the assembly-statement contains an atomic class stronger than relaxed, and does not perform any memory operations, it acts as a `fence` with that access class. If the order is relaxed, the behaviour of such an assembly expression is undefined. Whether or not the `fail relaxed` modifier has any effect is machine-specific.
-10. [Note: The assembly expression may perform operations that have stronger synchronization semantics in the target system than `class` specifies. This does not alter the synchronization effects on the XIR abstract machine. For example, a `mov` x86 instruction may still cause a data race if the assembly expression isn't indicated as atomic.]
+8. Indicates that the asm-str operates according to `class`. The atomic access class incidates that the assembly statement performs an atomic or synchronization operation consistent with `class`. `volatile` indicates that the assembly expression performs volatile accesses to memory or has other side effects. `nontemporal` and `freeze` have machine-specific semantics if they appear.
+9. The `volatile` access class cannot appear in a `pure` assembly expression. The behaviour of such an assembly expression is undefined. 
+10. If no atomic access class appears in `class` or no `class` is provided, then it is machine-specific whether the assembly expression is permitted to perform an atomic operation, but such an atomic operation does not have any synchronization effects. If the assembly-statement contains an atomic class stronger than relaxed, and does not perform any memory operations, it acts as a `fence` with that access class. If the order is relaxed, the behaviour of such an assembly expression is undefined. Whether or not the `fail relaxed` modifier has any effect is machine-specific.
+11. [Note: The assembly expression may perform operations that have stronger synchronization semantics in the target system than `class` specifies. This does not alter the synchronization effects on the XIR abstract machine. For example, a `mov` x86 instruction may still cause a data race if the assembly expression isn't indicated as atomic.]
 
 
 ## Constraints

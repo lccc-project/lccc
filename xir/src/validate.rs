@@ -1052,8 +1052,9 @@ fn tycheck_expr(
                 match ty {
                     Type::Scalar(sty) => assert!(
                         tys.constraint_allowed_for_type(sty, name),
-                        "Invalid value {}",
-                        sty
+                        "Invalid value {} for constraint {}",
+                        sty,
+                        name
                     ),
                     Type::Pointer(pty) => {
                         let bits = match (pty.kind, &*pty.inner) {
@@ -1076,11 +1077,12 @@ fn tycheck_expr(
                         };
                         assert!(
                             tys.constraint_allowed_for_type(&sty, name),
-                            "Invalid value {}",
-                            pty
+                            "Invalid value {} for constraint {}",
+                            pty,
+                            name
                         );
                     }
-                    ty => panic!("Invalid value {}", ty),
+                    ty => panic!("Invalid value {} {}", ty, name),
                 }
 
                 vstack.push(StackItem {

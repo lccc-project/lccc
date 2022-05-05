@@ -1,4 +1,4 @@
 function main() -> int(32){
-    asm pure "mov {o}, 0" [] [reg => int(32)]
+    asm pure "mov {o}, 0" [] [general => int(32)]
     exit 1
 }

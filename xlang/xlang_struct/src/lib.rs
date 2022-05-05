@@ -896,12 +896,47 @@ bitflags::bitflags! {
     }
 }
 
+impl core::fmt::Display for AsmOptions {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        if self.contains(Self::PURE) {
+            f.write_str("pure ")?;
+        }
+        if self.contains(Self::TRANSPARENT) {
+            f.write_str("transparent ")?
+        }
+        if self.contains(Self::NOSTACK) {
+            f.write_str("nostack ")?;
+        }
+        if self.contains(Self::NOMEM) {
+            f.write_str("nomem ")?;
+        }
+        if self.contains(Self::NOEXIT) {
+            f.write_str("noexit ")?;
+        }
+        Ok(())
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AsmOutput {
     pub late: bool,
     pub constraint: AsmConstraint,
     pub ty: Type,
+}
+
+impl core::fmt::Display for AsmOutput {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        if self.late {
+            f.write_str("late ")?;
+        }
+
+        self.constraint.fmt(f)?;
+
+        f.write_str(" => ")?;
+
+        self.ty.fmt(f)
+    }
 }
 
 #[repr(C)]
@@ -914,6 +949,48 @@ pub struct AsmExpr {
     pub clobbers: Vec<AsmConstraint>,
     pub inputs: Vec<AsmConstraint>,
     pub outputs: Vec<AsmOutput>,
+}
+
+impl core::fmt::Display for AsmExpr {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_str("asm ")?;
+        self.opts.fmt(f)?;
+        f.write_fmt(format_args!("syntax({}) ", self.syntax))?;
+
+        if self.access_class != AccessClass::Normal {
+            f.write_fmt(format_args!("class({}) ", self.access_class))?;
+        }
+
+        f.write_fmt(format_args!("{:?}", self.string))?;
+
+        if !self.clobbers.is_empty() {
+            f.write_str(" clobbers(")?;
+            let mut sep = "";
+            for clobber in &self.clobbers {
+                f.write_str(sep)?;
+                sep = ", ";
+                clobber.fmt(f)?;
+            }
+            f.write_str(")")?;
+        }
+
+        f.write_str(" [")?;
+        let mut sep = "";
+        for input in &self.inputs {
+            f.write_str(sep)?;
+            sep = ", ";
+            input.fmt(f)?;
+        }
+
+        f.write_str("] [")?;
+        let mut sep = "";
+        for output in &self.outputs {
+            f.write_str(sep)?;
+            sep = ", ";
+            output.fmt(f)?;
+        }
+        f.write_str("]")
+    }
 }
 
 fake_enum::fake_enum! {
