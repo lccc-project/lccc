@@ -11,12 +11,18 @@ use crate::{
 pub enum Error {
     /// An Error that simply contains a message and no error code
     Message(String),
+    /// Indicates that something interrupted a previous I/O operation, and the operation may be repeated to resume it
+    Interrupted,
+    /// Indicates that an operation encountered an unexpected end of file
+    UnexpectedEof,
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Message(m) => m.fmt(f),
+            Self::Interrupted => f.write_str("I/O Operation Interrupted"),
+            Self::UnexpectedEof => f.write_str("Unexpected End of File"),
         }
     }
 }
@@ -42,6 +48,24 @@ pub type Result<T> = crate::result::Result<T, Error>;
 pub trait Read {
     /// Reads from `self` into `buf`
     fn read(&mut self, buf: SpanMut<u8>) -> Result<usize>;
+
+    /// Reads the entire `buf` from `self`. Returns an error if not all of the requested bytes are available
+    fn read_exact(&mut self, mut buf: SpanMut<u8>) -> Result<()>
+    where
+        Self: Sized,
+    {
+        while !buf.is_empty() {
+            match self.read(buf.reborrow_mut()) {
+                Result::Ok(0) => return Result::Err(Error::UnexpectedEof),
+                Result::Ok(n) => {
+                    buf = buf.into_subspan(n..).unwrap();
+                }
+                Result::Err(Error::Interrupted) => {}
+                Result::Err(e) => return Result::Err(e),
+            }
+        }
+        Result::Ok(())
+    }
 }
 
 impl<R: ?Sized + Read> Read for &mut R {
@@ -214,7 +238,8 @@ pub struct ReadIntoChars<R: Read> {
 }
 
 impl<R: Read> ReadIntoChars<R> {
-    fn next_byte(&mut self) -> Option<u8> {
+    /// Reads a single byte from the stream
+    pub fn next_byte(&mut self) -> Option<u8> {
         if self.pos >= self.len {
             self.pos = 0;
             self.len = if let Result::Ok(len) = self.source.read(SpanMut::new(&mut self.buf)) {

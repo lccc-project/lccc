@@ -1,6 +1,6 @@
 # Assembly Expression
 
-Syntax: `expr := asm <option>* "asm-str" <clobbers(<constraint>...)>? [<constraint>...] [<late>? <constraint> => <type>...]`
+Syntax: `expr := asm <option>* "asm-str" <special-constriants>* [<constraint>...] [<late>? <constraint> => <type>...]`
 
 Type Checking: `[..,inputs...]`=>`[..,outputs...]`
 
@@ -29,7 +29,7 @@ options := nostack
 4. Indicates that the assembly expression does not modify any memory covered by the stack, except through pointer operands.
 
 ```
-options := nomem
+option := nomem
 ```
 
 5. Indicates that the assembly expression does not modify any memory, except through pointer operands (this includes leaked addresses, and static variables).
@@ -55,6 +55,15 @@ options := class(<class>)
 10. If no atomic access class appears in `class` or no `class` is provided, then it is machine-specific whether the assembly expression is permitted to perform an atomic operation, but such an atomic operation does not have any synchronization effects. If the assembly-statement contains an atomic class stronger than relaxed, and does not perform any memory operations, it acts as a `fence` with that access class. If the order is relaxed, the behaviour of such an assembly expression is undefined. Whether or not the `fail relaxed` modifier has any effect is machine-specific.
 11. [Note: The assembly expression may perform operations that have stronger synchronization semantics in the target system than `class` specifies. This does not alter the synchronization effects on the XIR abstract machine. For example, a `mov` x86 instruction may still cause a data race if the assembly expression isn't indicated as atomic.]
 
+## Outputs
+
+`special-constraints := goto(<target>...)`
+
+1. the `goto` specification may appear following the asm-str and preceeding the input and output specifications. This lists targets that the asm-expr may (but is not guaranteed to) branch to. If the asm-expr branches to any target other than one listed in this, or it transfers control into any asm-expr that exits without transfering control back to the current asm-expr, the behaviour is undefined.
+
+2. `special-constraints: clobbers(<constraint>...)`
+
+2. The `clobbers` specification may appear following the asm-str and preceeding the input and output specifications. See constraints for details about clobbers.
 
 ## Constraints
 
@@ -62,7 +71,7 @@ options := class(<class>)
 
 1. Each assembly statement can have zero or more input, output, and clobber constraints.
 2. Each input, output, and clobber contains a constraint which is either a string literal or identifier. Each constraint is machine-specific, but the constraints "cc" and "memory" may appear in the clobbers list to incidate that the assembly block clobbers either all memory or the condition code variable (which may store, for example, the cached results of previous comparisons). Neither "memory" nor "cc" may appear as a constraint in the input or output specification.
-3. The use of escape sequences in constraint names given as string literals is unspecified. If a program contains a string as a constraint name that does not identically match either "cc" or "memory" but is equivalent after converting escape sequences, the program is ill-formed, no diagnostic required. If the string is not valid UTF-8, the program is ill-formed, no diagnostic required.
+3. The use of escape sequences in constraint names given as string literals is unspecified. If a program contains a string as a constraint name that does not identically match either "cc" or "memory" but is equivalent after converting escape sequences, the program is ill-formed, no diagnostic required. If the string after evaluating escapes is not valid UTF-8, the program is ill-formed, no diagnostic required. 
 3. Each input constraint corresponds to a value, in order, from the head of the stack before the asm-str, with the nth last input constraint corresponding to the nth value popped. The valid types for each constraint name is machine-specific, but each input type shall be a scalar type or a pointer type. 
 4. Each output constraint corresponds to a value, in order, pushed to the head of the stack after the asm-str, with the nth output constraint corresponding to the nth value pushed. The same types valid for input constraints are valid for the same named output constraint.
 5. Each clobbers constraint correponds to some location that is modified by the assembly expression. The implementation cannot rely on the value of the location designated by the constraint.
@@ -80,11 +89,13 @@ options := class(<class>)
 
 1. The asm-str is a machine-specific string to be interpreted by the codegen in a codegen-specific manner according to the options specified. The form of the asm-str is unspecified, except that operand specifiers (specified) below are replaced with the corresponding input or output operand. 
 
-Syntax: `operand-specifier := "{"<integer>?{i,o}<class-specifier>?"}"`
+Syntax: `operand-specifier := "{"<integer>?{i,o,t}<class-specifier>?"}"`
 `class-specifier := ":"[a-zA-Z0-9]*`
 
-2. Each operand specifier contains 3 parts: an optional position, an input or output specifier, and an optional class specifier. The position is the zero indexed position in the corresponding (input or output) operand list and, if omitted, is filled with one more than the position last used for an operand specifier from the same list without a position indicator. An operand specifier with a position specifier that ends with `i` is an input operand specifier and refers to an operand from the input list. An operand specifier with a position specifier that ends with `o` is an output operand specifier and refers to an operand from the output list. The class-specifier indicates modifications to the operands and are machine-specific.
+2. Each operand specifier contains 3 parts: an optional position, an input or output specifier, and an optional class specifier. The position is the zero indexed position in the corresponding (input or output) operand list and, if omitted, is filled with one more than the position last used for an operand specifier from the same list without a position indicator. An operand specifier with a position specifier that ends with `i` is an input operand specifier and refers to an operand from the input list. An operand specifier with a position specifier that ends with `o` is an output operand specifier and refers to an operand from the output list. The class-specifier indicates modifications to the operands and are machine-specific.  An operand specifier with a position specifier that ends in `t` is a target specifier, and refers to a target given in the `goto` specification, if any. If any class specifier appears, the program is ill-formed, no diagnostic required.
+
+3. If a malformed operand-specifier appears within the asm-str, the program is ill-formed, no diagnostic required.
 
 `limited-escape-sequence := <escape-sequence>`
 
-3. The escape sequences allowed for asm-str shall only produce valid UTF-8. If an escape sequence expands either `{` or `}`, the program is ill-formed, no diagnostic required.
+4. The escape sequences allowed for asm-str shall only produce valid UTF-8. If an escape sequence expands either `{` or `}`, the program is ill-formed, no diagnostic required.

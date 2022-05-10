@@ -12,6 +12,7 @@ xlang_struct = {path="../xlang/xlang_struct"}
 unicode-xid = "0.2.2"
 target-tuples = "0.5"
 peekmore = "1.0.0"
+binary-io = "0.1.0"
 
 [lib]
 crate-type = ["cdylib"]

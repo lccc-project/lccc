@@ -80,10 +80,9 @@ impl<'a, T> Span<'a, T> {
         *self
     }
 
-    ///
-    /// Returns a subspan of the span, using a range as the index.
-    /// Note: This function only accepts ranges. To slice a particular element, use [`slice::get`] or [`std::ops::Index`]
-    pub fn subspan<I: RangeBounds<usize>>(&self, idx: I) -> Option<Span<T>> {
+    /// Takes an immutable subspan of `self` for the same lifetime.
+    /// This is the same as `subspan`, but doesn't bound the return value by the lifetime of `self`.
+    pub fn into_subspan<I: RangeBounds<usize>>(self, idx: I) -> Option<Self> {
         let begin = match idx.start_bound() {
             std::ops::Bound::Included(x) => *x,
             std::ops::Bound::Excluded(x) => x.saturating_add(1),
@@ -108,6 +107,13 @@ impl<'a, T> Span<'a, T> {
                 phantom: PhantomData,
             })
         }
+    }
+
+    ///
+    /// Returns a subspan of the span, using a range as the index.
+    /// Note: This function only accepts ranges. To slice a particular element, use [`slice::get`] or [`std::ops::Index`]
+    pub fn subspan<I: RangeBounds<usize>>(&self, idx: I) -> Option<Span<T>> {
+        self.reborrow().into_subspan(idx)
     }
 
     /// Converts self into a slice of its elements with the same lifetime
@@ -475,40 +481,9 @@ impl<'a, T> SpanMut<'a, T> {
         }
     }
 
-    ///
-    /// Returns a subspan of the span, using a range as the index.
-    /// Note: This function only accepts ranges. To slice a particular element, use [`slice::get`] or [`std::ops::Index`]
-    pub fn subspan<I: RangeBounds<usize>>(&self, idx: I) -> Option<Span<T>> {
-        let begin = match idx.start_bound() {
-            std::ops::Bound::Included(x) => *x,
-            std::ops::Bound::Excluded(x) => x.saturating_add(1),
-            std::ops::Bound::Unbounded => 0,
-        };
-        let end = match idx.end_bound() {
-            std::ops::Bound::Included(x) => x.saturating_add(1),
-            std::ops::Bound::Excluded(x) => *x,
-            std::ops::Bound::Unbounded => self.len,
-        };
-        let len = if end < begin {
-            0
-        } else {
-            end.saturating_sub(begin)
-        };
-        if len > self.len || begin > self.len {
-            None
-        } else {
-            Some(Span {
-                begin: unsafe { NonNull::new_unchecked(self.begin.as_ptr().add(begin)) },
-                len,
-                phantom: PhantomData,
-            })
-        }
-    }
-
-    ///
-    /// Returns a subspan of the span, using a range as the index.
-    /// Note: This function only accepts ranges. To slice a particular element, use [`slice::get`] or [`std::ops::Index`]
-    pub fn subspan_mut<I: RangeBounds<usize>>(&mut self, idx: I) -> Option<SpanMut<T>> {
+    /// Slices an owned span and returns a new subspan with the same lifetime.
+    /// Note: This takes ownership of the entire [`SpanMut`]. If you instead wish to borrow the subspan, use [`SpanMut::subspan_mut`] instead
+    pub fn into_subspan<I: RangeBounds<usize>>(self, idx: I) -> Option<Self> {
         let begin = match idx.start_bound() {
             std::ops::Bound::Included(x) => *x,
             std::ops::Bound::Excluded(x) => x.saturating_add(1),
@@ -533,6 +508,20 @@ impl<'a, T> SpanMut<'a, T> {
                 phantom: PhantomData,
             })
         }
+    }
+
+    ///
+    /// Returns a subspan of the span, using a range as the index.
+    /// Note: This function only accepts ranges. To slice a particular element, use [`slice::get`] or [`std::ops::Index`]
+    pub fn subspan<I: RangeBounds<usize>>(&self, idx: I) -> Option<Span<T>> {
+        self.reborrow().into_subspan(idx)
+    }
+
+    ///
+    /// Returns a subspan of the span, using a range as the index.
+    /// Note: This function only accepts ranges. To slice a particular element, use [`slice::get`] or [`std::ops::Index`]
+    pub fn subspan_mut<I: RangeBounds<usize>>(&mut self, idx: I) -> Option<SpanMut<T>> {
+        self.reborrow_mut().into_subspan(idx)
     }
 
     ///

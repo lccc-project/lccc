@@ -3,10 +3,12 @@ use ir::File;
 use xlang::abi::io::{self, IntoChars, Read};
 use xlang::abi::prelude::v1::*;
 use xlang::abi::result::Result;
+use xlang::abi::span::SpanMut;
 use xlang::abi::string::StringView;
 use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 
+mod binary_reader;
 mod lexer;
 mod parser;
 mod validate;
@@ -42,9 +44,68 @@ impl XLangFrontend for XirFrontend {
         self.filename = Some(String::from(&*name));
     }
 
-    fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
-        let lexed = lex(file.into_chars()).collect::<Vec<_>>();
-        self.file = Some(parse_file(lexed.into_iter(), self.target.clone().unwrap()));
+    fn read_source(&mut self, mut file: DynMut<dyn Read>) -> io::Result<()> {
+        let mut b = 0u8;
+
+        xlang::abi::try_!(file.read_exact(SpanMut::from_mut(&mut b)));
+
+        if b == 0xFF {
+            let mut mag = [0u8; 3];
+            xlang::abi::try_!(file.read_exact(SpanMut::new(&mut mag)));
+
+            if mag != *b"XIR" {
+                return xlang::abi::result::Err(io::Error::Message(
+                    "Invalid Binary XIR file".into(),
+                ));
+            }
+        } else {
+            let mut stream = file.into_chars();
+            let c = match b {
+                0x00..=0x7f => b as char,
+                0x80..=0xBF => panic!("Invalid UTF-8"),
+                0xC0..=0xDF => {
+                    let c2 = stream.next_byte().expect("Invalid UTF-8");
+                    if !(0x80..=0xBF).contains(&c2) {
+                        panic!("Invalid UTF-8")
+                    }
+                    char::from_u32(((b as u32) << 5) | (c2 as u32)).expect("Invalid UTF-8")
+                }
+                0xE0..=0xEF => {
+                    let c2 = stream.next_byte().expect("Invalid UTF-8");
+                    if !(0x80..=0xBF).contains(&c2) {
+                        panic!("Invalid UTF-8")
+                    }
+                    let c3 = stream.next_byte().expect("Invalid UTF-8");
+                    if !(0x80..=0xBF).contains(&c3) {
+                        panic!("Invalid UTF-8")
+                    }
+                    char::from_u32(((b as u32) << 10) | ((c2 as u32) << 5) | (c3 as u32))
+                        .expect("Invalid UTF-8")
+                }
+                0xF0..=0xF7 => {
+                    let c2 = stream.next_byte().expect("Invalid UTF-8");
+                    if !(0x80..=0xBF).contains(&c2) {
+                        panic!("Invalid UTF-8")
+                    }
+                    let c3 = stream.next_byte().expect("Invalid UTF-8");
+                    if !(0x80..=0xBF).contains(&c3) {
+                        panic!("Invalid UTF-8")
+                    }
+                    let c4 = stream.next_byte().expect("Invalid UTF-8");
+                    if !(0x80..=0xBF).contains(&c4) {
+                        panic!("Invalid UTF-8")
+                    }
+                    char::from_u32(
+                        ((b as u32) << 15) | ((c2 as u32) << 10) | ((c3 as u32) << 5) | (c4 as u32),
+                    )
+                    .expect("Invalid UTF-8")
+                }
+                _ => panic!("Invalid UTF-8"),
+            };
+            let lexed = lex(core::iter::once(c).chain(stream)).collect::<Vec<_>>();
+            self.file = Some(parse_file(lexed.into_iter(), self.target.clone().unwrap()));
+        }
+
         Result::Ok(())
     }
 }

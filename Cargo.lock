@@ -11,6 +11,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "binary-io"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d48e3ca0c86b51d14834d49f91771531b31cce782f4d7774fd7908b044e44769"
+dependencies = [
+ "fake-enum",
+]
+
+[[package]]
 name = "binfmt"
 version = "0.1.0"
 dependencies = [
@@ -113,6 +122,7 @@ dependencies = [
 name = "frontend-xir"
 version = "0.1.0"
 dependencies = [
+ "binary-io",
  "peekmore",
  "target-tuples",
  "unicode-xid",

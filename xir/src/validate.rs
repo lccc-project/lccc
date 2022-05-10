@@ -987,6 +987,16 @@ fn tycheck_expr(
                 );
             }
 
+            for target in &asm.targets {
+                let stack = &targets[target];
+
+                assert!(
+                    stack.is_empty(),
+                    "Cannot list @{} as destination for `asm goto`",
+                    target
+                );
+            }
+
             let inputs = &asm.inputs;
 
             let input_stack = vstack.split_off_back(inputs.len());

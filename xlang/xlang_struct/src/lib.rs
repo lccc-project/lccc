@@ -947,6 +947,7 @@ pub struct AsmExpr {
     pub access_class: AccessClass,
     pub string: String,
     pub clobbers: Vec<AsmConstraint>,
+    pub targets: Vec<u32>,
     pub inputs: Vec<AsmConstraint>,
     pub outputs: Vec<AsmOutput>,
 }
@@ -970,6 +971,17 @@ impl core::fmt::Display for AsmExpr {
                 f.write_str(sep)?;
                 sep = ", ";
                 clobber.fmt(f)?;
+            }
+            f.write_str(")")?;
+        }
+
+        if !self.targets.is_empty() {
+            f.write_str(" goto(")?;
+            let mut sep = "";
+            for target in &self.targets {
+                f.write_str(sep)?;
+                sep = ", ";
+                f.write_fmt(format_args!("@{}", target))?;
             }
             f.write_str(")")?;
         }

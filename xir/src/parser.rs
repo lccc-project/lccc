@@ -1252,6 +1252,7 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
             let mut inputs = Vec::new();
             let mut outputs = Vec::new();
             let mut access_class = AccessClass::Normal;
+            let mut targets = Vec::new();
 
             loop {
                 match it.peek().unwrap() {
@@ -1308,29 +1309,59 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
                 tok => panic!("Unexpected token {:?}", tok),
             };
 
-            match it.peek().unwrap() {
-                Token::Ident(id) if id == "clobbers" => {
-                    it.next();
-                    match it.next().unwrap() {
-                        Token::Group(Group::Parenthesis(inner)) => {
-                            let mut it = inner.into_iter().peekmore();
-                            loop {
-                                match parse_asm_constraint(&mut it) {
-                                    Some(constraint) => clobbers.push(constraint),
-                                    None => break,
-                                }
+            loop {
+                match it.peek().unwrap() {
+                    Token::Ident(id) if id == "goto" => {
+                        it.next();
+                        match it.next().unwrap() {
+                            Token::Group(Group::Parenthesis(inner)) => {
+                                let mut it = inner.into_iter().peekmore();
+                                loop {
+                                    match it.next() {
+                                        Some(Token::Sigil('@')) => {}
+                                        None => break,
+                                        Some(tok) => panic!("Unexpected token {:?}", tok),
+                                    }
+                                    match it.next().unwrap() {
+                                        Token::IntLiteral(n) => {
+                                            targets.push(u32::try_from(n).unwrap())
+                                        }
+                                        tok => panic!("Unexpected token {:?}", tok),
+                                    }
 
-                                match it.next() {
-                                    Some(Token::Sigil(',')) => continue,
-                                    None => break,
-                                    Some(tok) => panic!("Unexpected token {:?}", tok),
+                                    match it.next() {
+                                        Some(Token::Sigil(',')) => continue,
+                                        None => break,
+                                        Some(tok) => panic!("Unexpected token {:?}", tok),
+                                    }
                                 }
                             }
+                            tok => panic!("Unexpected token {:?}", tok),
                         }
-                        tok => panic!("Unexpected token {:?}", tok),
                     }
+                    Token::Ident(id) if id == "clobbers" => {
+                        it.next();
+                        match it.next().unwrap() {
+                            Token::Group(Group::Parenthesis(inner)) => {
+                                let mut it = inner.into_iter().peekmore();
+                                loop {
+                                    match parse_asm_constraint(&mut it) {
+                                        Some(constraint) => clobbers.push(constraint),
+                                        None => break,
+                                    }
+
+                                    match it.next() {
+                                        Some(Token::Sigil(',')) => continue,
+                                        None => break,
+                                        Some(tok) => panic!("Unexpected token {:?}", tok),
+                                    }
+                                }
+                            }
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+                    }
+                    _ => break,
                 }
-                _ => {}
             }
 
             match it.next().unwrap() {
@@ -1403,6 +1434,7 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
                 access_class,
                 string: asm_str,
                 clobbers,
+                targets,
                 inputs,
                 outputs,
             })
