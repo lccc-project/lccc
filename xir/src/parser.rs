@@ -254,6 +254,32 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreIterator<I>) -
                 let defn = parse_aggregate_body(stream, AggregateKind::Union).unwrap();
                 Some(Type::Aggregate(defn))
             }
+            "product" => {
+                stream.next();
+                match stream.next().unwrap() {
+                    Token::Group(Group::Parenthesis(inner)) => {
+                        let mut tys = Vec::new();
+                        let mut it = inner.into_iter().peekmore();
+
+                        loop {
+                            if let Some(ty) = parse_type(&mut it) {
+                                tys.push(ty)
+                            } else {
+                                break;
+                            }
+
+                            match it.next() {
+                                Some(Token::Sigil(',')) => continue,
+                                None => break,
+                                Some(tok) => panic!("Unexpected token {:?}", tok),
+                            }
+                        }
+
+                        Some(Type::Product(tys))
+                    }
+                    tok => panic!("Unexpected token {:?}", tok),
+                }
+            }
             _ => Some(Type::Named(parse_path(stream))),
         },
         Some(Token::Sigil('*')) => {
@@ -1215,6 +1241,9 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
                     loop {
                         match it.next() {
                             Some(Token::Ident(id)) => fields.push(id),
+                            Some(Token::IntLiteral(lit)) => {
+                                fields.push(xlang::abi::format!("{}", lit))
+                            } // because product types
                             None => break,
                             Some(tok) => panic!("Unexpected token {:?}", tok),
                         }
@@ -1235,7 +1264,7 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
 
             let indirect = matches!(it.peek().unwrap(), Token::Ident(id) if id == "indirect");
 
-            let id = parse_ident_with_parens(it);
+            let id = parse_member_name(it);
 
             if indirect {
                 Expr::MemberIndirect(id)
@@ -1439,6 +1468,116 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
                 outputs,
             })
         }
+        Token::Ident(id) if id == "begin" => {
+            it.next();
+            match it.next().unwrap() {
+                Token::Ident(id) if id == "storage" => match it.next().unwrap() {
+                    Token::Ident(id) if id.starts_with("_") => {
+                        Expr::BeginStorage(id[1..].parse().unwrap())
+                    }
+                    tok => panic!("Unexpected token {:?}", tok),
+                },
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+        }
+        Token::Ident(id) if id == "end" => {
+            it.next();
+            match it.next().unwrap() {
+                Token::Ident(id) if id == "storage" => match it.next().unwrap() {
+                    Token::Ident(id) if id.starts_with("_") => {
+                        Expr::EndStorage(id[1..].parse().unwrap())
+                    }
+                    tok => panic!("Unexpected token {:?}", tok),
+                },
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+        }
+        Token::Ident(id) if id == "compound_assign" => {
+            it.next();
+            let op = match it.next().unwrap() {
+                Token::Ident(id) if id == "add" => BinaryOp::Add,
+                Token::Ident(id) if id == "sub" => BinaryOp::Sub,
+                Token::Ident(id) if id == "mul" => BinaryOp::Mul,
+                Token::Ident(id) if id == "div" => BinaryOp::Div,
+                Token::Ident(id) if id == "mod" => BinaryOp::Mod,
+                Token::Ident(id) if id == "band" => BinaryOp::BitAnd,
+                Token::Ident(id) if id == "bor" => BinaryOp::BitOr,
+                Token::Ident(id) if id == "bxor" => BinaryOp::BitXor,
+                Token::Ident(id) if id == "lsh" => BinaryOp::Lsh,
+                Token::Ident(id) if id == "rsh" => BinaryOp::Rsh,
+                tok => panic!("Unexpected token {:?}", tok),
+            };
+
+            let v = match it.peek() {
+                Some(Token::Ident(id)) if id == "wrap" => {
+                    it.next();
+                    OverflowBehaviour::Wrap
+                }
+                Some(Token::Ident(id)) if id == "checked" => {
+                    it.next();
+                    OverflowBehaviour::Checked
+                }
+                Some(Token::Ident(id)) if id == "saturate" => {
+                    it.next();
+                    OverflowBehaviour::Saturate
+                }
+                Some(Token::Ident(id)) if id == "unchecked" => {
+                    it.next();
+                    OverflowBehaviour::Unchecked
+                }
+                Some(Token::Ident(id)) if id == "trap" => {
+                    it.next();
+                    OverflowBehaviour::Trap
+                }
+                _ => OverflowBehaviour::Wrap,
+            };
+
+            let acc = parse_access_class(it);
+            Expr::CompoundAssign(op, v, acc)
+        }
+        Token::Ident(id) if id == "fetch_assign" => {
+            it.next();
+            let op = match it.next().unwrap() {
+                Token::Ident(id) if id == "add" => BinaryOp::Add,
+                Token::Ident(id) if id == "sub" => BinaryOp::Sub,
+                Token::Ident(id) if id == "mul" => BinaryOp::Mul,
+                Token::Ident(id) if id == "div" => BinaryOp::Div,
+                Token::Ident(id) if id == "mod" => BinaryOp::Mod,
+                Token::Ident(id) if id == "band" => BinaryOp::BitAnd,
+                Token::Ident(id) if id == "bor" => BinaryOp::BitOr,
+                Token::Ident(id) if id == "bxor" => BinaryOp::BitXor,
+                Token::Ident(id) if id == "lsh" => BinaryOp::Lsh,
+                Token::Ident(id) if id == "rsh" => BinaryOp::Rsh,
+                tok => panic!("Unexpected token {:?}", tok),
+            };
+
+            let v = match it.peek() {
+                Some(Token::Ident(id)) if id == "wrap" => {
+                    it.next();
+                    OverflowBehaviour::Wrap
+                }
+                Some(Token::Ident(id)) if id == "checked" => {
+                    it.next();
+                    OverflowBehaviour::Checked
+                }
+                Some(Token::Ident(id)) if id == "saturate" => {
+                    it.next();
+                    OverflowBehaviour::Saturate
+                }
+                Some(Token::Ident(id)) if id == "unchecked" => {
+                    it.next();
+                    OverflowBehaviour::Unchecked
+                }
+                Some(Token::Ident(id)) if id == "trap" => {
+                    it.next();
+                    OverflowBehaviour::Trap
+                }
+                _ => OverflowBehaviour::Wrap,
+            };
+
+            let acc = parse_access_class(it);
+            Expr::FetchAssign(op, v, acc)
+        }
         tok => todo!("{:?}", tok),
     }
 }
@@ -1468,12 +1607,13 @@ pub fn parse_asm_constraint<I: Iterator<Item = Token>>(
     }
 }
 
-pub fn parse_ident_with_parens<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> String {
+pub fn parse_member_name<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> String {
     match it.next().unwrap() {
         Token::Ident(id) => id,
+        Token::IntLiteral(n) => xlang::abi::format!("{}", n),
         Token::Group(Group::Parenthesis(inner)) => {
             let mut it = inner.into_iter().peekmore();
-            parse_ident_with_parens(&mut it)
+            parse_member_name(&mut it)
         }
         tok => panic!("Unexpected token {:?}", tok),
     }

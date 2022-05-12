@@ -236,6 +236,12 @@ pub trait FunctionRawCodegen {
         ty: &Type,
         ord: AccessClass,
     );
+
+    /// Generates a sequence (compiler) fence - synchronizing with signal handlers on the current thread of execution
+    /// This is generally a runtime no-op
+    fn sequence(&mut self, _: AccessClass) {
+        /* by default, do nothing. This is for something like xlangcodegen-llvm that drops down to a lower-level IR */
+    }
 }
 
 #[derive(Default, Debug)]
@@ -1580,7 +1586,6 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         }
         self.print_vstack();
         match expr {
-            Expr::Null => {}
             Expr::Const(v) => self.push_value(VStackValue::Constant(v.clone())),
             Expr::Exit { values } => self.write_exit(*values),
             Expr::BinaryOp(op, v) => self.write_binary_op(*op, *v),
@@ -1846,8 +1851,437 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 }
                 self.push_value(val);
             }
-            Expr::CompoundAssign(_, _, _) => todo!(),
-            Expr::LValueOp(_, _, _) => todo!(),
+            Expr::CompoundAssign(op, v, acc) => {
+                let [lval, rhs] = self.pop_values_static().unwrap();
+
+                let (ty, lval) = match lval {
+                    VStackValue::Trapped => {
+                        self.push_value(VStackValue::Trapped);
+                        return;
+                    }
+                    VStackValue::LValue(ty, lval) => (ty, lval),
+                    val => panic!("Invalid value {}", val),
+                };
+
+                let (_, base, fields) = self.get_field_paths(lval, &ty);
+
+                match base {
+                    LValue::OpaquePointer(_) => todo!(),
+                    LValue::Local(n) => {
+                        let mut val = &mut self.locals[n as usize].0;
+
+                        let tys = &self._tys;
+
+                        let mut it = fields.into_iter();
+
+                        for field in &mut it {
+                            match val {
+                                VStackValue::Constant(Value::Invalid(_)) => {
+                                    self.inner.write_trap(Trap::Unreachable);
+                                    drop(val);
+                                    drop(tys);
+                                    self.push_value(VStackValue::Trapped);
+                                    return;
+                                }
+                                VStackValue::Constant(Value::Uninitialized(ty)) => {
+                                    let mut aggregate = HashMap::<String, _>::new();
+
+                                    for Pair(name, (_, ty)) in
+                                        tys.aggregate_layout(ty).unwrap().fields
+                                    {
+                                        let _ = aggregate.insert(
+                                            (&name).into(),
+                                            VStackValue::Constant(Value::Uninitialized(ty)),
+                                        );
+                                    }
+
+                                    *val = VStackValue::AggregatePieced(
+                                        core::mem::replace(ty, Type::Null),
+                                        aggregate,
+                                    );
+
+                                    match val {
+                                        VStackValue::AggregatePieced(_, vals) => {
+                                            val = vals.get_mut(&field).unwrap()
+                                        }
+                                        _ => unsafe { core::hint::unreachable_unchecked() },
+                                    }
+                                }
+                                VStackValue::AggregatePieced(ty, vals) => {
+                                    val = vals.get_or_insert_with_mut(field, |field| {
+                                        let field_ty = tys.get_field_type(ty, field).unwrap();
+                                        tys.zero_init(&field_ty).unwrap().into_transparent_for()
+                                    });
+                                }
+                                VStackValue::OpaqueAggregate(_, _) => todo!("opaque aggregate"),
+                                VStackValue::Trapped => break,
+                                val => panic!("Invalid value {}", val),
+                            }
+                        }
+
+                        if *acc == AccessClass::Normal {
+                            let underlying = core::mem::replace(val, VStackValue::Trapped);
+
+                            match (underlying, rhs) {
+                                (VStackValue::Constant(Value::Invalid(_)), _)
+                                | (_, VStackValue::Constant(Value::Invalid(_))) => {
+                                    self.inner.write_trap(Trap::Unreachable);
+                                    return;
+                                }
+                                (VStackValue::Trapped, _) | (_, VStackValue::Trapped) => {}
+                                (
+                                    underlying @ VStackValue::Constant(Value::Uninitialized(_)),
+                                    _,
+                                )
+                                | (
+                                    underlying @ VStackValue::OpaqueScalar(_, _),
+                                    VStackValue::Constant(Value::Uninitialized(_)),
+                                ) => {
+                                    *val = underlying;
+                                    match *v {
+                                        OverflowBehaviour::Trap => {
+                                            self.inner.write_trap(Trap::Unreachable);
+                                            self.diverged = true;
+                                            return;
+                                        }
+                                        OverflowBehaviour::Checked => {
+                                            let bool_sty = ScalarType {
+                                                header: ScalarTypeHeader {
+                                                    bitsize: 1,
+                                                    ..Default::default()
+                                                },
+                                                kind: ScalarTypeKind::Integer {
+                                                    signed: false,
+                                                    min: None,
+                                                    max: None,
+                                                },
+                                            };
+                                            self.push_value(VStackValue::Constant(
+                                                Value::Uninitialized(Type::Scalar(bool_sty)),
+                                            ))
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                (_, res @ VStackValue::Constant(Value::Uninitialized(_))) => {
+                                    *val = res;
+                                    match *v {
+                                        OverflowBehaviour::Trap => {
+                                            self.inner.write_trap(Trap::Unreachable);
+                                            self.diverged = true;
+                                            return;
+                                        }
+                                        OverflowBehaviour::Checked => {
+                                            let bool_sty = ScalarType {
+                                                header: ScalarTypeHeader {
+                                                    bitsize: 1,
+                                                    ..Default::default()
+                                                },
+                                                kind: ScalarTypeKind::Integer {
+                                                    signed: false,
+                                                    min: None,
+                                                    max: None,
+                                                },
+                                            };
+                                            self.push_value(VStackValue::Constant(
+                                                Value::Uninitialized(Type::Scalar(bool_sty)),
+                                            ))
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                (
+                                    VStackValue::Constant(Value::Integer {
+                                        ty: sty1,
+                                        val: val1,
+                                    }),
+                                    VStackValue::Constant(Value::Integer {
+                                        ty: sty2,
+                                        val: val2,
+                                    }),
+                                ) => match (sty1, sty2) {
+                                    (
+                                        ScalarType {
+                                            header:
+                                                ScalarTypeHeader {
+                                                    bitsize: bit1,
+                                                    vectorsize: None,
+                                                    ..
+                                                },
+                                            kind: ScalarTypeKind::Integer { signed: false, .. },
+                                        },
+                                        ScalarType {
+                                            header:
+                                                ScalarTypeHeader {
+                                                    vectorsize: None, ..
+                                                },
+                                            kind: ScalarTypeKind::Integer { signed: false, .. },
+                                        },
+                                    ) => {
+                                        let (res, overflow) = match *op{
+                                                    BinaryOp::Add => val1.overflowing_add(val2),
+                                                    BinaryOp::Sub => val1.overflowing_sub(val2),
+                                                    BinaryOp::Mul => val1.overflowing_mul(val2),
+                                                    BinaryOp::Div => {
+                                                        if val2==0{
+                                                            (0,true)
+                                                        }else{
+                                                            val1.overflowing_div(val2)
+                                                        }
+                                                    }
+                                                    BinaryOp::Mod => {
+                                                        if val2==0{
+                                                            (0,true)
+                                                        }else{
+                                                            val1.overflowing_rem(val2)
+                                                        }
+                                                    }
+                                                    BinaryOp::BitAnd => (val1&val2,false),
+                                                    BinaryOp::BitOr => (val1|val2,false),
+                                                    BinaryOp::BitXor => (val1|val2,false),
+                                                    BinaryOp::Lsh => (val1.wrapping_shl(val2 as u32),u16::try_from(val2).map(|val|val>bit1).unwrap_or(true)),
+                                                    BinaryOp::Rsh => (val1.wrapping_shr(val2 as u32),u16::try_from(val2).map(|val|val>bit1).unwrap_or(true)),
+                                                    op => panic!("Cannot perform binary operation {} as compound_assign",op)
+                                                };
+
+                                        let mask = (!0u128).wrapping_shr(128 - (bit1 as u32));
+
+                                        let mres = res & mask;
+
+                                        let overflow = overflow || (mres != res);
+
+                                        let res = match *v {
+                                            OverflowBehaviour::Saturate => {
+                                                let mres = if overflow {
+                                                    if *op == BinaryOp::Rsh || *op == BinaryOp::Sub
+                                                    {
+                                                        0
+                                                    } else {
+                                                        mask
+                                                    }
+                                                } else {
+                                                    res
+                                                };
+                                                VStackValue::Constant(Value::Integer {
+                                                    ty: sty1,
+                                                    val: mres,
+                                                })
+                                            }
+                                            OverflowBehaviour::Wrap => {
+                                                VStackValue::Constant(Value::Integer {
+                                                    ty: sty1,
+                                                    val: mres,
+                                                })
+                                            }
+                                            OverflowBehaviour::Checked => {
+                                                let bool_sty = ScalarType {
+                                                    header: ScalarTypeHeader {
+                                                        bitsize: 1,
+                                                        ..Default::default()
+                                                    },
+                                                    kind: ScalarTypeKind::Integer {
+                                                        signed: false,
+                                                        min: None,
+                                                        max: None,
+                                                    },
+                                                };
+
+                                                self.vstack.push_back(VStackValue::Constant(
+                                                    Value::Integer {
+                                                        ty: bool_sty,
+                                                        val: overflow as u128,
+                                                    },
+                                                ));
+                                                VStackValue::Constant(Value::Integer {
+                                                    ty: sty1,
+                                                    val: mres,
+                                                })
+                                            }
+                                            OverflowBehaviour::Trap => {
+                                                if overflow {
+                                                    self.inner.write_trap(Trap::Abort);
+                                                    self.diverged = true;
+                                                    return;
+                                                } else {
+                                                    VStackValue::Constant(Value::Integer {
+                                                        ty: sty1,
+                                                        val: mres,
+                                                    })
+                                                }
+                                            }
+                                            OverflowBehaviour::Unchecked => {
+                                                if overflow {
+                                                    VStackValue::Constant(Value::Uninitialized(
+                                                        Type::Scalar(sty1),
+                                                    ))
+                                                } else {
+                                                    VStackValue::Constant(Value::Integer {
+                                                        ty: sty1,
+                                                        val: mres,
+                                                    })
+                                                }
+                                            }
+                                            _ => panic!("Invalid overflow behaviour {}", v),
+                                        };
+
+                                        *val = res;
+                                    }
+                                    (
+                                        ScalarType {
+                                            header:
+                                                ScalarTypeHeader {
+                                                    bitsize: bit1,
+                                                    vectorsize: None,
+                                                    ..
+                                                },
+                                            kind: ScalarTypeKind::Integer { signed: true, .. },
+                                        },
+                                        ScalarType {
+                                            header:
+                                                ScalarTypeHeader {
+                                                    vectorsize: None, ..
+                                                },
+                                            kind: ScalarTypeKind::Integer { signed: true, .. },
+                                        },
+                                    ) => {
+                                        let val1 = val1 as i128;
+                                        let val2 = val2 as i128;
+                                        let (res, overflow) = match *op{
+                                            BinaryOp::Add => val1.overflowing_add(val2),
+                                            BinaryOp::Sub => val1.overflowing_sub(val2),
+                                            BinaryOp::Mul => val1.overflowing_mul(val2),
+                                            BinaryOp::Div => {
+                                                if val2==0{
+                                                    (0,true)
+                                                }else{
+                                                    val1.overflowing_div(val2)
+                                                }
+                                            }
+                                            BinaryOp::Mod => {
+                                                if val2==0{
+                                                    (0,true)
+                                                }else{
+                                                    val1.overflowing_rem(val2)
+                                                }
+                                            }
+                                            BinaryOp::BitAnd => (val1&val2,false),
+                                            BinaryOp::BitOr => (val1|val2,false),
+                                            BinaryOp::BitXor => (val1|val2,false),
+                                            BinaryOp::Lsh => (val1.wrapping_shl(val2 as u32),u16::try_from(val2).map(|val|val>bit1).unwrap_or(true)),
+                                            BinaryOp::Rsh => (val1.wrapping_shr(val2 as u32),u16::try_from(val2).map(|val|val>bit1).unwrap_or(true)),
+                                            op => panic!("Cannot perform binary operation {} as compound_assign",op)
+                                        };
+
+                                        let mask =
+                                            (!0u128).wrapping_shr(128 - (bit1 as u32)) as i128;
+
+                                        let mres = res & mask;
+
+                                        let overflow = overflow
+                                            || ((128 - res.leading_ones() - res.leading_zeros())
+                                                < 128 - (bit1 as u32));
+
+                                        let mres = ((0i128
+                                            .wrapping_sub(mres.wrapping_shr(bit1.into()) & 1))
+                                        .wrapping_shl(bit1.into()))
+                                            as u128;
+
+                                        let res = match *v {
+                                            OverflowBehaviour::Saturate => {
+                                                let mres = if overflow {
+                                                    if *op == BinaryOp::Rsh || *op == BinaryOp::Sub
+                                                    {
+                                                        0
+                                                    } else {
+                                                        mask as u128
+                                                    }
+                                                } else {
+                                                    mres
+                                                };
+                                                VStackValue::Constant(Value::Integer {
+                                                    ty: sty1,
+                                                    val: mres,
+                                                })
+                                            }
+                                            OverflowBehaviour::Wrap => {
+                                                VStackValue::Constant(Value::Integer {
+                                                    ty: sty1,
+                                                    val: mres,
+                                                })
+                                            }
+                                            OverflowBehaviour::Checked => {
+                                                let bool_sty = ScalarType {
+                                                    header: ScalarTypeHeader {
+                                                        bitsize: 1,
+                                                        ..Default::default()
+                                                    },
+                                                    kind: ScalarTypeKind::Integer {
+                                                        signed: false,
+                                                        min: None,
+                                                        max: None,
+                                                    },
+                                                };
+
+                                                self.vstack.push_back(VStackValue::Constant(
+                                                    Value::Integer {
+                                                        ty: bool_sty,
+                                                        val: overflow as u128,
+                                                    },
+                                                ));
+                                                VStackValue::Constant(Value::Integer {
+                                                    ty: sty1,
+                                                    val: mres,
+                                                })
+                                            }
+                                            OverflowBehaviour::Trap => {
+                                                if overflow {
+                                                    self.inner.write_trap(Trap::Abort);
+                                                    self.diverged = true;
+                                                    return;
+                                                } else {
+                                                    VStackValue::Constant(Value::Integer {
+                                                        ty: sty1,
+                                                        val: mres,
+                                                    })
+                                                }
+                                            }
+                                            OverflowBehaviour::Unchecked => {
+                                                if overflow {
+                                                    VStackValue::Constant(Value::Uninitialized(
+                                                        Type::Scalar(sty1),
+                                                    ))
+                                                } else {
+                                                    VStackValue::Constant(Value::Integer {
+                                                        ty: sty1,
+                                                        val: mres,
+                                                    })
+                                                }
+                                            }
+                                            _ => panic!("Invalid overflow behaviour {}", v),
+                                        };
+
+                                        *val = res;
+                                    }
+                                    (sty1, sty2) => todo!("({},{})", sty1, sty2),
+                                },
+                                (val1, val2) => panic!("Invalid values {}, {}", val1, val2),
+                            }
+                        } else {
+                            todo!("compound_assign {}", acc)
+                        }
+                    }
+                    LValue::Temporary(_) => todo!(),
+                    LValue::GlobalAddress(_) => todo!(),
+                    LValue::TransparentAddr(_) => todo!(),
+                    _ => {
+                        self.inner.write_trap(Trap::Unreachable);
+                        self.push_value(VStackValue::Trapped);
+                    }
+                }
+            }
+            Expr::FetchAssign(_, _, _) => todo!(),
+            Expr::LValueOp(_, _) => todo!(),
+            Expr::UnaryLValue(_, _, _) => todo!(),
             Expr::Indirect => {
                 let val = self.pop_value().unwrap();
                 match val {

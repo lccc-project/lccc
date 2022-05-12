@@ -8,8 +8,8 @@ use xlang::{
 use xlang_struct::{
     AggregateDefinition, AsmConstraint, BinaryOp, Block, BlockItem, BranchCondition, Expr, File,
     FunctionDeclaration, LValueOp, OverflowBehaviour, Path, PointerKind, PointerType, ScalarType,
-    ScalarTypeHeader, ScalarTypeKind, StackItem, StackValueKind, StaticDefinition, Type, UnaryOp,
-    Value,
+    ScalarTypeHeader, ScalarTypeKind, StackItem, StackValueKind, StaticDefinition, Type,
+    UnaryLValueOp, UnaryOp, Value,
 };
 
 struct TypeState {
@@ -183,6 +183,7 @@ fn tycheck_function(x: &mut FunctionDeclaration, tys: &TypeState) {
 }
 
 #[allow(clippy::too_many_lines, clippy::similar_names)]
+#[track_caller]
 fn check_unify(ty1: &Type, ty2: &Type, type_state: &TypeState) {
     match (type_state.refiy_type(ty1), type_state.refiy_type(ty2)) {
         (Type::Null, _) | (_, Type::Null) | (Type::Void, Type::Void) => {}
@@ -313,6 +314,7 @@ fn check_unify(ty1: &Type, ty2: &Type, type_state: &TypeState) {
     }
 }
 
+#[track_caller]
 fn check_unify_stack(stack: &[StackItem], target: &[StackItem], tys: &TypeState) {
     let begin = stack.len() - target.len();
     let stack = &stack[begin..];
@@ -341,6 +343,13 @@ fn tycheck_expr(
     targets: &HashMap<u32, Vec<StackItem>>,
     tys: &TypeState,
 ) -> bool {
+    eprint!("Typechecking expr {} against stack [",expr);
+    let mut sep = "";
+    for item in &*vstack {
+        eprint!("{}{}", sep, item);
+        sep = ", ";
+    }
+    eprintln!("]");
     match expr {
         xlang_struct::Expr::Const(v) => match v {
             xlang_struct::Value::Invalid(ty)
@@ -760,10 +769,20 @@ fn tycheck_expr(
             assert_eq!(rvalue.kind, StackValueKind::RValue);
             assert_eq!(lvalue.kind, StackValueKind::LValue);
 
-            check_unify(&lvalue.ty, &rvalue.ty, tys);
+            match *op {
+                BinaryOp::Cmp
+                | BinaryOp::CmpEq
+                | BinaryOp::CmpLt
+                | BinaryOp::CmpLe
+                | BinaryOp::CmpGt
+                | BinaryOp::CmpGe
+                | BinaryOp::CmpNe => panic!("invalid op for compound_assign {}", op),
+                _ => {}
+            }
 
             match tys.refiy_type(&lvalue.ty) {
                 Type::Scalar(_) => {
+                    check_unify(&lvalue.ty, &rvalue.ty, tys);
                     if *v == OverflowBehaviour::Checked {
                         vstack.push(StackItem {
                             ty: Type::Scalar(ScalarType {
@@ -781,10 +800,174 @@ fn tycheck_expr(
                         });
                     }
                 }
+                Type::Pointer(_) => {
+                    match *v {
+                        OverflowBehaviour::Checked
+                        | OverflowBehaviour::Saturate
+                        | OverflowBehaviour::Trap => {
+                            panic!("Cannot use overflow behaviour {} with a pointer type", v)
+                        }
+                        _ => {}
+                    }
+                    match *op {
+                        BinaryOp::Add => match tys.refiy_type(&rvalue.ty) {
+                            Type::Scalar(ScalarType {
+                                kind: ScalarTypeKind::Integer { .. },
+                                ..
+                            }) => {}
+                            ty => panic!("Cannot add {} and {}", lvalue.ty, ty),
+                        },
+                        BinaryOp::Sub => match tys.refiy_type(&rvalue.ty) {
+                            Type::Scalar(ScalarType {
+                                kind: ScalarTypeKind::Integer { .. },
+                                ..
+                            }) => {}
+                            rty @ Type::Pointer(_) => check_unify(&lvalue.ty, rty, tys),
+                            ty => panic!("Cannot subtract {} and {}", lvalue.ty, ty),
+                        },
+                        op => panic!("Cannot apply {} to {}", op, lvalue.ty),
+                    }
+                }
                 ty => todo!("compound_assign {}: {:?}", op, ty),
             }
         }
-        xlang_struct::Expr::LValueOp(op, v, _) => match *op {
+        xlang_struct::Expr::FetchAssign(op, v, _) => {
+            let rvalue = vstack.pop().unwrap();
+            let lvalue = vstack.pop().unwrap();
+
+            assert_eq!(rvalue.kind, StackValueKind::RValue);
+            assert_eq!(lvalue.kind, StackValueKind::LValue);
+
+            match *op {
+                BinaryOp::Cmp
+                | BinaryOp::CmpEq
+                | BinaryOp::CmpLt
+                | BinaryOp::CmpLe
+                | BinaryOp::CmpGt
+                | BinaryOp::CmpGe
+                | BinaryOp::CmpNe => panic!("invalid op for compound_assign {}", op),
+                _ => {}
+            }
+
+            vstack.push(StackItem {
+                ty: rvalue.ty.clone(),
+                kind: StackValueKind::LValue,
+            });
+
+            match tys.refiy_type(&lvalue.ty) {
+                Type::Scalar(_) => {
+                    check_unify(&lvalue.ty, &rvalue.ty, tys);
+                    if *v == OverflowBehaviour::Checked {
+                        vstack.push(StackItem {
+                            ty: Type::Scalar(ScalarType {
+                                header: ScalarTypeHeader {
+                                    bitsize: 1,
+                                    ..ScalarTypeHeader::default()
+                                },
+                                kind: ScalarTypeKind::Integer {
+                                    signed: false,
+                                    min: XLangNone,
+                                    max: XLangNone,
+                                },
+                            }),
+                            kind: StackValueKind::RValue,
+                        });
+                    }
+                }
+                Type::Pointer(_) => {
+                    match *v {
+                        OverflowBehaviour::Checked
+                        | OverflowBehaviour::Saturate
+                        | OverflowBehaviour::Trap => {
+                            panic!("Cannot use overflow behaviour {} with a pointer type", v)
+                        }
+                        _ => {}
+                    }
+                    match *op {
+                        BinaryOp::Add => match tys.refiy_type(&rvalue.ty) {
+                            Type::Scalar(ScalarType {
+                                kind: ScalarTypeKind::Integer { .. },
+                                ..
+                            }) => {}
+                            ty => panic!("Cannot add {} and {}", lvalue.ty, ty),
+                        },
+                        BinaryOp::Sub => match tys.refiy_type(&rvalue.ty) {
+                            Type::Scalar(ScalarType {
+                                kind: ScalarTypeKind::Integer { .. },
+                                ..
+                            }) => {}
+                            rty @ Type::Pointer(_) => check_unify(&lvalue.ty, rty, tys),
+                            ty => panic!("Cannot subtract {} and {}", lvalue.ty, ty),
+                        },
+                        op => panic!("Cannot apply {} to {}", op, lvalue.ty),
+                    }
+                }
+                ty => todo!("compound_assign {}: {:?}", op, ty),
+            }
+        }
+        xlang_struct::Expr::UnaryLValue(op, v, _) => match *op {
+            UnaryLValueOp::PreDec | UnaryLValueOp::PreInc => {
+                let lvalue = vstack.pop().unwrap();
+
+                assert_eq!(lvalue.kind, StackValueKind::LValue);
+
+                match tys.refiy_type(&lvalue.ty) {
+                    Type::Scalar(_) => {
+                        vstack.push(lvalue);
+                        if *v == OverflowBehaviour::Checked {
+                            vstack.push(StackItem {
+                                ty: Type::Scalar(ScalarType {
+                                    header: ScalarTypeHeader {
+                                        bitsize: 1,
+                                        ..ScalarTypeHeader::default()
+                                    },
+                                    kind: ScalarTypeKind::Integer {
+                                        signed: false,
+                                        min: XLangNone,
+                                        max: XLangNone,
+                                    },
+                                }),
+                                kind: StackValueKind::RValue,
+                            });
+                        }
+                    }
+                    ty => panic!("Cannot use {:?} on {:?}", op, ty),
+                }
+            }
+            UnaryLValueOp::PostDec | UnaryLValueOp::PostInc => {
+                let mut lvalue = vstack.pop().unwrap();
+
+                assert_eq!(lvalue.kind, StackValueKind::LValue);
+
+                match tys.refiy_type(&lvalue.ty) {
+                    Type::Scalar(_) => {
+                        if *v == OverflowBehaviour::Checked {
+                            lvalue.kind = StackValueKind::RValue;
+                            vstack.push(lvalue);
+                            vstack.push(StackItem {
+                                ty: Type::Scalar(ScalarType {
+                                    header: ScalarTypeHeader {
+                                        bitsize: 1,
+                                        ..ScalarTypeHeader::default()
+                                    },
+                                    kind: ScalarTypeKind::Integer {
+                                        signed: false,
+                                        min: XLangNone,
+                                        max: XLangNone,
+                                    },
+                                }),
+                                kind: StackValueKind::RValue,
+                            });
+                        } else {
+                            vstack.push(lvalue);
+                        }
+                    }
+                    ty => panic!("Cannot use {:?} on {:?}", op, ty),
+                }
+            }
+            op => panic!("Invalid lvalue operator {}", op),
+        },
+        xlang_struct::Expr::LValueOp(op, _) => match *op {
             LValueOp::Xchg => {
                 let val1 = vstack.pop().unwrap();
                 let val2 = vstack.pop().unwrap();
@@ -821,65 +1004,6 @@ fn tycheck_expr(
                     kind: StackValueKind::RValue,
                 });
             }
-            LValueOp::PreDec | LValueOp::PreInc => {
-                let lvalue = vstack.pop().unwrap();
-
-                assert_eq!(lvalue.kind, StackValueKind::LValue);
-
-                match tys.refiy_type(&lvalue.ty) {
-                    Type::Scalar(_) => {
-                        vstack.push(lvalue);
-                        if *v == OverflowBehaviour::Checked {
-                            vstack.push(StackItem {
-                                ty: Type::Scalar(ScalarType {
-                                    header: ScalarTypeHeader {
-                                        bitsize: 1,
-                                        ..ScalarTypeHeader::default()
-                                    },
-                                    kind: ScalarTypeKind::Integer {
-                                        signed: false,
-                                        min: XLangNone,
-                                        max: XLangNone,
-                                    },
-                                }),
-                                kind: StackValueKind::RValue,
-                            });
-                        }
-                    }
-                    ty => panic!("Cannot use {:?} on {:?}", op, ty),
-                }
-            }
-            LValueOp::PostDec | LValueOp::PostInc => {
-                let mut lvalue = vstack.pop().unwrap();
-
-                assert_eq!(lvalue.kind, StackValueKind::LValue);
-
-                match tys.refiy_type(&lvalue.ty) {
-                    Type::Scalar(_) => {
-                        if *v == OverflowBehaviour::Checked {
-                            lvalue.kind = StackValueKind::RValue;
-                            vstack.push(lvalue);
-                            vstack.push(StackItem {
-                                ty: Type::Scalar(ScalarType {
-                                    header: ScalarTypeHeader {
-                                        bitsize: 1,
-                                        ..ScalarTypeHeader::default()
-                                    },
-                                    kind: ScalarTypeKind::Integer {
-                                        signed: false,
-                                        min: XLangNone,
-                                        max: XLangNone,
-                                    },
-                                }),
-                                kind: StackValueKind::RValue,
-                            });
-                        } else {
-                            vstack.push(lvalue);
-                        }
-                    }
-                    ty => panic!("Cannot use {:?} on {:?}", op, ty),
-                }
-            }
             op => todo!("{:?}", op),
         },
         xlang_struct::Expr::Indirect => {
@@ -909,9 +1033,7 @@ fn tycheck_expr(
 
             vstack.push(val);
         }
-        xlang_struct::Expr::Null
-        | xlang_struct::Expr::Sequence(_)
-        | xlang_struct::Expr::Fence(_) => {}
+        xlang_struct::Expr::Sequence(_) | xlang_struct::Expr::Fence(_) => {}
         xlang_struct::Expr::Switch(switch) => {
             let ctrl = vstack.pop().unwrap();
 

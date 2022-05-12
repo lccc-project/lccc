@@ -744,6 +744,17 @@ fake_enum::fake_enum! {
     }
 }
 
+impl core::fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match *self {
+            Self::Minus => f.write_str("minus"),
+            Self::BitNot => f.write_str("bnot"),
+            Self::LogicNot => f.write_str("not"),
+            val => todo!("Invalid Operand {:?}", val),
+        }
+    }
+}
+
 fake_enum::fake_enum! {
     #[repr(u16)]
     #[derive(Hash)]
@@ -756,6 +767,42 @@ fake_enum::fake_enum! {
     }
 }
 
+impl core::fmt::Display for OverflowBehaviour {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match *self {
+            Self::Wrap => f.write_str("wrap"),
+            Self::Trap => f.write_str("trap"),
+            Self::Checked => f.write_str("checked"),
+            Self::Unchecked => f.write_str("unchecked"),
+            Self::Saturate => f.write_str("saturate"),
+            val => todo!("Invalid Overflow Behaviour {:?}", val),
+        }
+    }
+}
+
+fake_enum::fake_enum! {
+    #[repr(u16)]
+    #[derive(Hash)]
+    pub enum struct UnaryLValueOp{
+        PreInc = 3,
+        PostInc = 4,
+        PreDec = 5,
+        PostDec = 6,
+    }
+}
+
+impl core::fmt::Display for UnaryLValueOp {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match *self {
+            Self::PreInc => f.write_str("preinc"),
+            Self::PostInc => f.write_str("postinc"),
+            Self::PreDec => f.write_str("predec"),
+            Self::PostDec => f.write_str("postdec"),
+            val => panic!("Invalid Operation {:?}", val),
+        }
+    }
+}
+
 fake_enum::fake_enum! {
     #[repr(u16)]
     #[derive(Hash)]
@@ -763,10 +810,17 @@ fake_enum::fake_enum! {
         Xchg = 0,
         Cmpxchg = 1,
         Wcmpxchg = 2,
-        PreInc = 3,
-        PostInc = 4,
-        PreDec = 5,
-        PostDec = 6,
+    }
+}
+
+impl core::fmt::Display for LValueOp {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match *self {
+            Self::Xchg => f.write_str("xchg"),
+            Self::Cmpxchg => f.write_str("cmpxchg"),
+            Self::Wcmpxchg => f.write_str("wcmpxchg"),
+            val => panic!("Invalid Operation {:?}", val),
+        }
     }
 }
 
@@ -783,12 +837,37 @@ pub enum BranchCondition {
     Never,
 }
 
+impl core::fmt::Display for BranchCondition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Always => f.write_str("always"),
+            Self::Less => f.write_str("less"),
+            Self::LessEqual => f.write_str("less_equal"),
+            Self::Equal => f.write_str("equal"),
+            Self::NotEqual => f.write_str("not_equal"),
+            Self::Greater => f.write_str("greater"),
+            Self::GreaterEqual => f.write_str("greater_equal"),
+            Self::Never => f.write_str("never"),
+        }
+    }
+}
+
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ConversionStrength {
     Strong,
     Weak,
     Reinterpret,
+}
+
+impl core::fmt::Display for ConversionStrength {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Self::Strong => f.write_str("strong"),
+            Self::Weak => f.write_str("weak"),
+            Self::Reinterpret => f.write_str("reinterpret"),
+        }
+    }
 }
 
 #[repr(C)]
@@ -798,17 +877,26 @@ pub struct AggregateCtor {
     pub fields: Vec<String>,
 }
 
+impl core::fmt::Display for AggregateCtor {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        self.ty.fmt(f)?;
+        f.write_str(" {")?;
+        let mut sep = "";
+        for field in &self.fields {
+            f.write_str(sep)?;
+            sep = ", ";
+            f.write_str(field)?;
+        }
+        f.write_str("}")
+    }
+}
+
 ///
 /// An xir expression/instruction
 #[repr(u16)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Expr {
-    /// No operation
-    ///
-    /// # Stack
-    /// Type checking: [..]=>[..]
-    ///
-    Null,
+    Sequence(AccessClass),
     /// Pushes a constant value.
     ///
     /// # Stack
@@ -849,16 +937,90 @@ pub enum Expr {
     Assign(AccessClass),
     AsRValue(AccessClass),
     CompoundAssign(BinaryOp, OverflowBehaviour, AccessClass),
-    LValueOp(LValueOp, OverflowBehaviour, AccessClass),
+    FetchAssign(BinaryOp, OverflowBehaviour, AccessClass),
+    LValueOp(LValueOp, AccessClass),
+    UnaryLValue(UnaryLValueOp, OverflowBehaviour, AccessClass),
     Indirect,
     AddrOf,
-    Sequence(AccessClass),
+
     Fence(AccessClass),
     Switch(Switch),
     Tailcall(FnType),
     Asm(AsmExpr),
     BeginStorage(u32),
     EndStorage(u32),
+}
+
+impl Expr {
+    // Don't break existing code
+    #[allow(non_upper_case_globals)]
+    pub const Null: Expr = Expr::Sequence(AccessClass::Normal);
+}
+
+impl Default for Expr {
+    fn default() -> Expr {
+        Expr::Sequence(AccessClass::Normal)
+    }
+}
+
+impl core::fmt::Display for Expr {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Expr::Const(val) => {
+                f.write_str("const ")?;
+                val.fmt(f)
+            }
+            Expr::Exit { values } => f.write_fmt(format_args!("exit {}", values)),
+            Expr::BinaryOp(op, v) => f.write_fmt(format_args!("{} {}", op, v)),
+            Expr::UnaryOp(op, v) => f.write_fmt(format_args!("{} {}", op, v)),
+            Expr::CallFunction(fun) => f.write_fmt(format_args!("call {}", fun)),
+            Expr::Branch { cond, target } => {
+                f.write_fmt(format_args!("branch {} @{}", cond, target))
+            }
+            Expr::BranchIndirect => f.write_str("branch indirect"),
+            Expr::Convert(strength, ty) => f.write_fmt(format_args!("convert {} {}", strength, ty)),
+            Expr::Derive(pty, inner) => f.write_fmt(format_args!("derive {} {}", pty, inner)),
+            Expr::Local(n) => f.write_fmt(format_args!("local _{}", n)),
+            Expr::Pop(n) => f.write_fmt(format_args!("pop {}", n)),
+            Expr::Dup(n) => f.write_fmt(format_args!("dup {}", n)),
+            Expr::Pivot(m, n) => f.write_fmt(format_args!("pivot {} {}", m, n)),
+            Expr::Aggregate(ctor) => f.write_fmt(format_args!("aggregate {}", ctor)),
+            Expr::Member(m) => {
+                if m == "indirect" {
+                    f.write_str("member (indirect)")
+                } else {
+                    f.write_fmt(format_args!("member {}", m))
+                }
+            }
+            Expr::MemberIndirect(m) => {
+                if m == "indirect" {
+                    f.write_str("member indirect (indirect)")
+                } else {
+                    f.write_fmt(format_args!("member indirect {}", m))
+                }
+            }
+            Expr::Assign(acc) => f.write_fmt(format_args!("assign {}", acc)),
+            Expr::AsRValue(acc) => f.write_fmt(format_args!("assign {}", acc)),
+            Expr::CompoundAssign(op, v, acc) => {
+                f.write_fmt(format_args!("compound_assign {} {} {}", op, v, acc))
+            }
+            Expr::FetchAssign(op, v, acc) => {
+                f.write_fmt(format_args!("fetch_assign {} {} {}", op, v, acc))
+            }
+            Expr::LValueOp(op, acc) => f.write_fmt(format_args!("{} {}", op, acc)),
+            Expr::UnaryLValue(op, v, acc) => f.write_fmt(format_args!("{} {} {}", op, v, acc)),
+            Expr::Indirect => f.write_str("indirect"),
+            Expr::AddrOf => f.write_str("addr_of"),
+            Expr::Sequence(AccessClass::Normal) => f.write_str("nop"),
+            Expr::Sequence(acc) => f.write_fmt(format_args!("sequence {}", acc)),
+            Expr::Fence(acc) => f.write_fmt(format_args!("fence {}", acc)),
+            Expr::Switch(_) => todo!(),
+            Expr::Tailcall(fun) => f.write_fmt(format_args!("tailcall {}", fun)),
+            Expr::Asm(asm) => asm.fmt(f),
+            Expr::BeginStorage(n) => f.write_fmt(format_args!("begin storage _{}", n)),
+            Expr::EndStorage(n) => f.write_fmt(format_args!("end storage _{}", n)),
+        }
+    }
 }
 
 #[repr(u16)]

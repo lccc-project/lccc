@@ -491,7 +491,23 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
     }
 
     fn native_float_size(&self) -> xlang::prelude::v1::Option<u16> {
-        XLangSome(64)
+        if self.features.contains(&CleverExtension::Float) {
+            XLangSome(64)
+        } else {
+            XLangNone
+        }
+    }
+
+    fn native_vec_size(&self) -> xlang::prelude::v1::Option<u64> {
+        if self.features.contains(&CleverExtension::Vec) {
+            XLangSome(16)
+        } else {
+            XLangNone
+        }
+    }
+
+    fn preferred_vec_size(&self) -> xlang::abi::option::Option<u64> {
+        self.native_vec_size()
     }
 
     fn write_intrinsic(
