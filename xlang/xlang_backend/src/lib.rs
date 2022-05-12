@@ -1878,8 +1878,6 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                             match val {
                                 VStackValue::Constant(Value::Invalid(_)) => {
                                     self.inner.write_trap(Trap::Unreachable);
-                                    drop(val);
-                                    drop(tys);
                                     self.push_value(VStackValue::Trapped);
                                     return;
                                 }
@@ -1926,7 +1924,6 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                 (VStackValue::Constant(Value::Invalid(_)), _)
                                 | (_, VStackValue::Constant(Value::Invalid(_))) => {
                                     self.inner.write_trap(Trap::Unreachable);
-                                    return;
                                 }
                                 (VStackValue::Trapped, _) | (_, VStackValue::Trapped) => {}
                                 (
@@ -1942,7 +1939,6 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                         OverflowBehaviour::Trap => {
                                             self.inner.write_trap(Trap::Unreachable);
                                             self.diverged = true;
-                                            return;
                                         }
                                         OverflowBehaviour::Checked => {
                                             let bool_sty = ScalarType {
@@ -1969,7 +1965,6 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                         OverflowBehaviour::Trap => {
                                             self.inner.write_trap(Trap::Unreachable);
                                             self.diverged = true;
-                                            return;
                                         }
                                         OverflowBehaviour::Checked => {
                                             let bool_sty = ScalarType {

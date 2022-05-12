@@ -112,6 +112,14 @@ macro_rules! w65_register_groups {
     }
 }
 
+macro_rules! w65_classes {
+    [ $($constraint:ident => $($class:ident)|*),* $(,)?] => {
+        pub const W65_ASM_CLASSES: Span<'static, Pair<StringView<'static>,StringView<'static>>> = span![
+            $($(Pair(const_sv!(::std::stringify!($constraint)),const_sv!(::std::stringify!($class)))),*),*
+        ];
+    }
+}
+
 w65_constraints![
     Integer @ 8 | 16 => acc,
     Integer @ 8 | 16 => idx,
@@ -128,6 +136,11 @@ w65_register_groups![
     vreg64 => __r0 | __r2 | __r4 | __r6,
 ];
 
+w65_classes![
+    vreg64 => q | d | w | b,
+    vreg => d | w | b,
+];
+
 pub static W65_ASSEMBLY: AsmProperties = AsmProperties {
     syntax_names: span![
         const_sv!("snesdev"),
@@ -138,6 +151,7 @@ pub static W65_ASSEMBLY: AsmProperties = AsmProperties {
     constraints: W65_ASM_CONSTRAINTS,
     register_groups: W65_ASM_REGISTER_GROUPS,
     overlaps: span![],
+    classes: W65_ASM_CLASSES,
 };
 
 pub static W65: ArchProperties = ArchProperties {

@@ -2,7 +2,8 @@
 #![allow(
     clippy::module_name_repetitions,
     clippy::needless_borrow,
-    clippy::missing_const_for_fn
+    clippy::missing_const_for_fn,
+    clippy::type_repetition_in_bounds
 )]
 //! A crate that provides abi-safe and stable wrappers of language and library constructs that don't have fixed abi
 //! This provides shims for otherwise unusable constructs that can validly be passed accross ABI bounderies.

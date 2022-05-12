@@ -154,6 +154,14 @@ macro_rules! clever_overlaps {
     }
 }
 
+macro_rules! clever_classes {
+    [ $($constraint:ident => $($class:ident)|*),* $(,)?] => {
+        pub const CLEVER_ASM_CLASSES: Span<'static, Pair<StringView<'static>,StringView<'static>>> = span![
+            $($(Pair(const_sv!(::std::stringify!($constraint)),const_sv!(::std::stringify!($class)))),*),*
+        ];
+    }
+}
+
 use super::{
     AsmScalar,
     AsmScalarKind::{Float, Integer, Vector},
@@ -229,11 +237,18 @@ clever_overlaps![
     v31 => v31l | v31h,
 ];
 
+clever_classes![
+    vector => v | h | l,
+    vectorhi => v,
+    vectorlo => v,
+];
+
 pub static CLEVER_ASM: AsmProperties = AsmProperties {
     syntax_names: span![const_sv!("standard"), const_sv!("official")],
     constraints: CLEVER_ASM_CONSTRAINTS,
     register_groups: CLEVER_ASM_REGISTER_GROUPS,
     overlaps: CLEVER_ASM_REGISTER_OVERLAPS,
+    classes: CLEVER_ASM_CLASSES,
 };
 
 pub static CLEVER: ArchProperties = ArchProperties {

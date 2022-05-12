@@ -237,6 +237,22 @@ macro_rules! x86_register_groups {
     }
 }
 
+macro_rules! x86_classes {
+    [
+        $($base_arch:ident: [$($constraint:ident => $($class:ident)|*),* $(,)?])*
+    ] => {
+        mod classes{
+            use super::*;
+            $(pub mod $base_arch{
+                use super::*;
+                pub const ASM_CLASSES: Span<'static, Pair<StringView<'static>,StringView<'static>>> = span![
+                    $($(Pair(const_sv!(::std::stringify!($constraint)),const_sv!(::std::stringify!($class)))),*),*
+                ];
+            })*
+        }
+    }
+}
+
 macro_rules! x86_overlaps {
     [ $($name:ident => $($overlap_names:ident)|*),* $(,)?] => {
         pub const X86_ASM_REGISTER_OVERLAPS: Span<'static, Pair<StringView<'static>,StringView<'static>>> = span![
@@ -475,11 +491,36 @@ x86_overlaps![
     mm7 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
 ];
 
+x86_classes![
+    x86_64: [
+        reg => l | x  | e | r,
+        reg_abcd => h | l | x | e | r,
+        xmm_reg => x | y | z,
+        ymm_reg => x | y | z,
+        zmm_reg => x | y | z,
+    ]
+    x86_32: [
+        reg => x | e,
+        reg_abcd => h | l | x | e,
+        xmm_reg => x | y | z,
+        ymm_reg => x | y | z,
+        zmm_reg => x | y | z,
+    ]
+    x86_16: [
+        reg => x,
+        reg_abcd => h | l | x,
+        xmm_reg => x | y | z,
+        ymm_reg => x | y | z,
+        zmm_reg => x | y | z,
+    ]
+];
+
 pub static X86_16_ASM_PROPERTIES: AsmProperties = AsmProperties {
     syntax_names: span![const_sv!("intel"), const_sv!("at&t")],
     constraints: constraints::x86_16::ASM_CONSTRAINTS,
     register_groups: reg_groups::x86_16::REGISTER_GROUPS,
     overlaps: X86_ASM_REGISTER_OVERLAPS,
+    classes: classes::x86_16::ASM_CLASSES,
 };
 
 pub static X86_32_ASM_PROPERTIES: AsmProperties = AsmProperties {
@@ -487,6 +528,7 @@ pub static X86_32_ASM_PROPERTIES: AsmProperties = AsmProperties {
     constraints: constraints::x86_32::ASM_CONSTRAINTS,
     register_groups: reg_groups::x86_32::REGISTER_GROUPS,
     overlaps: X86_ASM_REGISTER_OVERLAPS,
+    classes: classes::x86_32::ASM_CLASSES,
 };
 
 pub static X86_64_ASM_PROPERTIES: AsmProperties = AsmProperties {
@@ -494,6 +536,7 @@ pub static X86_64_ASM_PROPERTIES: AsmProperties = AsmProperties {
     constraints: constraints::x86_64::ASM_CONSTRAINTS,
     register_groups: reg_groups::x86_64::REGISTER_GROUPS,
     overlaps: X86_ASM_REGISTER_OVERLAPS,
+    classes: classes::x86_64::ASM_CLASSES,
 };
 
 pub static X86_64: ArchProperties = ArchProperties {

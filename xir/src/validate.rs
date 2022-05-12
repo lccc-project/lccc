@@ -343,7 +343,7 @@ fn tycheck_expr(
     targets: &HashMap<u32, Vec<StackItem>>,
     tys: &TypeState,
 ) -> bool {
-    eprint!("Typechecking expr {} against stack [",expr);
+    eprint!("Typechecking expr {} against stack [", expr);
     let mut sep = "";
     for item in &*vstack {
         eprint!("{}{}", sep, item);
@@ -805,7 +805,7 @@ fn tycheck_expr(
                         OverflowBehaviour::Checked
                         | OverflowBehaviour::Saturate
                         | OverflowBehaviour::Trap => {
-                            panic!("Cannot use overflow behaviour {} with a pointer type", v)
+                            panic!("Cannot use overflow behaviour {} with a pointer type", v);
                         }
                         _ => {}
                     }
@@ -879,7 +879,7 @@ fn tycheck_expr(
                         OverflowBehaviour::Checked
                         | OverflowBehaviour::Saturate
                         | OverflowBehaviour::Trap => {
-                            panic!("Cannot use overflow behaviour {} with a pointer type", v)
+                            panic!("Cannot use overflow behaviour {} with a pointer type", v);
                         }
                         _ => {}
                     }

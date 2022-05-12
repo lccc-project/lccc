@@ -112,6 +112,9 @@ pub struct AsmProperties {
 
     /// List of register names that overlap
     pub overlaps: Span<'static, Pair<StringView<'static>, StringView<'static>>>,
+
+    /// List of class-types by constraint type
+    pub classes: Span<'static, Pair<StringView<'static>, StringView<'static>>>,
 }
 
 ///

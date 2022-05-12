@@ -954,71 +954,71 @@ pub enum Expr {
 impl Expr {
     // Don't break existing code
     #[allow(non_upper_case_globals)]
-    pub const Null: Expr = Expr::Sequence(AccessClass::Normal);
+    pub const Null: Self = Self::Sequence(AccessClass::Normal);
 }
 
 impl Default for Expr {
-    fn default() -> Expr {
-        Expr::Sequence(AccessClass::Normal)
+    fn default() -> Self {
+        Self::Sequence(AccessClass::Normal)
     }
 }
 
 impl core::fmt::Display for Expr {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
-            Expr::Const(val) => {
+            Self::Const(val) => {
                 f.write_str("const ")?;
                 val.fmt(f)
             }
-            Expr::Exit { values } => f.write_fmt(format_args!("exit {}", values)),
-            Expr::BinaryOp(op, v) => f.write_fmt(format_args!("{} {}", op, v)),
-            Expr::UnaryOp(op, v) => f.write_fmt(format_args!("{} {}", op, v)),
-            Expr::CallFunction(fun) => f.write_fmt(format_args!("call {}", fun)),
-            Expr::Branch { cond, target } => {
+            Self::Exit { values } => f.write_fmt(format_args!("exit {}", values)),
+            Self::BinaryOp(op, v) => f.write_fmt(format_args!("{} {}", op, v)),
+            Self::UnaryOp(op, v) => f.write_fmt(format_args!("{} {}", op, v)),
+            Self::CallFunction(fun) => f.write_fmt(format_args!("call {}", fun)),
+            Self::Branch { cond, target } => {
                 f.write_fmt(format_args!("branch {} @{}", cond, target))
             }
-            Expr::BranchIndirect => f.write_str("branch indirect"),
-            Expr::Convert(strength, ty) => f.write_fmt(format_args!("convert {} {}", strength, ty)),
-            Expr::Derive(pty, inner) => f.write_fmt(format_args!("derive {} {}", pty, inner)),
-            Expr::Local(n) => f.write_fmt(format_args!("local _{}", n)),
-            Expr::Pop(n) => f.write_fmt(format_args!("pop {}", n)),
-            Expr::Dup(n) => f.write_fmt(format_args!("dup {}", n)),
-            Expr::Pivot(m, n) => f.write_fmt(format_args!("pivot {} {}", m, n)),
-            Expr::Aggregate(ctor) => f.write_fmt(format_args!("aggregate {}", ctor)),
-            Expr::Member(m) => {
+            Self::BranchIndirect => f.write_str("branch indirect"),
+            Self::Convert(strength, ty) => f.write_fmt(format_args!("convert {} {}", strength, ty)),
+            Self::Derive(pty, inner) => f.write_fmt(format_args!("derive {} {}", pty, inner)),
+            Self::Local(n) => f.write_fmt(format_args!("local _{}", n)),
+            Self::Pop(n) => f.write_fmt(format_args!("pop {}", n)),
+            Self::Dup(n) => f.write_fmt(format_args!("dup {}", n)),
+            Self::Pivot(m, n) => f.write_fmt(format_args!("pivot {} {}", m, n)),
+            Self::Aggregate(ctor) => f.write_fmt(format_args!("aggregate {}", ctor)),
+            Self::Member(m) => {
                 if m == "indirect" {
                     f.write_str("member (indirect)")
                 } else {
                     f.write_fmt(format_args!("member {}", m))
                 }
             }
-            Expr::MemberIndirect(m) => {
+            Self::MemberIndirect(m) => {
                 if m == "indirect" {
                     f.write_str("member indirect (indirect)")
                 } else {
                     f.write_fmt(format_args!("member indirect {}", m))
                 }
             }
-            Expr::Assign(acc) => f.write_fmt(format_args!("assign {}", acc)),
-            Expr::AsRValue(acc) => f.write_fmt(format_args!("assign {}", acc)),
-            Expr::CompoundAssign(op, v, acc) => {
+            Self::Assign(acc) => f.write_fmt(format_args!("assign {}", acc)),
+            Self::AsRValue(acc) => f.write_fmt(format_args!("as_rvalue {}", acc)),
+            Self::CompoundAssign(op, v, acc) => {
                 f.write_fmt(format_args!("compound_assign {} {} {}", op, v, acc))
             }
-            Expr::FetchAssign(op, v, acc) => {
+            Self::FetchAssign(op, v, acc) => {
                 f.write_fmt(format_args!("fetch_assign {} {} {}", op, v, acc))
             }
-            Expr::LValueOp(op, acc) => f.write_fmt(format_args!("{} {}", op, acc)),
-            Expr::UnaryLValue(op, v, acc) => f.write_fmt(format_args!("{} {} {}", op, v, acc)),
-            Expr::Indirect => f.write_str("indirect"),
-            Expr::AddrOf => f.write_str("addr_of"),
-            Expr::Sequence(AccessClass::Normal) => f.write_str("nop"),
-            Expr::Sequence(acc) => f.write_fmt(format_args!("sequence {}", acc)),
-            Expr::Fence(acc) => f.write_fmt(format_args!("fence {}", acc)),
-            Expr::Switch(_) => todo!(),
-            Expr::Tailcall(fun) => f.write_fmt(format_args!("tailcall {}", fun)),
-            Expr::Asm(asm) => asm.fmt(f),
-            Expr::BeginStorage(n) => f.write_fmt(format_args!("begin storage _{}", n)),
-            Expr::EndStorage(n) => f.write_fmt(format_args!("end storage _{}", n)),
+            Self::LValueOp(op, acc) => f.write_fmt(format_args!("{} {}", op, acc)),
+            Self::UnaryLValue(op, v, acc) => f.write_fmt(format_args!("{} {} {}", op, v, acc)),
+            Self::Indirect => f.write_str("indirect"),
+            Self::AddrOf => f.write_str("addr_of"),
+            Self::Sequence(AccessClass::Normal) => f.write_str("nop"),
+            Self::Sequence(acc) => f.write_fmt(format_args!("sequence {}", acc)),
+            Self::Fence(acc) => f.write_fmt(format_args!("fence {}", acc)),
+            Self::Switch(_) => todo!(),
+            Self::Tailcall(fun) => f.write_fmt(format_args!("tailcall {}", fun)),
+            Self::Asm(asm) => asm.fmt(f),
+            Self::BeginStorage(n) => f.write_fmt(format_args!("begin storage _{}", n)),
+            Self::EndStorage(n) => f.write_fmt(format_args!("end storage _{}", n)),
         }
     }
 }
@@ -1064,7 +1064,7 @@ impl core::fmt::Display for AsmOptions {
             f.write_str("pure ")?;
         }
         if self.contains(Self::TRANSPARENT) {
-            f.write_str("transparent ")?
+            f.write_str("transparent ")?;
         }
         if self.contains(Self::NOSTACK) {
             f.write_str("nostack ")?;

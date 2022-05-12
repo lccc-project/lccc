@@ -1043,7 +1043,7 @@ where
     }
 }
 
-unsafe impl<'lt, T: ?Sized + AbiSafeTrait + 'static, A: Allocator> Allocator for DynBox<T, A>
+unsafe impl<T: ?Sized + AbiSafeTrait + 'static, A: Allocator> Allocator for DynBox<T, A>
 where
     dyn DynPtrSafe<T>: Allocator,
 {

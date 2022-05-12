@@ -263,7 +263,7 @@ pub fn parse_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreIterator<I>) -
 
                         loop {
                             if let Some(ty) = parse_type(&mut it) {
-                                tys.push(ty)
+                                tys.push(ty);
                             } else {
                                 break;
                             }
@@ -690,7 +690,7 @@ fn literal_to_xir_bytes(s: &str) -> Result<String, Vec<u8>> {
                     has_hex_escapes = true;
                     let a1 = chars.next().unwrap();
                     let a2 = chars.next().unwrap();
-                    assert!(a1.is_digit(16) && a2.is_digit(16));
+                    assert!(a1.is_ascii_hexdigit() && a2.is_ascii_hexdigit());
                     let val = (a1.to_digit(16).unwrap() << 4) | (a2.to_digit(16).unwrap());
                     buf.push(val.try_into().unwrap());
                 }
@@ -1242,7 +1242,7 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
                         match it.next() {
                             Some(Token::Ident(id)) => fields.push(id),
                             Some(Token::IntLiteral(lit)) => {
-                                fields.push(xlang::abi::format!("{}", lit))
+                                fields.push(xlang::abi::format!("{}", lit));
                             } // because product types
                             None => break,
                             Some(tok) => panic!("Unexpected token {:?}", tok),
@@ -1353,7 +1353,7 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
                                     }
                                     match it.next().unwrap() {
                                         Token::IntLiteral(n) => {
-                                            targets.push(u32::try_from(n).unwrap())
+                                            targets.push(u32::try_from(n).unwrap());
                                         }
                                         tok => panic!("Unexpected token {:?}", tok),
                                     }
@@ -1472,7 +1472,7 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
             it.next();
             match it.next().unwrap() {
                 Token::Ident(id) if id == "storage" => match it.next().unwrap() {
-                    Token::Ident(id) if id.starts_with("_") => {
+                    Token::Ident(id) if id.starts_with('_') => {
                         Expr::BeginStorage(id[1..].parse().unwrap())
                     }
                     tok => panic!("Unexpected token {:?}", tok),
@@ -1484,7 +1484,7 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
             it.next();
             match it.next().unwrap() {
                 Token::Ident(id) if id == "storage" => match it.next().unwrap() {
-                    Token::Ident(id) if id.starts_with("_") => {
+                    Token::Ident(id) if id.starts_with('_') => {
                         Expr::EndStorage(id[1..].parse().unwrap())
                     }
                     tok => panic!("Unexpected token {:?}", tok),

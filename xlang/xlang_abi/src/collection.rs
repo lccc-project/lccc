@@ -609,7 +609,7 @@ impl<'a, K, V, H: BuildHasher, A: Allocator> IntoIterator for &'a mut HashMap<K,
     }
 }
 
-impl<'a, K: Hash, V: Hash, H: BuildHasher, A: Allocator> Hash for HashMap<K, V, H, A> {
+impl<K: Hash, V: Hash, H: BuildHasher, A: Allocator> Hash for HashMap<K, V, H, A> {
     fn hash<P: Hasher>(&self, state: &mut P) {
         for i in self {
             i.hash(state);
@@ -617,7 +617,7 @@ impl<'a, K: Hash, V: Hash, H: BuildHasher, A: Allocator> Hash for HashMap<K, V, 
     }
 }
 
-impl<'a, K: Debug, V: Debug, H: BuildHasher, A: Allocator> Debug for HashMap<K, V, H, A> {
+impl<K: Debug, V: Debug, H: BuildHasher, A: Allocator> Debug for HashMap<K, V, H, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_map()
             .entries(self.iter().map(|Pair(k, v)| (k, v)))
