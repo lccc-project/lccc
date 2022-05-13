@@ -171,6 +171,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lccc-builder"
+version = "0.1.0"
+
+[[package]]
 name = "lcrustc"
 version = "0.1.0"
 dependencies = [

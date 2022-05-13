@@ -1,0 +1,6 @@
+[package]
+name = "lccc-builder"
+version = "0.1.0"
+authors = ["Ray Redondo <raydredondo@gmail.com>"]
+edition = "2018"
+license = "BSD-2-Clause-Patent"
