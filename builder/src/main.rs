@@ -65,11 +65,7 @@ fn main() {
         let install_prefix = prompt(
             "Default install prefix",
             match env::consts::OS {
-                "linux" => Some(if let Ok(home) = env::var("HOME") {
-                    format!("{}/.local", home)
-                } else {
-                    "/usr/local".into()
-                }),
+                "linux" => Some("/usr/local".into()),
                 _ => None,
             }
             .as_deref(),
