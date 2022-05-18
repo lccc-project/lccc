@@ -4,3 +4,9 @@ version = "0.1.0"
 authors = ["Ray Redondo <raydredondo@gmail.com>"]
 edition = "2018"
 license = "BSD-2-Clause-Patent"
+
+[dependencies]
+install-dirs = { version = "0.2", features = [ "serde" ] }
+serde = "1.0"
+serde_derive = "1.0"
+toml = "0.5"

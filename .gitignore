@@ -5,3 +5,4 @@ config.toml
 *.a
 a.out
 testfile
+lccc-config.toml

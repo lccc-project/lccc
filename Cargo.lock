@@ -173,6 +173,12 @@ dependencies = [
 [[package]]
 name = "lccc-builder"
 version = "0.1.0"
+dependencies = [
+ "install-dirs",
+ "serde",
+ "serde_derive",
+ "toml",
+]
 
 [[package]]
 name = "lcrustc"
