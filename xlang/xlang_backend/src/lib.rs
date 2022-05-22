@@ -45,6 +45,9 @@ pub mod callconv;
 /// Module for name mangling
 pub mod mangle;
 
+/// Module for generic Machine Code
+pub mod mc;
+
 ///
 /// Basic Trait for creating the code generator
 pub trait FunctionRawCodegen {

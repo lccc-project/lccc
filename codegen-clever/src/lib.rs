@@ -826,7 +826,7 @@ impl CleverFunctionCodegen {
 
                     self.insns.push(
                         CleverInstruction::new(
-                            CleverOpcode::Movsx,
+                            CleverOpcode::Movsx { flags: true },
                             vec![
                                 CleverOperand::Register {
                                     size: 64,

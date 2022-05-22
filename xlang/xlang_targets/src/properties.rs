@@ -90,6 +90,8 @@ pub enum AsmScalarKind {
     VectorInt,
     /// Vector type (floating-point only)
     VectorFloat,
+    /// Clobbers only (Cannot be used in as an input or output constraint)
+    ClobberOnly,
 }
 
 /// A Pair of an [`AsmScalarKind`] and a size (in bits) for the scalar type

@@ -21,11 +21,15 @@ macro_rules! clever_machines{
 pub const CLEVER_FEATURES: Span<StringView> = span![
     const_sv!("float"),
     const_sv!("vector"),
-    const_sv!("float-ext")
+    const_sv!("float-ext"),
+    const_sv!("rand"),
+    const_sv!("virtualization")
 ];
 
 clever_machines! {
     (MCLEVER1_0, "clever1.0" | "clever", ["float"]),
+    (MCLEVER1_0_ALL, "clever1.0all", ["float", "vector", "float-ext"]),
+    (MCLEVER_ALL, "cleverall", ["float", "vector", "float-ext", "rand", "virtualization"])
 }
 
 macro_rules! clever_builtins{

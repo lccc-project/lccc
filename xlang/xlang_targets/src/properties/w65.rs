@@ -7,7 +7,7 @@ use xlang_abi::{
 
 use super::{
     ArchProperties, AsmProperties, AsmScalar,
-    AsmScalarKind::{Float, Integer},
+    AsmScalarKind::{ClobberOnly, Float, Integer},
     MachineProperties,
 };
 
@@ -120,6 +120,14 @@ macro_rules! w65_classes {
     }
 }
 
+macro_rules! w65_overlaps {
+    [ $($name:ident => $($overlap_names:ident)|*),* $(,)?] => {
+        pub const W65_ASM_REGISTER_OVERLAPS: Span<'static, Pair<StringView<'static>,StringView<'static>>> = span![
+            $($(Pair(const_sv!(::std::stringify!($name)),const_sv!(::std::stringify!($overlap_names)))),*),*
+        ];
+    }
+}
+
 w65_constraints![
     Integer @ 8 | 16 => acc,
     Integer @ 8 | 16 => idx,
@@ -127,13 +135,24 @@ w65_constraints![
     Float  @ 8 | 16 | 32 => vreg,
     Integer @ 64 => vreg64,
     Float @ 64 => vreg64,
+    ClobberOnly @ 0 => status,
 ];
 
 w65_register_groups![
     acc => A,
     idx => X | Y,
     vreg => __r0 | __r1 |  __r2 | __r3 | __r4 | __r5 |  __r6 | __r7,
-    vreg64 => __r0 | __r2 | __r4 | __r6,
+    vreg64 => __r0q | __r2q | __r4q | __r6q,
+    status => S | S16 | m | x,
+];
+
+w65_overlaps![
+    __r0q => __r0 | __r1,
+    __r2q => __r2 | __r3,
+    __r4q => __r4 | __r5,
+    __r6q => __r6 | __r7,
+    S16 => S | m | x | cc,
+    S => cc,
 ];
 
 w65_classes![
@@ -150,7 +169,7 @@ pub static W65_ASSEMBLY: AsmProperties = AsmProperties {
     ],
     constraints: W65_ASM_CONSTRAINTS,
     register_groups: W65_ASM_REGISTER_GROUPS,
-    overlaps: span![],
+    overlaps: W65_ASM_REGISTER_OVERLAPS,
     classes: W65_ASM_CLASSES,
 };
 
