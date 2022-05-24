@@ -277,3 +277,29 @@ pub struct ItemRef{
     pub name: u32,
 }
 ```
+
+`ikind` is one of the given values, indicating the type of item:
+* 0: A `use` item. If multiple items are imported without being given a name, then `name` is blank. Items that are renamed via `as` are expanded into separate `ItemRef`s. 
+* 1: An `extern crate` declaration. The name is the name of the crate, or renamed name for `extern crate _ as ...`
+* 2: A `function` item. 
+* 3: A `trait` defintion. 
+* 4: An inherent `impl` item. The name is the name of the type the impl is for. 
+* 5: A `struct` definition.
+* 6: A `union` definition.
+* 7: An `enum` definition
+* 8: A `macro_rules` (`#[macro_export]`) defintion
+* 9: A `macro_rules` (`pub macro_rules!`) defintion
+* 10: A `trait` impl item. The name is blank.
+* 11: A type Alias definition.
+* 12: A trait alias definition
+* 13: A `macro` (decl_macro_v2) macro definition
+* 14: A `mod` definition.
+* 15: An inherent `impl` for a primitive type.
+* 16: A `function` declaration within an `extern` block
+* 17: A `static` declaration within an `extern` block
+* 18: A `static` definition.
+* 19: A `const` definition
+* 20: An `extern` block
+* 21: A synthetically generated `function` definition
+* 22: A synthetically generated `static` definition
+* 23: A
