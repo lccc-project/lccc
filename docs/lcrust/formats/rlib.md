@@ -114,7 +114,8 @@ pub struct CrateHeader{
     abi_ver_name: u32,
     links_off: i32,
     compiler_id: u32,
-    crate_flags: u32,
+    crate_edition: u16,
+    crate_flags: u16,
     crateid: u64,
     stability: Stability,
     extra_off: i32,
@@ -131,12 +132,22 @@ The `links_off` field is the (signed) offset from the beginning of the crate hea
 
 The `compiler_id` field is an offset into the file's string table which refers to a Null-terminated UTF-8 string that is a meaningful, but implementation-defined representation of the compiler that produced the file. This field is provided for diagnostic purposes, and should be ignored by implementations.
 
+The `crate_edition` field is set to the edition of the crate as follows:
+* `0` means rust2015
+* `1` means rust2018
+* `2` means rust2021
+* `3` means rust202X
+* Additional values are reserved and should not appear. Implementations should reject such values.
+
+Whether or not an implementation supports crate_edition `3` is implementation-defined.
+
 The `crate_flags` field is the flags set for the crate, as follows:
 - `no_std`  (0x00000001): The crate uses the `#[no_std]` crate-level attribute
 - `no_core` (0x00000002): The crate uses the `#[no_core]` crate-level attribute
 
 All other flags have undefined meaning. Implementations should not set those flags and should ignore them when reading. 
 
+`crateid` is set to the an implementation-defined value other than `0` that is likely unique from any other crate being linked together.
 
 The `stability` field shall contain a value of the `Stability` enum, defined below, representing the stability of the crate.
 
@@ -173,7 +184,7 @@ Only the `Stable`, `Unstable`, and `StableInEdition` variants are meaningful for
 `since`shall be an index in the string table for the file which is either an empty string or a version string which contains a rust language version, *major*.*minor*, which the version of the rust language the item applies since. 
 `feature` shall be an index in the string table for the file which is the name of the feature it applies to.
 
-`edition` shall be the integer value of the rust edition the attribute applies to.
+`edition` shall be the integer value of the rust edition the attribute applies to. The values are the same as for the `crate_edition` field.
 
 
 
