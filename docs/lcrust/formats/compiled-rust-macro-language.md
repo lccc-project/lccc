@@ -65,12 +65,13 @@ pub enum ExpansionEntry{
     Group{c: char,count: u32} = 3,
     Repetition{count: u32, mode: u16, size: u16, tok: str} = 4,
     Interpolation{mode: u32, ref_idx: u32} =5,
+    EndOfExpansion = 6,
 }
 ```
 
 `BareToken` is a single rust token: Either a literal, identifier, keyword, lifetime, or sigil. `hygiene` is the index in the hygiene table for the token. `size` is the number of bytes in the token, and `tok` is the entire lexical token as a UTF-8 string with `size` length.  
 `CrateRoot` is the `$crate` specal metavariable. `crateref` is the index in the hygiene table for the `$crate` reference.  
-`LitDollar` is the `$$` special expansion.  
+`LitDollar` is the `$$` special expansion. Note that, rarely, a `$` token may appear as `BareToken` instead (for example, due to the macro definition being expanded from a macro expansion) 
 `Group` is a raw group expansion. `c` is the character of the leading group delimeter. For None-delimited groups, a null character is used. `count` is the number of following `ExpansionEntries` that are nested within the group.  
 `Repetition` is a `$()*`, `$()?`, or `$()+` expansion. `count` is the number of following `ExpansionEntries` that are nested within this expansion. `mode` is either MODE_OPTION (0), or MODE_REPEAT (1) denoting `?` and `*` modes respectively, and other values are reserved. `+` mode uses `MODE_REPEAT`. `size` is the length of the delimiter token, or `0` if there is no delimiter token. `tok` is the entire lexical delimiter token that appears between individual expansions of the `Repetition`, encoded as a UTF-8 string with `size` length.  
 `Interpolation` is a metavariable interpolation. `idx_ref` is the index in the macro's definition that refers to the metavariable to apply. `mode` is given as follows:
@@ -80,4 +81,5 @@ pub enum ExpansionEntry{
 * 3: Count Nests.
 * Other values are reserved
 
+`EndOfExpansion` occurs in arms of `macro_rules!` macros to indicate that the current expansion is complete. Following expansion entries are referred to by offsets for different macro arms. [Note: It is not required that `EndOfExpansion` macros occur within the expansion of an arm of a `macro_rules` definition, nor is it required that they only appear in such expansions]
 
