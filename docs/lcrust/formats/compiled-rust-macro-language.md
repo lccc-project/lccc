@@ -71,7 +71,7 @@ pub enum ExpansionEntry{
 
 `BareToken` is a single rust token: Either a literal, identifier, keyword, lifetime, or sigil. `hygiene` is the index in the hygiene table for the token. `size` is the number of bytes in the token, and `tok` is the entire lexical token as a UTF-8 string with `size` length.  
 `CrateRoot` is the `$crate` specal metavariable. `crateref` is the index in the hygiene table for the `$crate` reference.  
-`LitDollar` is the `$$` special expansion. Note that, rarely, a `$` token may appear as `BareToken` instead (for example, due to the macro definition being expanded from a macro expansion) 
+`LitDollar` is the `$$` special expansion. [Note: Rarely, a `$` token may appear as `BareToken` instead (for example, due to the macro definition being expanded from a macro expansion)]  
 `Group` is a raw group expansion. `c` is the character of the leading group delimeter. For None-delimited groups, a null character is used. `count` is the number of following `ExpansionEntries` that are nested within the group.  
 `Repetition` is a `$()*`, `$()?`, or `$()+` expansion. `count` is the number of following `ExpansionEntries` that are nested within this expansion. `mode` is either MODE_OPTION (0), or MODE_REPEAT (1) denoting `?` and `*` modes respectively, and other values are reserved. `+` mode uses `MODE_REPEAT`. `size` is the length of the delimiter token, or `0` if there is no delimiter token. `tok` is the entire lexical delimiter token that appears between individual expansions of the `Repetition`, encoded as a UTF-8 string with `size` length.  
 `Interpolation` is a metavariable interpolation. `idx_ref` is the index in the macro's definition that refers to the metavariable to apply. `mode` is given as follows:
