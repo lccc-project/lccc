@@ -12,7 +12,7 @@
 * 16 nested, in any combination, `destroy` and `derive` expressions
 * 32768 values on the operand stack
 * 16384 rvalues on the operand stack
-* 512 local variables within a function
+* 2048 local variables within a function
 * 512 items in the declared incoming stack of a target
 * 1024 targets
 * 1024 fields in the initializer-spec of an `aggregate` instruction
@@ -33,4 +33,3 @@
 * 128 significant bits in an integer constant used in an expression
 * 128 significant bits in an integer constant used in a type
 * 4096 significant bits in an integer constant used in a static initializer
-* 
