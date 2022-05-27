@@ -7,14 +7,14 @@
 * 256 bytes in a basic name component
 * 1024 bytes in a special name component
 * 64 nested generic declarations
-* 128 nested, in any combination, inline-aggregate types, product types, and function types
-* 128 nested pointer types
+* 2048 nested, in any combination, array types, inline-aggregate types, product types, pointer types, and function types
+* 16 total, in any combination, `tagged` and `aligned` type modifiers.
 * 16 nested, in any combination, `destroy` and `derive` expressions
 * 32768 values on the operand stack
 * 16384 rvalues on the operand stack
 * 2048 local variables within a function
 * 512 items in the declared incoming stack of a target
-* 1024 targets
+* 1024 targets within a function
 * 1024 fields in the initializer-spec of an `aggregate` instruction
 * 2048 concurrently live objects of non-zero size
 * 16386 concurrently live objects
