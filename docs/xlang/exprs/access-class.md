@@ -16,13 +16,13 @@
 
 4. Every atomic operation that reads an object M, referred to as an atomic load A, reads some value that is stored by either some atomic store in the modification order of M, or some value stored by a non atomic operation B that modifies the object, if B *happens-before* A and there exists no store C such that C *happens-before* A.
 
-5. Certain atomic operations both read and modify an object M, known as a read-modify-write. A read-modify-write operation A takes its value from the last atomic store in the modification order that preceeds it, B, or some non-atomic store C such that B *happens-before* C and C *happens-before* A. 
+5. Certain atomic operations both read and modify an object M, known as a read-modify-write. A read-modify-write operation A takes its value from the last atomic store in the modification order that preceeds it, B, or some non-atomic store C such that B *happens-before* C and C is *visible* to A. If there is no atomic store that preceeds the read-modify-write, then it takes its value from some non-atomic store C such that C is *visible* to A.
 
 5. If an atomic store A to an object M *happens-before* an atomic store B to M, then A shall appear before B in the modification order of M.
 
 6. [Note: This is referred to as write-write coherence]
 
-7. If an atomic store A to an object M *happens-before* an atomic load B from M, then B shall take its value from A, from an atomic store C that appears later than A in the modification order of M, or from a non-atomic store D, such that A *happens-before* D and D *happens-before* B.
+7. If an atomic store A to an object M *happens-before* an atomic load B from M, then B shall take its value from A, from an atomic store C that appears later than A in the modification order of M, or from a non-atomic store D, such that A *happens-before* D and D is *visible* to B.
 
 8. [Note: This is referred to as write-read coherence.]
 

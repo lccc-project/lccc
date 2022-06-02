@@ -416,7 +416,7 @@ impl FunctionRawCodegen for X86CodegenState {
         }
 
         self.frame_size += i32::from(self.properties.primitives.ptrbits / 8); // A pointer could be 16, 32, or 64 bits
-                                                                   // TODO: Alignment
+                                                                              // TODO: Alignment
         ValLocation::BpDisp(-self.frame_size)
     }
 

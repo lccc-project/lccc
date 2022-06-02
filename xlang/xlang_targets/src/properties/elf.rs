@@ -1,7 +1,14 @@
 use xlang_abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
 
 use super::{
-    clever::*, w65::*, x86::*, LinkProperties, OperatingSystemProperties, TargetProperties,
+    clever::{CLEVER, CLEVERILP32_PRIMITIVES, CLEVER_PRIMITIVES},
+    w65::{W65, W65_PRIMITIVES},
+    x86::{
+        I386, I486, I586, I686, I86, X32_PRIMITIVES, X86_16_FAR_DATA_NEAR_FN_PRIMITIVES,
+        X86_16_FAR_PRIMITIVES, X86_16_NEAR_DATA_FAR_FN_PRIMITIVES, X86_16_NEAR_PRIMITIVES,
+        X86_32_PRIMITIVES, X86_64, X86_64_PRIMITIVES,
+    },
+    LinkProperties, OperatingSystemProperties, TargetProperties,
 };
 
 pub static BARE_ELF: OperatingSystemProperties = OperatingSystemProperties {

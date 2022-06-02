@@ -1,6 +1,12 @@
 use xlang_abi::{const_sv, span, string::StringView};
 
-use super::{x86::*, LinkProperties, OperatingSystemProperties, TargetProperties};
+use super::{
+    x86::{
+        I386, I486, I586, I686, X32_PRIMITIVES, X86_32_PRIMITIVES, X86_64, X86_64_PRIMITIVES,
+        X86_64_V2, X86_64_V3, X86_64_V4,
+    },
+    LinkProperties, OperatingSystemProperties, TargetProperties,
+};
 
 pub static LINUX: OperatingSystemProperties = OperatingSystemProperties {
     is_unix_like: true,
