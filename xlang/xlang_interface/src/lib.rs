@@ -78,7 +78,9 @@ pub extern "C" fn xlang_on_allocation_failure(size: usize, align: usize) -> ! {
 }
 
 #[no_mangle]
-pub extern "C" fn xlang_get_target_properties(targ: Target) -> Option<&'static TargetProperties> {
+pub extern "C" fn xlang_get_target_properties(
+    targ: Target,
+) -> Option<&'static TargetProperties<'static>> {
     #[allow(deprecated)]
     xlang_targets::properties::__get_properties(targ)
 }

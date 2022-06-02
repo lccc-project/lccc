@@ -600,7 +600,7 @@ fn main() {
                 let mut libdirs = libdirs.iter().map(PathBuf::from).collect::<Vec<_>>();
 
                 for basedir in properties.os.base_dirs {
-                    for libdir in properties.libdirs {
+                    for libdir in properties.link.libdirs {
                         let targ1 = target.to_string();
                         let targ2 = {
                             let arch = target.arch_name();
@@ -648,7 +648,7 @@ fn main() {
 
                 for libdir in &libdirs {
                     let mut path = libdir.clone();
-                    path.push(properties.interp);
+                    path.push(properties.link.interp);
                     if path.exists() {
                         interp = Some(path);
                         break;
@@ -658,7 +658,7 @@ fn main() {
                 let interp = interp.unwrap();
 
                 let mut startfiles = Vec::new();
-                for file in properties.startfiles {
+                for file in properties.link.startfiles {
                     let mut found = false;
                     for libdir in &libdirs {
                         let mut path = libdir.clone();
@@ -678,7 +678,7 @@ fn main() {
                 }
 
                 let mut endfiles = Vec::new();
-                for file in properties.endfiles {
+                for file in properties.link.endfiles {
                     let mut found = false;
                     for libdir in &libdirs {
                         let mut path = libdir.clone();
@@ -713,6 +713,7 @@ fn main() {
                     .arg("--as-needed")
                     .args(
                         properties
+                            .link
                             .default_libs
                             .iter()
                             .map(|s| String::from("-l") + s),

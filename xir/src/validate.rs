@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use xlang::{
     abi::{collection::HashSet, string::StringView},
     prelude::v1::{Box, HashMap, None as XLangNone, Pair, Some as XLangSome, Vec},
-    targets::properties::{AsmScalar, AsmScalarKind, TargetProperties},
+    targets::properties::{asm::AsmScalar, asm::AsmScalarKind, TargetProperties},
 };
 use xlang_struct::{
     AggregateDefinition, AsmConstraint, BinaryOp, Block, BlockItem, BranchCondition, Expr, File,
@@ -15,7 +15,7 @@ use xlang_struct::{
 struct TypeState {
     tys: HashMap<Path, Type>,
     aggregate: HashMap<Path, Option<AggregateDefinition>>,
-    target_properties: &'static TargetProperties,
+    target_properties: &'static TargetProperties<'static>,
     constraint_name_cache: RefCell<HashMap<String, HashSet<AsmScalar>>>,
     register_aliases: RefCell<HashMap<String, Vec<StringView<'static>>>>,
 }
@@ -1142,10 +1142,10 @@ fn tycheck_expr(
                     ),
                     Type::Pointer(pty) => {
                         let bits = match (pty.kind, &*pty.inner) {
-                            (PointerKind::Near, _) => tys.target_properties.nearptrbits,
-                            (PointerKind::Far, _) => tys.target_properties.farptrbits,
-                            (_, Type::FnType(_)) => tys.target_properties.fnptrbits,
-                            _ => tys.target_properties.ptrbits,
+                            (PointerKind::Near, _) => tys.target_properties.primitives.nearptrbits,
+                            (PointerKind::Far, _) => tys.target_properties.primitives.farptrbits,
+                            (_, Type::FnType(_)) => tys.target_properties.primitives.fnptrbits,
+                            _ => tys.target_properties.primitives.ptrbits,
                         };
 
                         let sty = ScalarType {
@@ -1190,10 +1190,10 @@ fn tycheck_expr(
                     ),
                     Type::Pointer(pty) => {
                         let bits = match (pty.kind, &*pty.inner) {
-                            (PointerKind::Near, _) => tys.target_properties.nearptrbits,
-                            (PointerKind::Far, _) => tys.target_properties.farptrbits,
-                            (_, Type::FnType(_)) => tys.target_properties.fnptrbits,
-                            _ => tys.target_properties.ptrbits,
+                            (PointerKind::Near, _) => tys.target_properties.primitives.nearptrbits,
+                            (PointerKind::Far, _) => tys.target_properties.primitives.farptrbits,
+                            (_, Type::FnType(_)) => tys.target_properties.primitives.fnptrbits,
+                            _ => tys.target_properties.primitives.ptrbits,
                         };
 
                         let sty = ScalarType {

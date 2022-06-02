@@ -6,9 +6,10 @@ use xlang_abi::{
 };
 
 use super::{
-    ArchProperties, AsmProperties, AsmScalar,
-    AsmScalarKind::{ClobberOnly, Float, Integer},
-    MachineProperties,
+    asm::AsmScalar,
+    asm::AsmScalarKind::{ClobberOnly, Float, Integer},
+    builtins::BuiltinSignature,
+    ArchProperties, AsmProperties, LongDoubleFormat, MachineProperties, PrimitiveProperties,
 };
 
 macro_rules! w65_machines{
@@ -31,66 +32,17 @@ w65_machines! {
     (MW65, "w65" | "65816" | "65c816" | "wdc65c816", [])
 }
 
-macro_rules! w65_arithmetic_intrinsic_name {
-    ($op:tt,$ty:tt,$bits:tt) => {
-        ::xlang_abi::const_sv!(::core::concat!(
-            "__",
-            ::core::stringify!($op),
-            "_",
-            ::core::stringify!($ty),
-            ::core::stringify!($bits)
-        ))
-    };
+macro_rules! w65_builtins{
+    [
+        $($name:ident: $(($($sig_tt:tt)+))|*),* $(,)?
+    ] => {
+        pub const W65_BUILTINS: Span<'static,Pair<StringView<'static>,BuiltinSignature<'static>>> = span![
+            $($(Pair(const_sv!(::std::stringify!($name)),crate::builtin_signature!($($sig_tt)+))),*),*
+        ];
+    }
 }
 
-macro_rules! w65_arithmetic_intrinsics {
-    (
-        [$($op:ident),*]: $tys:tt @ $bits:tt
-    ) => (w65_arithmetic_intrinsics! {
-        $(
-            $op: $tys
-        )* @ $bits
-    });
-
-    (
-        $(
-            $op:ident : [$($ty:ident),*]
-        )* @ $bits:tt
-    ) => (w65_arithmetic_intrinsics! {
-        $(
-            [$($op: $ty)*] @ $bits
-        )*
-    });
-
-
-    (
-        $(
-            $op_ty:tt @ [$($bit:literal),*]
-        )*
-    ) => (w65_arithmetic_intrinsics! {
-        $(
-            $(
-                $op_ty @ $bit
-            )*
-        )*
-    });
-
-    (
-        $(
-            [$($op:tt : $ty:tt)*] @ $bit:tt
-        )*
-    ) => (
-        [
-            $($(
-                w65_arithmetic_intrinsic_name!($op,$ty,$bit),
-            )*)*
-        ]
-    );
-}
-
-static W65_INTRINSICS: Span<StringView> = Span::new(
-    &w65_arithmetic_intrinsics!([add,sub,mul,div,cmp]: [uint,int,fixed,float] @ [8,16,32,64,128]),
-);
+w65_builtins![];
 
 macro_rules! w65_constraints{
     [
@@ -175,7 +127,7 @@ pub static W65_ASSEMBLY: AsmProperties = AsmProperties {
 
 pub static W65: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0x3,
-    builtin_names: W65_INTRINSICS,
+    builtins: W65_BUILTINS,
     target_features: span![const_sv!("softfp"), const_sv!("copfp")],
     machines: W65_MACHINES,
     default_machine: &machines::MW65,
@@ -188,4 +140,22 @@ pub static W65: ArchProperties = ArchProperties {
     ],
     byte_order: super::ByteOrder::LittleEndian,
     asm_propreties: &W65_ASSEMBLY,
+};
+
+pub static W65_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
+    intbits: 16,
+    longbits: 32,
+    llongbits: 32,
+    ptrbits: 32,
+    fnptrbits: 32,
+    nearptrbits: 16,
+    farptrbits: 32,
+    max_align: 2,
+    ptralign: 2,
+    intmaxbits: 64,
+    lock_free_atomic_mask: 0x3,
+    sizebits: 16,
+    ldbl_align: 4,
+    ldbl_format: LongDoubleFormat::IEEE64,
+    max_atomic_align: 2,
 };

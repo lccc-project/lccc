@@ -44,7 +44,7 @@ pub struct AggregateLayout {
 pub struct TypeInformation {
     aggregates: HashMap<Path, Option<AggregateDefinition>>,
     aliases: HashMap<Path, Type>,
-    properties: &'static TargetProperties,
+    properties: &'static TargetProperties<'static>,
 }
 
 impl TypeInformation {
@@ -310,29 +310,29 @@ impl TypeInformation {
             Type::Scalar(ScalarType {
                 kind: ScalarTypeKind::LongFloat,
                 ..
-            }) => Some(self.properties.ldbl_align.into()),
+            }) => Some(self.properties.primitives.ldbl_align.into()),
             Type::Scalar(ScalarType {
                 header: ScalarTypeHeader { bitsize, .. },
                 ..
             }) => {
                 let raw_size = (((*bitsize) + 7) / 8).into();
-                Some(scalar_align(raw_size, self.properties.max_align))
+                Some(scalar_align(raw_size, self.properties.primitives.max_align))
             }
             Type::Pointer(pty) => {
                 let raw_size = u64::from(match pty.kind {
                     PointerKind::Default => {
                         if let Type::FnType(_) = &*pty.inner {
-                            self.properties.fnptrbits
+                            self.properties.primitives.fnptrbits
                         } else {
-                            self.properties.ptrbits
+                            self.properties.primitives.ptrbits
                         }
                     }
-                    PointerKind::Near => self.properties.nearptrbits,
-                    PointerKind::Far => self.properties.farptrbits,
+                    PointerKind::Near => self.properties.primitives.nearptrbits,
+                    PointerKind::Far => self.properties.primitives.farptrbits,
                     kind => panic!("Invalid pointer kind {:?}", kind),
                 }) / 8;
 
-                Some(scalar_align(raw_size, self.properties.ptralign))
+                Some(scalar_align(raw_size, self.properties.primitives.ptralign))
             }
             Type::Array(arrty) => self.type_align(&arrty.ty),
             Type::TaggedType(_, ty) => self.type_align(ty),
@@ -354,8 +354,10 @@ impl TypeInformation {
                 ..
             }) => {
                 let raw_size = (((*bitsize) + 7) / 8).into();
-                let aligned_size =
-                    align_size(raw_size, scalar_align(raw_size, self.properties.max_align));
+                let aligned_size = align_size(
+                    raw_size,
+                    scalar_align(raw_size, self.properties.primitives.max_align),
+                );
                 if let XLangSome(v) = vectorsize {
                     let vsize = aligned_size * u64::from(*v);
                     Some(vsize)
@@ -367,19 +369,19 @@ impl TypeInformation {
                 let raw_size = u64::from(match ty.kind {
                     PointerKind::Default => {
                         if let Type::FnType(_) = &*ty.inner {
-                            self.properties.fnptrbits
+                            self.properties.primitives.fnptrbits
                         } else {
-                            self.properties.ptrbits
+                            self.properties.primitives.ptrbits
                         }
                     }
-                    PointerKind::Near => self.properties.nearptrbits,
-                    PointerKind::Far => self.properties.farptrbits,
+                    PointerKind::Near => self.properties.primitives.nearptrbits,
+                    PointerKind::Far => self.properties.primitives.farptrbits,
                     kind => panic!("Invalid pointer kind {:?}", kind),
                 }) / 8;
 
                 Some(align_size(
                     raw_size,
-                    scalar_align(raw_size, self.properties.ptralign),
+                    scalar_align(raw_size, self.properties.primitives.ptralign),
                 ))
             }
             Type::Array(a) => {

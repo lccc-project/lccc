@@ -1,4 +1,5 @@
 use xlang::{
+    abi::pair::Pair,
     ir::{FnType, PathComponent},
     targets::properties::TargetProperties,
 };
@@ -49,7 +50,7 @@ fn call_target_intrinsic<F: FunctionRawCodegen>(
         {
             for name in properties.arch.arch_names {
                 if name == &**aname {
-                    for name in properties.arch.builtin_names {
+                    for Pair(name, _) in properties.arch.builtins {
                         if name == &**iname {
                             let params = code.pop_values(fnty.params.len()).unwrap();
                             let val = code.raw_inner().write_intrinsic(*name, params);

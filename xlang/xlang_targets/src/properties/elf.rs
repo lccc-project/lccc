@@ -1,10 +1,7 @@
-use xlang_abi::{const_sv, span};
+use xlang_abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
 
 use super::{
-    clever::CLEVER,
-    w65::W65,
-    x86::{I86, X86_64},
-    OperatingSystemProperties, TargetProperties,
+    clever::*, w65::*, x86::*, LinkProperties, OperatingSystemProperties, TargetProperties,
 };
 
 pub static BARE_ELF: OperatingSystemProperties = OperatingSystemProperties {
@@ -23,106 +20,281 @@ pub static BARE_ELF: OperatingSystemProperties = OperatingSystemProperties {
     so_kind: super::SharedLibraryStyle::Linkable,
 };
 
-pub static X86_64_ELF: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 64,
-    llongbits: 64,
-    ptrbits: 64,
-    fnptrbits: 64,
-    nearptrbits: 64,
-    farptrbits: 64,
-    max_align: 16,
-    ptralign: 8,
-    intmaxbits: 8,
-    sizebits: 8,
-    lock_free_atomic_mask: 0xffff,
-    ldbl_align: 16,
-    ldbl_format: super::LongDoubleFormat::X87,
-    arch: &X86_64,
-    os: &BARE_ELF,
+pub static X86_64_ELF_LINK: LinkProperties = LinkProperties {
     libdirs: span![const_sv!("lib"), const_sv!("lib64")],
     default_libs: span![],
     startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
     endfiles: span![const_sv!("crtn.o")],
-    enabled_features: span![],
     available_formats: span![],
     interp: const_sv!("ld-x86_64.so"),
 };
 
-pub static CLEVER_ELF: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 64,
-    llongbits: 64,
-    ptrbits: 64,
-    fnptrbits: 64,
-    nearptrbits: 64,
-    farptrbits: 64,
-    max_align: 16,
-    ptralign: 8,
-    intmaxbits: 64,
-    sizebits: 64,
-    lock_free_atomic_mask: 0xff,
-    ldbl_align: 8,
-    ldbl_format: super::LongDoubleFormat::IEEE64,
-    arch: &CLEVER,
-    os: &BARE_ELF,
-    libdirs: span![const_sv!("lib")],
+pub static X32_ELF_LINK: LinkProperties = LinkProperties {
+    libdirs: span![const_sv!("lib"), const_sv!("libx32")],
     default_libs: span![],
     startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
     endfiles: span![const_sv!("crtn.o")],
+    available_formats: span![],
+    interp: const_sv!("ld-x32.so"),
+};
+
+pub static X86_32_ELF_LINK: LinkProperties = LinkProperties {
+    libdirs: span![const_sv!("lib"), const_sv!("lib32")],
+    default_libs: span![],
+    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
+    endfiles: span![const_sv!("crtn.o")],
+    available_formats: span![],
+    interp: const_sv!("ld.so"),
+};
+
+pub static X86_16_ELF_LINK: LinkProperties = LinkProperties {
+    libdirs: span![const_sv!("lib"), const_sv!("lib16")],
+    default_libs: span![],
+    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
+    endfiles: span![const_sv!("crtn.o")],
+
+    available_formats: span![],
+    interp: const_sv!(""),
+};
+
+macro_rules! x86_abis{
+    {
+        $($group:ident : {
+            $($group_names:literal: $group_ref:expr;)*
+        })*
+    } => {
+        $(
+            mod $group {
+                use xlang_abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
+                use crate::properties::{TargetProperties};
+                use super::*;
+                pub static ABIS: Span<Pair<StringView,&TargetProperties>> = span![
+                    $(Pair(const_sv!($group_names),&$group_ref),)*
+                ];
+            }
+        )*
+    }
+}
+
+x86_abis! {
+    x86_64: {
+        "64": X86_64_ELF;
+        "386": I386_ELF;
+        "486": I386_ELF;
+        "586": I586_ELF;
+        "686": I686_ELF;
+        "32": I686_ELF;
+        "x32": X32_ELF;
+    }
+    x86_32: {
+        "64": X86_64_ELF;
+        "386": I386_ELF;
+        "486": I386_ELF;
+        "586": I586_ELF;
+        "686": I686_ELF;
+        "32": I686_ELF;
+    }
+    x86_16_near: {
+        "64": X86_64_ELF;
+        "386": I386_ELF;
+        "486": I386_ELF;
+        "586": I586_ELF;
+        "686": I686_ELF;
+        "32": I686_ELF;
+        "near": I86_NEAR_ELF;
+        "far": I86_FAR_ELF;
+        "near-data": I86_NEAR_ELF;
+        "far-data": I86_FAR_DATA_NEAR_FN_ELF;
+        "near-fn": I86_NEAR_ELF;
+        "far-fn": I86_NEAR_DATA_FAR_FN_ELF;
+    }
+    x86_16_far: {
+        "64": X86_64_ELF;
+        "386": I386_ELF;
+        "486": I386_ELF;
+        "586": I586_ELF;
+        "686": I686_ELF;
+        "32": I686_ELF;
+        "near": I86_NEAR_ELF;
+        "far": I86_FAR_ELF;
+        "near-data": I86_NEAR_DATA_FAR_FN_ELF;
+        "far-data": I86_FAR_ELF;
+        "near-fn": I86_FAR_DATA_NEAR_FN_ELF;
+        "far-fn": I86_FAR_ELF;
+    }
+    x86_16_near_data_far_fn: {
+        "64": X86_64_ELF;
+        "386": I386_ELF;
+        "486": I386_ELF;
+        "586": I586_ELF;
+        "686": I686_ELF;
+        "32": I686_ELF;
+        "near": I86_NEAR_ELF;
+        "far": I86_FAR_ELF;
+        "near-data": I86_NEAR_DATA_FAR_FN_ELF;
+        "far-data": I86_FAR_ELF;
+        "near-fn": I86_FAR_DATA_NEAR_FN_ELF;
+        "far-fn": I86_NEAR_DATA_FAR_FN_ELF;
+    }
+    x86_16_far_data_near_fn: {
+        "64": X86_64_ELF;
+        "386": I386_ELF;
+        "486": I386_ELF;
+        "586": I586_ELF;
+        "686": I686_ELF;
+        "32": I686_ELF;
+        "near": I86_NEAR_ELF;
+        "far": I86_FAR_ELF;
+        "near-data": I86_NEAR_DATA_FAR_FN_ELF;
+        "far-data": I86_FAR_DATA_NEAR_FN_ELF;
+        "near-fn": I86_FAR_DATA_NEAR_FN_ELF;
+        "far-fn": I86_FAR_ELF;
+    }
+}
+
+pub static X86_64_ELF: TargetProperties = TargetProperties {
+    primitives: &X86_64_PRIMITIVES,
+    arch: &X86_64,
+    os: &BARE_ELF,
+    link: &X86_64_ELF_LINK,
+    abis: x86_64::ABIS,
     enabled_features: span![],
+};
+
+pub static X32_ELF: TargetProperties = TargetProperties {
+    primitives: &X32_PRIMITIVES,
+    arch: &X86_64,
+    os: &BARE_ELF,
+    link: &X32_ELF_LINK,
+    abis: x86_64::ABIS,
+    enabled_features: span![],
+};
+
+pub static I386_ELF: TargetProperties = TargetProperties {
+    primitives: &X86_32_PRIMITIVES,
+    arch: &I386,
+    os: &BARE_ELF,
+    link: &X86_32_ELF_LINK,
+    abis: x86_32::ABIS,
+    enabled_features: span![],
+};
+
+pub static I486_ELF: TargetProperties = TargetProperties {
+    primitives: &X86_32_PRIMITIVES,
+    arch: &I486,
+    os: &BARE_ELF,
+    link: &X86_32_ELF_LINK,
+    abis: x86_32::ABIS,
+    enabled_features: span![],
+};
+pub static I586_ELF: TargetProperties = TargetProperties {
+    primitives: &X86_32_PRIMITIVES,
+    arch: &I586,
+    os: &BARE_ELF,
+    link: &X86_32_ELF_LINK,
+    abis: x86_32::ABIS,
+    enabled_features: span![],
+};
+pub static I686_ELF: TargetProperties = TargetProperties {
+    primitives: &X86_32_PRIMITIVES,
+    arch: &I686,
+    os: &BARE_ELF,
+    link: &X86_32_ELF_LINK,
+    abis: x86_32::ABIS,
+    enabled_features: span![],
+};
+
+pub static I86_NEAR_ELF: TargetProperties = TargetProperties {
+    primitives: &X86_16_NEAR_PRIMITIVES,
+    arch: &I86,
+    os: &BARE_ELF,
+    link: &X86_16_ELF_LINK,
+    abis: x86_16_near::ABIS,
+    enabled_features: span![],
+};
+
+pub static I86_FAR_ELF: TargetProperties = TargetProperties {
+    primitives: &X86_16_FAR_PRIMITIVES,
+    arch: &I86,
+    os: &BARE_ELF,
+    link: &X86_16_ELF_LINK,
+    abis: x86_16_far::ABIS,
+    enabled_features: span![],
+};
+
+pub static I86_NEAR_DATA_FAR_FN_ELF: TargetProperties = TargetProperties {
+    primitives: &X86_16_NEAR_DATA_FAR_FN_PRIMITIVES,
+    arch: &I86,
+    os: &BARE_ELF,
+    link: &X86_16_ELF_LINK,
+    abis: x86_16_near_data_far_fn::ABIS,
+    enabled_features: span![],
+};
+
+pub static I86_FAR_DATA_NEAR_FN_ELF: TargetProperties = TargetProperties {
+    primitives: &X86_16_FAR_DATA_NEAR_FN_PRIMITIVES,
+    arch: &I86,
+    os: &BARE_ELF,
+    link: &X86_16_ELF_LINK,
+    abis: x86_16_far_data_near_fn::ABIS,
+    enabled_features: span![],
+};
+
+pub static CLEVER_ELF_LINK: LinkProperties = LinkProperties {
+    libdirs: span![const_sv!("lib"), const_sv!("lib64")],
+    default_libs: span![],
+    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
+    endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
     interp: const_sv!("ld-clever.so"),
 };
 
-pub static W65_ELF: TargetProperties = TargetProperties {
-    intbits: 16,
-    longbits: 32,
-    llongbits: 64,
-    ptrbits: 32,
-    ptralign: 4,
-    fnptrbits: 32,
-    nearptrbits: 32,
-    farptrbits: 32,
-    max_align: 2,
-    intmaxbits: 128,
-    sizebits: 16,
-    lock_free_atomic_mask: 0x3,
-    ldbl_align: 2,
-    ldbl_format: super::LongDoubleFormat::IEEE64,
-    arch: &W65,
+pub static CLEVERILP32_ELF_LINK: LinkProperties = LinkProperties {
+    libdirs: span![const_sv!("lib"), const_sv!("libilp32")],
+    default_libs: span![],
+    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
+    endfiles: span![const_sv!("crtn.o")],
+    available_formats: span![],
+    interp: const_sv!("ld-cleverilp32.so"),
+};
+
+static CLEVER_ABIS: Span<Pair<StringView, &TargetProperties>> = span![
+    Pair(const_sv!("64"), &CLEVER_ELF),
+    Pair(const_sv!("ilp32"), &CLEVERILP32_ELF)
+];
+
+pub static CLEVER_ELF: TargetProperties = TargetProperties {
+    primitives: &CLEVER_PRIMITIVES,
+    arch: &CLEVER,
     os: &BARE_ELF,
+    link: &CLEVER_ELF_LINK,
+    abis: CLEVER_ABIS,
+    enabled_features: span![],
+};
+
+pub static CLEVERILP32_ELF: TargetProperties = TargetProperties {
+    primitives: &CLEVERILP32_PRIMITIVES,
+    arch: &CLEVER,
+    os: &BARE_ELF,
+    link: &CLEVERILP32_ELF_LINK,
+    abis: CLEVER_ABIS,
+    enabled_features: span![],
+};
+
+pub static W65_ELF_LINK: LinkProperties = LinkProperties {
     libdirs: span![const_sv!("lib")],
     default_libs: span![],
     startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
     endfiles: span![const_sv!("crtn.o")],
-    enabled_features: span![],
     available_formats: span![],
     interp: const_sv!(""),
 };
 
-pub static I86_NEAR: TargetProperties = TargetProperties {
-    intbits: 16,
-    longbits: 32,
-    llongbits: 64,
-    ptrbits: 16,
-    ptralign: 2,
-    fnptrbits: 16,
-    nearptrbits: 16,
-    farptrbits: 32,
-    max_align: 2,
-    intmaxbits: 128,
-    sizebits: 16,
-    lock_free_atomic_mask: 0x3,
-    ldbl_align: 4,
-    ldbl_format: super::LongDoubleFormat::X87,
-    arch: &I86,
+pub static W65_ELF: TargetProperties = TargetProperties {
+    primitives: &W65_PRIMITIVES,
+    arch: &W65,
     os: &BARE_ELF,
-    libdirs: span![const_sv!("lib")],
-    default_libs: span![],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
+    link: &W65_ELF_LINK,
+    abis: span![],
     enabled_features: span![],
-    available_formats: span![],
-    interp: const_sv!(""),
 };

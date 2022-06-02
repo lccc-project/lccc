@@ -293,7 +293,7 @@ pub struct CleverFunctionCodegen {
     name: String,
     strings: Rc<RefCell<StringMap>>,
     frame_size: i32,
-    properties: &'static TargetProperties,
+    properties: &'static TargetProperties<'static>,
     scratch_reg: Option<CleverRegister>,
     callconv: CleverCallConv,
     ptrreg: Option<CleverRegister>,
@@ -935,7 +935,7 @@ pub struct CleverCodegenPlugin {
     target: Option<Target>,
     fns: Option<std::collections::HashMap<String, FunctionCodegen<CleverFunctionCodegen>>>,
     strings: Rc<RefCell<StringMap>>,
-    properties: Option<&'static TargetProperties>,
+    properties: Option<&'static TargetProperties<'static>>,
     features: HashSet<CleverExtension>,
 }
 

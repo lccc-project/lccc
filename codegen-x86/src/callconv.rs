@@ -92,7 +92,7 @@ pub trait X86CallConv {
 
 #[derive(Clone, Debug)]
 pub struct SysV64CC<S: std::hash::BuildHasher + Clone = std::collections::hash_map::RandomState>(
-    &'static TargetProperties,
+    &'static TargetProperties<'static>,
     HashSet<X86Feature, S>,
     Rc<TypeInformation>,
 );

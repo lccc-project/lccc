@@ -3,8 +3,10 @@ use xlang_abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
 use crate::properties::MachineProperties;
 
 use super::{
-    ArchProperties, AsmProperties, AsmScalar,
-    AsmScalarKind::{Float, Integer, Vector},
+    asm::AsmScalar,
+    asm::AsmScalarKind::{Float, Integer, Vector},
+    builtins::BuiltinSignature,
+    ArchProperties, AsmProperties, LongDoubleFormat, PrimitiveProperties,
 };
 
 macro_rules! x86_machines{
@@ -25,65 +27,15 @@ macro_rules! x86_machines{
 
 macro_rules! x86_builtins{
     [
-        $($name:ident),* $(,)?
+        $($name:ident: $(($($sig_tt:tt)+))|*),* $(,)?
     ] => {
-        pub const X86_BUILTINS: Span<'static,StringView<'static>> = span![
-            $(const_sv!(::std::stringify!($name))),*
+        pub const X86_BUILTINS: Span<'static,Pair<StringView<'static>,BuiltinSignature<'static>>> = span![
+            $($(Pair(const_sv!(::std::stringify!($name)),crate::builtin_signature!($($sig_tt)+))),*),*
         ];
     }
 }
 
-x86_builtins![
-    _mm_add_pi16,
-    _mm_add_pi32,
-    _mm_add_pi8,
-    _mm_adds_pi16,
-    _mm_adds_pi8,
-    _mm_adds_pu16,
-    _mm_adds_pu8,
-    _mm_and_si64,
-    _mm_andnot_si64,
-    _mm_cmpeq_pi16,
-    _mm_cmpeq_pi32,
-    _mm_cmpeq_pi8,
-    _mm_cmpgt_pi16,
-    _mm_cmpgt_pi32,
-    _mm_cmpgt_pi8,
-    _mm_cvtm64_si64,
-    _mm_cvtsi32_si64,
-    _m_empty,
-    _mm_empty,
-    _m_from_int,
-    _m_from_int64,
-    _mm_madd_pi16,
-    _mm_mulhi_pi16,
-    _mm_mullo_pi16,
-    _mm_or_si64,
-    _mm_packs_pi16,
-    _mm_packs_pi32,
-    _mm_packs_pu16,
-    _m_packssdw,
-    _m_packsswb,
-    _m_packuswb,
-    _m_paddb,
-    _m_paddd,
-    _m_paddsb,
-    _m_paddsw,
-    _m_paddusb,
-    _m_paddusw,
-    _m_paddw,
-    _m_pand,
-    _m_pandn,
-    _m_pcmpeqb,
-    _m_pcmpeqd,
-    _m_pcmpeqw,
-    _m_pcmpgtb,
-    _m_pcmpgtd,
-    _m_pcmpgtw,
-    _m_paddwd,
-    _m_pmulhw,
-    _m_pullw,
-];
+x86_builtins![];
 
 x86_machines! {
     (MX86_64, "x86_64", ["x87","fxsr","mmx","sce","sse","sse2"]),
@@ -541,7 +493,7 @@ pub static X86_64_ASM_PROPERTIES: AsmProperties = AsmProperties {
 
 pub static X86_64: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xFF,
-    builtin_names: X86_BUILTINS,
+    builtins: X86_BUILTINS,
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64,
@@ -552,7 +504,7 @@ pub static X86_64: ArchProperties = ArchProperties {
 
 pub static X86_64_V2: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xFFFF,
-    builtin_names: X86_BUILTINS,
+    builtins: X86_BUILTINS,
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64_V2,
@@ -563,7 +515,7 @@ pub static X86_64_V2: ArchProperties = ArchProperties {
 
 pub static X86_64_V3: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xFFFF,
-    builtin_names: X86_BUILTINS,
+    builtins: X86_BUILTINS,
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64_V3,
@@ -574,7 +526,7 @@ pub static X86_64_V3: ArchProperties = ArchProperties {
 
 pub static X86_64_V4: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xFFFF,
-    builtin_names: X86_BUILTINS,
+    builtins: X86_BUILTINS,
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64_V4,
@@ -585,7 +537,7 @@ pub static X86_64_V4: ArchProperties = ArchProperties {
 
 pub static I386: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xF,
-    builtin_names: X86_BUILTINS,
+    builtins: X86_BUILTINS,
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MI386,
@@ -596,7 +548,7 @@ pub static I386: ArchProperties = ArchProperties {
 
 pub static I486: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xF,
-    builtin_names: X86_BUILTINS,
+    builtins: X86_BUILTINS,
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MI486,
@@ -606,7 +558,7 @@ pub static I486: ArchProperties = ArchProperties {
 };
 pub static I586: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xF,
-    builtin_names: X86_BUILTINS,
+    builtins: X86_BUILTINS,
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MI586,
@@ -617,7 +569,7 @@ pub static I586: ArchProperties = ArchProperties {
 
 pub static I686: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xF,
-    builtin_names: X86_BUILTINS,
+    builtins: X86_BUILTINS,
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MI686,
@@ -628,11 +580,137 @@ pub static I686: ArchProperties = ArchProperties {
 
 pub static I86: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0x3,
-    builtin_names: X86_BUILTINS,
+    builtins: X86_BUILTINS,
     target_features: X86_FEATURES,
     machines: X86_MACHINES,
     default_machine: &machines::MI86,
     arch_names: span![const_sv!("i86"), const_sv!("i8086")],
     byte_order: super::ByteOrder::LittleEndian,
     asm_propreties: &X86_16_ASM_PROPERTIES,
+};
+
+pub static X86_64_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
+    intbits: 32,
+    longbits: 64,
+    llongbits: 64,
+    ptrbits: 64,
+    fnptrbits: 64,
+    nearptrbits: 64,
+    farptrbits: 64,
+    max_align: 16,
+    ptralign: 8,
+    intmaxbits: 64,
+    sizebits: 64,
+    lock_free_atomic_mask: 0xffff,
+    ldbl_align: 16,
+    ldbl_format: super::LongDoubleFormat::X87,
+    max_atomic_align: 16,
+};
+
+pub static X32_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
+    intbits: 32,
+    longbits: 32,
+    llongbits: 64,
+    ptrbits: 32,
+    fnptrbits: 32,
+    nearptrbits: 32,
+    farptrbits: 64,
+    max_align: 16,
+    ptralign: 4,
+    intmaxbits: 64,
+    sizebits: 32,
+    lock_free_atomic_mask: 0xffff,
+    ldbl_align: 16,
+    ldbl_format: super::LongDoubleFormat::X87,
+    max_atomic_align: 16,
+};
+
+pub static X86_32_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
+    intbits: 32,
+    longbits: 32,
+    llongbits: 64,
+    ptrbits: 32,
+    fnptrbits: 32,
+    nearptrbits: 32,
+    farptrbits: 32,
+    max_align: 4,
+    ptralign: 4,
+    intmaxbits: 64,
+    lock_free_atomic_mask: 0xf,
+    sizebits: 32,
+    ldbl_align: 4,
+    ldbl_format: LongDoubleFormat::X87,
+    max_atomic_align: 4,
+};
+
+pub static X86_16_NEAR_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
+    intbits: 16,
+    longbits: 32,
+    llongbits: 32,
+    ptrbits: 16,
+    fnptrbits: 16,
+    nearptrbits: 16,
+    farptrbits: 32,
+    max_align: 2,
+    ptralign: 2,
+    intmaxbits: 64,
+    lock_free_atomic_mask: 0x3,
+    sizebits: 16,
+    ldbl_align: 4,
+    ldbl_format: LongDoubleFormat::X87,
+    max_atomic_align: 2,
+};
+
+pub static X86_16_FAR_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
+    intbits: 16,
+    longbits: 32,
+    llongbits: 32,
+    ptrbits: 32,
+    fnptrbits: 32,
+    nearptrbits: 16,
+    farptrbits: 32,
+    max_align: 2,
+    ptralign: 2,
+    intmaxbits: 64,
+    lock_free_atomic_mask: 0x3,
+    sizebits: 16,
+    ldbl_align: 4,
+    ldbl_format: LongDoubleFormat::X87,
+    max_atomic_align: 2,
+};
+
+pub static X86_16_NEAR_DATA_FAR_FN_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
+    intbits: 16,
+    longbits: 32,
+    llongbits: 32,
+    ptrbits: 16,
+    fnptrbits: 32,
+    nearptrbits: 16,
+    farptrbits: 32,
+    max_align: 2,
+    ptralign: 2,
+    intmaxbits: 64,
+    lock_free_atomic_mask: 0x3,
+    sizebits: 16,
+    ldbl_align: 4,
+    ldbl_format: LongDoubleFormat::X87,
+    max_atomic_align: 2,
+};
+
+pub static X86_16_FAR_DATA_NEAR_FN_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
+    intbits: 16,
+    longbits: 32,
+    llongbits: 32,
+    ptrbits: 32,
+    fnptrbits: 16,
+    nearptrbits: 16,
+    farptrbits: 32,
+    max_align: 2,
+    ptralign: 2,
+    intmaxbits: 64,
+    lock_free_atomic_mask: 0x3,
+    sizebits: 16,
+    ldbl_align: 4,
+    ldbl_format: LongDoubleFormat::X87,
+    max_atomic_align: 2,
 };

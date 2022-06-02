@@ -136,7 +136,7 @@ pub struct X86CodegenState {
     strings: Rc<RefCell<StringMap>>,
     callconv: std::boxed::Box<dyn X86CallConv>,
     frame_size: i32,
-    properties: &'static TargetProperties,
+    properties: &'static TargetProperties<'static>,
     scratch_reg: Option<X86Register>,
     ptrreg: Option<X86Register>,
     gpr_status: HashMap<u8, RegisterStatus>,
@@ -398,9 +398,11 @@ impl FunctionRawCodegen for X86CodegenState {
     fn allocate_lvalue(&mut self, needs_addr: bool) -> Self::Loc {
         if !needs_addr {
             for i in 0..(if self.mode == X86Mode::Long { 16 } else { 8 }) {
-                let class =
-                    X86RegisterClass::gpr_size((self.properties.ptrbits / 8) as usize, self.mode)
-                        .unwrap();
+                let class = X86RegisterClass::gpr_size(
+                    (self.properties.primitives.ptrbits / 8) as usize,
+                    self.mode,
+                )
+                .unwrap();
                 let mode = self.gpr_status.get_or_insert_mut(i, RegisterStatus::Free);
                 match mode {
                     RegisterStatus::Free => {
@@ -413,7 +415,7 @@ impl FunctionRawCodegen for X86CodegenState {
             }
         }
 
-        self.frame_size += i32::from(self.properties.ptrbits / 8); // A pointer could be 16, 32, or 64 bits
+        self.frame_size += i32::from(self.properties.primitives.ptrbits / 8); // A pointer could be 16, 32, or 64 bits
                                                                    // TODO: Alignment
         ValLocation::BpDisp(-self.frame_size)
     }
@@ -850,9 +852,11 @@ impl X86CodegenState {
             reg
         } else {
             for i in 0..(if self.mode == X86Mode::Long { 16 } else { 8 }) {
-                let class =
-                    X86RegisterClass::gpr_size((self.properties.ptrbits / 8) as usize, self.mode)
-                        .unwrap();
+                let class = X86RegisterClass::gpr_size(
+                    (self.properties.primitives.ptrbits / 8) as usize,
+                    self.mode,
+                )
+                .unwrap();
                 let mode = self.gpr_status.get_or_insert_mut(i, RegisterStatus::Free);
                 match mode {
                     RegisterStatus::Free => {
@@ -1134,7 +1138,7 @@ pub struct X86CodegenPlugin {
     target: Option<Target>,
     fns: Option<std::collections::HashMap<String, FunctionCodegen<X86CodegenState>>>,
     strings: Rc<RefCell<StringMap>>,
-    properties: Option<&'static TargetProperties>,
+    properties: Option<&'static TargetProperties<'static>>,
     features: HashSet<X86Feature>,
 }
 

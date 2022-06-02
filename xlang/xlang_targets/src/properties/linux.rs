@@ -1,7 +1,6 @@
-use target_tuples::ObjectFormat;
 use xlang_abi::{const_sv, span, string::StringView};
 
-use super::{LongDoubleFormat, OperatingSystemProperties, TargetProperties};
+use super::{x86::*, LinkProperties, OperatingSystemProperties, TargetProperties};
 
 pub static LINUX: OperatingSystemProperties = OperatingSystemProperties {
     is_unix_like: true,
@@ -19,340 +18,164 @@ pub static LINUX: OperatingSystemProperties = OperatingSystemProperties {
     so_kind: super::SharedLibraryStyle::Linkable,
 };
 
+pub static X86_64_LINUX_GNU_LINK: LinkProperties = LinkProperties {
+    libdirs: span![const_sv!("lib"), const_sv!("lib64")],
+    default_libs: span![],
+    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
+    endfiles: span![const_sv!("crtn.o")],
+    available_formats: span![],
+    interp: const_sv!("ld-linux-x86_64.so.2"),
+};
+
+pub static X86_64_LINUX_MUSL_LINK: LinkProperties = LinkProperties {
+    libdirs: span![const_sv!("lib"), const_sv!("lib64")],
+    default_libs: span![],
+    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
+    endfiles: span![const_sv!("crtn.o")],
+    available_formats: span![],
+    interp: const_sv!("ld-musl-x86_64.so"),
+};
+
+pub static X32_LINUX_GNU_LINK: LinkProperties = LinkProperties {
+    libdirs: span![const_sv!("lib"), const_sv!("libx32")],
+    default_libs: span![],
+    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
+    endfiles: span![const_sv!("crtn.o")],
+    available_formats: span![],
+    interp: const_sv!("ld-linux-x32.so.2"),
+};
+
+pub static X86_32_LINUX_GNU_LINK: LinkProperties = LinkProperties {
+    libdirs: span![const_sv!("lib"), const_sv!("lib32")],
+    default_libs: span![],
+    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
+    endfiles: span![const_sv!("crtn.o")],
+    available_formats: span![],
+    interp: const_sv!("ld-linux.so.2"),
+};
+
+macro_rules! x86_abis{
+    {
+        $($os_abi:ident: {$($group:ident : {
+            $($group_names:literal: $group_ref:expr;)*
+        })*})*
+    } => {
+        $(mod $os_abi{$(
+            pub mod $group {
+                use xlang_abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
+                use crate::properties::{TargetProperties};
+                use super::super::*;
+                pub static ABIS: Span<Pair<StringView,&TargetProperties>> = span![
+                    $(Pair(const_sv!($group_names),&$group_ref),)*
+                ];
+            }
+        )*})*
+    }
+}
+
+x86_abis! {
+    gnu: {
+        x86_64: {
+            "64": X86_64_LINUX_GNU;
+            "32": I686_LINUX_GNU;
+            "x32": X32_LINUX_GNU;
+        }
+        x86_32: {
+            "64": X86_64_LINUX_GNU;
+            "32": I686_LINUX_GNU;
+        }
+    }
+    musl: {
+        x86_64: {
+            "64": X86_64_LINUX_MUSL;
+        }
+    }
+}
+
 pub static X86_64_LINUX_GNU: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 64,
-    llongbits: 64,
-    ptrbits: 64,
-    fnptrbits: 64,
-    nearptrbits: 64,
-    farptrbits: 64,
-    max_align: 16,
-    ptralign: 8,
-    intmaxbits: 64,
-    lock_free_atomic_mask: 0xff,
-    sizebits: 64,
-    ldbl_align: 128,
-    ldbl_format: LongDoubleFormat::X87,
-    arch: &super::x86::X86_64,
+    primitives: &X86_64_PRIMITIVES,
     os: &LINUX,
-    libdirs: span![const_sv!("lib"), const_sv!("lib64")],
-    default_libs: span![const_sv!("c")],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
+    arch: &X86_64,
+    link: &X86_64_LINUX_GNU_LINK,
+    abis: gnu::x86_64::ABIS,
     enabled_features: span![],
-    available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("ld-linux-x86-64.so.2"),
 };
 
-pub static X86_64_LINUX_MUSL: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 64,
-    llongbits: 64,
-    ptrbits: 64,
-    fnptrbits: 64,
-    nearptrbits: 64,
-    farptrbits: 64,
-    max_align: 16,
-    ptralign: 8,
-    intmaxbits: 64,
-    lock_free_atomic_mask: 0xff,
-    sizebits: 64,
-    ldbl_align: 128,
-    ldbl_format: LongDoubleFormat::X87,
-    arch: &super::x86::X86_64,
+pub static X86_64_V2_LINUX_GNU: TargetProperties = TargetProperties {
+    primitives: &X86_64_PRIMITIVES,
     os: &LINUX,
-    libdirs: span![const_sv!("lib"), const_sv!("lib64")],
-    default_libs: span![const_sv!("c")],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
+    arch: &X86_64_V2,
+    link: &X86_64_LINUX_GNU_LINK,
+    abis: gnu::x86_64::ABIS,
     enabled_features: span![],
-    available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("ld-musl-x86-64.so"),
 };
 
-pub static X86_64_LINUX_GNUX32: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 32,
-    llongbits: 64,
-    ptrbits: 32,
-    fnptrbits: 32,
-    nearptrbits: 32,
-    farptrbits: 32,
-    max_align: 16,
-    ptralign: 4,
-    intmaxbits: 64,
-    lock_free_atomic_mask: 0xff,
-    sizebits: 64,
-    ldbl_align: 128,
-    ldbl_format: LongDoubleFormat::X87,
-    arch: &super::x86::X86_64,
+pub static X86_64_V3_LINUX_GNU: TargetProperties = TargetProperties {
+    primitives: &X86_64_PRIMITIVES,
     os: &LINUX,
-    libdirs: span![const_sv!("lib"), const_sv!("libx32")],
-    default_libs: span![const_sv!("c")],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
+    arch: &X86_64_V3,
+    link: &X86_64_LINUX_GNU_LINK,
+    abis: gnu::x86_64::ABIS,
     enabled_features: span![],
-    available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("ld-linux-x32.so.2"),
 };
 
-pub static X86_64V2_LINUX_GNU: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 64,
-    llongbits: 64,
-    ptrbits: 64,
-    fnptrbits: 64,
-    nearptrbits: 64,
-    farptrbits: 64,
-    max_align: 16,
-    ptralign: 8,
-    intmaxbits: 64,
-    lock_free_atomic_mask: 0xffff,
-    sizebits: 64,
-    ldbl_align: 16,
-    ldbl_format: LongDoubleFormat::X87,
-    arch: &super::x86::X86_64_V2,
+pub static X86_64_V4_LINUX_GNU: TargetProperties = TargetProperties {
+    primitives: &X86_64_PRIMITIVES,
     os: &LINUX,
-    libdirs: span![const_sv!("lib"), const_sv!("lib64")],
-    default_libs: span![const_sv!("c")],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
+    arch: &X86_64_V4,
+    link: &X86_64_LINUX_GNU_LINK,
+    abis: gnu::x86_64::ABIS,
     enabled_features: span![],
-    available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("ld-linux-x86-64.so.2"),
 };
 
-pub static X86_64V2_LINUX_GNUX32: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 32,
-    llongbits: 64,
-    ptrbits: 32,
-    fnptrbits: 32,
-    nearptrbits: 32,
-    farptrbits: 32,
-    max_align: 16,
-    ptralign: 4,
-    intmaxbits: 64,
-    lock_free_atomic_mask: 0xffff,
-    sizebits: 64,
-    ldbl_align: 16,
-    ldbl_format: LongDoubleFormat::X87,
-    arch: &super::x86::X86_64_V2,
+pub static X32_LINUX_GNU: TargetProperties = TargetProperties {
+    primitives: &X32_PRIMITIVES,
     os: &LINUX,
-    libdirs: span![const_sv!("lib"), const_sv!("libx32")],
-    default_libs: span![const_sv!("c")],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
+    arch: &X86_64,
+    link: &X32_LINUX_GNU_LINK,
+    abis: gnu::x86_64::ABIS,
     enabled_features: span![],
-    available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("ld-linux-x32.so.2"),
-};
-
-pub static X86_64V3_LINUX_GNU: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 64,
-    llongbits: 64,
-    ptrbits: 64,
-    fnptrbits: 64,
-    nearptrbits: 64,
-    farptrbits: 64,
-    max_align: 16,
-    ptralign: 8,
-    intmaxbits: 64,
-    lock_free_atomic_mask: 0xffff,
-    sizebits: 64,
-    ldbl_align: 16,
-    ldbl_format: LongDoubleFormat::X87,
-    arch: &super::x86::X86_64_V3,
-    os: &LINUX,
-    libdirs: span![const_sv!("lib"), const_sv!("lib64")],
-    default_libs: span![const_sv!("c")],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
-    enabled_features: span![],
-    available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("ld-linux-x86-64.so.2"),
-};
-
-pub static X86_64V3_LINUX_GNUX32: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 32,
-    llongbits: 64,
-    ptrbits: 32,
-    fnptrbits: 32,
-    nearptrbits: 32,
-    farptrbits: 32,
-    max_align: 16,
-    ptralign: 4,
-    intmaxbits: 64,
-    lock_free_atomic_mask: 0xffff,
-    sizebits: 64,
-    ldbl_align: 16,
-    ldbl_format: LongDoubleFormat::X87,
-    arch: &super::x86::X86_64_V3,
-    os: &LINUX,
-    libdirs: span![const_sv!("lib"), const_sv!("libx32")],
-    default_libs: span![const_sv!("c")],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
-    enabled_features: span![],
-    available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("ld-linux-x32.so.2"),
-};
-
-pub static X86_64V4_LINUX_GNU: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 64,
-    llongbits: 64,
-    ptrbits: 64,
-    fnptrbits: 64,
-    nearptrbits: 64,
-    farptrbits: 64,
-    max_align: 16,
-    ptralign: 8,
-    intmaxbits: 64,
-    lock_free_atomic_mask: 0xffff,
-    sizebits: 64,
-    ldbl_align: 16,
-    ldbl_format: LongDoubleFormat::X87,
-    arch: &super::x86::X86_64_V4,
-    os: &LINUX,
-    libdirs: span![const_sv!("lib"), const_sv!("lib64")],
-    default_libs: span![const_sv!("c")],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
-    enabled_features: span![],
-    available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("ld-linux-x86-64.so.2"),
-};
-
-pub static X86_64V4_LINUX_GNUX32: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 32,
-    llongbits: 64,
-    ptrbits: 32,
-    fnptrbits: 32,
-    nearptrbits: 32,
-    farptrbits: 32,
-    max_align: 16,
-    ptralign: 4,
-    intmaxbits: 64,
-    lock_free_atomic_mask: 0xffff,
-    sizebits: 64,
-    ldbl_align: 16,
-    ldbl_format: LongDoubleFormat::X87,
-    arch: &super::x86::X86_64_V4,
-    os: &LINUX,
-    libdirs: span![const_sv!("lib"), const_sv!("libx32")],
-    default_libs: span![const_sv!("c")],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
-    enabled_features: span![],
-    available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("ld-linux-x32.so.2"),
-};
-
-pub static I386_LINUX_GNU: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 32,
-    llongbits: 64,
-    ptrbits: 32,
-    fnptrbits: 32,
-    nearptrbits: 32,
-    farptrbits: 32,
-    max_align: 4,
-    ptralign: 4,
-    intmaxbits: 64,
-    lock_free_atomic_mask: 0xf,
-    sizebits: 32,
-    ldbl_align: 4,
-    ldbl_format: LongDoubleFormat::X87,
-    arch: &super::x86::I386,
-    os: &LINUX,
-    libdirs: span![const_sv!("lib"), const_sv!("lib32")],
-    default_libs: span![const_sv!("c")],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
-    enabled_features: span![],
-    available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("ld-linux.so.2"),
-};
-
-pub static I486_LINUX_GNU: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 32,
-    llongbits: 64,
-    ptrbits: 32,
-    fnptrbits: 32,
-    nearptrbits: 32,
-    farptrbits: 32,
-    max_align: 4,
-    ptralign: 4,
-    intmaxbits: 64,
-    lock_free_atomic_mask: 0xf,
-    sizebits: 32,
-    ldbl_align: 4,
-    ldbl_format: LongDoubleFormat::X87,
-    arch: &super::x86::I486,
-    os: &LINUX,
-    libdirs: span![const_sv!("lib"), const_sv!("lib32")],
-    default_libs: span![const_sv!("c")],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
-    enabled_features: span![],
-    available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("ld-linux.so.2"),
-};
-
-pub static I586_LINUX_GNU: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 32,
-    llongbits: 64,
-    ptrbits: 32,
-    fnptrbits: 32,
-    nearptrbits: 32,
-    farptrbits: 32,
-    max_align: 4,
-    ptralign: 4,
-    intmaxbits: 64,
-    lock_free_atomic_mask: 0xf,
-    sizebits: 32,
-    ldbl_align: 4,
-    ldbl_format: LongDoubleFormat::X87,
-    arch: &super::x86::I586,
-    os: &LINUX,
-    libdirs: span![const_sv!("lib"), const_sv!("lib32")],
-    default_libs: span![const_sv!("c")],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
-    enabled_features: span![],
-    available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("ld-linux.so.2"),
 };
 
 pub static I686_LINUX_GNU: TargetProperties = TargetProperties {
-    intbits: 32,
-    longbits: 32,
-    llongbits: 64,
-    ptrbits: 32,
-    fnptrbits: 32,
-    nearptrbits: 32,
-    farptrbits: 32,
-    max_align: 4,
-    ptralign: 4,
-    intmaxbits: 64,
-    lock_free_atomic_mask: 0xf,
-    sizebits: 32,
-    ldbl_align: 4,
-    ldbl_format: LongDoubleFormat::X87,
-    arch: &super::x86::I686,
+    primitives: &X86_32_PRIMITIVES,
     os: &LINUX,
-    libdirs: span![const_sv!("lib"), const_sv!("lib32")],
-    default_libs: span![const_sv!("c")],
-    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
-    endfiles: span![const_sv!("crtn.o")],
+    arch: &I686,
+    link: &X86_32_LINUX_GNU_LINK,
+    abis: gnu::x86_32::ABIS,
     enabled_features: span![],
-    available_formats: span![ObjectFormat::Elf, ObjectFormat::Coff],
-    interp: const_sv!("ld-linux.so.2"),
+};
+
+pub static I586_LINUX_GNU: TargetProperties = TargetProperties {
+    primitives: &X86_32_PRIMITIVES,
+    os: &LINUX,
+    arch: &I586,
+    link: &X86_32_LINUX_GNU_LINK,
+    abis: gnu::x86_32::ABIS,
+    enabled_features: span![],
+};
+pub static I486_LINUX_GNU: TargetProperties = TargetProperties {
+    primitives: &X86_32_PRIMITIVES,
+    os: &LINUX,
+    arch: &I486,
+    link: &X86_32_LINUX_GNU_LINK,
+    abis: gnu::x86_32::ABIS,
+    enabled_features: span![],
+};
+pub static I386_LINUX_GNU: TargetProperties = TargetProperties {
+    primitives: &X86_32_PRIMITIVES,
+    os: &LINUX,
+    arch: &I386,
+    link: &X86_32_LINUX_GNU_LINK,
+    abis: gnu::x86_32::ABIS,
+    enabled_features: span![],
+};
+
+pub static X86_64_LINUX_MUSL: TargetProperties = TargetProperties {
+    primitives: &X86_64_PRIMITIVES,
+    os: &LINUX,
+    arch: &X86_64,
+    link: &X86_64_LINUX_MUSL_LINK,
+    abis: musl::x86_64::ABIS,
+    enabled_features: span![],
 };

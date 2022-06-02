@@ -257,7 +257,7 @@ struct BranchToInfo {
 pub struct FunctionCodegen<F: FunctionRawCodegen> {
     inner: F,
     vstack: VecDeque<VStackValue<F::Loc>>,
-    properties: &'static TargetProperties,
+    properties: &'static TargetProperties<'static>,
     targets: HashMap<u32, Vec<VStackValue<F::Loc>>>,
     diverged: bool,
     locals: Vec<(VStackValue<F::Loc>, Type)>,
