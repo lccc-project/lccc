@@ -1013,7 +1013,7 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                         Meta::KeyValue(path, value) // For the record, deref patterns would make this a million times easier
                             if *path
                                 == SimplePath {
-                                    root: false,
+                                    root: None,
                                     idents: vec![String::from("link_name")],
                                 } =>
                         {
@@ -1026,7 +1026,7 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                         Meta::KeyValue(path, value)
                             if *path
                                 == SimplePath {
-                                    root: false,
+                                    root: None,
                                     idents: vec![String::from("lang")],
                                 }
                                 && **value == Meta::String(String::from("main")) =>
@@ -1049,7 +1049,7 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                         Meta::KeyValue(path, value)
                             if *path
                                 == SimplePath {
-                                    root: false,
+                                    root: None,
                                     idents: vec![String::from("lang")],
                                 }
                                 && **value == Meta::String(String::from("main")) =>
@@ -1059,7 +1059,7 @@ pub fn convert(Mod { attrs, items }: &Mod) -> Program {
                         Meta::KeyValue(path, value)
                             if *path
                                 == SimplePath {
-                                    root: false,
+                                    root: None,
                                     idents: vec![String::from("link_name")],
                                 } => {}
                         x => todo!("#[{:?}]", attr),

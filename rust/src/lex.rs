@@ -5,6 +5,13 @@ use core::iter::Peekable;
 
 use unicode_xid::UnicodeXID;
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum IdentifierKind {
+    Normal,
+    Keyword,
+    Raw,
+}
+
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum GroupType {
@@ -30,9 +37,7 @@ pub enum StrType {
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TokenType {
-    Keyword,
-    Reserved,
-    Identifier,
+    Identifier(IdentifierKind),
     Character(CharType),
     String(StrType),
     Number,
@@ -157,7 +162,7 @@ pub fn lex_group<I: Iterator<Item = char>>(
                 let mut id = String::from(x);
                 file.next();
                 while let Some(x) = file.peek() {
-                    if !x.is_xid_continue() {
+                    if !x.is_xid_continue() && x != '_' {
                         break;
                     }
                     id.push(x);
@@ -193,7 +198,54 @@ pub fn lex_group<I: Iterator<Item = char>>(
                             },
                         });
                     }
-                    "r" => todo!("raw string, or raw identifier, or something like that"),
+                    prefix if file.peek() == Some('\"') || file.peek() == Some('\'') => {
+                        todo!("Unhandled prefix for string or character {}", prefix)
+                    }
+                    prefix if file.peek() == Some('#') => {
+                        file.next();
+                        let rbegin = file.pos;
+                        let c = file.next().unwrap();
+                        if c.is_xid_start() || c == '_' {
+                            let mut rid = c.to_string();
+                            while let Some(x) = file.peek() {
+                                if !x.is_xid_continue() && x != '_' {
+                                    break;
+                                }
+                                rid.push(x);
+                                file.next();
+                            }
+                            match prefix {
+                                "r" => match &*rid {
+                                    "crate" | "super" | "Self" | "self" => {
+                                        panic!("Cannot use {} as a raw identifier", rid)
+                                    }
+                                    _ => result.push(Lexeme::Token {
+                                        ty: TokenType::Identifier(IdentifierKind::Raw),
+                                        tok: rid,
+                                        span: Span {
+                                            begin: rbegin,
+                                            end: file.pos,
+                                            path: String::from("<todo>"),
+                                        },
+                                    }),
+                                },
+                                "k" => result.push(Lexeme::Token {
+                                    ty: TokenType::Identifier(IdentifierKind::Keyword),
+                                    tok: rid,
+                                    span: Span {
+                                        begin: rbegin,
+                                        end: file.pos,
+                                        path: String::from("<todo>"),
+                                    },
+                                }),
+                                prefix => panic!("Invalid prefix {}", prefix),
+                            }
+                        } else if c == '"' || c == '#' {
+                            todo!("Unhandled raw string")
+                        } else {
+                            todo!("Can you have a non id, non-raw string after a prefix")
+                        }
+                    }
                     _ => result.push(Lexeme::Token {
                         ty: match &id as &str {
                             "as" | "async" | "await" | "break" | "const" | "continue" | "crate"
@@ -201,13 +253,11 @@ pub fn lex_group<I: Iterator<Item = char>>(
                             | "if" | "impl" | "in" | "let" | "loop" | "match" | "mod" | "move"
                             | "mut" | "pub" | "ref" | "return" | "self" | "Self" | "static"
                             | "struct" | "super" | "trait" | "true" | "type" | "unsafe" | "use"
-                            | "where" | "while" => TokenType::Keyword,
-                            "abstract" | "become" | "box" | "do" | "final" | "macro"
-                            | "override" | "priv" | "typeof" | "unsized" | "virtual" | "yield" => {
-                                TokenType::Reserved
-                            }
+                            | "where" | "while" | "abstract" | "become" | "box" | "do"
+                            | "final" | "macro" | "override" | "priv" | "typeof" | "unsized"
+                            | "virtual" | "yield" => TokenType::Identifier(IdentifierKind::Keyword),
                             "_" => TokenType::Symbol,
-                            _ => TokenType::Identifier,
+                            _ => TokenType::Identifier(IdentifierKind::Normal),
                         },
                         tok: id,
                         span: Span {
@@ -253,16 +303,56 @@ pub fn lex_group<I: Iterator<Item = char>>(
             }
             '\'' => {
                 file.next();
-                result.push(Lexeme::Token {
-                    ty: TokenType::String(StrType::Default),
-                    tok: lex_single_char(file).to_string(),
-                    span: Span {
-                        begin,
-                        end: file.pos,
-                        path: String::from("<todo>"),
-                    },
-                });
-                todo!("{:?}", file.next());
+                let c = file.peek().unwrap();
+                if c.is_xid_start() || c == '_' {
+                    file.next();
+                    let nc = file.peek();
+                    match nc {
+                        Some('\'') => result.push(Lexeme::Token {
+                            ty: TokenType::Character(CharType::Default),
+                            tok: c.to_string(),
+                            span: Span {
+                                begin,
+                                end: file.pos,
+                                path: String::from("<todo>"),
+                            },
+                        }),
+                        Some(nc) if c.is_xid_continue() || c == '_' => {
+                            let mut id = c.to_string();
+                            id.push(nc);
+                            while let Some(x) = file.peek() {
+                                if !x.is_xid_continue() || x != '_' {
+                                    break;
+                                }
+                                id.push(x);
+                                file.next();
+                            }
+                            result.push(Lexeme::Token {
+                                ty: TokenType::Lifetime,
+                                tok: id,
+                                span: Span {
+                                    begin,
+                                    end: file.pos,
+                                    path: String::from("<todo>"),
+                                },
+                            })
+                        }
+                        _ => result.push(Lexeme::Token {
+                            ty: TokenType::Lifetime,
+                            tok: c.to_string(),
+                            span: Span {
+                                begin,
+                                end: file.pos,
+                                path: String::from("<todo>"),
+                            },
+                        }),
+                    }
+                } else {
+                    let c = lex_single_char(file);
+                    if file.next().unwrap() != '\'' {
+                        panic!("Expected \' following character literal")
+                    }
+                }
             }
             x if x.is_whitespace() => {
                 file.next();

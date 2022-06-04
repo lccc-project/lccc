@@ -8,6 +8,23 @@ use crate::{
     parse::{Item, SimplePath, Visibility},
 };
 
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[repr(u16)]
+pub enum HygieneMode {
+    CallSiteOnly = 0,
+    MixedSite = 1,
+    DefSiteOnly = 2,
+    NoGlobals = 3,
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct HygieneId {
+    pub crate_id: u64,
+    pub xref_index: u32,
+    pub hygiene: HygieneMode,
+    pub flags: u16,
+}
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum MacroDefn {
     DeclMacro(DeclMacro),
@@ -62,33 +79,9 @@ pub fn find_macros(
             attrs,
             visibility,
             name,
-            arms,
+            content,
         } => {
-            let mut path = path;
-            let mut decl = DeclMacro {
-                exported: false,
-                arms: arms.clone(),
-            };
-            for attr in attrs {
-                match attr {
-                    crate::parse::Meta::Ident(SimplePath {
-                        idents,
-                        root: false,
-                    }) if idents[..] == ["macro_export"] => {
-                        path.idents.truncate(1);
-                        decl.exported = true;
-                    }
-                    _ => {}
-                }
-            }
-            if let Some(Visibility::Pub) = visibility {
-                decl.exported = true;
-            }
-            path.idents.push(name.clone());
-            if !macros.defns.get(&path).is_some() {
-                macros.defns.insert(path, MacroDefn::DeclMacro(decl));
-                ret = Ok(());
-            }
+            todo!("macro_rules");
         }
         Item::Mod { name, content, .. } => {
             path.idents.push(name.clone());
