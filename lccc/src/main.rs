@@ -704,8 +704,7 @@ fn main() {
                     eprintln!("Passing -dynamic-linker {}", interp.display());
                     cmd.arg("-dynamic-linker").arg(interp);
                 }
-                match Command::new("ld")
-                    .args(&link_args)
+                match cmd
                     .args(
                         libdirs
                             .iter()
