@@ -645,17 +645,19 @@ fn main() {
                 }
 
                 let mut interp = None;
+                eprintln!("{:?}", libdirs);
+
+                eprintln!("Interp: {}", properties.link.interp);
 
                 for libdir in &libdirs {
                     let mut path = libdir.clone();
                     path.push(properties.link.interp);
                     if path.exists() {
+                        eprintln!("Found interpreter: {}", path.display());
                         interp = Some(path);
                         break;
                     }
                 }
-
-                let interp = interp.unwrap();
 
                 let mut startfiles = Vec::new();
                 for file in properties.link.startfiles {
@@ -696,11 +698,14 @@ fn main() {
                         panic!("Could not find endfile {}", file);
                     }
                 }
-
+                let mut cmd = Command::new("ld");
+                cmd.args(&link_args);
+                if let Some(interp) = &interp {
+                    eprintln!("Passing -dynamic-linker {}", interp.display());
+                    cmd.arg("-dynamic-linker").arg(interp);
+                }
                 match Command::new("ld")
                     .args(&link_args)
-                    .arg("-dynamic-linker")
-                    .arg(interp)
                     .args(
                         libdirs
                             .iter()

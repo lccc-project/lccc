@@ -26,25 +26,25 @@ pub static LINUX: OperatingSystemProperties = OperatingSystemProperties {
 
 pub static X86_64_LINUX_GNU_LINK: LinkProperties = LinkProperties {
     libdirs: span![const_sv!("lib"), const_sv!("lib64")],
-    default_libs: span![],
+    default_libs: span![const_sv!("c")],
     startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
-    interp: const_sv!("ld-linux-x86_64.so.2"),
+    interp: const_sv!("ld-linux-x86-64.so.2"),
 };
 
 pub static X86_64_LINUX_MUSL_LINK: LinkProperties = LinkProperties {
     libdirs: span![const_sv!("lib"), const_sv!("lib64")],
-    default_libs: span![],
+    default_libs: span![const_sv!("c")],
     startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
-    interp: const_sv!("ld-musl-x86_64.so"),
+    interp: const_sv!("ld-musl-x86-64.so"),
 };
 
 pub static X32_LINUX_GNU_LINK: LinkProperties = LinkProperties {
     libdirs: span![const_sv!("lib"), const_sv!("libx32")],
-    default_libs: span![],
+    default_libs: span![const_sv!("c")],
     startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
@@ -53,7 +53,7 @@ pub static X32_LINUX_GNU_LINK: LinkProperties = LinkProperties {
 
 pub static X86_32_LINUX_GNU_LINK: LinkProperties = LinkProperties {
     libdirs: span![const_sv!("lib"), const_sv!("lib32")],
-    default_libs: span![],
+    default_libs: span![const_sv!("c")],
     startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
