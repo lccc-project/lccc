@@ -40,8 +40,22 @@ impl<'a> Location<'a> {
     #[track_caller]
     #[inline]
     pub fn caller() -> &'static Location<'static> {
-        let (file, line, col) = ::__lccc::builtins::Rust::__builtin_caller_location();
-        Self { file, line, col }
+        {
+            #[__lccc::force_visible]
+            #[__lccc::abi_tag = ""]
+            fn __lccc__get_caller_location(
+                x: &'static Location<'static>,
+            ) -> &'static Location<'static> {
+                x
+            }
+        }
+        extern "Rust" {
+            #[track_caller]
+            #[link_name = "_ZZNSt5panic8Location6callerEE27__lccc__get_caller_location"]
+            fn __lccc__get_caller_location() -> &'static Location<'static>;
+        }
+
+        unsafe { __lccc__get_caller_location() }
     }
 
     pub fn file(&self) -> &str {
