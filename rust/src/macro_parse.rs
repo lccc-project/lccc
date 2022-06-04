@@ -1,5 +1,6 @@
 #![allow(dead_code)] // For now
 
+use peekmore::PeekMoreIterator;
 use xlang::abi::collection::{HashMap, HashSet};
 
 pub use crate::lex::GroupType;
@@ -42,6 +43,10 @@ pub struct MacroArm {
     pub expansion: Vec<MacroOutput>,
 }
 
+pub fn parse_macro_arm<I: Iterator>(it: &mut PeekMoreIterator<I>) -> MacroArm {
+    todo!()
+}
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum MacroMatcher {
     RawToken(Lexeme),
@@ -50,9 +55,18 @@ pub enum MacroMatcher {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum MacroOutput {
-    RawToken(Lexeme),
+    RawToken(HygieneId, Lexeme),
     Group(GroupType, Vec<Self>),
+    LitDollar,
+    Repetition(Repetition),
+    Expansion(Expansion),
 }
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Repetition {}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Expansion {}
 
 #[derive(Clone, Debug)]
 pub struct Macros {

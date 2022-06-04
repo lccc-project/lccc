@@ -836,6 +836,8 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
         crate::parse::Expr::ArrayCtor(_) => todo!("array ctor"),
         crate::parse::Expr::TupleCtor(_) => todo!("tuple ctor"),
         crate::parse::Expr::Match { .. } => todo!("match"),
+        crate::parse::Expr::ConstBlock(_) => todo!("const block"),
+        crate::parse::Expr::AsyncBlock(_) => todo!("async block"),
     }
 }
 

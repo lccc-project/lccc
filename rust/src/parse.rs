@@ -431,6 +431,8 @@ impl Display for BinaryOp {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Expr {
     UnsafeBlock(Vec<BlockItem>),
+    ConstBlock(Vec<BlockItem>),
+    AsyncBlock(Vec<BlockItem>),
     Block(Vec<BlockItem>),
     Loop(Vec<BlockItem>),
     While {
@@ -490,6 +492,8 @@ impl Expr {
                 | Self::Loop(_)
                 | Self::If { .. }
                 | Self::While { .. }
+                | Self::ConstBlock { .. }
+                | Self::AsyncBlock { .. }
         )
     }
 }
@@ -3520,6 +3524,44 @@ pub fn parse_simple_expr<I: Iterator<Item = Lexeme>>(
                     let mut peek = inner.into_iter().peekmore();
                     let block = parse_block(&mut peek);
                     Expr::UnsafeBlock(block)
+                }
+                _ => panic!("Invalid token"),
+            }
+        }
+        Lexeme::Token {
+            ty: TokenType::Identifier(IdentifierKind::Keyword),
+            tok,
+            ..
+        } if tok == "const" => {
+            drop(it.next().unwrap());
+            match it.next().unwrap() {
+                Lexeme::Group {
+                    ty: GroupType::Braces,
+                    inner,
+                    ..
+                } => {
+                    let mut peek = inner.into_iter().peekmore();
+                    let block = parse_block(&mut peek);
+                    Expr::ConstBlock(block)
+                }
+                _ => panic!("Invalid token"),
+            }
+        }
+        Lexeme::Token {
+            ty: TokenType::Identifier(IdentifierKind::Keyword),
+            tok,
+            ..
+        } if tok == "async" => {
+            drop(it.next().unwrap());
+            match it.next().unwrap() {
+                Lexeme::Group {
+                    ty: GroupType::Braces,
+                    inner,
+                    ..
+                } => {
+                    let mut peek = inner.into_iter().peekmore();
+                    let block = parse_block(&mut peek);
+                    Expr::AsyncBlock(block)
                 }
                 _ => panic!("Invalid token"),
             }
