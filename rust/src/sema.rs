@@ -779,10 +779,11 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
             kind: *kind,
             val: val.clone(),
         },
-        crate::parse::Expr::UnsafeBlock(inner) => Expression::UnsafeBlock {
+        crate::parse::Expr::Block(crate::parse::Block::Unsafe(inner)) => Expression::UnsafeBlock {
             block: convert_block(named_types, inner),
             ty: None,
         },
+        crate::parse::Expr::Block(_) => panic!("block"),
         crate::parse::Expr::MacroExpansion { .. } => unreachable!(),
         crate::parse::Expr::StructConstructor(id, args) => Expression::StructInitializer {
             args: args
@@ -813,9 +814,6 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
         }),
         crate::parse::Expr::Await(_) => todo!("await"),
         crate::parse::Expr::Block(_) => todo!("block"),
-        crate::parse::Expr::Loop(_) => todo!("loop"),
-        crate::parse::Expr::While { .. } => todo!("while"),
-        crate::parse::Expr::If { .. } => todo!("if"),
         crate::parse::Expr::LetExpr(_, _) => todo!("let"),
         crate::parse::Expr::Return(_) => todo!("return"),
         crate::parse::Expr::Break(_, _) => todo!("break"),
@@ -835,9 +833,7 @@ pub fn convert_expr(named_types: &[Type], orig: &crate::parse::Expr) -> Expressi
         crate::parse::Expr::RangeFull => todo!("range full"),
         crate::parse::Expr::ArrayCtor(_) => todo!("array ctor"),
         crate::parse::Expr::TupleCtor(_) => todo!("tuple ctor"),
-        crate::parse::Expr::Match { .. } => todo!("match"),
-        crate::parse::Expr::ConstBlock(_) => todo!("const block"),
-        crate::parse::Expr::AsyncBlock(_) => todo!("async block"),
+        crate::parse::Expr::Yeet(_) => todo!(),
     }
 }
 
@@ -854,6 +850,13 @@ pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> 
             crate::parse::BlockItem::Item(_) => {
                 todo!("items in code blocks are currently unsupported");
             }
+            crate::parse::BlockItem::Block(crate::parse::Block::Unsafe(inner)) => {
+                result.push(Statement::Expression(Expression::UnsafeBlock {
+                    block: convert_block(named_types, inner),
+                    ty: None,
+                }));
+            }
+            crate::parse::BlockItem::Block(_) => panic!("block"),
             crate::parse::BlockItem::Let { pattern, ty, value } => match (pattern, ty, value) {
                 (Pattern::Discard, None, None) => {}
                 (Pattern::Discard, None, Some(value)) => {
@@ -874,7 +877,7 @@ pub fn convert_block(named_types: &[Type], orig: &[crate::parse::BlockItem]) -> 
                 }
                 (pat, ty, expr) => todo!("({:?},{:?},{:?})", pat, ty, expr),
             },
-            crate::parse::BlockItem::MacroExpansion { .. } => unreachable!(),
+            crate::parse::BlockItem::MacroExpansionStat { .. } => unreachable!(),
         }
     }
     result
