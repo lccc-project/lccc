@@ -292,9 +292,9 @@ dependencies = [
 
 [[package]]
 name = "target-tuples"
-version = "0.5.6"
+version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcd09c90260f9bfbf7b7d3086df6559a3898a6e4c4a9e1473a98e41e3ed8be28"
+checksum = "0a4b9391aa880da41b49d316888104bb5a7724513391f81b767954e183012854"
 
 [[package]]
 name = "temp-file"
@@ -374,6 +374,9 @@ dependencies = [
 name = "xlang_backend"
 version = "0.1.0"
 dependencies = [
+ "arch-ops",
+ "binfmt",
+ "target-tuples",
  "xlang",
 ]
 

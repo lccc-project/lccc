@@ -411,4 +411,31 @@ impl TypeInformation {
             .map(|fields| fields.get(name).cloned().map(|(_, ty)| ty))
             .and_then(Into::into)
     }
+
+    /// The size of a pointer type. May be more efficient to use over `type_size` if you don't already have a pointer type
+    pub fn pointer_size(&self, pointee: &Type, kind: PointerKind) -> u64 {
+        let rawwidth = match kind {
+            PointerKind::Far => self.properties.primitives.farptrbits,
+            PointerKind::Near => self.properties.primitives.nearptrbits,
+            PointerKind::Default => match pointee {
+                Type::FnType(_) => self.properties.primitives.fnptrbits,
+                _ => self.properties.primitives.ptrbits,
+            },
+            kind => panic!("Unexpected pointer kind {:?}", kind),
+        };
+        let rawsize = ((rawwidth + 7) / 8) as u64;
+        let maxalign = self.properties.primitives.ptralign as u64;
+        if rawsize.next_power_of_two() <= maxalign {
+            rawsize.next_power_of_two()
+        } else {
+            (rawsize + (maxalign - 1)) & (!(maxalign - 1))
+        }
+    }
+
+    /// The alignment requirement of a pointer type. May be more efficient to use over `type_align` if you don't already have a pointer type
+    pub fn pointer_align(&self, pointee: &Type, kind: PointerKind) -> u64 {
+        let size = self.pointer_size(pointee, kind);
+        let maxalign = self.properties.primitives.ptralign as u64;
+        size.min(maxalign)
+    }
 }
