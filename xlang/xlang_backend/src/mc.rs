@@ -77,7 +77,10 @@ pub trait MachineFeatures {
 
 /// An abstract machine instruction, converted by `xlang_backend` from XIR.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MCInsn<Loc> {
+    /// Performs no-operation
+    Null,
     /// Move a value from one location to another
     Mov {
         /// The destination location
@@ -139,13 +142,41 @@ pub enum MCInsn<Loc> {
     Return,
 }
 
+impl<Loc> Default for MCInsn<Loc> {
+    fn default() -> Self {
+        Self::Null
+    }
+}
+
 /// A location (register) allocated by the backend
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Location {
     id: u32,
     has_addr: bool,
     size: u64,
     align: u64,
+}
+
+impl Location {
+    /// The id of the `Location`
+    pub const fn id(&self) -> u32 {
+        self.id
+    }
+
+    /// Whether or not the location needs/has an address
+    pub const fn has_addr(&self) -> bool {
+        self.has_addr
+    }
+
+    /// The required size of the location
+    pub const fn size(&self) -> u64 {
+        self.size
+    }
+
+    /// The required alignment for the location, if it has an address
+    pub const fn align(&self) -> u64 {
+        self.align
+    }
 }
 
 impl ValLocation for Location {
@@ -495,6 +526,7 @@ pub trait MCWriter {
     fn resolve_locations(
         &self,
         insns: &mut [MCInsn<<Self::Features as MachineFeatures>::Loc>],
+        callconv: &<Self::Features as MachineFeatures>::CallConv,
     ) -> Self::Clobbers;
     /// Writes the machine code to the given stream
     fn write_machine_code<I: InsnWrite>(
@@ -529,6 +561,20 @@ pub struct MCBackend<W: MCWriter> {
     strings: Rc<RefCell<StringMap>>,
     writer: W,
     functions: HashMap<String, FunctionCodegen<MCFunctionCodegen<W::Features>>>,
+}
+
+impl<W: MCWriter> MCBackend<W> {
+    /// Creates a new backend writer
+    pub fn new(x: W) -> Self {
+        Self {
+            properties: None,
+            feature: Span::empty(),
+            name_targ: None,
+            strings: Rc::new(RefCell::new(StringMap::new())),
+            writer: x,
+            functions: HashMap::new(),
+        }
+    }
 }
 
 impl<W: MCWriter> XLangPlugin for MCBackend<W> {
@@ -647,8 +693,8 @@ impl<W: MCWriter> XLangCodegen for MCBackend<W> {
 
         for Pair(name, func) in core::mem::take(&mut self.functions) {
             let mut inner = func.into_inner();
-
-            let clobbers = self.writer.resolve_locations(&mut inner.mc_insns);
+            let cc = &inner.callconv;
+            let clobbers = self.writer.resolve_locations(&mut inner.mc_insns, &cc.0);
 
             let sym = Symbol::new(
                 name,

@@ -142,11 +142,11 @@ pub trait FnOnce<Args> {
         Self: Sized;
 
     #[unstable(feature = "lccc_fn_once_call_unsized")]
-    unsafe extern "rust-call" fn call_once_unsized(src: *mut Self, args: Args) -> Self::Output;
+    unsafe extern "rust-call" fn call_once_unsized(self: *mut Self, args: Args) -> Self::Output;
 }
 
 default impl<T, Args> FnOnce<Args> for T {
-    unsafe extern "rust-call" fn call_once_unsized(src: *mut Self, args: Args) -> Self::Output {
+    unsafe extern "rust-call" fn call_once_unsized(self: *mut Self, args: Args) -> Self::Output {
         core::ptr::read(src).call_once(args)
     }
 }

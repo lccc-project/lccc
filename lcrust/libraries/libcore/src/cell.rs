@@ -1,3 +1,4 @@
+use crate::ops::CoereceUnsized;
 /**
  * rust/libcore/cell.rs
  * This file is part of lcrust standard libraries, a part of the lccc project
@@ -5,30 +6,35 @@
  * it under the terms of the GNU Lesser General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Lesser General Public License for more details.
- * 
+ *
  * Like all libraries as part of the lccc project,
- *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license. 
+ *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license.
  * When dealing in this software, you may, at your option, do so under only those terms,
- *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
+ *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms.
  */
-
-use crate::{marker::{Sized, Sync}, ops::FnOnce};
-use crate::ops::CoereceUnsized;
+use crate::{
+    marker::{Sized, Sync},
+    ops::FnOnce,
+};
 
 #[repr(transparent)]
 pub struct UnsafeCell<T: ?Sized> {
+    _phantom: PhantomData<*mut T>,
     #[__lccc::xlang::field_attributes(mutable)]
     inner: T,
 }
 
 impl<T> UnsafeCell<T> {
     pub const fn new(val: T) -> Self {
-        Self { inner: val }
+        Self {
+            _phantom: PhantomData,
+            inner: val,
+        }
     }
     pub fn into_inner(self) -> T {
         self.inner
@@ -53,6 +59,8 @@ impl<T: ?Sized> UnsafeCell<T> {
         &mut self.inner
     }
 }
+
+impl<T: Send + ?Sized> Send for UnsafeCell<T> {}
 
 impl<T: ?Sized> !Sync for UnsafeCell<T> {}
 
@@ -193,7 +201,9 @@ impl<'a, T: ?Sized + 'a> Drop for Ref<'a, T> {
     fn drop(&mut self) {
         // Why do we need atomics for something clearly thread safe?
         // ¯\_(ツ)_/¯
-        unsafe{::__lccc::xir!("destroy sequence atomic acquire":[self.inner]);}
+        unsafe {
+            ::__lccc::xir!("destroy sequence atomic acquire":[self.inner]);
+        }
         self.scount.update(|s| s - 1);
     }
 }

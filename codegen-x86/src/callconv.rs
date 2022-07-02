@@ -88,6 +88,7 @@ pub trait X86CallConv {
     fn find_return_val(&self, ty: &Type) -> Option<ValLocation>;
     fn pass_return_place(&self, ty: &Type, frame_size: usize) -> Option<ValLocation>;
     fn with_tag(&self, tag: Abi) -> Option<Box<dyn X86CallConv>>;
+    fn callee_saved(&self) -> &[X86Register];
 }
 
 #[derive(Clone, Debug)]
@@ -247,6 +248,19 @@ impl<S: std::hash::BuildHasher + Clone + 'static> X86CallConv for SysV64CC<S> {
 
     fn with_tag(&self, _: Abi) -> Option<Box<dyn X86CallConv>> {
         Some(Box::new((*self).clone()))
+    }
+
+    fn callee_saved(&self) -> &[X86Register]{
+        &[
+            X86Register::Rbx,
+            X86Register::Rbp,
+            X86Register::Rsp, // note: This is hardcoded in the codegen
+            X86Register::R12,
+            X86Register::R13,
+            X86Register::R14,
+            X86Register::R15,
+            
+        ]
     }
 }
 
