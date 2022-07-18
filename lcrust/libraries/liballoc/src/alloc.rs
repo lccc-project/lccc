@@ -20,31 +20,6 @@
 pub use ::core::alloc::*;
 use core::ptr::NonNull;
 
-#[__lccc::stable_vtable_layout]
-#[lang = "global_alloc"]
-pub unsafe trait GlobalAlloc {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8;
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout);
-    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        let bytes = self.alloc(layout);
-        ::__lccc::builtins::C::__builtin_memset(bytes, 0, layout.size());
-        bytes
-    }
-
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, mut new_size: usize) -> *mut u8 {
-        let align = layout.align();
-        new_size += (align - (new_size % align)) % align;
-        let n_layout = Layout::from_size_align_unchecked(new_size, align);
-        let ret = self.alloc(n_layout);
-        if ret.is_null() {
-            core::ptr::null_mut()
-        } else {
-            core::ptr::copy_nonoverlapping(ptr, ret, layout.size().min(new_size));
-            self.dealloc(ptr, layout);
-            ret
-        }
-    }
-}
 
 #[unstable(feature = "allocator_api", issue = "32838")]
 pub struct AllocError;
