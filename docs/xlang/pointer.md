@@ -77,3 +77,9 @@
         - The result is a valid pointer that differs from the pointer operand,
         - The type of the pointer operand has a non-trivial validity attribute.
     - Whenever the address of an lvalue is taken, if that lvalue was produced by indirecting a pointer
+
+## Reachability [ptr.reachability]
+
+1. A byte is reachable from a pointer `p` if it is part of the object representation of an object `o`, such that `p` points to or one-past-the-end of an object `a` that is *pointer-interconvertable* with `o` or `a` is a *sibling subobject* of such an object.
+2. A byte is not reachable for the purposes of reading from a pointer `p` if it belongs to the object representation of an object `o` such that there exists a pointer `q` that points to `o`, `p` is not derived from `q`, and `q` is `unique`. Otherwise that byte is reachable for the purposes of reading if it is reachable from `p`.
+3. A byte is not reachable for the purposes of writing from a pointer `p`, if either `p` or some pointer that `p` is derived from is `readshallow` or that byte belongs to the object-representation of an object `o`, such that either `o` is a const complete object or there is some pointer `q` that points to `o` where `q` is `readonly`, and the byte does not belong to the object-representation of a mutable subobject `a` of `o`. Otherwise, that byte is reachable for the purposes of writing if it is reachable for the purposes of reading from `p`.
