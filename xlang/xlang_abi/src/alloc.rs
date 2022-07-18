@@ -298,7 +298,7 @@ impl Layout {
     /// ## Errors
     /// Returns [`LayoutError`] if `self.size()`, padded to `self.align()`, and multiplied by `n`, overflows isize
     pub fn repeat(&self, n: usize) -> Result<(Self, usize), LayoutError> {
-        let Layout { size, align } = self.pad_to_align();
+        let Self { size, align } = self.pad_to_align();
         match (size.checked_mul(n), align) {
             (Some(asize), align) if asize <= (isize::MAX as usize) => Ok((
                 Self {
@@ -316,7 +316,7 @@ impl Layout {
     /// ## Errors
     /// Returns [`LayoutError`] if the resultant size, rounded up to the next multiple of the resultant alignment, overflows isize
     pub fn extend(&self, next: Self) -> Result<(Self, usize), LayoutError> {
-        let Layout { size, align } = self.align_to(next.align())?;
+        let Self { size, align } = self.align_to(next.align())?;
         match size
             .checked_add((next.align - (size % next.align)) % next.align)
             .and_then(|v| v.checked_add(next.size()))

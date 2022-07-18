@@ -197,7 +197,7 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
     }
 }
 
-#[allow(clippy::missing_errors_doc)]
+#[allow(clippy::missing_errors_doc, clippy::mismatching_type_param_order)]
 impl<A: Allocator> Box<dyn Any, A> {
     /// Downcasts `this` into `T`
     /// Returns `this` if the downcast fails
@@ -212,7 +212,7 @@ impl<A: Allocator> Box<dyn Any, A> {
     }
 }
 
-#[allow(clippy::missing_errors_doc)]
+#[allow(clippy::missing_errors_doc, clippy::mismatching_type_param_order)]
 impl<A: Allocator> Box<dyn Any + Send, A> {
     /// Downcasts `this` into `T`
     /// Returns `this` if the downcast fails
@@ -227,7 +227,7 @@ impl<A: Allocator> Box<dyn Any + Send, A> {
     }
 }
 
-#[allow(clippy::missing_errors_doc)]
+#[allow(clippy::missing_errors_doc, clippy::mismatching_type_param_order)]
 impl<A: Allocator> Box<dyn Any + Send + Sync, A> {
     /// Downcasts `this` into `T`
     /// Returns `this` if the downcast fails
@@ -258,25 +258,25 @@ impl<T: ?Sized, A: Allocator> DerefMut for Box<T, A> {
 
 impl<T: ?Sized, A: Allocator> AsRef<T> for Box<T, A> {
     fn as_ref(&self) -> &T {
-        &**self
+        self
     }
 }
 
 impl<T: ?Sized, A: Allocator> AsMut<T> for Box<T, A> {
     fn as_mut(&mut self) -> &mut T {
-        &mut **self
+        self
     }
 }
 
 impl<T: ?Sized, A: Allocator> Borrow<T> for Box<T, A> {
     fn borrow(&self) -> &T {
-        &**self
+        self
     }
 }
 
 impl<T: ?Sized, A: Allocator> BorrowMut<T> for Box<T, A> {
     fn borrow_mut(&mut self) -> &mut T {
-        &mut **self
+        self
     }
 }
 

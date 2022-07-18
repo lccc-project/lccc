@@ -1891,7 +1891,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                         tys.aggregate_layout(ty).unwrap().fields
                                     {
                                         let _ = aggregate.insert(
-                                            (&name).into(),
+                                            name.into(),
                                             VStackValue::Constant(Value::Uninitialized(ty)),
                                         );
                                     }

@@ -56,9 +56,9 @@ pub enum AnnotationItem {
 impl core::fmt::Display for AnnotationItem {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
-            AnnotationItem::Identifier(id) => id.fmt(f),
-            AnnotationItem::Value(id, val) => f.write_fmt(format_args!("{} = {}", id, val)),
-            AnnotationItem::Meta(id, rest) => {
+            Self::Identifier(id) => id.fmt(f),
+            Self::Value(id, val) => f.write_fmt(format_args!("{} = {}", id, val)),
+            Self::Meta(id, rest) => {
                 id.fmt(f)?;
                 f.write_str("(")?;
                 let mut sep = "";
@@ -631,14 +631,14 @@ pub enum Value {
 impl core::fmt::Display for Value {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
-            Value::Invalid(ty) => f.write_fmt(format_args!("invalid {}", ty)),
-            Value::Uninitialized(ty) => f.write_fmt(format_args!("uninit {}", ty)),
-            Value::GenericParameter(n) => f.write_fmt(format_args!("%{}", n)),
-            Value::Integer { ty, val } => f.write_fmt(format_args!("{} {}", ty, val)),
-            Value::GlobalAddress { ty, item } => {
+            Self::Invalid(ty) => f.write_fmt(format_args!("invalid {}", ty)),
+            Self::Uninitialized(ty) => f.write_fmt(format_args!("uninit {}", ty)),
+            Self::GenericParameter(n) => f.write_fmt(format_args!("%{}", n)),
+            Self::Integer { ty, val } => f.write_fmt(format_args!("{} {}", ty, val)),
+            Self::GlobalAddress { ty, item } => {
                 f.write_fmt(format_args!("global_address {} ({})", item, ty))
             }
-            Value::ByteString { content } => match core::str::from_utf8(content) {
+            Self::ByteString { content } => match core::str::from_utf8(content) {
                 Ok(s) => f.write_fmt(format_args!(" \"{}\"", s.escape_default())),
                 Err(mut err) => {
                     let mut bytes = &content[..];
@@ -672,13 +672,13 @@ impl core::fmt::Display for Value {
                     f.write_str("\"")
                 }
             },
-            Value::String { encoding, utf8, ty } => f.write_fmt(format_args!(
+            Self::String { encoding, utf8, ty } => f.write_fmt(format_args!(
                 "{} {} {}",
                 ty,
                 encoding,
                 utf8.escape_default()
             )),
-            Value::LabelAddress(n) => f.write_fmt(format_args!("label_address @{}", n)),
+            Self::LabelAddress(n) => f.write_fmt(format_args!("label_address @{}", n)),
         }
     }
 }

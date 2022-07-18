@@ -564,6 +564,7 @@ impl FunctionRawCodegen for X86CodegenState {
         todo!()
     }
 
+    #[allow(clippy::explicit_auto_deref)]
     fn get_callconv(&self) -> &Self::CallConv {
         &*self.callconv
     }

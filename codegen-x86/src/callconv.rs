@@ -250,7 +250,7 @@ impl<S: std::hash::BuildHasher + Clone + 'static> X86CallConv for SysV64CC<S> {
         Some(Box::new((*self).clone()))
     }
 
-    fn callee_saved(&self) -> &[X86Register]{
+    fn callee_saved(&self) -> &[X86Register] {
         &[
             X86Register::Rbx,
             X86Register::Rbp,
@@ -259,7 +259,6 @@ impl<S: std::hash::BuildHasher + Clone + 'static> X86CallConv for SysV64CC<S> {
             X86Register::R13,
             X86Register::R14,
             X86Register::R15,
-            
         ]
     }
 }

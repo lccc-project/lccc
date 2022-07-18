@@ -339,7 +339,7 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
             [PathComponent::Text(a)] | [PathComponent::Root, PathComponent::Text(a)] => {
                 a.clone().to_string()
             }
-            [PathComponent::Root, rest @ ..] | [rest @ ..] => self.inner.mangle(&rest),
+            [PathComponent::Root, rest @ ..] | [rest @ ..] => self.inner.mangle(rest),
         };
         self.mc_insns.push(MCInsn::CallSym(addr))
     }
@@ -597,8 +597,8 @@ impl<W: MCWriter> XLangPlugin for MCBackend<W> {
         let tys = Rc::new(tys);
         for Pair(path, mem) in &ir.root.members {
             match &mem.member_decl {
-                xlang::ir::MemberDeclaration::Function(f) => match &f.body {
-                    XLangSome(body) => {
+                xlang::ir::MemberDeclaration::Function(f) => {
+                    if let XLangSome(body) = &f.body {
                         let features = self
                             .writer
                             .get_features(self.properties.unwrap(), self.feature);
@@ -627,12 +627,11 @@ impl<W: MCWriter> XLangPlugin for MCBackend<W> {
                             tys.clone(),
                         );
 
-                        fncg.write_function_body(&body);
+                        fncg.write_function_body(body);
 
                         self.functions.insert(mangled_name, fncg);
                     }
-                    _ => {}
-                },
+                }
                 xlang::ir::MemberDeclaration::Static(_) => todo!("static"),
                 _ => {}
             }
