@@ -164,7 +164,7 @@ impl<T: ?Sized> From<&mut T> for NonNull<T> {
 #[unstable(feature = "lccc_unique_ptr")]
 #[__lccc::transparent_as_unreified_field]
 pub struct Unique<T: ?Sized> {
-    #[__lccc::xlang_pointer_attributes(unique, aligned)]
+    #[__lccc::xlang_pointer_attributes(aligned)]
     ptr: NonNull<T>,
     data: PhantomData<T>,
 }
