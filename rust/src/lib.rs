@@ -8,10 +8,9 @@ mod parse;
 mod sema;
 mod session;
 
-use irgen::irgen;
 use lex::lex;
 use parse::parse_mod;
-use sema::{convert, typeck_program, Program};
+use sema::{convert, Program};
 
 use xlang::abi::io::{self, IntoChars, Read};
 use xlang::abi::prelude::v1::*;
@@ -50,7 +49,6 @@ impl XLangFrontend for RustFrontend {
         let lexed = lex(&mut file);
         let items = parse_mod(lexed.into_iter(), std::vec::Vec::new());
         let mut converted = convert(&items);
-        typeck_program(&mut converted);
         println!("{}", converted);
         self.program = Some(converted);
         io::Result::Ok(())
@@ -59,9 +57,7 @@ impl XLangFrontend for RustFrontend {
 
 impl XLangPlugin for RustFrontend {
     fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
-        irgen(self.program.as_ref().unwrap(), file);
-        println!("{:#?}", file);
-        Result::Ok(())
+        todo!()
     }
 
     fn set_target(&mut self, _: Target) {}
