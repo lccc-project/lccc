@@ -70,6 +70,18 @@ impl Hash for TypeId {
     }
 }
 
+impl core::fmt::Debug for TypeId{
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result{
+        let mut end = self.1;
+        while unsafe{*end != 0} {end.offset(1);}
+        let st = unsafe{core::str::from_utf8_unchecked(core::slice::from_pointer_range(self.1..end))};
+        f.debug_struct("TypeId")
+            .field("name",&st)
+            .field("hash",&self.0)
+            .finish()
+    }
+}
+
 impl TypeId {
     pub fn of<T: ?Sized + 'static>() -> Self {
         let (a, b) = ::__lccc::builtins::Rust::__builtin_typeid::<T>();

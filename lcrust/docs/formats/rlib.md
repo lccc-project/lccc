@@ -80,12 +80,7 @@ There may be bytes in the file that are not part of any structure defined by thi
 
 ### String Table
 
-rmanifest files contain a table of interned string constants, which other parts of the file reference. These strings are encoded in UTF-8, and are Null-terminated. Entries referenced in the file may overlap, to allow optimizations where common suffixes can be contained in larger entries. A file may contain more than 1 string table, referenced by the `next` field of the previous String table's header. The maximum total size of all string tables, excluding the headers, is 2147483648 bytes (1<<31). If multiple string tables exist, references to entries in the string table shall occur as though there was a single string table in the file, that contains every byte of each string table in order by the `next` fields of each header directly concatenated (excluding the headers of each table). The first string table in a file is the one designated by the `stroff` field of the manifest header. 
-
-offsets into the string table start at 0. The entry at offset zero shall be an empty string (that is, the first byte of the string table shall be a null terminator).
-
-Each string table starts with a 8-byte header, which occurs at an offset in the file which is aligned to 8-bytes. The header is defined as follows
-
+rmanifest files contain a table of interned string constants, which other parts of the file reference. These strings are encoded in UTF-8, and are Null-terminated. Entries referenced in the file may overlap, to allow optimizations where common suffixes can be contained in larger entries. A file may contain more than 1 string table, referenced by the `next` field of the previous String table's header. The maximum total size of all string tables, excluding the headers, is 2147483648 bytes (1<<31). If multiple string tables exist, references to entries in the string table shall occur as though there was a single string table in the file, that contains every byte of each string table in order by the `next` fields of each header directly concatenated (excluding the headers of each table). The first string table in a file is the one designated by the `strtab` field. 
 ```rust
 #[repr(C,align(8))]
 pub struct StringTableHeader{
@@ -227,4 +222,57 @@ The `flags` field shall set the `REQUIRED` flag
 
 The `stability` field shall be a value of the `Stability` enum defined above. It is used in combination with the `stability` field in the crate header to define the stability of the crate.
 
-### 
+### Crate Contents Table
+
+```rust
+#[repr(C,align(8))]
+pub struct ExtraEntryContents{
+    id: u32,
+    len: u32,
+    flags: u64,
+    items: [ItemDef]
+}
+
+#[repr(C,align(8))]
+pub struct ItemDef{
+    xrefid: u32,
+    item_type: ItemType,
+    itemsig: u32,
+    stability: Stability,
+    file_ref: u32,
+    flags: u32,
+}
+```
+
+The `ExtraEntryContents` extra entry contains information about the crate contents. Only API-public (and macro/inline/generic-visible) items appear in this table.
+
+The `id` field shall be an ofset into the file's string table, which refers to a null-terminated UTF-8 string that is exactly equal to the string "CrateContensts".  
+The `len` field shall be 8 plus the number of entries in the `items` array times 32.  
+The `flags` field shall set the `REQUIRED` flag.  
+
+The `items` field is an array of `ItemDef`s that define the items in the crate. 
+The fields of `ItemDef` are defined as follows:
+
+`xrefid` is the offset into the reference table of the file that defines this item.  
+`item_type` is the type of the item, given by the following enum
+
+```rust
+#[repr(u32)]
+pub enum ItemType{
+    Module = 0,
+    Struct = 1,
+    Union = 2,
+    Enum = 3,
+    Function = 4,
+    Const = 5,
+    Static = 6,
+    ExternFn = 7,
+    ExternStatic = 8,
+    MacroOld = 9,
+    MacroNew = 10,
+    Export = 11,
+    TypeAlias = 12,
+
+}
+```
+

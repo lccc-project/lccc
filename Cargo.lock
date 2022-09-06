@@ -292,9 +292,9 @@ dependencies = [
 
 [[package]]
 name = "target-tuples"
-version = "0.5.8"
+version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a4b9391aa880da41b49d316888104bb5a7724513391f81b767954e183012854"
+checksum = "a91ae206c5889dbb7c59810f27ce41efe77fac95a4a1609dc64b67b938ea9ae9"
 
 [[package]]
 name = "temp-file"

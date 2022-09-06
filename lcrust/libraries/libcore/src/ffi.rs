@@ -28,194 +28,59 @@ pub enum c_void {
     __lccc_c_void_internal_field_2 = 0,
 }
 
-#[repr(transparent)]
-#[unstable(feature = "c_variadic", issue = "44930")]
-pub struct VaList<'a, 'f: 'a> {
-    #[cfg(any(
-        all(
-            not(target_arch = "aarch64"),
-            not(target_arch = "powerpc"),
-            not(target_arch = "x86_64")
-        ),
-        all(target_arch = "aarch64", target_os = "ios"),
-        target_arch = "wasm32",
-        target_arch = "asmjs",
-        windows
-    ))]
-    inner: VaListImpl<'f>,
-    #[cfg(all(
-        any(
-            target_arch = "aarch64",
-            target_arch = "powerpc",
-            target_arch = "x86_64"
-        ),
-        any(not(target_arch = "aarch64"), not(target_os = "ios")),
-        not(target_arch = "wasm32"),
-        not(target_arch = "asmjs"),
-        not(windows)
-    ))]
-    inner: &'a mut VaListImpl<'f>,
-    phantom: PhantomData<&'a mut VaListImpl<'f>>,
-}
 
-impl<'a, 'f: 'a> Deref for VaList<'a, 'f> {
-    type Target = VaListImpl<'f>;
-    #[cfg(any(
-        all(
-            not(target_arch = "aarch64"),
-            not(target_arch = "powerpc"),
-            not(target_arch = "x86_64")
-        ),
-        all(target_arch = "aarch64", target_os = "ios"),
-        target_arch = "wasm32",
-        target_arch = "asmjs",
-        windows
-    ))]
-    fn deref(&self) -> &VaListImpl<'f> {
-        &self.inner
-    }
-
-    #[cfg(all(
-        any(
-            target_arch = "aarch64",
-            target_arch = "powerpc",
-            target_arch = "x86_64"
-        ),
-        any(not(target_arch = "aarch64"), not(target_os = "ios")),
-        not(target_arch = "wasm32"),
-        not(target_arch = "asmjs"),
-        not(windows)
-    ))]
-    fn deref(&self) -> &VaListImpl<'f> {
-        self.inner
-    }
-}
-
-impl<'a, 'f: 'a> DerefMut for VaList<'a, 'f> {
-    #[cfg(any(
-        all(
-            not(target_arch = "aarch64"),
-            not(target_arch = "powerpc"),
-            not(target_arch = "x86_64")
-        ),
-        all(target_arch = "aarch64", target_os = "ios"),
-        target_arch = "wasm32",
-        target_arch = "asmjs",
-        windows
-    ))]
-    fn deref(&self) -> &mut VaListImpl<'f> {
-        &mut self.inner
-    }
-
-    #[cfg(all(
-        any(
-            target_arch = "aarch64",
-            target_arch = "powerpc",
-            target_arch = "x86_64"
-        ),
-        any(not(target_arch = "aarch64"), not(target_os = "ios")),
-        not(target_arch = "wasm32"),
-        not(target_arch = "asmjs"),
-        not(windows)
-    ))]
-    fn deref(&self) -> &mut VaListImpl<'f> {
-        self.inner
-    }
-}
-
-#[repr(transparent)]
-#[unstable(feature = "c_variadic", issue = "44930")]
-pub struct VaListImpl<'f> {
-    // typedef va_list __builtin_va_list;
-    _impl: ::__lccc::builtins::C::__builtin_va_list,
-    phantom: PhantomData<&'f mut &'f c_void>,
-}
-
-mod private {
-    #[unstable(feature = "c_variadic", issue = "44930")]
-    pub unsafe trait VaArgSafe {}
-}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl private::VaArgSafe for i8 {}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl private::VaArgSafe for u8 {}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl private::VaArgSafe for i16 {}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl private::VaArgSafe for u16 {}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl private::VaArgSafe for i32 {}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl private::VaArgSafe for u32 {}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl private::VaArgSafe for i64 {}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl private::VaArgSafe for u64 {}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl private::VaArgSafe for isize {}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl private::VaArgSafe for usize {}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl private::VaArgSafe for f32 {}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl private::VaArgSafe for f64 {}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl<T> private::VaArgSafe for *mut T {}
-#[unstable(feature = "c_variadic", issue = "44930")]
-unsafe impl<T> private::VaArgSafe for *const T {}
-
-#[unstable(feature = "c_variadic", issue = "44930")]
-impl<'f> VaListImpl<'f> {
-    #[unstable(feature = "c_variadic", issue = "44930")]
-    pub unsafe fn arg<T: private::VaArgSafe>(&mut self) -> T {
-        __lccc::builtins::C::__builtin_va_arg::<T>(&mut self._impl)
-    }
-    #[unstable(feature = "c_variadic", issue = "44930")]
-    pub unsafe fn with_copy<F: FnOnce(VaList<'_, 'f>) -> R, R>(&mut self, f: F) -> R {
-        let x = core::mem::zeroed();
-        __lccc::builtins::C::__builtin_va_copy(&mut self._impl, &mut x.inner._impl);
-        f(x)
-    }
-    #[unstable(feature = "c_variadic", issue = "44930")]
-    #[cfg(any(
-        all(
-            not(target_arch = "aarch64"),
-            not(target_arch = "powerpc"),
-            not(target_arch = "x86_64")
-        ),
-        all(target_arch = "aarch64", target_os = "ios"),
-        target_arch = "wasm32",
-        target_arch = "asmjs",
-        windows
-    ))]
-    pub fn as_va_list(&mut self) -> VaList<'_, 'f> {
-        VaList {
-            inner: VaListImpl { ..*self },
-            phantom: PhantomData,
+mod c_types{
+    macro_rules! c_types{
+        [
+            $(($c_type:ident: $cfg_name:ident => $($bit_size:literal: $ty:ty),* $(,)?)),* $(,)?
+        ] => {
+            $(
+                $(#[cfg($cfg_name = ::core::stringify!($bit_size))] pub type $c_type = $ty;)*
+    
+                #[cfg(not(any($($cfg_name = ::core::stringify!($bit_size))*)))] ::core::compile_error!("Cannot provided definition for ",::core::stringify!($c_type)," on this platform");
+            )*
         }
     }
-    #[unstable(feature = "c_variadic", issue = "44930")]
-    #[cfg(all(
-        any(
-            target_arch = "aarch64",
-            target_arch = "powerpc",
-            target_arch = "x86_64"
-        ),
-        any(not(target_arch = "aarch64"), not(target_os = "ios")),
-        not(target_arch = "wasm32"),
-        not(target_arch = "asmjs"),
-        not(windows)
-    ))]
-    pub fn as_va_list(&mut self) -> VaList<'_, 'f> {
-        VaList {
-            inner: self,
-            phantom: PhantomData,
+    
+    #[cfg(target_char_signedness = "signed")]
+    pub type c_char = i8;
+    
+    #[cfg(not(target_char_signedness = "signed"))]
+    pub type c_char = u8;
+
+    // lccc assumes float and double are IEEE-754 binary32 and binary64 respectively, so these definitions are correct everywhere
+    pub type c_float = f32;
+
+    pub type c_double = f64;
+    
+    c_types![
+        (c_short: target_short_width => 16: i16, 32: i32, 64: i64, 128: i128),
+        (c_int: target_int_width => 16: i16, 32: i32, 64: i64, 128: i128),
+        (c_long: target_long_width => 32: i32, 64: i64, 128: i128),
+        (c_longlong: target_llong_wdith => 64: i64, 128: i128),
+        (c_ushort: target_short_width => 16: u16, 32: u32, 64: u64, 128: u128),
+        (c_uint: target_int_width => 16: u16, 32: u32, 64: u64, 128: u128),
+        (c_ulong: target_long_width => 32: u32, 64: u64, 128: u128),
+        (c_ulonglong: target_llong_wdith => 64: u64, 128: u128),
+        (c_ptrdiff_t: target_size_width => 16: i16, 32: i32, 64: i64, 128: i128),
+        (c_size_t: target_size_width => 16: u16, 32: u32, 64: u64, 128: u128),
+    ]
+
+    macro_rules! gib_size{
+        ($c_type:ident => $rsize_ty:ty | $($bit_size:literal: $ty:ty),* $(,)?) => {
+            #[cfg(any($(all(target_pointer_width = ::core::stringify!($bit_size),target_size_width = ::core::stringify!($bit_size))),*))]
+                pub type $c_type = $rsize_ty;
+            
+            #[cfg(any($(all(target_pointer_width = ::core::stringify!($bit_size),target_size_width = ::core::stringify!($bit_size))),*))]
+            {
+                $(#[cfg(taget_size_width = ::core::stringify!($bit_size))] pub type $c_type = $ty;)*
+            }
         }
     }
+
+    gib_size!(c_size_t => usize | 16: u16, 32: u32, 64: u64, 128: u128);
+    gib_size!(c_ptrdiff_t => isize | 16: i16, 32: i32, 64: i64, 128: i128);
 }
 
-#[unstable(feature = "c_variadic", issue = "44930")]
-impl<'f> Drop for VaListImpl<'f> {
-    #[lang = "va_list_drop"]
-    fn drop(&mut self) {}
-}
+#[unstable(feature = "core_ffi_c",issue="rust-lang#94501")]
+pub use c_types::*;
