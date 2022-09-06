@@ -4,3 +4,4 @@
 
 * [rlib](rlib)
 * [Compiled Rust Macro Language](compiled-rust-macro-language)
+* [dylib](dylib)
