@@ -186,6 +186,7 @@ Only the `Stable`, `Unstable`, and `StableInEdition` variants are meaningful for
 
 `edition` shall be the integer value of the rust edition the attribute applies to. The values are the same as for the `crate_edition` field.
 
+`issue` in `Unstable`, `ConstUnstable`, and `SafeUnstable` is an index into the string table of the crate, which contains a string of the form `repo#issue-number`. 
 
 
 ### Extra Information
@@ -272,9 +273,13 @@ The `items` shall be an array of `ItemRef`s, given below. The length of the arra
 ```rust
 #[repr(C,align(8))]
 pub struct ItemRef{
-    pub ikind: u16,
-    pub xref: u16,
-    pub name: u32,
+    xrefid: u16,
+    item_type: u16,
+    name: u32,
+    itemsig: u32,
+    stability: Stability,
+    file_ref: u32,
+    flags: u32,
 }
 ```
 
@@ -302,4 +307,4 @@ pub struct ItemRef{
 * 20: An `extern` block
 * 21: A synthetically generated `function` definition
 * 22: A synthetically generated `static` definition
-* 23: A
+* 23: A type alias that designates an `impl Trait` type.
