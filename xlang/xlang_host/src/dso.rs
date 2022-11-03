@@ -43,21 +43,62 @@ macro_rules! impl_a_lot_of_fn_ptrs{
                     core::mem::transmute(p)
                 }
             }
-            #[cfg(all(windows,target_arch="x86"))]
-            unsafe impl<R, $($id),*> FnPtr for extern"fastcall" fn($($id),*)->R{
+
+            #[cfg(any(has_feature_c_unwind ="stable",has_feature_c_unwind="nightly"))]
+            unsafe impl<R, $($id),*> FnPtr for extern "C-unwind" fn($($id),*)->R{
                 unsafe fn from_raw_ptr(p: *mut c_void) -> Option<Self>{
                     core::mem::transmute(p)
                 }
             }
-            #[cfg(all(windows,target_arch="x86"))]
-            unsafe impl<R, $($id),*> FnPtr for unsafe extern"fastcall" fn($($id),*)->R{
+
+            #[cfg(any(has_feature_c_unwind ="stable",has_feature_c_unwind="nightly"))]
+            unsafe impl<R, $($id),*> FnPtr for unsafe extern "C-unwind" fn($($id),*)->R{
+                unsafe fn from_raw_ptr(p: *mut c_void) -> Option<Self>{
+                    core::mem::transmute(p)
+                }
+            }
+
+            #[cfg(all(windows,target_arch="x86",any(has_feature_c_unwind ="stable",has_feature_c_unwind="nightly")))]
+            unsafe impl<R, $($id),*> FnPtr for extern "fastcall-unwind" fn($($id),*)->R{
+                unsafe fn from_raw_ptr(p: *mut c_void) -> Option<Self>{
+                    core::mem::transmute(p)
+                }
+            }
+            #[cfg(all(windows,target_arch="x86",any(has_feature_c_unwind ="stable",has_feature_c_unwind="nightly")))]
+            unsafe impl<R, $($id),*> FnPtr for unsafe extern "fastcall-unwind" fn($($id),*)->R{
                 unsafe fn from_raw_ptr(p: *mut c_void) -> Option<Self>{
                     core::mem::transmute(p)
                 }
             }
 
             #[cfg(all(windows,target_arch="x86"))]
-            unsafe impl<R, $($id),*> FnPtr for extern"stdcall" fn($($id),*)->R{
+            unsafe impl<R, $($id),*> FnPtr for extern "fastcall" fn($($id),*)->R{
+                unsafe fn from_raw_ptr(p: *mut c_void) -> Option<Self>{
+                    core::mem::transmute(p)
+                }
+            }
+            #[cfg(all(windows,target_arch="x86"))]
+            unsafe impl<R, $($id),*> FnPtr for unsafe extern "fastcall" fn($($id),*)->R{
+                unsafe fn from_raw_ptr(p: *mut c_void) -> Option<Self>{
+                    core::mem::transmute(p)
+                }
+            }
+
+            #[cfg(all(windows,target_arch="x86",any(has_feature_c_unwind ="stable",has_feature_c_unwind="nightly")))]
+            unsafe impl<R, $($id),*> FnPtr for extern "stdcall-unwind" fn($($id),*)->R{
+                unsafe fn from_raw_ptr(p: *mut c_void) -> Option<Self>{
+                    core::mem::transmute(p)
+                }
+            }
+            #[cfg(all(windows,target_arch="x86",any(has_feature_c_unwind ="stable",has_feature_c_unwind="nightly")))]
+            unsafe impl<R, $($id),*> FnPtr for unsafe extern "stdcall-unwind" fn($($id),*)->R{
+                unsafe fn from_raw_ptr(p: *mut c_void) -> Option<Self>{
+                    core::mem::transmute(p)
+                }
+            }
+
+            #[cfg(all(windows,target_arch="x86"))]
+            unsafe impl<R, $($id),*> FnPtr for extern "stdcall" fn($($id),*)->R{
                 unsafe fn from_raw_ptr(p: *mut c_void) -> Option<Self>{
                     core::mem::transmute(p)
                 }

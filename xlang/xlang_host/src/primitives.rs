@@ -2,86 +2,38 @@
 
 #[cfg(doc)]
 mod unspecified {
-    pub struct UnspecifiedInt;
-    pub struct UnspecifiedUint;
+    pub struct unspecified_int;
+    pub struct unspecified_uint;
 }
 
-#[cfg(doc)]
-/// An unspecified unsigned integer type which is the same size as a pointer on the current architecture
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `usize`
-pub type uintptr = unspecified::UnspecifiedUint;
+cfg_match::cfg_match! {
+    doc => #[doc(no_inline)] pub type uintptr = unspecified::unspecified_uint;
+    target_pointer_width = "16" => #[doc = ""] pub type uintptr = u16;
+    target_pointer_width = "32" => #[doc = ""] pub type uintptr = u32;
+    target_pointer_width = "64" => #[doc = ""] pub type uintptr = u64;
+    target_pointer_width = "128" => #[doc = ""] pub type uintptr = u128;
+}
 
-#[cfg(doc)]
-/// An unspecified signed integer type which is the same size as a pointer on the current architecture
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `isize`
-pub type intptr = unspecified::UnspecifiedInt;
+cfg_match::cfg_match! {
+    doc => #[doc(no_inline)] pub type size_t = unspecified::unspecified_uint;
+    target_pointer_width = "16" => #[doc = ""] pub type size_t = u16;
+    target_pointer_width = "32" => #[doc = ""] pub type size_t = u32;
+    target_pointer_width = "64" => #[doc = ""] pub type size_t = u64;
+    target_pointer_width = "128" => #[doc = ""] pub type size_t = u128;
+}
 
-#[cfg(doc)]
-/// An unspecified unsigned integer type which matches the size of the C typedef `size_t`
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `usize`
-pub type size_t = unspecified::UnspecifiedUint;
+cfg_match::cfg_match! {
+    doc => #[doc(no_inline)] pub type intptr = unspecified::unspecified_int;
+    target_pointer_width = "16" => #[doc = ""] pub type intptr = i16;
+    target_pointer_width = "32" => #[doc = ""] pub type intptr = i32;
+    target_pointer_width = "64" => #[doc = ""] pub type intptr = i64;
+    target_pointer_width = "128" => #[doc = ""] pub type intptr = i128;
+}
 
-#[cfg(doc)]
-/// An unspecified signed integer type which matches the size of the C typedef `ptrdiff_t`
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `isize`
-pub type ptrdiff_t = unspecified::UnspecifiedInt;
-
-#[cfg(all(not(doc), target_pointer_width = "16"))]
-/// An unspecified unsigned integer type which is the same size as a pointer on the current architecture
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `usize`
-pub type uintptr = u16;
-
-#[cfg(all(not(doc), target_pointer_width = "32"))]
-/// An unspecified unsigned integer type which is the same size as a pointer on the current architecture
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `usize`
-pub type uintptr = u32;
-
-#[cfg(all(not(doc), target_pointer_width = "64"))]
-/// An unspecified unsigned integer type which is the same size as a pointer on the current architecture
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `usize`
-pub type uintptr = u64;
-
-#[cfg(all(not(doc), target_pointer_width = "16"))]
-/// An unspecified signed integer type which is the same size as a pointer on the current architecture
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `isize`
-pub type intptr = i16;
-
-#[cfg(all(not(doc), target_pointer_width = "32"))]
-/// An unspecified signed integer type which is the same size as a pointer on the current architecture
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `isize`
-pub type intptr = i32;
-
-#[cfg(all(not(doc), target_pointer_width = "64"))]
-/// An unspecified signed integer type which is the same size as a pointer on the current architecture
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `isize`
-pub type intptr = i64;
-
-#[cfg(all(not(doc), target_pointer_width = "16"))]
-/// An unspecified unsigned integer type which matches the size of the C typedef `size_t`
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `usize`
-pub type size_t = u16;
-
-#[cfg(all(not(doc), target_pointer_width = "32"))]
-/// An unspecified unsigned integer type which matches the size of the C typedef `size_t`
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `usize`
-pub type size_t = u32;
-
-#[cfg(all(not(doc), target_pointer_width = "64"))]
-/// An unspecified unsigned integer type which matches the size of the C typedef `size_t`
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `usize`
-pub type size_t = u64;
-
-#[cfg(all(not(doc), target_pointer_width = "16"))]
-/// An unspecified signed integer type which matches the size of the C typedef `ptrdiff_t`
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `isize`
-pub type ptrdiff_t = i16;
-
-#[cfg(all(not(doc), target_pointer_width = "32"))]
-/// An unspecified signed integer type which matches the size of the C typedef `ptrdiff_t`
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `isize`
-pub type ptrdiff_t = i32;
-
-#[cfg(all(not(doc), target_pointer_width = "64"))]
-/// An unspecified signed integer type which matches the size of the C typedef `ptrdiff_t`
-/// Note: See [Lang Team MCP#125](https://github.com/rust-lang/lang-team/issues/125) for why this type is not `isize`
-pub type ptrdiff_t = i64;
+cfg_match::cfg_match! {
+    doc => #[doc(no_inline)] pub type ptrdiff_t = unspecified::unspecified_int;
+    target_pointer_width = "16" => #[doc = ""] pub type ptrdiff_t = i16;
+    target_pointer_width = "32" => #[doc = ""] pub type ptrdiff_t = i32;
+    target_pointer_width = "64" => #[doc = ""] pub type ptrdiff_t = i64;
+    target_pointer_width = "128" => #[doc = ""] pub type ptrdiff_t = i128;
+}

@@ -1578,6 +1578,14 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
             let acc = parse_access_class(it);
             Expr::FetchAssign(op, v, acc)
         }
+        Token::Ident(id) if id=="select" => {
+            it.next();
+            let val = match it.next().unwrap(){
+                Token::IntLiteral(n) => n as u32,
+                tok => panic!("Unexpected token {:?}",tok)
+            };
+            Expr::Select(val)
+        }
         tok => todo!("{:?}", tok),
     }
 }

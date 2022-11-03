@@ -11,5 +11,6 @@ Interface for determining and using platform-specific properties of the host sys
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+cfg-match = "0.2.1"
 
 [build-dependencies]

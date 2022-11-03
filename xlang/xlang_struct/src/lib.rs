@@ -916,7 +916,6 @@ pub enum Expr {
     Exit {
         values: u16,
     },
-
     BinaryOp(BinaryOp, OverflowBehaviour),
     UnaryOp(UnaryOp, OverflowBehaviour),
     CallFunction(FnType),
@@ -949,6 +948,8 @@ pub enum Expr {
     Asm(AsmExpr),
     BeginStorage(u32),
     EndStorage(u32),
+
+    Select(u32),
 }
 
 impl Expr {
@@ -1019,6 +1020,7 @@ impl core::fmt::Display for Expr {
             Self::Asm(asm) => asm.fmt(f),
             Self::BeginStorage(n) => f.write_fmt(format_args!("begin storage _{}", n)),
             Self::EndStorage(n) => f.write_fmt(format_args!("end storage _{}", n)),
+            Self::Select(n) => f.write_fmt(format_args!("select {}",n))
         }
     }
 }
