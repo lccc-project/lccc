@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["Connor Horman <chorman64@gmail.com>"]
 edition = "2018"
 license = "BSD-2-Clause-Patent"
+description = """
+ABI Safe Interfaces for target triples and discovering compiler-required information about targets
+"""
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
