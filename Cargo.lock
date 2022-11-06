@@ -362,7 +362,7 @@ dependencies = [
 
 [[package]]
 name = "xlang_abi"
-version = "0.1.8"
+version = "0.2.0"
 dependencies = [
  "xlang_host",
 ]
@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "xlang_host"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "cfg-match",
 ]
