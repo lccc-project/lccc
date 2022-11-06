@@ -9,4 +9,4 @@ license = "BSD-2-Clause-Patent"
 
 [dependencies]
 target-tuples = "0.5.5"
-xlang_abi = {path="../xlang_abi"}
+xlang_abi = {path="../xlang_abi",version="0.2.0"}

@@ -8,7 +8,7 @@ license = "BSD-2-Clause-Patent"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-xlang_abi = {path="../xlang_abi"}
-xlang_targets = {path="../xlang_targets"}
+xlang_abi = {path="../xlang_abi",version="0.2.0"}
+xlang_targets = {path="../xlang_targets",version="0.1.0"}
 bitflags = "1.3"
 fake-enum = "0.1.4"
