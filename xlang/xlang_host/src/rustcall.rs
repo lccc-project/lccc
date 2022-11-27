@@ -2,7 +2,7 @@ use cfg_match::cfg_match;
 
 
 cfg_match! {
-    all(any(has_feature_c_unwind="stable",has_feature_c_unwind="feature"),rustcall_is_fastcall) => {
+    all(any(has_feature_c_unwind="stable"),rustcall_is_fastcall) => {
         ///
         /// A macro which allows definining functions, function pointer types, and extern blocks using the `"rustcall"` abi.
         /// This abi matches the ABI used by lcrust v0 for `extern "Rust"` functions, without `#[track_caller]` support.
@@ -34,7 +34,7 @@ cfg_match! {
             }
         }
     }
-    any(has_feature_c_unwind="stable",has_feature_c_unwind="feature") => {
+    any(has_feature_c_unwind="stable") => {
         ///
         /// A macro which allows definining functions, function pointer types, and extern blocks using the `"rustcall"` abi.
         /// This abi matches the ABI used by lcrust v0 for `extern "Rust"` functions, without `#[track_caller]` support.
