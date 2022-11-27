@@ -1020,7 +1020,7 @@ impl core::fmt::Display for Expr {
             Self::Asm(asm) => asm.fmt(f),
             Self::BeginStorage(n) => f.write_fmt(format_args!("begin storage _{}", n)),
             Self::EndStorage(n) => f.write_fmt(format_args!("end storage _{}", n)),
-            Self::Select(n) => f.write_fmt(format_args!("select {}",n))
+            Self::Select(n) => f.write_fmt(format_args!("select {}", n)),
         }
     }
 }

@@ -1,6 +1,5 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery, missing_docs)]
-
-#![cfg_attr(has_feature_c_unwind ="feature",feature(c_unwind))]
+#![cfg_attr(has_feature_c_unwind = "feature", feature(c_unwind))]
 
 //!
 //! The `xlang_host` crate provides access to the host target's apis, depending on the interfaces available from the OS
@@ -12,6 +11,4 @@ pub mod dso;
 /// Primitive types defined by the OS (such as the size type and the pointer-sized type).
 pub mod primitives;
 
-
 mod rustcall;
-

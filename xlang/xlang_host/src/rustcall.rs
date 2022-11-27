@@ -1,6 +1,5 @@
 use cfg_match::cfg_match;
 
-
 cfg_match! {
     all(any(has_feature_c_unwind="stable"),rustcall_is_fastcall) => {
         ///
@@ -47,7 +46,7 @@ cfg_match! {
         #[allow(clippy::doc_markdown)] // No, clippy, LCRust is not an item, it's the name of the ABI
         #[macro_export]
         macro_rules! rustcall{
-            
+
             (extern "rustcall" fn $($tt:tt)*) => {
                 extern "C-unwind" fn $($tt)*
             };
@@ -97,7 +96,7 @@ cfg_match! {
                     $($item)*
                 }
             }
-        } 
+        }
     }
     _ => {
         ///
@@ -112,7 +111,7 @@ cfg_match! {
         #[allow(clippy::doc_markdown)] // No, clippy, LCRust is not an item, it's the name of the ABI
         #[macro_export]
         macro_rules! rustcall{
-            
+
             (extern "rustcall" fn $($tt:tt)*) => {
                 extern "C" fn $($tt)*
             };

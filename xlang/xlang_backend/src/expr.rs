@@ -1,5 +1,5 @@
 use xlang::{
-    ir::{Path, PointerType, ScalarType, Type, Value, ScalarTypeHeader, ScalarTypeKind, ArrayType},
+    ir::{ArrayType, Path, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type, Value},
     prelude::v1::*,
 };
 
@@ -181,17 +181,30 @@ impl<Loc: ValLocation> VStackValue<Loc> {
     }
 
     /// Obtains the type of the value
-    pub fn value_type(&self) -> Type{
-        match self{
+    pub fn value_type(&self) -> Type {
+        match self {
             VStackValue::Constant(_) => todo!(),
             VStackValue::LValue(ty, _) => ty.clone(),
             VStackValue::Pointer(ptrty, _) => Type::Pointer(ptrty.clone()),
             VStackValue::OpaqueScalar(scalar, _) => Type::Scalar(*scalar),
             VStackValue::AggregatePieced(ty, _) => ty.clone(),
             VStackValue::OpaqueAggregate(ty, _) => ty.clone(),
-            VStackValue::CompareResult(_, _) => Type::Scalar(ScalarType{header: ScalarTypeHeader{bitsize: 32, ..Default::default()},kind: ScalarTypeKind::Integer{signed: false, min: None, max: None}}),
+            VStackValue::CompareResult(_, _) => Type::Scalar(ScalarType {
+                header: ScalarTypeHeader {
+                    bitsize: 32,
+                    ..Default::default()
+                },
+                kind: ScalarTypeKind::Integer {
+                    signed: false,
+                    min: None,
+                    max: None,
+                },
+            }),
             VStackValue::Trapped => Type::Void,
-            VStackValue::ArrayRepeat(val, len) => Type::Array(Box::new(ArrayType{ty: val.value_type(),len: len.clone()})),
+            VStackValue::ArrayRepeat(val, len) => Type::Array(Box::new(ArrayType {
+                ty: val.value_type(),
+                len: len.clone(),
+            })),
         }
     }
 }

@@ -2373,7 +2373,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 let sel = self.pop_value().unwrap();
                 let possible_vals = self.pop_values(*n as usize).unwrap();
                 let tyof = possible_vals[0].value_type();
-                match sel{
+                match sel {
                     VStackValue::Trapped => {
                         self.push_value(VStackValue::Trapped);
                     }
@@ -2385,16 +2385,23 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         self.inner.write_trap(Trap::Unreachable);
                         self.push_value(VStackValue::Trapped);
                     }
-                    VStackValue::Constant(Value::Integer { ty: ScalarType{kind: ScalarTypeKind::Integer { .. },..}, val }) => {
-                        if val > (*n as u128){
+                    VStackValue::Constant(Value::Integer {
+                        ty:
+                            ScalarType {
+                                kind: ScalarTypeKind::Integer { .. },
+                                ..
+                            },
+                        val,
+                    }) => {
+                        if val > (*n as u128) {
                             self.push_value(VStackValue::Constant(Value::Invalid(tyof)))
-                        }else{
+                        } else {
                             self.push_value(possible_vals.into_iter().nth(val as usize).unwrap())
                         }
                     }
-                    val => todo!("{:?}",val)
+                    val => todo!("{:?}", val),
                 }
-            },
+            }
         }
     }
 
