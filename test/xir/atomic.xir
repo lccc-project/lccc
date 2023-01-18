@@ -1,0 +1,13 @@
+
+public function main() -> int(32){
+    declare _0: int(32);
+    begin storage _0
+    local _0
+    const int(32) 0
+    assign
+
+    local _0
+    as_rvalue atomic relaxed
+    end storage _0
+    exit 1
+}

@@ -14,7 +14,9 @@ pub enum PathComponent {
     Root,
     Text(String),
     SpecialComponent(String),
+    Generics(Vec<GenericParameter>),
 }
+
 
 impl core::fmt::Display for PathComponent {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
@@ -22,6 +24,16 @@ impl core::fmt::Display for PathComponent {
             Self::Root => Ok(()),
             Self::Text(st) => f.write_str(st),
             Self::SpecialComponent(comp) => f.write_fmt(format_args!("#{:?}", comp)),
+            Self::Generics(generics) => {
+                f.write_str("<")?;
+                let mut sep = "";
+                for generic in generics{
+                    f.write_str(sep)?;
+                    sep = ", ";
+                    generic.fmt(f)?;
+                }
+                f.write_str(">")
+            }
         }
     }
 }
@@ -42,6 +54,25 @@ impl core::fmt::Display for Path {
             i.fmt(f)?;
         }
         Ok(())
+    }
+}
+
+#[repr(u16)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum GenericParameter{
+    Type(Type),
+    Value(Value),
+}
+
+impl core::fmt::Display for GenericParameter{
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result{
+        match self{
+            GenericParameter::Type(ty) => ty.fmt(f),
+            GenericParameter::Value(val) => {
+                f.write_str("const ")?;
+                val.fmt(f)
+            }
+        }
     }
 }
 

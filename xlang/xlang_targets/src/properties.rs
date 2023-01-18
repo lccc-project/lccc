@@ -109,7 +109,7 @@ pub mod builtins;
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ArchProperties<'a> {
     /// A bitmask of sizes (in bytes) of the atomic types that the architecture always supports lock free access on
-    /// The first bit is size 1, the second is size 2, fourth is size 4, etc. Bits between powers of two should typically be set if the next power of two is set
+    /// The first bit is size 1, the second is size 2, third is size 4, etc. Bits between powers of two should typically be set if the next power of two is set
     /// (This is used by `std::atomic` in C++)
     pub lock_free_atomic_masks: u16,
     /// Lists the name of all architecture builtins available on the architecture.

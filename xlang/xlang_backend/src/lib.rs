@@ -263,7 +263,7 @@ pub struct FunctionCodegen<F: FunctionRawCodegen> {
     locals: Vec<(VStackValue<F::Loc>, Type)>,
     fnty: FnType,
     locals_opaque: bool,
-    _tys: Rc<TypeInformation>,
+    tys: Rc<TypeInformation>,
     ctarg: u32,
     cfg: HashMap<u32, BranchToInfo>,
 }
@@ -286,10 +286,14 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             locals: Vec::new(),
             fnty,
             locals_opaque: false,
-            _tys: tys,
+            tys,
             ctarg: !0,
             cfg: HashMap::new(),
         }
+    }
+
+    fn get_type_information(&self) -> &TypeInformation{
+        &self.tys
     }
 
     fn print_vstack(&self) {
@@ -394,7 +398,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             }
             VStackValue::OpaqueScalar(_, loc2) => self.inner.move_val(loc2, loc),
             VStackValue::AggregatePieced(ty, fields) => {
-                if self._tys.type_size(&ty) != StdSome(0) {
+                if self.tys.type_size(&ty) != StdSome(0) {
                     todo!("aggregate pieced {:?}", fields)
                 }
             }
@@ -1427,7 +1431,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
     ) -> (Type, LValue<F::Loc>, Vec<String>) {
         match lval {
             LValue::Field(base_ty, base, field) => {
-                let base_type = self._tys.get_field_type(&base_ty, &field).unwrap();
+                let base_type = self.tys.get_field_type(&base_ty, &field).unwrap();
                 if &base_type == ty {
                     let (inner_ty, base, mut fields) =
                         self.get_field_paths(Box::into_inner(base), &base_ty);
@@ -1736,7 +1740,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
 
                 match val {
                     VStackValue::LValue(ty, lval) => {
-                        let layout = self._tys.aggregate_layout(&ty).unwrap();
+                        let layout = self.tys.aggregate_layout(&ty).unwrap();
                         let inner_ty = layout.fields.get(&m.to_string());
 
                         match inner_ty {
@@ -1842,8 +1846,8 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                             if let StdSome(Pair(_, inner)) = inner {
                                 inner
                             } else {
-                                let fty = self._tys.get_field_type(&base, f).unwrap();
-                                self._tys.zero_init(&fty).unwrap().into_transparent_for()
+                                let fty = self.tys.get_field_type(&base, f).unwrap();
+                                self.tys.zero_init(&fty).unwrap().into_transparent_for()
                             }
                         }
                         VStackValue::OpaqueAggregate(_, _) => todo!(),
@@ -1873,7 +1877,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     LValue::Local(n) => {
                         let mut val = &mut self.locals[n as usize].0;
 
-                        let tys = &self._tys;
+                        let tys = &self.tys;
 
                         let mut it = fields.into_iter();
 

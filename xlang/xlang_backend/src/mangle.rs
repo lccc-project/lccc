@@ -120,6 +120,7 @@ pub fn mangle_itanium(path: &[PathComponent]) -> String {
                     todo!("Special component #{:?}", s)
                 }
             }
+            PathComponent::Generics(_) => todo!(),
         }
     }
     name
