@@ -7,9 +7,11 @@ license = "BSD-2-Clause-Patent"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+fxhash = "0.2"
 unicode-xid = "0.2.2"
 xlang = {path="../xlang"}
 xlang_struct = {path="../xlang/xlang_struct"}
+parking_lot = "0.12"
 peekmore = "1.0.0"
 lazy_static = "1"
 

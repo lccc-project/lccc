@@ -1,17 +1,16 @@
 // FIXME: Fix the problems, then switch this back to deny
 #![allow(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
 
+mod interning;
 mod irgen;
 mod lex;
 mod macro_parse;
 mod parse;
 mod sema;
 mod session;
+mod span;
 
-use irgen::irgen;
 use lex::lex;
-use parse::parse_mod;
-use sema::{convert, typeck_program, Program};
 
 use xlang::abi::io::{self, IntoChars, Read};
 use xlang::abi::prelude::v1::*;
@@ -23,16 +22,12 @@ use xlang::targets::Target;
 
 struct RustFrontend {
     filename: Option<String>,
-    program: Option<Program>,
 }
 
 impl RustFrontend {
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            filename: None,
-            program: None,
-        }
+        Self { filename: None }
     }
 }
 
@@ -47,20 +42,15 @@ impl XLangFrontend for RustFrontend {
 
     fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
         let mut file = file.into_chars();
-        let lexed = lex(&mut file);
-        let items = parse_mod(lexed.into_iter(), std::vec::Vec::new());
-        let mut converted = convert(&items);
-        typeck_program(&mut converted);
-        println!("{}", converted);
-        self.program = Some(converted);
+        let lexed = lex(&mut file).unwrap();
+        println!("{:?}", lexed);
         io::Result::Ok(())
     }
 }
 
 impl XLangPlugin for RustFrontend {
     fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
-        irgen(self.program.as_ref().unwrap(), file);
-        println!("{:#?}", file);
+        // println!("{:#?}", file);
         Result::Ok(())
     }
 
