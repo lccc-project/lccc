@@ -36,6 +36,7 @@ pub enum TokenType {}
 pub enum LexemeBody {
     Group { ty: GroupType, body: Vec<Lexeme> },
     Token { ty: TokenType, body: Symbol },
+    AstFrag(AstFrag)
 }
 
 #[derive(Debug)]
@@ -48,6 +49,11 @@ pub struct Lexeme {
 pub enum Error {
     UnexpectedEof,
     UnrecognizedChar(char),
+}
+
+#[derive(Debug)]
+pub enum AstFrag{
+    
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
