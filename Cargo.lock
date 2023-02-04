@@ -82,6 +82,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "codegen-w65"
+version = "0.1.0"
+dependencies = [
+ "arch-ops",
+ "binfmt",
+ "target-tuples",
+ "xlang",
+ "xlang_backend",
+ "xlang_struct",
+]
+
+[[package]]
 name = "codegen-x86"
 version = "0.1.0"
 dependencies = [

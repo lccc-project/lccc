@@ -37,4 +37,6 @@ pub mod lazy;
 
 pub mod thread;
 
+pub(crate) mod sys;
+
 mod rt;

@@ -1,4 +1,2 @@
-extern crate stdos;
-pub use stdos::raw;
 
-pub use stdos::exports::*;
+pub(crate) mod rand;
