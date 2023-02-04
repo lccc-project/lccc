@@ -3,8 +3,8 @@ use std::{
 };
 
 use arch_ops::{
-    
-    traits::{Address, InsnWrite}, w65::{W65Register, W65Instruction, W65Operand, W65Encoder, W65Mode, W65Opcode, W65Address},
+    traits::{Address, InsnWrite},
+    w65::{W65Address, W65Encoder, W65Instruction, W65Mode, W65Opcode, W65Operand, W65Register},
 };
 use binfmt::{
     fmt::{FileType, Section, SectionType},
@@ -45,7 +45,7 @@ pub enum W65ValLocation {
         size: u64,
         regs: Vec<W65Register>,
     },
-    SyntheticRegister{
+    SyntheticRegister {
         size: u64,
         base: u32,
     },
@@ -197,58 +197,60 @@ impl CallingConvention for W65CallConv {
         param: u32,
         infn: bool,
     ) -> Self::Loc {
-        let mut ismallregs: &[W65Register] = &[W65Register::X,W65Register::Y];
-        let mut iregs: &[u32] = &[1,2,3,4,5,6];
+        let mut ismallregs: &[W65Register] = &[W65Register::X, W65Register::Y];
+        let mut iregs: &[u32] = &[1, 2, 3, 4, 5, 6];
 
         let mut last_loc = W65ValLocation::Unassigned(0);
 
         let param = param as usize;
 
-        if param > real.params.len() && real.variadic{
+        if param > real.params.len() && real.variadic {
             todo!("varargs are passed on the stack")
         }
 
-        for (i,ty) in fnty.params.iter().enumerate(){
-            match (classify_type(ty).unwrap(),self.tys.type_size(ty).unwrap()){
+        for (i, ty) in fnty.params.iter().enumerate() {
+            match (classify_type(ty).unwrap(), self.tys.type_size(ty).unwrap()) {
                 (TypeClass::Memory, _) => todo!("memory"),
-                (TypeClass::Zero,_) => last_loc = W65ValLocation::Null,
-                (TypeClass::Integer,size @ (1 | 2)) => {
-                    if ismallregs.is_empty(){
-                        if let Some((first,rest)) = iregs.split_first(){
+                (TypeClass::Zero, _) => last_loc = W65ValLocation::Null,
+                (TypeClass::Integer, size @ (1 | 2)) => {
+                    if ismallregs.is_empty() {
+                        if let Some((first, rest)) = iregs.split_first() {
                             iregs = rest;
                             last_loc = W65ValLocation::SyntheticRegister { size, base: *first }
-                        }else{
+                        } else {
                             todo!("stack")
                         }
-                    }else{
+                    } else {
                         let reg = ismallregs[0];
                         ismallregs = &ismallregs[1..];
-                        last_loc = W65ValLocation::Register { size: size as u16, reg }
+                        last_loc = W65ValLocation::Register {
+                            size: size as u16,
+                            reg,
+                        }
                     }
                 }
-                (TypeClass::Integer,size @ 3..=4) => {
-                    if let Some((first,rest)) = iregs.split_first(){
+                (TypeClass::Integer, size @ 3..=4) => {
+                    if let Some((first, rest)) = iregs.split_first() {
                         iregs = rest;
                         last_loc = W65ValLocation::SyntheticRegister { size, base: *first }
-                    }else{
+                    } else {
                         todo!("stack")
                     }
                 }
-                (TypeClass::Integer,size @ 5..=16) => {
-                    let nregs = ((size as usize)&!3)>>2;
+                (TypeClass::Integer, size @ 5..=16) => {
+                    let nregs = ((size as usize) & !3) >> 2;
 
-                    if iregs.len() < nregs{
+                    if iregs.len() < nregs {
                         todo!("stack")
                     }
-                    
-                    let (l,r) = iregs.split_at(nregs);
+
+                    let (l, r) = iregs.split_at(nregs);
 
                     iregs = r;
-                    
-                    last_loc = W65ValLocation::SyntheticRegister { size, base: l[0] }
 
+                    last_loc = W65ValLocation::SyntheticRegister { size, base: l[0] }
                 }
-                _ => todo!("oversized values")
+                _ => todo!("oversized values"),
             }
         }
 
@@ -256,21 +258,29 @@ impl CallingConvention for W65CallConv {
     }
 
     fn find_return_val(&self, fnty: &xlang_struct::FnType) -> Self::Loc {
-        match (classify_type(&fnty.ret).unwrap(), self.tys.type_size(&fnty.ret)){
-            (TypeClass::Memory,_) => todo!("memory"),
+        match (
+            classify_type(&fnty.ret).unwrap(),
+            self.tys.type_size(&fnty.ret),
+        ) {
+            (TypeClass::Memory, _) => todo!("memory"),
             (TypeClass::Zero, _) => W65ValLocation::Null,
-            (TypeClass::Integer,Some( size @ (1 | 2))) => W65ValLocation::Register { size: size as u16, reg: W65Register::A },
-            (TypeClass::Integer,Some(size @ (3..=8))) => W65ValLocation::SyntheticRegister { size, base: 0 },
-            _ => todo!("oversized values")
+            (TypeClass::Integer, Some(size @ (1 | 2))) => W65ValLocation::Register {
+                size: size as u16,
+                reg: W65Register::A,
+            },
+            (TypeClass::Integer, Some(size @ (3..=8))) => {
+                W65ValLocation::SyntheticRegister { size, base: 0 }
+            }
+            _ => todo!("oversized values"),
         }
     }
 }
 
-impl W65CallConv{
-    pub fn return_mode(&self, fnty: &xlang_struct::FnType) -> W65Mode{
+impl W65CallConv {
+    pub fn return_mode(&self, fnty: &xlang_struct::FnType) -> W65Mode {
         let mut mode = W65Mode::NONE;
 
-        match (classify_type(&fnty.ret),self.tys.type_size(&fnty.ret)){
+        match (classify_type(&fnty.ret), self.tys.type_size(&fnty.ret)) {
             (Some(TypeClass::Integer), Some(1)) => mode |= W65Mode::M,
             _ => {}
         }
@@ -278,25 +288,25 @@ impl W65CallConv{
         mode
     }
 
-    pub fn call_mode(&self, fnty: &xlang_struct::FnType) -> W65Mode{
+    pub fn call_mode(&self, fnty: &xlang_struct::FnType) -> W65Mode {
         let mut mode = W65Mode::M;
         let mut hassize2 = false;
         let mut nsize12vals = 0;
 
-        for param in &fnty.params{
-            match (classify_type(param),self.tys.type_size(param)){
-                (Some(TypeClass::Integer),Some(1)) if nsize12vals !=2 => {
+        for param in &fnty.params {
+            match (classify_type(param), self.tys.type_size(param)) {
+                (Some(TypeClass::Integer), Some(1)) if nsize12vals != 2 => {
                     nsize12vals += 1;
                 }
-                (Some(TypeClass::Integer),Some(1)) if nsize12vals !=2 => {
+                (Some(TypeClass::Integer), Some(1)) if nsize12vals != 2 => {
                     nsize12vals += 1;
                 }
-                _ if nsize12vals==2 => break,
-                _ => continue
+                _ if nsize12vals == 2 => break,
+                _ => continue,
             }
         }
 
-        if !hassize2&&nsize12vals!=0{
+        if !hassize2 && nsize12vals != 0 {
             mode | W65Mode::X;
         }
 
@@ -329,7 +339,11 @@ impl FunctionRawCodegen for W65FunctionCodegen {
         match trap {
             xlang_backend::expr::Trap::Unreachable => {}
             xlang_backend::expr::Trap::Breakpoint => {
-                self.insns.push(W65InstructionOrLabel::Insn(W65Instruction::new(W65Opcode::Wdm, W65Operand::Immediate(0x80))))
+                self.insns
+                    .push(W65InstructionOrLabel::Insn(W65Instruction::new(
+                        W65Opcode::Wdm,
+                        W65Operand::Immediate(0x80),
+                    )))
             }
             _ => {
                 self.insns.push(W65Instruction::Brk.into());
@@ -338,8 +352,7 @@ impl FunctionRawCodegen for W65FunctionCodegen {
         }
     }
 
-    fn write_barrier(&mut self, acc: xlang_struct::AccessClass) {
-    }
+    fn write_barrier(&mut self, acc: xlang_struct::AccessClass) {}
 
     fn write_int_binary_imm(
         &mut self,
@@ -356,31 +369,34 @@ impl FunctionRawCodegen for W65FunctionCodegen {
     }
 
     fn move_imm(&mut self, src: u128, dest: Self::Loc, ty: &xlang_struct::Type) {
-        match dest{
+        match dest {
             W65ValLocation::Register { size, reg } => todo!(),
             W65ValLocation::Indirect { size, reg, offset } => todo!(),
             W65ValLocation::Regs { size, regs } => todo!(),
             W65ValLocation::SyntheticRegister { size, base } => {
-                if src==0{
+                if src == 0 {
                     // Special case with src=0
 
-                    if size!=1{
+                    if size != 1 {
                         // we don't care about the size of the register if we're doing a 1-byte write, since the entire 4 bytes is reserved anyways, so save 3 cycles on a REP/SEP
-                        self.insns.push(W65InstructionOrLabel::ClearModeFlags(W65Mode::M));
+                        self.insns
+                            .push(W65InstructionOrLabel::ClearModeFlags(W65Mode::M));
                     }
-                    let symname = format!("__r{}",base);
-                    for i in 0..(size>>1){
-                        
-
-                        let addr = Address::Symbol { name: symname.clone(), disp: i as i64 };
+                    let symname = format!("__r{}", base);
+                    for i in 0..(size >> 1) {
+                        let addr = Address::Symbol {
+                            name: symname.clone(),
+                            disp: i as i64,
+                        };
 
                         // ABI Specifies that we can do a direct-page access to the reserved space region, so always do so to save 1 byte and 1 cycle
                         let op = W65Operand::Address(arch_ops::w65::W65Address::Direct(addr));
 
-                        self.insns.push(W65Instruction::new(W65Opcode::Stz, op).into());
+                        self.insns
+                            .push(W65Instruction::new(W65Opcode::Stz, op).into());
                     }
                 }
-            },
+            }
             W65ValLocation::Null => todo!(),
             W65ValLocation::Unassigned(_) => todo!(),
         }
@@ -445,10 +461,15 @@ impl FunctionRawCodegen for W65FunctionCodegen {
 
         // TODO: We can generate a JSR relaxation later
 
-
-        self.insns.push(W65InstructionOrLabel::ResetMode(self.callconv.call_mode(realty)));
-        self.insns.push(W65Instruction::new(W65Opcode::Jsr, W65Operand::Address(W65Address::Long(addr))).into());
-        self.insns.push(W65InstructionOrLabel::AssumeMode(self.callconv.call_mode(realty)));
+        self.insns.push(W65InstructionOrLabel::ResetMode(
+            self.callconv.call_mode(realty),
+        ));
+        self.insns.push(
+            W65Instruction::new(W65Opcode::Jsr, W65Operand::Address(W65Address::Long(addr))).into(),
+        );
+        self.insns.push(W65InstructionOrLabel::AssumeMode(
+            self.callconv.call_mode(realty),
+        ));
     }
 
     fn call_indirect(&mut self, value: Self::Loc) {
@@ -533,7 +554,6 @@ impl FunctionRawCodegen for W65FunctionCodegen {
         };
 
         todo!()
-        
     }
 
     fn free(&mut self, loc: Self::Loc) {
@@ -625,13 +645,8 @@ impl FunctionRawCodegen for W65FunctionCodegen {
 }
 
 impl W65FunctionCodegen {
-
-    fn loc_to_operand(
-        &mut self,
-        loc: W65ValLocation,
-        sreg: W65Register,
-    ) -> Option<W65Operand> {
-        match loc{
+    fn loc_to_operand(&mut self, loc: W65ValLocation, sreg: W65Register) -> Option<W65Operand> {
+        match loc {
             W65ValLocation::Register { size, reg } => todo!(),
             W65ValLocation::Indirect { size, reg, offset } => todo!(),
             W65ValLocation::Regs { size, regs } => todo!(),
@@ -673,63 +688,92 @@ impl W65FunctionCodegen {
                     known_mode = None; // TODO: Be smarter about clobbering mode after a label
                 }
                 W65InstructionOrLabel::ResetMode(nmode) => {
-                    encoder.write_insn(W65Instruction::new(W65Opcode::Sep, W65Operand::Immediate(nmode.bits())))?;
-                    encoder.write_insn(W65Instruction::new(W65Opcode::Rep,W65Operand::Immediate(((W65Mode::X|W65Mode::M)&!nmode).bits())))?;
+                    encoder.write_insn(W65Instruction::new(
+                        W65Opcode::Sep,
+                        W65Operand::Immediate(nmode.bits()),
+                    ))?;
+                    encoder.write_insn(W65Instruction::new(
+                        W65Opcode::Rep,
+                        W65Operand::Immediate(((W65Mode::X | W65Mode::M) & !nmode).bits()),
+                    ))?;
                     known_mode = Some(nmode);
                     *encoder.mode_mut() = nmode;
                 }
                 W65InstructionOrLabel::SetModeFlags(mode) => {
-                    if let Some(&mut mut known_mode) = known_mode.as_mut(){
-                        if (known_mode&mode)!=mode{
-                            encoder.write_insn(W65Instruction::new(W65Opcode::Sep, W65Operand::Immediate((mode&!known_mode).bits())))?;
+                    if let Some(&mut mut known_mode) = known_mode.as_mut() {
+                        if (known_mode & mode) != mode {
+                            encoder.write_insn(W65Instruction::new(
+                                W65Opcode::Sep,
+                                W65Operand::Immediate((mode & !known_mode).bits()),
+                            ))?;
                         }
-                        encoder.set_mode_flags(mode);  
-                        known_mode |= mode;  
-                    }else{
+                        encoder.set_mode_flags(mode);
+                        known_mode |= mode;
+                    } else {
                         // TODO: Be smarter
-                        encoder.write_insn(W65Instruction::new(W65Opcode::Sep, W65Operand::Immediate((W65Mode::X|W65Mode::M).bits())))?;
-                        known_mode = Some(W65Mode::X|W65Mode::M);
-                        *encoder.mode_mut() = W65Mode::X|W65Mode::M;
+                        encoder.write_insn(W65Instruction::new(
+                            W65Opcode::Sep,
+                            W65Operand::Immediate((W65Mode::X | W65Mode::M).bits()),
+                        ))?;
+                        known_mode = Some(W65Mode::X | W65Mode::M);
+                        *encoder.mode_mut() = W65Mode::X | W65Mode::M;
                     }
                 }
                 W65InstructionOrLabel::ClearModeFlags(mode) => {
-                    if let Some(&mut mut known_mode) = known_mode.as_mut(){
-                        if (known_mode&!mode)!=W65Mode::NONE{
-                            encoder.write_insn(W65Instruction::new(W65Opcode::Sep, W65Operand::Immediate((mode&!known_mode).bits())))?;
+                    if let Some(&mut mut known_mode) = known_mode.as_mut() {
+                        if (known_mode & !mode) != W65Mode::NONE {
+                            encoder.write_insn(W65Instruction::new(
+                                W65Opcode::Sep,
+                                W65Operand::Immediate((mode & !known_mode).bits()),
+                            ))?;
                         }
-                        encoder.set_mode_flags(mode); 
-                        known_mode &= !mode;   
-                    }else{
+                        encoder.set_mode_flags(mode);
+                        known_mode &= !mode;
+                    } else {
                         // TODO: Be smarter
-                        encoder.write_insn(W65Instruction::new(W65Opcode::Rep, W65Operand::Immediate((W65Mode::X|W65Mode::M).bits())))?;
+                        encoder.write_insn(W65Instruction::new(
+                            W65Opcode::Rep,
+                            W65Operand::Immediate((W65Mode::X | W65Mode::M).bits()),
+                        ))?;
                         known_mode = Some(W65Mode::NONE);
                         *encoder.mode_mut() = W65Mode::NONE;
                     }
                 }
-                W65InstructionOrLabel::Insn(insn) =>{
+                W65InstructionOrLabel::Insn(insn) => {
                     let insn = insn.into_real();
                     encoder.write_insn(insn)?
-                },
+                }
                 W65InstructionOrLabel::FunctionEpilogue => {
                     // TODO: Handle interrupt handlers
                     if self.frame_size > 0 {
                         todo!()
                     }
                     let mode = self.callconv.return_mode(&self.fnty);
-                    if let Some(known_mode) = known_mode{
-                        if (known_mode&mode)!=mode{
-                            encoder.write_insn(W65Instruction::new(W65Opcode::Sep, W65Operand::Immediate((mode&!known_mode).bits())))?;
+                    if let Some(known_mode) = known_mode {
+                        if (known_mode & mode) != mode {
+                            encoder.write_insn(W65Instruction::new(
+                                W65Opcode::Sep,
+                                W65Operand::Immediate((mode & !known_mode).bits()),
+                            ))?;
                         }
-                        if (known_mode&!mode)!=W65Mode::NONE{
-                            encoder.write_insn(W65Instruction::new(W65Opcode::Sep, W65Operand::Immediate((mode&!known_mode).bits())))?;
+                        if (known_mode & !mode) != W65Mode::NONE {
+                            encoder.write_insn(W65Instruction::new(
+                                W65Opcode::Sep,
+                                W65Operand::Immediate((mode & !known_mode).bits()),
+                            ))?;
                         }
-                    }else{
-                        encoder.write_insn(W65Instruction::new(W65Opcode::Sep, W65Operand::Immediate(mode.bits())))?;
-                        encoder.write_insn(W65Instruction::new(W65Opcode::Rep,W65Operand::Immediate(((W65Mode::X|W65Mode::M)&!mode).bits())))?;
+                    } else {
+                        encoder.write_insn(W65Instruction::new(
+                            W65Opcode::Sep,
+                            W65Operand::Immediate(mode.bits()),
+                        ))?;
+                        encoder.write_insn(W65Instruction::new(
+                            W65Opcode::Rep,
+                            W65Operand::Immediate(((W65Mode::X | W65Mode::M) & !mode).bits()),
+                        ))?;
                     }
-                    
+
                     encoder.write_insn(W65Instruction::Rtl)?;
-                    
                 }
             }
         }
@@ -875,9 +919,7 @@ impl XLangPlugin for W65CodegenPlugin {
                             ptrreg: None,
                             trap_unreachable: true,
                             tys: tys.clone(),
-                            callconv: W65CallConv {
-                                tys: tys.clone(),
-                            },
+                            callconv: W65CallConv { tys: tys.clone() },
                             fnty: ty.clone(),
                         },
                         path.clone(),
@@ -907,10 +949,8 @@ impl XLangPlugin for W65CodegenPlugin {
     fn set_target(&mut self, targ: xlang::targets::Target) {
         self.target = Some((&targ).into());
         self.properties = xlang::targets::properties::get_properties(targ);
-
     }
 }
-
 
 impl XLangCodegen for W65CodegenPlugin {
     fn target_matches(&self, x: &xlang::targets::Target) -> bool {
@@ -931,9 +971,7 @@ impl XLangCodegen for W65CodegenPlugin {
         self.write_output_impl(wrapper).map_err(Into::into).into()
     }
 
-    fn set_features(&mut self, _features: Span<StringView>) {
-        
-    }
+    fn set_features(&mut self, _features: Span<StringView>) {}
 }
 
 xlang::host::rustcall! {

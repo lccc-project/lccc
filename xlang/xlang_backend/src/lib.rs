@@ -292,7 +292,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         }
     }
 
-    fn get_type_information(&self) -> &TypeInformation{
+    fn get_type_information(&self) -> &TypeInformation {
         &self.tys
     }
 

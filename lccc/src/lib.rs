@@ -19,7 +19,7 @@ use xlang::{
 };
 
 pub static FRONTENDS: [&str; 3] = ["c", "rust", "xir"];
-pub static CODEGENS: [&str; 3] = ["x86", "clever","w65"];
+pub static CODEGENS: [&str; 3] = ["x86", "clever", "w65"];
 
 pub static OPTIMIZERS: [&[&str]; 3] = [&[], &[], &[]];
 

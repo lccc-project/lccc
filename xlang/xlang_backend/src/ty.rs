@@ -440,29 +440,33 @@ impl TypeInformation {
     }
 
     /// Checks if the given type can have atomic operations performed natively, w/o a global mutex
-    pub fn atomic_is_lock_free(&self, ty: &Type) -> Option<bool>{
+    pub fn atomic_is_lock_free(&self, ty: &Type) -> Option<bool> {
         let tysize = self.type_size(ty)?;
 
-        let target_lockfree_mask = self.properties.primitives.lock_free_atomic_mask | self.properties.arch.lock_free_atomic_masks;
+        let target_lockfree_mask = self.properties.primitives.lock_free_atomic_mask
+            | self.properties.arch.lock_free_atomic_masks;
 
-        if tysize==0{
+        if tysize == 0 {
             Some(false)
-        }else{
+        } else {
             let next_pow_of_two = tysize.next_power_of_two();
-            let bit = 64-(next_pow_of_two.leading_zeros());
+            let bit = 64 - (next_pow_of_two.leading_zeros());
 
-            if bit>16{
+            if bit > 16 {
                 Some(false)
-            }else{
-                Some((((target_lockfree_mask)&(1u16<<(bit-1)))>>(bit-1))!=0)
+            } else {
+                Some((((target_lockfree_mask) & (1u16 << (bit - 1))) >> (bit - 1)) != 0)
             }
         }
     }
 
     /// Checks the required alignment for atomic operations of a particular size
-    pub fn atomic_required_alignment(&self, ty: &Type) -> Option<u64>{
+    pub fn atomic_required_alignment(&self, ty: &Type) -> Option<u64> {
         let tysize = self.type_size(ty)?;
 
-        Some(scalar_align(tysize, self.properties.primitives.max_atomic_align))
+        Some(scalar_align(
+            tysize,
+            self.properties.primitives.max_atomic_align,
+        ))
     }
 }

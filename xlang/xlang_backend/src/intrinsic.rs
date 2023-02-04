@@ -11,14 +11,20 @@ use crate::{
 
 ///
 /// Calls an intrinsic function defined
-/// 
-pub fn call_intrinsic<F: crate::FunctionRawCodegen>(path: &::xlang::ir::Path, codegen: &mut crate::FunctionCodegen<F>, fnty: &::xlang::ir::FnType,properties: &::xlang::targets::properties::TargetProperties){
-    if call_generic_intrinsic(path,codegen,fnty,properties){}
-    else if call_nongeneric_intrinsic(path, codegen, fnty, properties){}
-    else if call_target_intrinsic(path, codegen, fnty, properties){}
-    else{panic!("unknown intrinsic {}",path)}
+///
+pub fn call_intrinsic<F: crate::FunctionRawCodegen>(
+    path: &::xlang::ir::Path,
+    codegen: &mut crate::FunctionCodegen<F>,
+    fnty: &::xlang::ir::FnType,
+    properties: &::xlang::targets::properties::TargetProperties,
+) {
+    if call_generic_intrinsic(path, codegen, fnty, properties) {
+    } else if call_nongeneric_intrinsic(path, codegen, fnty, properties) {
+    } else if call_target_intrinsic(path, codegen, fnty, properties) {
+    } else {
+        panic!("unknown intrinsic {}", path)
+    }
 }
-
 
 macro_rules! define_generic_xlang_intrinsics{
     {$(($($path:ident)::* :: <($($generics:pat),*)> ($codegen:pat, $properties:pat, $ty:pat => $expr:expr))),* $(,)?} => {
@@ -42,7 +48,7 @@ macro_rules! define_generic_xlang_intrinsics{
                             _ => {}
                         }
                     }
-                    
+
             }
             return false
         }
@@ -53,7 +59,7 @@ macro_rules! define_xlang_intrinsics{
     {
         $(($($path:ident)::* ($codegen:pat, $properties:pat, $ty:pat => $expr:expr))),* $(,)?
     } => {
-        
+
         #[allow(clippy::redundant_closure_call)] // needed for hygine
         fn call_nongeneric_intrinsic<F: $crate::FunctionRawCodegen>(path: &::xlang::ir::Path, codegen: &mut $crate::FunctionCodegen<F>, fnty: &::xlang::ir::FnType,properties: &::xlang::targets::properties::TargetProperties) -> bool{
             match &*path.components{
@@ -118,7 +124,7 @@ define_generic_xlang_intrinsics! {
         if fnty.params.len()!=0{panic!("bad signature for intrinsic __lccc::xlang::__atomic_is_always_lockfree")}
         match &fnty.ret{
             xlang::ir::Type::Scalar(retty @ xlang::ir::ScalarType{kind: xlang::ir::ScalarTypeKind::Integer{..},..}) => {
-                
+
                 let val = codegen.get_type_information().atomic_is_lock_free(ty).expect("__lccc::xlang::__atomic_is_always_lockfree requires an object type") as u128;
 
                 let val = VStackValue::Constant(xlang::ir::Value::Integer{ty: *retty, val});
@@ -131,7 +137,7 @@ define_generic_xlang_intrinsics! {
         if fnty.params.len()!=0{panic!("bad signature for intrinsic __lccc::xlang::__atomic_is_always_lockfree")}
         match &fnty.ret{
             xlang::ir::Type::Scalar(retty @ xlang::ir::ScalarType{kind: xlang::ir::ScalarTypeKind::Integer{..},..}) => {
-                
+
                 let val = codegen.get_type_information().atomic_required_alignment(ty).expect("__lccc::xlang::__atomic_is_always_lockfree requires an object type") as u128;
 
                 let val = VStackValue::Constant(xlang::ir::Value::Integer{ty: *retty, val});
