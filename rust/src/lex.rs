@@ -36,7 +36,7 @@ pub enum TokenType {}
 pub enum LexemeBody {
     Group { ty: GroupType, body: Vec<Lexeme> },
     Token { ty: TokenType, body: Symbol },
-    AstFrag(AstFrag)
+    AstFrag(AstFrag),
 }
 
 #[derive(Debug)]
@@ -52,9 +52,7 @@ pub enum Error {
 }
 
 #[derive(Debug)]
-pub enum AstFrag{
-    
-}
+pub enum AstFrag {}
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -65,7 +63,7 @@ fn do_lexeme(file: &mut Peekable<impl Iterator<Item = char>>) -> Option<Result<L
             let sym = Symbol::intern_by_val(id);
             Some(Ok(Lexeme { span: (), body: () }))
         }
-        x => Some(Err(Error::UnrecognizedChar(x)))
+        x => Some(Err(Error::UnrecognizedChar(x))),
     }
 }
 

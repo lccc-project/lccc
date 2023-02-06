@@ -8,28 +8,28 @@ pub struct Pos {
 pub struct Span {
     start: Pos,
     end: Pos,
-    hygiene: HygieneMode,
+    hygiene: HygieneRef,
 }
 
-#[derive(Debug, PartialEq,Eq,Hash)]
-pub struct HygieneRef{
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct HygieneRef {
     pub hygiene_id: u64,
     pub mode: HygieneMode,
     pub edition: RustEdition,
 }
 
-#[derive(Debug, PartialEq,Eq,Hash)]
-pub enum HygieneMode{
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub enum HygieneMode {
     CallSite,
     MixedSite,
     DefSite,
-    NoGlobals
+    NoGlobals,
 }
 
-#[derive(Debug, PartialEq,Eq,Hash)]
-pub enum RustEdition{
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub enum RustEdition {
     Rust2015,
     Rust2018,
     Rust2021,
-    Rust2024
+    Rust2024,
 }
