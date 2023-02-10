@@ -1,4 +1,6 @@
-#[derive(Clone, Copy, Debug)]
+use core::fmt;
+
+#[derive(Clone, Copy)]
 pub struct Pos {
     pub row: usize,
     pub col: usize,
@@ -10,7 +12,12 @@ impl Pos {
     }
 }
 
-#[derive(Debug)]
+impl fmt::Debug for Pos {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.row, self.col)
+    }
+}
+
 pub struct Span {
     pub start: Pos,
     pub end: Pos,
@@ -19,7 +26,17 @@ pub struct Span {
 
 impl Span {
     pub fn new_simple(start: Pos, end: Pos) -> Self {
-        Self { start, end, hygiene: HygieneRef::default() }
+        Self {
+            start,
+            end,
+            hygiene: HygieneRef::default(),
+        }
+    }
+}
+
+impl fmt::Debug for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({:?} - {:?})", self.start, self.end)
     }
 }
 
@@ -110,12 +127,17 @@ impl<I: Iterator<Item = char>> Speekable<I> {
         self.tick();
         self.peeked.take()
     }
+
+    pub fn last_pos(&self) -> Pos {
+        self.pos
+    }
 }
 
 impl<I: Iterator<Item = char>> Iterator for Speekable<I> {
     type Item = char;
 
     fn next(&mut self) -> Option<char> {
+        self.tick();
         self.peeked.take().map(|(_, x)| x)
     }
 }
