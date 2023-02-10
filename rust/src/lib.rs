@@ -43,7 +43,7 @@ impl XLangFrontend for RustFrontend {
     fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
         let mut file = file.into_chars();
         let lexed = lex(&mut file).unwrap();
-        println!("{:?}", lexed);
+        println!("{:#?}", lexed);
         io::Result::Ok(())
     }
 }
