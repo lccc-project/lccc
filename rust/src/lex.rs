@@ -1,4 +1,4 @@
-use core::{iter::Peekable, fmt};
+use core::{fmt, iter::Peekable};
 
 use crate::{
     interning::Symbol,
@@ -42,13 +42,27 @@ impl GroupType {
 }
 
 #[derive(Debug)]
+pub enum IdentifierType {
+    Default,
+    Raw,
+}
+
+#[derive(Debug)]
+pub enum StringType {
+    Default,
+    Raw(u8), // number of #s
+    Byte,
+    RawByte(u8), // see above
+}
+
+#[derive(Debug)]
 pub enum TokenType {
     Character,
-    Identifier,
+    Identifier(IdentifierType),
     Lifetime,
     Number,
     Punctuation,
-    String,
+    String(StringType),
 }
 
 pub enum LexemeBody {
@@ -84,6 +98,27 @@ pub enum AstFrag {}
 
 pub type Result<T> = core::result::Result<T, Error>;
 
+fn do_str(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<(String, Pos)> {
+    let mut str = String::from('"');
+    let end = loop {
+        if let Some((pos, c)) = file.snext() {
+            str.push(c);
+            match c {
+                '"' => break pos,
+                '\\' => match file.next() {
+                    Some(c @ ('n' | 'r' | 't' | '\\' | '0' | '"')) => str.push(c),
+                    x => todo!("{} {:?}", str, x),
+                },
+                '\n' => todo!(), // error
+                _ => {}
+            }
+        } else {
+            Err(Error::UnexpectedEof(file.last_pos()))?
+        }
+    };
+    Ok((str, end))
+}
+
 fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme> {
     loop {
         match file.snext() {
@@ -98,27 +133,11 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                     });
                 }
                 '"' => {
-                    let mut str = String::from('"');
-                    let end = loop {
-                        if let Some((pos, c)) = file.snext() {
-                            str.push(c);
-                            match c {
-                                '"' => break pos,
-                                '\\' => match file.next() {
-                                    Some(c @ ('n' | 'r' | 't' | '\\' | '0' | '"')) => str.push(c),
-                                    x => todo!("{} {:?}", str, x),
-                                },
-                                '\n' => todo!(), // error
-                                _ => {},
-                            }
-                        } else {
-                            Err(Error::UnexpectedEof(file.last_pos()))?
-                        }
-                    };
+                    let (str, end) = do_str(file)?;
                     break Ok(Lexeme {
                         span: Span::new_simple(start, end),
                         body: LexemeBody::Token {
-                            ty: TokenType::String,
+                            ty: TokenType::String(StringType::Default),
                             body: str.into(),
                         },
                     });
@@ -135,10 +154,24 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                             file.next();
                         }
                     }
+                    if id == "r" || id == "rb" { todo!(); }
+                    else if id == "b" {
+                        if file.peek() == Some(&'"') {
+                            file.next();
+                            let (str, end) = do_str(file)?;
+                            break Ok(Lexeme {
+                                span: Span::new_simple(start, end),
+                                body: LexemeBody::Token {
+                                    ty: TokenType::Identifier(IdentifierType::Default),
+                                    body: (id + &str).into(),
+                                },
+                            });
+                        }
+                    }
                     break Ok(Lexeme {
                         span: Span::new_simple(start, end),
                         body: LexemeBody::Token {
-                            ty: TokenType::Identifier,
+                            ty: TokenType::Identifier(IdentifierType::Default),
                             body: id.into(),
                         },
                     });
@@ -208,10 +241,11 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
     }
 }
 
+/// Assumes that the token is legal. If it is not, the result is unspecified.
 pub fn do_lexeme_str(token: &str, span: Span) -> Result<Lexeme> {
     let mut iter = token.chars();
     let ty = match iter.next() {
-        Some('"') => TokenType::String,
+        Some('"') => TokenType::String(StringType::Default),
         Some('0'..='9') => TokenType::Number,
         Some('\'') => {
             // Lifetime or char
@@ -224,8 +258,31 @@ pub fn do_lexeme_str(token: &str, span: Span) -> Result<Lexeme> {
             }
         }
         Some(x) if x.is_xid_start() || x.is_xid_continue() => {
-            // TODO: support named identifiers, raw strings
-            TokenType::Identifier
+            let hash_pos = token.find('#');
+            let quote_pos = token.find('"');
+            match (hash_pos, quote_pos) {
+                (None, None) => TokenType::Identifier(IdentifierType::Default),
+                (None, Some(_)) => {
+                    if x == 'b' {
+                        TokenType::String(StringType::Byte)
+                    } else if x == 'r' && iter.next() == Some('b') {
+                        TokenType::String(StringType::RawByte(0))
+                    } else { // Could have an if, but again, we are assuming a legal token
+                        TokenType::String(StringType::Raw(0))
+                    }
+                }
+                (Some(_), None) => TokenType::Identifier(IdentifierType::Raw),
+                (Some(a), Some(b)) if a > b => {
+                    if x == 'b' {
+                        TokenType::String(StringType::Byte)
+                    } else if x == 'r' && iter.next() == Some('b') {
+                        TokenType::String(StringType::RawByte(0))
+                    } else { // Could have an if, but again, we are assuming a legal token
+                        TokenType::String(StringType::Raw(0))
+                    }
+                }
+                (Some(a), Some(b)) => todo!(),
+            }
         }
         Some(x) => Err(Error::UnrecognizedChar(x, Pos::new(0, 0)))?, // invalid pos b/c we have no idea
         None => Err(Error::UnexpectedEof(Pos::new(0, 0)))?,
