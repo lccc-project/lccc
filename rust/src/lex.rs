@@ -162,7 +162,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                             break Ok(Lexeme {
                                 span: Span::new_simple(start, end),
                                 body: LexemeBody::Token {
-                                    ty: TokenType::Identifier(IdentifierType::Byte),
+                                    ty: TokenType::String(StringType::Byte),
                                     body: (id + &str).into(),
                                 },
                             });
