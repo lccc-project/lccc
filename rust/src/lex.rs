@@ -178,8 +178,22 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                 }
                 ':' => {
                     let (punct, end) = match file.speek() {
-                        Some(&(end, ':')) => ("::", end),
+                        Some(&(end, ':')) => { file.next(); ("::", end) }
                         _ => (":", start),
+                    };
+                    break Ok(Lexeme {
+                        span: Span::new_simple(start, end),
+                        body: LexemeBody::Token {
+                            ty: TokenType::Punctuation,
+                            body: punct.into(),
+                        },
+                    });
+                }
+                '=' => {
+                    let (punct, end) = match file.speek() {
+                        Some(&(end, '=')) => { file.next(); ("==", end) }
+                        Some(&(end, '>')) => { file.next(); ("=>", end) }
+                        _ => ("=", start),
                     };
                     break Ok(Lexeme {
                         span: Span::new_simple(start, end),
@@ -225,7 +239,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         },
                     });
                 }
-                ';' => {
+                ';' | '#' => {
                     break Ok(Lexeme {
                         span: Span::new_simple(start, start),
                         body: LexemeBody::Token {
