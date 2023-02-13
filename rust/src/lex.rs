@@ -177,7 +177,23 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         }
                     }
                     if id == "r" || id == "rb" {
-                        todo!();
+                        match file.peek() {
+                            Some('#') => {
+                                id.push('#');
+                                file.next();
+                                while let Some(&(pos, c)) = file.speek() {
+                                    if !c.is_xid_continue() {
+                                        break;
+                                    } else {
+                                        id.push(c);
+                                        end = pos;
+                                        file.next();
+                                    }
+                                }
+                            }
+                            Some('"') => todo!(),
+                            _ => {}
+                        }
                     } else if id == "b" {
                         if file.peek() == Some(&'"') {
                             file.next();
