@@ -176,8 +176,9 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                             file.next();
                         }
                     }
-                    if id == "r" || id == "rb" { todo!(); }
-                    else if id == "b" {
+                    if id == "r" || id == "rb" {
+                        todo!();
+                    } else if id == "b" {
                         if file.peek() == Some(&'"') {
                             file.next();
                             let (str, end) = do_str(file)?;
@@ -228,24 +229,33 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                             }
                             (tok.into(), end, TokenType::CommentMulti)
                         }
-                        Some(&(end, '=')) => { file.next(); ("/=".into(), end, TokenType::Punctuation) }
+                        Some(&(end, '=')) => {
+                            file.next();
+                            ("/=".into(), end, TokenType::Punctuation)
+                        }
                         _ => ("/".into(), start, TokenType::Punctuation),
                     };
                     break Ok(Lexeme {
                         span: Span::new_simple(start, end),
-                        body: LexemeBody::Token {
-                            ty,
-                            body: tok,
-                        },
+                        body: LexemeBody::Token { ty, body: tok },
                     });
                 }
                 '.' => {
                     let (punct, end) = match file.speek() {
-                        Some(&(end, '.')) => { file.next(); match file.speek() {
-                            Some(&(end, '.')) => { file.next(); ("...", end) }
-                            Some(&(end, '=')) => { file.next(); ("..=", end) }
-                            _ => ("..", start),
-                        } }
+                        Some(&(end, '.')) => {
+                            file.next();
+                            match file.speek() {
+                                Some(&(end, '.')) => {
+                                    file.next();
+                                    ("...", end)
+                                }
+                                Some(&(end, '=')) => {
+                                    file.next();
+                                    ("..=", end)
+                                }
+                                _ => ("..", start),
+                            }
+                        }
                         _ => (".", start),
                     };
                     break Ok(Lexeme {
@@ -258,7 +268,10 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                 }
                 ':' => {
                     let (punct, end) = match file.speek() {
-                        Some(&(end, ':')) => { file.next(); ("::", end) }
+                        Some(&(end, ':')) => {
+                            file.next();
+                            ("::", end)
+                        }
                         _ => (":", start),
                     };
                     break Ok(Lexeme {
@@ -271,8 +284,14 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                 }
                 '=' => {
                     let (punct, end) = match file.speek() {
-                        Some(&(end, '=')) => { file.next(); ("==", end) }
-                        Some(&(end, '>')) => { file.next(); ("=>", end) }
+                        Some(&(end, '=')) => {
+                            file.next();
+                            ("==", end)
+                        }
+                        Some(&(end, '>')) => {
+                            file.next();
+                            ("=>", end)
+                        }
                         _ => ("=", start),
                     };
                     break Ok(Lexeme {
@@ -361,7 +380,8 @@ pub fn do_lexeme_str(token: &str, span: Span) -> Result<Lexeme> {
                         TokenType::String(StringType::Byte)
                     } else if x == 'r' && iter.next() == Some('b') {
                         TokenType::String(StringType::RawByte(0))
-                    } else { // Could have an if, but again, we are assuming a legal token
+                    } else {
+                        // Could have an if, but again, we are assuming a legal token
                         TokenType::String(StringType::Raw(0))
                     }
                 }
@@ -371,7 +391,8 @@ pub fn do_lexeme_str(token: &str, span: Span) -> Result<Lexeme> {
                         TokenType::String(StringType::Byte)
                     } else if x == 'r' && iter.next() == Some('b') {
                         TokenType::String(StringType::RawByte(0))
-                    } else { // Could have an if, but again, we are assuming a legal token
+                    } else {
+                        // Could have an if, but again, we are assuming a legal token
                         TokenType::String(StringType::Raw(0))
                     }
                 }
