@@ -267,7 +267,59 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                             },
                         });
                     }
-                    Some(x) => todo!("{:?}", x),
+                    Some((pos, x)) => {
+                        let mut token = String::from("'");
+                        token.push(x);
+                        match file.speek() {
+                            Some(&(end, '\'')) => {
+                                file.next();
+                                token.push('\'');
+                                break Ok(Lexeme {
+                                    span: Span::new_simple(start, end),
+                                    body: LexemeBody::Token {
+                                        ty: TokenType::Character,
+                                        body: token.into(),
+                                    },
+                                });
+                            }
+                            Some((_, x)) if !x.is_xid_continue() => {
+                                break Ok(Lexeme {
+                                    span: Span::new_simple(start, pos),
+                                    body: LexemeBody::Token {
+                                        ty: TokenType::Lifetime,
+                                        body: token.into(),
+                                    },
+                                });
+                            }
+                            None => {
+                                break Ok(Lexeme {
+                                    span: Span::new_simple(start, pos),
+                                    body: LexemeBody::Token {
+                                        ty: TokenType::Lifetime,
+                                        body: token.into(),
+                                    },
+                                });
+                            }
+                            Some(&(pos, x)) => {
+                                file.next();
+                                token.push(x);
+                                let mut end = pos;
+                                while let Some(&(pos, x)) = file.speek() {
+                                    if !x.is_xid_continue() { break; }
+                                    file.next();
+                                    end = pos;
+                                    token.push(x);
+                                }
+                                break Ok(Lexeme {
+                                    span: Span::new_simple(start, end),
+                                    body: LexemeBody::Token {
+                                        ty: TokenType::Lifetime,
+                                        body: token.into(),
+                                    },
+                                });
+                            }
+                        }
+                    }
                     None => Err(Error::UnexpectedEof(start))?,
                 },
                 '.' => {
@@ -457,7 +509,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         },
                     });
                 }
-                ';' | '#' | ',' => {
+                ';' | '#' | ',' | '@' => {
                     break Ok(Lexeme {
                         span: Span::new_simple(start, start),
                         body: LexemeBody::Token {
