@@ -58,6 +58,8 @@ pub enum StringType {
 #[derive(Debug)]
 pub enum TokenType {
     Character,
+    CommentMulti,
+    CommentSingle,
     Identifier(IdentifierType),
     Lifetime,
     Number,
@@ -124,8 +126,8 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
         match file.snext() {
             Some((start, c)) => match c {
                 ' ' | '\n' => {}
-                x @ ('(' | '[' | '{') => {
-                    let ty = GroupType::from_start_char(x);
+                '(' | '[' | '{' => {
+                    let ty = GroupType::from_start_char(c);
                     let (body, end) = do_group(file, Some(ty.end_char()))?;
                     break Ok(Lexeme {
                         span: Span::new_simple(start, end),
@@ -139,6 +141,26 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         body: LexemeBody::Token {
                             ty: TokenType::String(StringType::Default),
                             body: str.into(),
+                        },
+                    });
+                }
+                '0'..='9' => {
+                    let mut id = String::from(c);
+                    let mut end = start;
+                    while let Some(&(pos, c)) = file.speek() {
+                        if !c.is_xid_continue() {
+                            break;
+                        } else {
+                            id.push(c);
+                            end = pos;
+                            file.next();
+                        }
+                    }
+                    break Ok(Lexeme {
+                        span: Span::new_simple(start, end),
+                        body: LexemeBody::Token {
+                            ty: TokenType::Identifier(IdentifierType::Default),
+                            body: id.into(),
                         },
                     });
                 }
@@ -176,6 +198,64 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         },
                     });
                 }
+                '/' => {
+                    let (tok, end, ty) = match file.speek() {
+                        Some(&(pos, '/')) => {
+                            file.next();
+                            let mut tok = String::from("//");
+                            let mut end = pos;
+                            while let Some((pos, c)) = file.snext() {
+                                if c == '\n' {
+                                    break;
+                                }
+                                tok.push(c);
+                                end = pos;
+                            }
+                            (tok.into(), end, TokenType::CommentSingle)
+                        }
+                        Some(&(pos, '*')) => {
+                            file.next();
+                            let mut tok = String::from("/*");
+                            let mut end = pos;
+                            let mut star = false;
+                            while let Some((pos, c)) = file.snext() {
+                                tok.push(c);
+                                end = pos;
+                                if c == '/' && star {
+                                    break;
+                                }
+                                star = c == '*';
+                            }
+                            (tok.into(), end, TokenType::CommentMulti)
+                        }
+                        Some(&(end, '=')) => { file.next(); ("/=".into(), end, TokenType::Punctuation) }
+                        _ => ("/".into(), start, TokenType::Punctuation),
+                    };
+                    break Ok(Lexeme {
+                        span: Span::new_simple(start, end),
+                        body: LexemeBody::Token {
+                            ty,
+                            body: tok,
+                        },
+                    });
+                }
+                '.' => {
+                    let (punct, end) = match file.speek() {
+                        Some(&(end, '.')) => { file.next(); match file.speek() {
+                            Some(&(end, '.')) => { file.next(); ("...", end) }
+                            Some(&(end, '=')) => { file.next(); ("..=", end) }
+                            _ => ("..", start),
+                        } }
+                        _ => (".", start),
+                    };
+                    break Ok(Lexeme {
+                        span: Span::new_simple(start, end),
+                        body: LexemeBody::Token {
+                            ty: TokenType::Punctuation,
+                            body: punct.into(),
+                        },
+                    });
+                }
                 ':' => {
                     let (punct, end) = match file.speek() {
                         Some(&(end, ':')) => { file.next(); ("::", end) }
@@ -203,19 +283,19 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         },
                     });
                 }
-                '*' => {
+                '+' | '*' | '!' => {
                     let (punct, end) = match file.speek() {
                         Some(&(end, '=')) => {
                             file.next();
-                            ("*=", end)
+                            ("=", end)
                         }
-                        _ => ("*", start),
+                        _ => ("", start),
                     };
                     break Ok(Lexeme {
                         span: Span::new_simple(start, end),
                         body: LexemeBody::Token {
                             ty: TokenType::Punctuation,
-                            body: punct.into(),
+                            body: (String::from(c) + punct).into(),
                         },
                     });
                 }
@@ -239,7 +319,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         },
                     });
                 }
-                ';' | '#' => {
+                ';' | '#' | ',' => {
                     break Ok(Lexeme {
                         span: Span::new_simple(start, start),
                         body: LexemeBody::Token {
