@@ -395,6 +395,32 @@ impl FunctionRawCodegen for W65FunctionCodegen {
                         self.insns
                             .push(W65Instruction::new(W65Opcode::Stz, op).into());
                     }
+                }else{
+                    if size != 1 {
+                        // we don't care about the size of the register if we're doing a 1-byte write, since the entire 4 bytes is reserved anyways, so save 3 cycles on a REP/SEP
+                        self.insns
+                            .push(W65InstructionOrLabel::ClearModeFlags(W65Mode::M));
+                    }
+                    let symname = format!("__r{}", base);
+                    let mut val = src;
+                    for i in 0..(size >> 1) {
+                        let addr = Address::Symbol {
+                            name: symname.clone(),
+                            disp: i as i64,
+                        };
+
+                        // ABI Specifies that we can do a direct-page access to the reserved space region, so always do so to save 1 byte and 1 cycle
+                        let op = W65Operand::Address(arch_ops::w65::W65Address::Direct(addr));
+                        if (val&0xFFFF)!=0{
+                            self.insns.push(W65Instruction::new(W65Opcode::Lda,W65Operand::Immediate(val as u16)).into());
+                            self.insns
+                                .push(W65Instruction::new(W65Opcode::Sta, op).into());
+                        }else{
+                            self.insns
+                            .push(W65Instruction::new(W65Opcode::Stz, op).into());
+                        }
+                        
+                    }
                 }
             }
             W65ValLocation::Null => todo!(),
@@ -740,6 +766,7 @@ impl W65FunctionCodegen {
                     }
                 }
                 W65InstructionOrLabel::Insn(insn) => {
+                    eprintln!("Codegening instruction {:?}",insn);
                     let insn = insn.into_real();
                     encoder.write_insn(insn)?
                 }

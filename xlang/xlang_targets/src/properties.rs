@@ -287,6 +287,7 @@ pub fn __get_properties(targ: Target) -> Option<&'static TargetProperties<'stati
             i586-*-elf => Some(&elf::I586_ELF),
             i686-*-elf => Some(&elf::I686_ELF),
             w65-*-elf => Some(&elf::W65_ELF),
+            w65-*-snes-elf => Some(&elf::W65_ELF),
             i86-*-near => Some(&elf::I86_NEAR_ELF),
             * => None
         }
