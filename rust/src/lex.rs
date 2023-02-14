@@ -167,6 +167,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                 x if x.is_xid_start() || x == '_' => {
                     let mut id = String::from(x);
                     let mut end = start;
+                    let mut ty = TokenType::Identifier(IdentifierType::Default);
                     while let Some(&(pos, c)) = file.speek() {
                         if !c.is_xid_continue() {
                             break;
@@ -190,6 +191,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                                         file.next();
                                     }
                                 }
+                                ty = TokenType::Identifier(IdentifierType::Raw);
                             }
                             Some('"') => todo!(),
                             _ => {}
@@ -210,7 +212,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                     break Ok(Lexeme {
                         span: Span::new_simple(start, end),
                         body: LexemeBody::Token {
-                            ty: TokenType::Identifier(IdentifierType::Default),
+                            ty: ty,
                             body: id.into(),
                         },
                     });
