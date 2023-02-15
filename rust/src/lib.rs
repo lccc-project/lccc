@@ -1,5 +1,6 @@
 // FIXME: Fix the problems, then switch this back to deny
-#![allow(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+#![deny(clippy::all)]
+#![warn(clippy::pedantic, clippy::nursery)]
 
 mod interning;
 mod irgen;
@@ -49,7 +50,7 @@ impl XLangFrontend for RustFrontend {
 }
 
 impl XLangPlugin for RustFrontend {
-    fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
+    fn accept_ir(&mut self, _file: &mut ir::File) -> Result<(), Error> {
         // println!("{:#?}", file);
         Result::Ok(())
     }

@@ -11,13 +11,14 @@ pub struct Cfg {
 }
 
 impl Cfg {
+    #[allow(dead_code)]
     pub fn from_properties(
-        properties: &TargetProperties,
-        features: Span<StringView>,
+        _properties: &TargetProperties,
+        _features: Span<StringView>,
         vendor: StringView,
         target: StringView,
     ) -> Self {
-        let mut keys = HashSet::new();
+        let keys = HashSet::new();
         let mut pairs = HashMap::new();
         pairs.insert(String::from("target"), target.to_string());
         pairs.insert(String::from("target_vendor"), vendor.to_string());
