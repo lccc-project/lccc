@@ -100,9 +100,7 @@ impl Symbol {
                 })
                 .expect("Overflowed number of symbols") as u64;
 
-            eprintln!("Interning string: {} (#{})", st, val);
-
-            let mut leaked = Box::leak(st.into_boxed_str());
+            let leaked = Box::leak(st.into_boxed_str());
 
             let mut guard = MAP.write();
 
@@ -124,8 +122,7 @@ impl Symbol {
                     <usize>::checked_add(val, 1)
                 })
                 .expect("Overflowed number of symbols") as u64;
-            eprintln!("Interning string: {} (#{})", st, val);
-            let mut leaked = Box::leak(Box::<str>::from(st));
+            let leaked = Box::leak(Box::<str>::from(st));
             let mut guard = MAP.write();
             let sym = unsafe { NonZeroU64::new_unchecked(val) };
             guard.0.insert(leaked, sym);

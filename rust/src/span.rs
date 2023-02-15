@@ -57,6 +57,7 @@ impl Default for HygieneRef {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum HygieneMode {
     CallSite,
@@ -65,6 +66,7 @@ pub enum HygieneMode {
     NoGlobals,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum RustEdition {
     Rust2015,

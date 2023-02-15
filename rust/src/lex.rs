@@ -1,8 +1,8 @@
-use core::{fmt, iter::Peekable};
+use core::fmt;
 
 use crate::{
     interning::Symbol,
-    span::{HygieneMode, HygieneRef, Pos, RustEdition, Span, Speekable, Speekerator},
+    span::{Pos, Span, Speekable, Speekerator},
 };
 
 use unicode_xid::UnicodeXID;
@@ -15,6 +15,7 @@ pub enum GroupType {
 }
 
 impl GroupType {
+    #[allow(dead_code)]
     pub fn start_char(&self) -> char {
         match self {
             Self::Parens => '(',
@@ -47,6 +48,7 @@ pub enum IdentifierType {
     Raw,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum StringType {
     Default,
@@ -67,6 +69,7 @@ pub enum TokenType {
     String(StringType),
 }
 
+#[allow(dead_code)]
 pub enum LexemeBody {
     Group { ty: GroupType, body: Vec<Lexeme> },
     Token { ty: TokenType, body: Symbol },
@@ -159,7 +162,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                     break Ok(Lexeme {
                         span: Span::new_simple(start, end),
                         body: LexemeBody::Token {
-                            ty: TokenType::Identifier(IdentifierType::Default),
+                            ty: TokenType::Number,
                             body: id.into(),
                         },
                     });
@@ -269,7 +272,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                                     end = pos;
                                     break;
                                 }
-                                Some((pos, '\n')) => Err(Error::UnrecognizedChar('\n', end))?,
+                                Some((pos, '\n')) => Err(Error::UnrecognizedChar('\n', pos))?,
                                 Some((pos, x)) => {
                                     token.push(x);
                                     end = pos;
@@ -545,6 +548,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
     }
 }
 
+#[allow(dead_code)]
 /// Assumes that the token is legal. If it is not, the result is unspecified.
 pub fn do_lexeme_str(token: &str, span: Span) -> Result<Lexeme> {
     let mut iter = token.chars();
@@ -587,7 +591,7 @@ pub fn do_lexeme_str(token: &str, span: Span) -> Result<Lexeme> {
                         TokenType::String(StringType::Raw(0))
                     }
                 }
-                (Some(a), Some(b)) => todo!(),
+                (Some(_), Some(_)) => todo!(),
             }
         }
         Some(x) => Err(Error::UnrecognizedChar(x, Pos::new(0, 0)))?, // invalid pos b/c we have no idea
