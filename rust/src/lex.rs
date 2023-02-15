@@ -323,7 +323,9 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                                 token.push(x);
                                 let mut end = pos;
                                 while let Some(&(pos, x)) = file.speek() {
-                                    if !x.is_xid_continue() { break; }
+                                    if !x.is_xid_continue() {
+                                        break;
+                                    }
                                     file.next();
                                     end = pos;
                                     token.push(x);
