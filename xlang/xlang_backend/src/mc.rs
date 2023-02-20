@@ -18,7 +18,7 @@ use xlang::{
 
 use crate::{
     callconv::CallingConvention,
-    expr::{Trap, ValLocation},
+    expr::{Trap, ValLocation, VStackValue},
     str::StringMap,
     ty::TypeInformation,
     FunctionCodegen, FunctionRawCodegen,
@@ -512,6 +512,10 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
         ty: &Type,
         ord: xlang::ir::AccessClass,
     ) {
+        todo!()
+    }
+
+    fn write_asm(&mut self, _: &xlang::ir::AsmExpr, _: xlang::vec::Vec<VStackValue<MaybeResolved<<F as MachineFeatures>::Loc>>>) -> xlang::vec::Vec<Self::Loc> {
         todo!()
     }
 }

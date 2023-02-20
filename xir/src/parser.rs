@@ -879,12 +879,15 @@ pub fn parse_access_class<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I
                 }
             }
             Some(Token::Ident(id)) if id == "freeze" => {
+                it.next();
                 acc |= AccessClass::Freeze;
             }
             Some(Token::Ident(id)) if id == "volatile" => {
                 acc |= AccessClass::Volatile;
+                it.next();
             }
             Some(Token::Ident(id)) if id == "nontemporal" => {
+                it.next();
                 acc |= AccessClass::Nontemporal;
             }
             _ => break acc,
@@ -1456,8 +1459,8 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
             }
 
             let syntax = syntax.unwrap_or_else(|| "".into());
-
-            Expr::Asm(AsmExpr {
+            
+            let ret = Expr::Asm(AsmExpr {
                 opts,
                 syntax,
                 access_class,
@@ -1466,7 +1469,10 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
                 targets,
                 inputs,
                 outputs,
-            })
+            });
+
+            eprintln!("Parsed asm-expr {:?}",ret);
+            ret
         }
         Token::Ident(id) if id == "begin" => {
             it.next();

@@ -171,13 +171,14 @@ fn tycheck_function(x: &mut FunctionDeclaration, tys: &TypeState) {
             .chain(body.locals.iter().cloned())
             .collect::<Vec<_>>();
         let mut ret = None;
-        tycheck_block(&mut body.block, tys, &local_tys, &mut ret);
-        let ret = ret.unwrap_or_default();
-        if ty.ret == Type::Void {
-            assert_eq!(ret.len(), 0);
-        } else {
-            assert_eq!(ret.len(), 1);
-            check_unify(&ret[0].ty, &ty.ret, tys);
+        if !tycheck_block(&mut body.block, tys, &local_tys, &mut ret){
+            let ret = ret.unwrap_or_default();
+            if ty.ret == Type::Void {
+                assert_eq!(ret.len(), 0);
+            } else {
+                assert_eq!(ret.len(), 1);
+                check_unify(&ret[0].ty, &ty.ret, tys);
+            }
         }
     }
 }
@@ -1236,7 +1237,7 @@ fn tycheck_block(
     tys: &TypeState,
     locals: &[Type],
     exit: &mut Option<Vec<StackItem>>,
-) {
+) -> bool {
     let mut vstack = Vec::new();
 
     let mut targets = HashMap::<_, _>::new();
@@ -1269,6 +1270,8 @@ fn tycheck_block(
             }
         }
     }
+
+    diverged
 }
 
 pub fn tycheck(x: &mut File) {

@@ -770,6 +770,10 @@ impl FunctionRawCodegen for X86CodegenState {
     fn write_unary(&mut self, _val: Self::Loc, _ty: &Type, _op: xlang_struct::UnaryOp) {
         todo!()
     }
+
+    fn write_asm(&mut self, _asm: &xlang_struct::AsmExpr,_inputs: xlang::vec::Vec<VStackValue<Self::Loc>>) -> xlang::vec::Vec<Self::Loc> {
+        todo!()
+    }
 }
 
 impl X86CodegenState {
