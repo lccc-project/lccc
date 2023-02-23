@@ -1,4 +1,4 @@
-use core::fmt;
+use core::{fmt, cmp::Ordering};
 
 use crate::interning::Symbol;
 
@@ -19,6 +19,25 @@ impl Pos {
 impl fmt::Debug for Pos {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.row, self.col)
+    }
+}
+
+impl PartialEq for Pos {
+    fn eq(&self, other: &Self) -> bool {
+        self.file == other.file && self.row == other.row && self.col == other.col
+    }
+}
+
+impl PartialOrd for Pos {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.file != other.file {
+            return None;
+        }
+        match self.row.cmp(&other.row) {
+            Ordering::Equal => {}
+            x => return Some(x),
+        }
+        Some(self.col.cmp(&other.col))
     }
 }
 

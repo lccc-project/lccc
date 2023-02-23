@@ -14,6 +14,7 @@ mod span;
 
 use lex::lex;
 
+use peekmore::PeekMore;
 use xlang::abi::io::{self, IntoChars, Read};
 use xlang::abi::prelude::v1::*;
 use xlang::abi::result::Result;
@@ -21,6 +22,8 @@ use xlang::abi::string::StringView;
 use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 use xlang::targets::Target;
+
+use crate::parse::do_mod;
 
 struct RustFrontend {
     filename: Option<String>,
@@ -46,6 +49,8 @@ impl XLangFrontend for RustFrontend {
         let mut file = file.into_chars();
         let lexed = lex(&mut file, self.filename.as_ref().map(|x| x.to_string()).unwrap_or_default()).unwrap();
         println!("{:#?}", lexed);
+        let parsed = do_mod(lexed.into_iter().peekmore()).unwrap();
+        println!("{:#?}", parsed);
         io::Result::Ok(())
     }
 }
