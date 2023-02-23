@@ -11,6 +11,12 @@ use parking_lot::RwLock;
 #[repr(transparent)]
 pub struct Symbol(NonZeroU64);
 
+impl Default for Symbol {
+    fn default() -> Self {
+        "<unsaved symbol>".into()
+    }
+}
+
 impl core::cmp::Ord for Symbol {
     fn cmp(&self, rhs: &Self) -> core::cmp::Ordering {
         if self == rhs {

@@ -1,14 +1,18 @@
 use core::fmt;
 
-#[derive(Clone, Copy)]
+use crate::interning::Symbol;
+
+#[derive(Clone, Copy, Default)]
 pub struct Pos {
     pub row: usize,
     pub col: usize,
+    pub idx: usize,
+    pub file: Symbol,
 }
 
 impl Pos {
-    pub const fn new(row: usize, col: usize) -> Self {
-        Self { row, col }
+    pub fn new(row: usize, col: usize, idx: usize, file: impl Into<Symbol>) -> Self {
+        Self { row, col, idx, file: file.into() }
     }
 }
 
@@ -76,12 +80,12 @@ pub enum RustEdition {
 }
 
 pub trait Speekerator: Iterator<Item = char> + Sized {
-    fn speekable(self) -> Speekable<Self>;
+    fn speekable(self, file_name: impl Into<Symbol>) -> Speekable<Self>;
 }
 
 impl<I: Iterator<Item = char>> Speekerator for I {
-    fn speekable(self) -> Speekable<Self> {
-        Speekable::new(self)
+    fn speekable(self, file_name: impl Into<Symbol>) -> Speekable<Self> {
+        Speekable::new(self, file_name)
     }
 }
 
@@ -93,11 +97,11 @@ pub struct Speekable<I: Iterator<Item = char>> {
 
 #[allow(dead_code)]
 impl<I: Iterator<Item = char>> Speekable<I> {
-    const fn new(inner: I) -> Self {
+    fn new(inner: I, file_name: impl Into<Symbol>) -> Self {
         Self {
             inner,
             peeked: None,
-            pos: Pos::new(1, 1),
+            pos: Pos::new(1, 1, 0, file_name),
         }
     }
 
@@ -106,8 +110,8 @@ impl<I: Iterator<Item = char>> Speekable<I> {
             let c = self.inner.next();
             if let Some(c) = c {
                 let next_pos = match c {
-                    '\n' => Pos::new(self.pos.row + 1, 1),
-                    _ => Pos::new(self.pos.row, self.pos.col + 1),
+                    '\n' => Pos::new(self.pos.row + 1, 1, self.pos.idx + 1, self.pos.file),
+                    _ => Pos::new(self.pos.row, self.pos.col + 1, self.pos.idx + 1, self.pos.file),
                 };
                 self.peeked = Some((self.pos, c));
                 self.pos = next_pos;

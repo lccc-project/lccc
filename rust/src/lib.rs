@@ -2,6 +2,7 @@
 #![deny(clippy::all)]
 #![warn(clippy::pedantic, clippy::nursery)]
 
+mod ast;
 mod interning;
 mod irgen;
 mod lex;
@@ -43,7 +44,7 @@ impl XLangFrontend for RustFrontend {
 
     fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
         let mut file = file.into_chars();
-        let lexed = lex(&mut file).unwrap();
+        let lexed = lex(&mut file, self.filename.as_ref().map(|x| x.to_string()).unwrap_or_default()).unwrap();
         println!("{:#?}", lexed);
         io::Result::Ok(())
     }
