@@ -45,6 +45,7 @@ impl GroupType {
 #[derive(Debug)]
 pub enum IdentifierType {
     Default,
+    Keyword,
     Raw,
 }
 
@@ -84,6 +85,18 @@ impl fmt::Debug for LexemeBody {
             Self::AstFrag(frag) => write!(f, "AstFrag({:?})", frag),
         }
     }
+}
+
+#[derive(Debug)]
+pub enum LexemeClass {
+    Character,
+    Group(Option<GroupType>),
+    Keyword(Symbol),
+    Identifier,
+    Lifetime,
+    Number,
+    Punctuation(Symbol),
+    String,
 }
 
 #[derive(Debug)]
