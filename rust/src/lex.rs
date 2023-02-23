@@ -594,8 +594,8 @@ pub fn do_lexeme_str(token: &str, span: Span) -> Result<Lexeme> {
                 (Some(_), Some(_)) => todo!(),
             }
         }
-        Some(x) => Err(Error::UnrecognizedChar(x, Pos::new(0, 0)))?, // invalid pos b/c we have no idea
-        None => Err(Error::UnexpectedEof(Pos::new(0, 0)))?,
+        Some(x) => Err(Error::UnrecognizedChar(x, Pos::default()))?, // invalid pos b/c we have no idea
+        None => Err(Error::UnexpectedEof(Pos::default()))?,
     };
     Ok(Lexeme {
         span,
@@ -634,6 +634,6 @@ pub fn do_group(
     Ok((result, end))
 }
 
-pub fn lex(file: &mut impl Iterator<Item = char>) -> Result<Vec<Lexeme>> {
-    do_group(&mut file.speekable(), None).map(|x| x.0)
+pub fn lex(file: &mut impl Iterator<Item = char>, file_name: impl Into<Symbol>) -> Result<Vec<Lexeme>> {
+    do_group(&mut file.speekable(file_name), None).map(|x| x.0)
 }

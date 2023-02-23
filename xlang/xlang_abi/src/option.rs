@@ -93,7 +93,7 @@ impl<T> Option<T> {
     }
 
     #[allow(clippy::missing_const_for_fn)]
-    /// Unwraps self into a value of type `T` if it is `Some`, or returns the default value otherwise.
+    /// Unwraps self into a value of type `T` if it is `Some`, or returns the result of calling `op` otherwise.
     pub fn unwrap_or(self, default: T) -> T {
         match self {
             Some(val) => val,
@@ -185,6 +185,13 @@ impl<T> Option<T> {
     #[must_use]
     pub fn take(&mut self) -> Self {
         core::mem::take(self)
+    }
+}
+
+impl<T: Default> Option<T> {
+    /// Unwraps self into a value of type `T` if it is `Some`, or returns the default value associated with the type otherwise.
+    pub fn unwrap_or_default(self) -> T {
+        self.unwrap_or_else(T::default)
     }
 }
 
