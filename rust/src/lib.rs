@@ -23,7 +23,7 @@ use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 use xlang::targets::Target;
 
-use crate::parse::do_mod;
+use crate::{parse::do_mod, lex::filter_comments};
 
 struct RustFrontend {
     filename: Option<String>,
@@ -47,9 +47,17 @@ impl XLangFrontend for RustFrontend {
 
     fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
         let mut file = file.into_chars();
-        let lexed = lex(&mut file, self.filename.as_ref().map(|x| x.to_string()).unwrap_or_default()).unwrap();
+        let mut lexed = lex(
+            &mut file,
+            self.filename
+                .as_ref()
+                .map(|x| x.to_string())
+                .unwrap_or_default(),
+        )
+        .unwrap();
+        filter_comments(&mut lexed);
         println!("{:#?}", lexed);
-        let parsed = do_mod(lexed.into_iter().peekmore()).unwrap();
+        let parsed = do_mod(&mut lexed.into_iter().peekmore()).unwrap();
         println!("{:#?}", parsed);
         io::Result::Ok(())
     }

@@ -7,7 +7,7 @@ use crate::{
 
 use unicode_xid::UnicodeXID;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GroupType {
     Parens,
     Brackets,
@@ -42,7 +42,7 @@ impl GroupType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum IdentifierType {
     Default,
     Keyword,
@@ -50,7 +50,7 @@ pub enum IdentifierType {
 }
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum StringType {
     Default,
     Raw(u8), // number of #s
@@ -58,7 +58,7 @@ pub enum StringType {
     RawByte(u8), // see above
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum TokenType {
     Character,
     CommentMulti,
@@ -70,26 +70,75 @@ pub enum TokenType {
     String(StringType),
 }
 
+#[derive(Clone)]
+pub struct Group {
+    ty: GroupType,
+    body: Vec<Lexeme>,
+}
+
+impl Group {
+    pub fn new(ty: GroupType, body: Vec<Lexeme>) -> Self {
+        Self { ty, body }
+    }
+
+    pub fn with_span(self, span: Span) -> Lexeme {
+        Lexeme {
+            span,
+            body: LexemeBody::Group(self),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct Token {
+    ty: TokenType,
+    body: Symbol,
+}
+
+impl Token {
+    pub fn new(ty: TokenType, body: impl Into<Symbol>) -> Self {
+        Self {
+            ty,
+            body: body.into(),
+        }
+    }
+
+    pub fn punct(body: impl Into<Symbol>) -> Self {
+        Self::new(TokenType::Punctuation, body)
+    }
+
+    pub fn with_span(self, span: Span) -> Lexeme {
+        Lexeme {
+            span,
+            body: LexemeBody::Token(self),
+        }
+    }
+}
+
 #[allow(dead_code)]
+#[derive(Clone)]
 pub enum LexemeBody {
-    Group { ty: GroupType, body: Vec<Lexeme> },
-    Token { ty: TokenType, body: Symbol },
+    Group(Group),
+    Token(Token),
     AstFrag(AstFrag),
 }
 
 impl fmt::Debug for LexemeBody {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Group { ty, body } => f.debug_tuple("Group").field(ty).field(body).finish(),
-            Self::Token { ty, body } => write!(f, "Token({:?}, {:?})", ty, body),
+            Self::Group(Group { ty, body }) => {
+                f.debug_tuple("Group").field(ty).field(body).finish()
+            }
+            Self::Token(Token { ty, body }) => write!(f, "Token({:?}, {:?})", ty, body),
             Self::AstFrag(frag) => write!(f, "AstFrag({:?})", frag),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LexemeClass {
     Character,
+    Eof,
     Group(Option<GroupType>),
     Keyword(Symbol),
     Identifier,
@@ -99,7 +148,33 @@ pub enum LexemeClass {
     String,
 }
 
-#[derive(Debug)]
+impl LexemeClass {
+    pub fn of(lexeme: Option<&Lexeme>) -> Self {
+        match lexeme {
+            None => Self::Eof,
+            Some(Lexeme { body: LexemeBody::Group(Group { ty, .. }), .. }) => Self::Group(Some(*ty)),
+            Some(Lexeme { body: LexemeBody::Token(token), .. }) => match token.ty {
+                TokenType::Character => Self::Character,
+                TokenType::Identifier(ty) => match ty {
+                    IdentifierType::Keyword => Self::Keyword(token.body),
+                    _ => Self::Identifier,
+                }
+                TokenType::Lifetime => Self::Lifetime,
+                TokenType::Number => Self::Number,
+                TokenType::Punctuation => Self::Punctuation(token.body),
+                TokenType::String(_) => Self::String,
+                _ => unreachable!(), // Comments should be removed by now
+            }
+            _ => todo!()
+        }
+    }
+
+    pub fn is(&self, other: &Self) -> bool {
+        self == other || (matches!(other, Self::Group(None)) && matches!(self, Self::Group(_)))
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Lexeme {
     pub span: Span,
     pub body: LexemeBody,
@@ -111,7 +186,7 @@ pub enum Error {
     UnrecognizedChar(char, Pos),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum AstFrag {}
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -145,20 +220,12 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                 '(' | '[' | '{' => {
                     let ty = GroupType::from_start_char(c);
                     let (body, end) = do_group(file, Some(ty.end_char()))?;
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Group { ty, body },
-                    });
+                    break Ok(Group { ty, body }.with_span(Span::new_simple(start, end)));
                 }
                 '"' => {
                     let (str, end) = do_str(file)?;
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Token {
-                            ty: TokenType::String(StringType::Default),
-                            body: str.into(),
-                        },
-                    });
+                    break Ok(Token::new(TokenType::String(StringType::Default), str)
+                        .with_span(Span::new_simple(start, end)));
                 }
                 '0'..='9' => {
                     let mut id = String::from(c);
@@ -172,13 +239,9 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                             file.next();
                         }
                     }
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Token {
-                            ty: TokenType::Number,
-                            body: id.into(),
-                        },
-                    });
+                    break Ok(
+                        Token::new(TokenType::Number, id).with_span(Span::new_simple(start, end))
+                    );
                 }
                 x if x.is_xid_start() || x == '_' => {
                     let mut id = String::from(x);
@@ -216,22 +279,11 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         if file.peek() == Some(&'"') {
                             file.next();
                             let (str, end) = do_str(file)?;
-                            break Ok(Lexeme {
-                                span: Span::new_simple(start, end),
-                                body: LexemeBody::Token {
-                                    ty: TokenType::String(StringType::Byte),
-                                    body: (id + &str).into(),
-                                },
-                            });
+                            break Ok(Token::new(TokenType::String(StringType::Byte), id + &str)
+                                .with_span(Span::new_simple(start, end)));
                         }
                     }
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Token {
-                            ty: ty,
-                            body: id.into(),
-                        },
-                    });
+                    break Ok(Token::new(ty, id).with_span(Span::new_simple(start, end)));
                 }
                 '/' => {
                     let (tok, end, ty) = match file.speek() {
@@ -246,7 +298,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                                 tok.push(c);
                                 end = pos;
                             }
-                            (tok.into(), end, TokenType::CommentSingle)
+                            (tok, end, TokenType::CommentSingle)
                         }
                         Some(&(pos, '*')) => {
                             file.next();
@@ -261,7 +313,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                                 }
                                 star = c == '*';
                             }
-                            (tok.into(), end, TokenType::CommentMulti)
+                            (tok, end, TokenType::CommentMulti)
                         }
                         Some(&(end, '=')) => {
                             file.next();
@@ -269,10 +321,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         }
                         _ => ("/".into(), start, TokenType::Punctuation),
                     };
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Token { ty, body: tok },
-                    });
+                    break Ok(Token::new(ty, tok).with_span(Span::new_simple(start, end)));
                 }
                 '\'' => match file.snext() {
                     Some((pos, '\\')) => {
@@ -293,13 +342,8 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                                 None => Err(Error::UnexpectedEof(end))?,
                             }
                         }
-                        break Ok(Lexeme {
-                            span: Span::new_simple(start, end),
-                            body: LexemeBody::Token {
-                                ty: TokenType::Character,
-                                body: token.into(),
-                            },
-                        });
+                        break Ok(Token::new(TokenType::Character, token)
+                            .with_span(Span::new_simple(start, end)));
                     }
                     Some((pos, x)) => {
                         let mut token = String::from("'");
@@ -308,31 +352,16 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                             Some(&(end, '\'')) => {
                                 file.next();
                                 token.push('\'');
-                                break Ok(Lexeme {
-                                    span: Span::new_simple(start, end),
-                                    body: LexemeBody::Token {
-                                        ty: TokenType::Character,
-                                        body: token.into(),
-                                    },
-                                });
+                                break Ok(Token::new(TokenType::Character, token)
+                                    .with_span(Span::new_simple(start, end)));
                             }
                             Some((_, x)) if !x.is_xid_continue() => {
-                                break Ok(Lexeme {
-                                    span: Span::new_simple(start, pos),
-                                    body: LexemeBody::Token {
-                                        ty: TokenType::Lifetime,
-                                        body: token.into(),
-                                    },
-                                });
+                                break Ok(Token::new(TokenType::Lifetime, token)
+                                    .with_span(Span::new_simple(start, pos)));
                             }
                             None => {
-                                break Ok(Lexeme {
-                                    span: Span::new_simple(start, pos),
-                                    body: LexemeBody::Token {
-                                        ty: TokenType::Lifetime,
-                                        body: token.into(),
-                                    },
-                                });
+                                break Ok(Token::new(TokenType::Lifetime, token)
+                                    .with_span(Span::new_simple(start, pos)));
                             }
                             Some(&(pos, x)) => {
                                 file.next();
@@ -346,13 +375,8 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                                     end = pos;
                                     token.push(x);
                                 }
-                                break Ok(Lexeme {
-                                    span: Span::new_simple(start, end),
-                                    body: LexemeBody::Token {
-                                        ty: TokenType::Lifetime,
-                                        body: token.into(),
-                                    },
-                                });
+                                break Ok(Token::new(TokenType::Lifetime, token)
+                                    .with_span(Span::new_simple(start, end)));
                             }
                         }
                     }
@@ -376,13 +400,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         }
                         _ => (".", start),
                     };
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Token {
-                            ty: TokenType::Punctuation,
-                            body: punct.into(),
-                        },
-                    });
+                    break Ok(Token::punct(punct).with_span(Span::new_simple(start, end)));
                 }
                 '<' => {
                     let (punct, end) = match file.speek() {
@@ -402,13 +420,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         }
                         _ => ("<", start),
                     };
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Token {
-                            ty: TokenType::Punctuation,
-                            body: punct.into(),
-                        },
-                    });
+                    break Ok(Token::punct(punct).with_span(Span::new_simple(start, end)));
                 }
                 '>' => {
                     let (punct, end) = match file.speek() {
@@ -428,13 +440,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         }
                         _ => (">", start),
                     };
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Token {
-                            ty: TokenType::Punctuation,
-                            body: punct.into(),
-                        },
-                    });
+                    break Ok(Token::punct(punct).with_span(Span::new_simple(start, end)));
                 }
                 '|' => {
                     let (punct, end) = match file.speek() {
@@ -445,13 +451,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         }
                         _ => ("|", start),
                     };
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Token {
-                            ty: TokenType::Punctuation,
-                            body: punct.into(),
-                        },
-                    });
+                    break Ok(Token::punct(punct).with_span(Span::new_simple(start, end)));
                 }
                 ':' => {
                     let (punct, end) = match file.speek() {
@@ -461,13 +461,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         }
                         _ => (":", start),
                     };
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Token {
-                            ty: TokenType::Punctuation,
-                            body: punct.into(),
-                        },
-                    });
+                    break Ok(Token::punct(punct).with_span(Span::new_simple(start, end)));
                 }
                 '=' => {
                     let (punct, end) = match file.speek() {
@@ -481,13 +475,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         }
                         _ => ("=", start),
                     };
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Token {
-                            ty: TokenType::Punctuation,
-                            body: punct.into(),
-                        },
-                    });
+                    break Ok(Token::punct(punct).with_span(Span::new_simple(start, end)));
                 }
                 '&' => {
                     let (punct, end) = match file.speek() {
@@ -501,13 +489,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         }
                         _ => ("&", start),
                     };
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Token {
-                            ty: TokenType::Punctuation,
-                            body: punct.into(),
-                        },
-                    });
+                    break Ok(Token::punct(punct).with_span(Span::new_simple(start, end)));
                 }
                 '+' | '*' | '!' => {
                     let (punct, end) = match file.speek() {
@@ -517,13 +499,8 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         }
                         _ => ("", start),
                     };
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Token {
-                            ty: TokenType::Punctuation,
-                            body: (String::from(c) + punct).into(),
-                        },
-                    });
+                    break Ok(Token::punct(String::from(c) + punct)
+                        .with_span(Span::new_simple(start, end)));
                 }
                 '-' => {
                     let (punct, end) = match file.speek() {
@@ -537,22 +514,12 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         }
                         _ => ("-", start),
                     };
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, end),
-                        body: LexemeBody::Token {
-                            ty: TokenType::Punctuation,
-                            body: punct.into(),
-                        },
-                    });
+                    break Ok(Token::punct(punct).with_span(Span::new_simple(start, end)));
                 }
                 ';' | '#' | ',' | '@' => {
-                    break Ok(Lexeme {
-                        span: Span::new_simple(start, start),
-                        body: LexemeBody::Token {
-                            ty: TokenType::Punctuation,
-                            body: String::from(c).into(),
-                        },
-                    });
+                    break Ok(
+                        Token::punct(String::from(c)).with_span(Span::new_simple(start, start))
+                    );
                 }
                 x => Err(Error::UnrecognizedChar(x, start))?,
             },
@@ -610,13 +577,7 @@ pub fn do_lexeme_str(token: &str, span: Span) -> Result<Lexeme> {
         Some(x) => Err(Error::UnrecognizedChar(x, Pos::default()))?, // invalid pos b/c we have no idea
         None => Err(Error::UnexpectedEof(Pos::default()))?,
     };
-    Ok(Lexeme {
-        span,
-        body: LexemeBody::Token {
-            ty,
-            body: token.into(),
-        },
-    })
+    Ok(Token::new(ty, token).with_span(span))
 }
 
 pub fn do_group(
@@ -647,6 +608,17 @@ pub fn do_group(
     Ok((result, end))
 }
 
-pub fn lex(file: &mut impl Iterator<Item = char>, file_name: impl Into<Symbol>) -> Result<Vec<Lexeme>> {
+pub fn lex(
+    file: &mut impl Iterator<Item = char>,
+    file_name: impl Into<Symbol>,
+) -> Result<Vec<Lexeme>> {
     do_group(&mut file.speekable(file_name), None).map(|x| x.0)
+}
+
+pub fn filter_comments(tree: &mut Vec<Lexeme>) {
+    tree.retain_mut(|lexeme| match &mut lexeme.body {
+        LexemeBody::Group(group) => {filter_comments(&mut group.body); true}
+        LexemeBody::Token(Token { ty: TokenType::CommentMulti | TokenType::CommentSingle, .. }) => false, // TODO: Doc comments
+        _ => true,
+    })
 }

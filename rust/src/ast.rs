@@ -1,24 +1,21 @@
-use crate::{span::Span, lex::Lexeme};
+use crate::{lex::Lexeme, span::Span};
 
 #[derive(Debug)]
-pub enum ItemBody {
-    
-}
+pub enum ItemBody {}
 
 #[derive(Debug)]
 pub struct Item {
-    body: ItemBody,
-    span: Span,
+    pub attrs: Vec<Attr>,
+    pub body: ItemBody,
+    pub span: Span,
 }
 
 #[derive(Debug)]
-pub struct SimplePath {
-
-}
+pub struct SimplePath {}
 
 #[derive(Debug)]
 pub enum AttrInput {
-    DelimTokenTree(Vec<Lexeme>, Span)
+    DelimTokenTree(Vec<Lexeme>, Span),
 }
 
 #[derive(Debug)]
