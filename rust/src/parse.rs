@@ -4,7 +4,7 @@ use peekmore::PeekMoreIterator;
 
 use crate::{
     ast::{Attr, Item, Mod},
-    lex::{GroupType, Lexeme, LexemeClass},
+    lex::{GroupType, Lexeme, LexemeClass, LexemeBody},
     span::{Span, Pos},
 };
 
@@ -62,20 +62,25 @@ pub fn do_lexeme_class(
 
 pub fn do_lexeme_group(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+    expected: Option<GroupType>,
 ) -> Result<Vec<Lexeme>> {
-    todo!()
+    let lexeme = do_lexeme_class(tree, LexemeClass::Group(expected))?;
+    match lexeme.body {
+        LexemeBody::Group(x) => Ok(x.body),
+        _ => unreachable!(),
+    }
 }
 
 pub fn do_internal_attr(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Attr> {
     do_lexeme_class(tree, LexemeClass::Punctuation("#".into()))?;
     do_lexeme_class(tree, LexemeClass::Punctuation("!".into()))?;
-    let body = do_lexeme_class(tree, LexemeClass::Group(Some(GroupType::Brackets)))?;
+    let body = do_lexeme_group(tree, Some(GroupType::Brackets))?;
     todo!()
 }
 
 pub fn do_external_attr(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Attr> {
     do_lexeme_class(tree, LexemeClass::Punctuation("#".into()))?;
-    let body = do_lexeme_class(tree, LexemeClass::Group(Some(GroupType::Brackets)))?;
+    let body = do_lexeme_group(tree, Some(GroupType::Brackets))?;
     todo!()
 }
 
