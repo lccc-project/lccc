@@ -72,8 +72,8 @@ pub enum TokenType {
 
 #[derive(Clone)]
 pub struct Group {
-    ty: GroupType,
-    body: Vec<Lexeme>,
+    pub ty: GroupType,
+    pub body: Vec<Lexeme>,
 }
 
 impl Group {
@@ -91,8 +91,8 @@ impl Group {
 
 #[derive(Clone)]
 pub struct Token {
-    ty: TokenType,
-    body: Symbol,
+    pub ty: TokenType,
+    pub body: Symbol,
 }
 
 impl Token {
@@ -152,20 +152,26 @@ impl LexemeClass {
     pub fn of(lexeme: Option<&Lexeme>) -> Self {
         match lexeme {
             None => Self::Eof,
-            Some(Lexeme { body: LexemeBody::Group(Group { ty, .. }), .. }) => Self::Group(Some(*ty)),
-            Some(Lexeme { body: LexemeBody::Token(token), .. }) => match token.ty {
+            Some(Lexeme {
+                body: LexemeBody::Group(Group { ty, .. }),
+                ..
+            }) => Self::Group(Some(*ty)),
+            Some(Lexeme {
+                body: LexemeBody::Token(token),
+                ..
+            }) => match token.ty {
                 TokenType::Character => Self::Character,
                 TokenType::Identifier(ty) => match ty {
                     IdentifierType::Keyword => Self::Keyword(token.body),
                     _ => Self::Identifier,
-                }
+                },
                 TokenType::Lifetime => Self::Lifetime,
                 TokenType::Number => Self::Number,
                 TokenType::Punctuation => Self::Punctuation(token.body),
                 TokenType::String(_) => Self::String,
                 _ => unreachable!(), // Comments should be removed by now
-            }
-            _ => todo!()
+            },
+            _ => todo!(),
         }
     }
 
@@ -617,8 +623,14 @@ pub fn lex(
 
 pub fn filter_comments(tree: &mut Vec<Lexeme>) {
     tree.retain_mut(|lexeme| match &mut lexeme.body {
-        LexemeBody::Group(group) => {filter_comments(&mut group.body); true}
-        LexemeBody::Token(Token { ty: TokenType::CommentMulti | TokenType::CommentSingle, .. }) => false, // TODO: Doc comments
+        LexemeBody::Group(group) => {
+            filter_comments(&mut group.body);
+            true
+        }
+        LexemeBody::Token(Token {
+            ty: TokenType::CommentMulti | TokenType::CommentSingle,
+            ..
+        }) => false, // TODO: Doc comments
         _ => true,
     })
 }
