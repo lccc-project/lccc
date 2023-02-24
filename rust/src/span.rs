@@ -1,4 +1,4 @@
-use core::{fmt, cmp::Ordering};
+use core::{cmp::Ordering, fmt};
 
 use crate::interning::Symbol;
 
@@ -12,7 +12,12 @@ pub struct Pos {
 
 impl Pos {
     pub fn new(row: usize, col: usize, idx: usize, file: impl Into<Symbol>) -> Self {
-        Self { row, col, idx, file: file.into() }
+        Self {
+            row,
+            col,
+            idx,
+            file: file.into(),
+        }
     }
 }
 
@@ -41,6 +46,7 @@ impl PartialOrd for Pos {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Span {
     pub start: Pos,
     pub end: Pos,
@@ -63,7 +69,7 @@ impl fmt::Debug for Span {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct HygieneRef {
     pub hygiene_id: u64,
     pub mode: HygieneMode,
@@ -81,7 +87,7 @@ impl Default for HygieneRef {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum HygieneMode {
     CallSite,
     MixedSite,
@@ -90,7 +96,7 @@ pub enum HygieneMode {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RustEdition {
     Rust2015,
     Rust2018,
@@ -130,7 +136,12 @@ impl<I: Iterator<Item = char>> Speekable<I> {
             if let Some(c) = c {
                 let next_pos = match c {
                     '\n' => Pos::new(self.pos.row + 1, 1, self.pos.idx + 1, self.pos.file),
-                    _ => Pos::new(self.pos.row, self.pos.col + 1, self.pos.idx + 1, self.pos.file),
+                    _ => Pos::new(
+                        self.pos.row,
+                        self.pos.col + 1,
+                        self.pos.idx + 1,
+                        self.pos.file,
+                    ),
                 };
                 self.peeked = Some((self.pos, c));
                 self.pos = next_pos;
