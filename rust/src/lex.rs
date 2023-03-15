@@ -47,6 +47,7 @@ pub enum IdentifierType {
     Default,
     Keyword,
     Raw,
+    Reserved,
 }
 
 #[allow(dead_code)]
@@ -96,11 +97,68 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn new(ty: TokenType, body: impl Into<Symbol>) -> Self {
-        Self {
-            ty,
-            body: body.into(),
+    pub fn new(mut ty: TokenType, body: impl Into<Symbol>) -> Self {
+        let body = body.into();
+        if matches!(ty, TokenType::Identifier(IdentifierType::Default)) {
+            if matches!(
+                body.as_str(),
+                "as" | "break"
+                    | "const"
+                    | "continue"
+                    | "crate"
+                    | "else"
+                    | "enum"
+                    | "extern"
+                    | "false"
+                    | "fn"
+                    | "for"
+                    | "if"
+                    | "impl"
+                    | "in"
+                    | "let"
+                    | "loop"
+                    | "match"
+                    | "mod"
+                    | "move"
+                    | "mut"
+                    | "pub"
+                    | "ref"
+                    | "return"
+                    | "self"
+                    | "Self"
+                    | "static"
+                    | "struct"
+                    | "super"
+                    | "trait"
+                    | "true"
+                    | "type"
+                    | "unsafe"
+                    | "use"
+                    | "where"
+                    | "while"
+            ) || matches!(body.as_str(), "async" | "await" | "dyn")
+            {
+                ty = TokenType::Identifier(IdentifierType::Keyword);
+            } else if matches!(
+                body.as_str(),
+                "abstract"
+                    | "become"
+                    | "box"
+                    | "do"
+                    | "final"
+                    | "macro"
+                    | "override"
+                    | "priv"
+                    | "typeof"
+                    | "unsized"
+                    | "virtual"
+                    | "yield"
+            ) || matches!(body.as_str(), "try")
+            {
+                ty = TokenType::Identifier(IdentifierType::Reserved);
+            }
         }
+        Self { ty, body }
     }
 
     pub fn punct(body: impl Into<Symbol>) -> Self {
@@ -135,7 +193,7 @@ impl fmt::Debug for LexemeBody {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LexemeClass {
     Character,
     Eof,
@@ -184,6 +242,22 @@ impl LexemeClass {
 pub struct Lexeme {
     pub span: Span,
     pub body: LexemeBody,
+}
+
+impl Lexeme {
+    pub fn text(&self) -> Option<&Symbol> {
+        match self.body {
+            LexemeBody::Token(Token { ref body, .. }) => Some(body),
+            _ => None
+        }
+    }
+
+    pub fn into_text(self) -> Option<Symbol> {
+        match self.body {
+            LexemeBody::Token(Token { body, .. }) => Some(body),
+            _ => None
+        }
+    }
 }
 
 #[derive(Debug)]

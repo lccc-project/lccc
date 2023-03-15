@@ -51,6 +51,12 @@ impl core::cmp::PartialEq<str> for Symbol {
     }
 }
 
+impl core::cmp::PartialEq<&str> for Symbol {
+    fn eq(&self, other: &&str) -> bool {
+        self == *other
+    }
+}
+
 impl core::cmp::PartialEq<Symbol> for str {
     fn eq(&self, other: &Symbol) -> bool {
         self == other.as_str()
