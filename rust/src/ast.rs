@@ -1,4 +1,4 @@
-use crate::{lex::Lexeme, span::Span};
+use crate::{lex::Lexeme, span::Span, interning::Symbol};
 
 #[derive(Debug)]
 pub enum ItemBody {}
@@ -11,7 +11,25 @@ pub struct Item {
 }
 
 #[derive(Debug)]
-pub struct SimplePath {}
+pub enum SimplePathSegmentBody {
+    Identifier(Symbol),
+    SuperPath,
+    SelfPath,
+    CratePath,
+    MacroCratePath,
+}
+
+#[derive(Debug)]
+pub struct SimplePathSegment {
+    pub body: SimplePathSegmentBody,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub struct SimplePath {
+    pub from_root: bool,
+    pub segments: Vec<SimplePathSegment>,
+}
 
 #[derive(Debug)]
 pub enum AttrInput {
@@ -20,9 +38,9 @@ pub enum AttrInput {
 
 #[derive(Debug)]
 pub struct Attr {
-    name: SimplePath,
-    input: Option<AttrInput>,
-    span: Span,
+    pub name: SimplePath,
+    pub input: Option<AttrInput>,
+    pub span: Span,
 }
 
 #[derive(Debug)]

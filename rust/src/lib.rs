@@ -23,7 +23,7 @@ use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 use xlang::targets::Target;
 
-use crate::{parse::do_mod, lex::filter_comments};
+use crate::{lex::filter_comments, parse::do_mod};
 
 struct RustFrontend {
     filename: Option<String>,
