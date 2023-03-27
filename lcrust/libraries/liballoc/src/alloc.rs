@@ -5,21 +5,19 @@
  * it under the terms of the GNU Lesser General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Lesser General Public License for more details.
- * 
+ *
  * Like all libraries as part of the lccc project,
- *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license. 
+ *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license.
  * When dealing in this software, you may, at your option, do so under only those terms,
- *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
+ *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms.
  */
-
-pub use ::core::alloc::*;
+pub use core::alloc::*;
 use core::ptr::NonNull;
-
 
 #[unstable(feature = "allocator_api", issue = "32838")]
 pub struct AllocError;
@@ -76,6 +74,12 @@ pub unsafe trait Allocator {
     }
 }
 
+#[unstable(feature = "lccc_allocator_api_align_safety")]
+pub unsafe trait AlignSafeAllocator: Allocator {
+    #[unstable(feature = "lccc_allocator_api_align_safety")]
+    fn alloc_align_compatible(&self, old_align: usize, new_align: usize) -> bool;
+}
+
 unsafe impl<A: Allocator> Allocator for &'_ A {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         (*self).allocate(layout)
@@ -114,6 +118,12 @@ unsafe impl<A: Allocator> Allocator for &'_ A {
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
         (*self).shrink(ptr, old_layout, new_layout)
+    }
+}
+
+unsafe impl<A: Allocator + AlignSafeAllocator> AlignSafeAllocator for &'_ A {
+    fn alloc_align_compatible(&self, old_align: usize, new_align: usize) -> bool {
+        <A as AlignSafeAllocator>::alloc_align_compatible(self, old_align, new_align)
     }
 }
 
@@ -158,60 +168,54 @@ unsafe impl<A: Allocator> Allocator for &'_ mut A {
     }
 }
 
+unsafe impl<A: Allocator + AlignSafeAllocator> AlignSafeAllocator for &'_ mut A {
+    fn alloc_align_compatible(&self, old_align: usize, new_align: usize) -> bool {
+        <A as AlignSafeAllocator>::alloc_align_compatible(self, old_align, new_align)
+    }
+}
+
 extern "Rust" {
     #[no_mangle]
-    static _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE:
-        &dyn GlobalAlloc;
+    static _ZNSt5alloc18__global_allocatorE: &dyn GlobalAlloc;
 }
 
 pub unsafe fn alloc(layout: Layout) -> *mut u8 {
-    if core::ptr::raw_ref!(
-        _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE
-    )
-    .is_null()
-    {
+    if core::ptr::raw_const!(_ZNSt5alloc18__global_allocatorE).is_null() {
         handle_alloc_error(layout)
     } else {
-        _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE
-            .alloc(layout)
+        _ZNSt5alloc18__global_allocatorE.alloc(layout)
     }
 }
 
 pub unsafe fn alloc_zeroed(layout: Layout) -> *mut u8 {
-    if core::ptr::raw_ref!(
-        _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE
-    )
-    .is_null()
-    {
+    if core::ptr::raw_const!(_ZNSt5alloc18__global_allocatorE).is_null() {
         handle_alloc_error(layout)
     } else {
-        _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE
-            .alloc_zeroed(layout)
+        _ZNSt5alloc18__global_allocatorE.alloc_zeroed(layout)
     }
 }
 
 pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
-    if core::ptr::raw_ref!(
-        _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE
-    )
-    .is_null()
-    {
+    if core::ptr::raw_const!(_ZNSt5alloc18__global_allocatorE).is_null() {
     } else {
-        _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE
-            .dealloc(ptr, layout)
+        _ZNSt5alloc18__global_allocatorE.dealloc(ptr, layout)
     }
 }
 
 pub unsafe fn realloc(ptr: *mut u8, old_layout: Layout, new_size: usize) -> *mut u8 {
-    if core::ptr::raw_ref!(
-        _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE
-    )
-    .is_null()
-    {
+    if core::ptr::raw_const!(_ZNSt5alloc18__global_allocatorE).is_null() {
         handle_alloc_error(layout)
     } else {
-        _ZN5alloc5alloc29__lccc_rust_global_alloc_implRCu3dynIN5alloc5alloc11GlobalAllocE
-            .realloc(ptr, old_layout, new_size)
+        _ZNSt5alloc18__global_allocatorE.realloc(ptr, old_layout, new_size)
+    }
+}
+
+#[unstable(feature = "lccc_alloc_align_safety")]
+pub fn alloc_align_compatible(old_align: usize, new_align: usize) -> bool {
+    if core::ptr::raw_const!(_ZNSt5alloc18__global_allocatorE).is_null() {
+        true
+    } else {
+        _ZNSt5alloc18__global_allocatorE.alloc_align_compatible(old_align, new_align)
     }
 }
 
@@ -229,7 +233,7 @@ pub fn handle_alloc_error(layout: Layout) -> ! {
 
 #[__lccc::weak]
 #[__lccc::use_mangling("itanium")]
-#[unstable(feature="lccc_handle_alloc_error_impl")]
+#[unstable(feature = "lccc_handle_alloc_error_impl")]
 pub fn __lccc_rust_handle_alloc_error_impl(_: Layout) -> ! {
     ::__lccc::builtins::C::__builtin_trap()
 }
@@ -347,4 +351,9 @@ unsafe impl Allocator for Global {
             }
         }
     }
+}
+
+#[unstable(feature = "lccc_alloc_align_safety")]
+unsafe impl AlignSafeAllocator for Global {
+    fn alloc_align_compatible(&self, new_align: usize, old_align: usize) -> bool {}
 }

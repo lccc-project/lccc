@@ -946,6 +946,8 @@ pub enum Expr {
     Exit {
         values: u16,
     },
+
+    /// Computes
     BinaryOp(BinaryOp, OverflowBehaviour),
     UnaryOp(UnaryOp, OverflowBehaviour),
     CallFunction(FnType),

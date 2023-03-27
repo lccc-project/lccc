@@ -71,7 +71,7 @@ options := class(<class>)
 
 1. Each assembly statement can have zero or more input, output, and clobber constraints.
 2. Each input, output, and clobber contains a constraint which is either a string literal or identifier. Each constraint is machine-specific, but the constraints "cc" and "memory" may appear in the clobbers list to incidate that the assembly block clobbers either all memory or the condition code variable (which may store, for example, the cached results of previous comparisons). Neither "memory" nor "cc" may appear as a constraint in the input or output specification.
-3. The use of escape sequences in constraint names given as string literals is unspecified. If a program contains a string as a constraint name that does not identically match either "cc" or "memory" but is equivalent after converting escape sequences, the program is ill-formed, no diagnostic required. If the string after evaluating escapes is not valid UTF-8, the program is ill-formed, no diagnostic required. 
+3. The use of escape sequences in constraint names given as string literals is unspecified. If a program contains a string as a constraint name that does not identically match either "cc", "memory", or `_` but is equivalent after converting escape sequences, the program is ill-formed, no diagnostic required. If the string after evaluating escapes is not valid UTF-8, the program is ill-formed, no diagnostic required. 
 3. Each input constraint corresponds to a value, in order, from the head of the stack before the asm-str, with the nth last input constraint corresponding to the nth value popped. The valid types for each constraint name is machine-specific, but each input type shall be a scalar type or a pointer type. 
 4. Each output constraint corresponds to a value, in order, pushed to the head of the stack after the asm-str, with the nth output constraint corresponding to the nth value pushed. The same types valid for input constraints are valid for the same named output constraint.
 5. Each clobbers constraint correponds to some location that is modified by the assembly expression. The implementation cannot rely on the value of the location designated by the constraint.
@@ -82,6 +82,7 @@ options := class(<class>)
 
 7. An output operand has both a constraint name and a type. The constraint indicates the location the corresponding value can be located at, and the type gives the type of that value. Additionally, an output may specify the `late` qualifier. If this qualifier is given, then the implementation may assume that the constraint is only modified to produce the specified output after all inputs are read by the assembly expression.
 8. A program that specifies an unparenthesised output constraint with the name `late` given as an identifier is ill-formed. The identifier `late` given in an output constraint is the `late` specifier, rather than a constraint name. 
+9. The special constraint `_` may be specified as a literal identifier for any output if the `noexit` option is specified. If any output is specified with this constraint, then all outputs must also use the same constraint. If either of the two requirements are violated, the program is ill-formed. If the `_` constraint is specified as a `string-literal-without-escapes`, the program is ill-formed.
 
 ### Assembly String
 
@@ -99,3 +100,4 @@ Syntax: `operand-specifier := "{"<integer>?{i,o,t}<class-specifier>?"}"`
 `limited-escape-sequence := <escape-sequence>`
 
 4. The escape sequences allowed for asm-str shall only produce valid UTF-8. If an escape sequence expands either `{` or `}`, the program is ill-formed, no diagnostic required.
+5. If an escape sequence occurs within an operand specifier, the program is ill-formed, no diagnostic required.

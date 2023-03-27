@@ -5,16 +5,16 @@
  * it under the terms of the GNU Lesser General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Lesser General Public License for more details.
- * 
+ *
  * Like all libraries as part of the lccc project,
- *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license. 
+ *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license.
  * When dealing in this software, you may, at your option, do so under only those terms,
- *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
+ *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms.
  */
 use core::result::Result::{self, Err, Ok};
 
@@ -41,8 +41,12 @@ pub unsafe trait GlobalAlloc {
             ret
         }
     }
-}
 
+    #[unstable(feature = "lccc_alloc_align_safety")]
+    fn alloc_align_compatible(&self, old_align: usize, new_align: usize) -> bool {
+        false
+    }
+}
 
 #[lang = "alloc_layout"]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -90,13 +94,13 @@ impl Layout {
             _align: core::mem::align_of_val(val),
         }
     }
-    #[unstable(feature="layout_for_ptr")]
-    pub unsafe fn for_value_raw<T: ?Sized>(ptr: *const T) -> Layout{
+    #[unstable(feature = "layout_for_ptr")]
+    pub unsafe fn for_value_raw<T: ?Sized>(ptr: *const T) -> Layout {
         // Note:
         // The lccc builtin versions of these accept raw pointers, while the definitions in core::mem are not
         Self {
             sz: ::__lccc::builtins::rust::size_of_val(ptr),
-            _align: ::__lccc::builtins::rust::align_of_val(ptr)
+            _align: ::__lccc::builtins::rust::align_of_val(ptr),
         }
     }
 
