@@ -37,3 +37,7 @@ cfg_match::cfg_match! {
     target_pointer_width = "64" => #[doc = ""] pub type ptrdiff_t = i64;
     target_pointer_width = "128" => #[doc = ""] pub type ptrdiff_t = i128;
 }
+
+/// A type that has the maximum fundamental alignment
+#[repr(C, align(16))]
+pub struct max_align_t(u128);

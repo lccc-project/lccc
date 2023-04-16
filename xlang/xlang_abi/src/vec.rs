@@ -3,6 +3,7 @@ use std::{
     hash::Hash,
     io::Write,
     iter::{FromIterator, FusedIterator},
+    marker::PhantomData,
     mem::{size_of, ManuallyDrop},
     ops::{Deref, DerefMut},
 };
@@ -10,6 +11,7 @@ use std::{
 use crate::{
     alloc::{Allocator, Layout, XLangAlloc},
     ptr::Unique,
+    span::SpanMut,
 };
 
 /// An ABI Safe implementation of [`std::vec::Vec`]
@@ -40,7 +42,7 @@ impl<T> Vec<T, XLangAlloc> {
     ///
     /// # Safety
     /// The following preconditions must hold:
-    /// * ptr must have been allocated using an Allocator compatible with [`XLangAlloc`], with the layout `Layout::array::<T>(cap)`,
+    /// * ptr must have been allocated using an Allocator compatible with [`XLangAlloc`], with the layout `Layout::array::<T>(cap).align_to_fundamental()`,
     /// * ptr must not have been deallocated,
     /// * After this call, `ptr` must not be used to access any memory,
     /// * `len` must be less than `cap`
@@ -99,15 +101,13 @@ impl<T, A: Allocator> Vec<T, A> {
                 alloc,
             }
         } else {
+            let layout =
+                unsafe { Layout::from_size_align_unchecked(raw_cap, core::mem::align_of::<T>()) };
+
+            let layout = layout.align_to_fundamental().unwrap().pad_to_align();
             let ptr = alloc
-                .allocate(unsafe {
-                    Layout::from_size_align_unchecked(raw_cap, core::mem::align_of::<T>())
-                })
-                .unwrap_or_else(|| {
-                    crate::alloc::handle_alloc_error(unsafe {
-                        Layout::from_size_align_unchecked(raw_cap, core::mem::align_of::<T>())
-                    })
-                })
+                .allocate(layout)
+                .unwrap_or_else(|| crate::alloc::handle_alloc_error(layout))
                 .cast();
             Self {
                 ptr: unsafe { Unique::new_nonnull_unchecked(ptr) },
@@ -122,7 +122,7 @@ impl<T, A: Allocator> Vec<T, A> {
     ///
     /// # Safety
     /// The following preconditions must hold:
-    /// * ptr must have been allocated using an Allocator compatible with `alloc`, with the layout `Layout::array::<T>(cap)`,
+    /// * ptr must have been allocated using an Allocator compatible with `alloc`, with the layout `Layout::array::<T>(cap).align_to_fundamental()`,
     /// * ptr must not have been deallocated,
     /// * After this call, `ptr` must not be used to access any memory,
     /// * `len` must be less than `cap`
@@ -170,14 +170,18 @@ impl<T, A: Allocator> Vec<T, A> {
             }
 
             let ptr = unsafe {
-                self.alloc.grow(
-                    self.ptr.as_nonnull().cast(),
-                    Layout::from_size_align_unchecked(
-                        self.cap * core::mem::size_of::<T>(),
-                        core::mem::align_of::<T>(),
-                    ),
-                    Layout::from_size_align_unchecked(raw_cap, core::mem::align_of::<T>()),
+                let old_layout = Layout::from_size_align_unchecked(
+                    self.cap * core::mem::size_of::<T>(),
+                    core::mem::align_of::<T>(),
                 )
+                .align_to_fundamental()
+                .unwrap();
+                let new_layout =
+                    Layout::from_size_align_unchecked(raw_cap, core::mem::align_of::<T>())
+                        .align_to_fundamental()
+                        .unwrap();
+                self.alloc
+                    .grow(self.ptr.as_nonnull().cast(), old_layout, new_layout)
             }
             .unwrap_or_else(|| {
                 crate::alloc::handle_alloc_error(unsafe {
@@ -263,6 +267,18 @@ impl<T, A: Allocator> Vec<T, A> {
         unsafe { core::slice::from_raw_parts_mut(ptr, len) }
     }
 
+    /// Leaks self into a mutable span of `T`, without deallocating any elements or excess capacity
+    ///
+    /// This will permanently leak the allocation and its elements.
+    ///
+    /// This function is a convience over `SpanMut::new(self.leak())
+    pub fn leak_span<'a>(self) -> SpanMut<'a, T> {
+        let this = ManuallyDrop::new(self);
+        let ptr = this.ptr.as_ptr();
+        let len = this.len;
+        unsafe { SpanMut::from_raw_parts(ptr, len) }
+    }
+
     /// Returns the capacity of the [`Vec`], that is, the total number of elements the [`Vec`] can hold without reallocating
     pub fn capacity(&self) -> usize {
         self.cap
@@ -323,9 +339,7 @@ impl<T, A: Allocator> Vec<T, A> {
         }
         let src = unsafe { self.ptr.as_ptr().add(n) };
         let dst = new.ptr.as_ptr();
-        for i in 0..nlen {
-            unsafe { dst.add(i).write(src.add(i).read()) }
-        }
+        unsafe { core::ptr::copy_nonoverlapping(src, dst, nlen) }
         unsafe {
             new.set_len(nlen);
         }
@@ -350,9 +364,7 @@ impl<T, A: Allocator> Vec<T, A> {
         }
         let src = unsafe { self.ptr.as_ptr().add(nlen) };
         let dst = new.ptr.as_ptr();
-        for i in 0..n {
-            unsafe { dst.add(i).write(src.add(i).read()) }
-        }
+        unsafe { core::ptr::copy_nonoverlapping(src, dst, n) }
         unsafe {
             new.set_len(n);
         }
@@ -422,15 +434,34 @@ impl<T, A: Allocator> DerefMut for Vec<T, A> {
     }
 }
 
+#[inline]
+fn is_copy<T>() -> bool {
+    struct TestIsCopy<T>(bool, PhantomData<T>);
+    impl<T> Clone for TestIsCopy<T> {
+        fn clone(&self) -> Self {
+            Self(false, self.1)
+        }
+    }
+
+    impl<T: Copy> Copy for TestIsCopy<T> {}
+
+    [TestIsCopy(true, PhantomData::<T>)].clone()[0].0
+}
+
 impl<T: Clone, A: Allocator + Clone> Clone for Vec<T, A> {
     // Specialization would be nice here
     fn clone(&self) -> Self {
         let nalloc = self.alloc.clone();
         let mut nvec = Self::with_capacity_in(self.len, nalloc);
         let ptr = nvec.ptr.as_ptr();
-        for i in 0..self.len {
-            unsafe {
-                core::ptr::write(ptr.add(i), self[i].clone());
+
+        if is_copy::<T>() {
+            unsafe { core::ptr::copy_nonoverlapping(self.ptr.as_ptr(), ptr, self.len) }
+        } else {
+            for i in 0..self.len {
+                unsafe {
+                    core::ptr::write(ptr.add(i), self[i].clone());
+                }
             }
         }
 

@@ -257,6 +257,22 @@ impl Layout {
         self.align
     }
 
+    /// Aligns up to max fundamental alignment for the current size
+    pub fn align_to_fundamental(&self) -> Result<Self, LayoutError> {
+        if let Some(align) = self
+            .size
+            .checked_next_power_of_two()
+            .filter(|v| *v < core::mem::align_of::<xlang_host::primitives::max_align_t>())
+        {
+            Ok(Self {
+                size: self.size,
+                align,
+            })
+        } else {
+            self.align_to(core::mem::align_of::<xlang_host::primitives::max_align_t>())
+        }
+    }
+
     /// Rounds the size of Self up to the next multiple of align
     #[must_use]
     pub const fn pad_to_align(&self) -> Self {
