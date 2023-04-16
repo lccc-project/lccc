@@ -294,7 +294,7 @@ impl Layout {
                 .overflowing_add(isize::try_from((align - (self.size % align)) % align).unwrap()),
             align.max(self.align()),
         ) {
-            ((_, true), align) if align.is_power_of_two() => Ok(Self {
+            ((_, false), align) if align.is_power_of_two() => Ok(Self {
                 size: self.size,
                 align,
             }),
