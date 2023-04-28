@@ -171,7 +171,7 @@ fn tycheck_function(x: &mut FunctionDeclaration, tys: &TypeState) {
             .chain(body.locals.iter().cloned())
             .collect::<Vec<_>>();
         let mut ret = None;
-        if !tycheck_block(&mut body.block, tys, &local_tys, &mut ret){
+        if !tycheck_block(&mut body.block, tys, &local_tys, &mut ret) {
             let ret = ret.unwrap_or_default();
             if ty.ret == Type::Void {
                 assert_eq!(ret.len(), 0);

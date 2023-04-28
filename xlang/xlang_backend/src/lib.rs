@@ -246,9 +246,8 @@ pub trait FunctionRawCodegen {
         /* by default, do nothing. This is for something like xlangcodegen-llvm that drops down to a lower-level IR */
     }
 
-
     /// Writes an assembly expression
-    fn write_asm(&mut self, asm: &AsmExpr,inputs: Vec<VStackValue<Self::Loc>>) -> Vec<Self::Loc>;
+    fn write_asm(&mut self, asm: &AsmExpr, inputs: Vec<VStackValue<Self::Loc>>) -> Vec<Self::Loc>;
 }
 
 #[derive(Default, Debug)]
@@ -2421,9 +2420,11 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
 
         let vals = self.inner.write_asm(asm, inputs);
 
-        let vals = vals.into_iter().zip(&asm.outputs).map(|(loc,ty)|{
-            self.opaque_value(&ty.ty, loc)
-        }).collect::<Vec<_>>();
+        let vals = vals
+            .into_iter()
+            .zip(&asm.outputs)
+            .map(|(loc, ty)| self.opaque_value(&ty.ty, loc))
+            .collect::<Vec<_>>();
 
         self.push_values(vals);
     }

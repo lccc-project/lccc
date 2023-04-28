@@ -395,7 +395,7 @@ impl FunctionRawCodegen for W65FunctionCodegen {
                         self.insns
                             .push(W65Instruction::new(W65Opcode::Stz, op).into());
                     }
-                }else{
+                } else {
                     if size != 1 {
                         // we don't care about the size of the register if we're doing a 1-byte write, since the entire 4 bytes is reserved anyways, so save 3 cycles on a REP/SEP
                         self.insns
@@ -411,15 +411,20 @@ impl FunctionRawCodegen for W65FunctionCodegen {
 
                         // ABI Specifies that we can do a direct-page access to the reserved space region, so always do so to save 1 byte and 1 cycle
                         let op = W65Operand::Address(arch_ops::w65::W65Address::Direct(addr));
-                        if (val&0xFFFF)!=0{
-                            self.insns.push(W65Instruction::new(W65Opcode::Lda,W65Operand::Immediate(val as u16)).into());
+                        if (val & 0xFFFF) != 0 {
+                            self.insns.push(
+                                W65Instruction::new(
+                                    W65Opcode::Lda,
+                                    W65Operand::Immediate(val as u16),
+                                )
+                                .into(),
+                            );
                             self.insns
                                 .push(W65Instruction::new(W65Opcode::Sta, op).into());
-                        }else{
+                        } else {
                             self.insns
-                            .push(W65Instruction::new(W65Opcode::Stz, op).into());
+                                .push(W65Instruction::new(W65Opcode::Stz, op).into());
                         }
-                        
                     }
                 }
             }
@@ -669,11 +674,13 @@ impl FunctionRawCodegen for W65FunctionCodegen {
         todo!()
     }
 
-    fn write_asm(&mut self, asm: &xlang_struct::AsmExpr,inputs: xlang::vec::Vec<xlang_backend::expr::VStackValue<Self::Loc>>) -> xlang::vec::Vec<Self::Loc> {
+    fn write_asm(
+        &mut self,
+        asm: &xlang_struct::AsmExpr,
+        inputs: xlang::vec::Vec<xlang_backend::expr::VStackValue<Self::Loc>>,
+    ) -> xlang::vec::Vec<Self::Loc> {
         todo!("w65 asm")
     }
-
-    
 }
 
 impl W65FunctionCodegen {
@@ -772,7 +779,7 @@ impl W65FunctionCodegen {
                     }
                 }
                 W65InstructionOrLabel::Insn(insn) => {
-                    eprintln!("Codegening instruction {:?}",insn);
+                    eprintln!("Codegening instruction {:?}", insn);
                     let insn = insn.into_real();
                     encoder.write_insn(insn)?
                 }

@@ -759,7 +759,11 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
         todo!()
     }
 
-    fn write_asm(&mut self, asm: &xlang_struct::AsmExpr,inputs: xlang::vec::Vec<xlang_backend::expr::VStackValue<Self::Loc>>) -> xlang::vec::Vec<Self::Loc> {
+    fn write_asm(
+        &mut self,
+        asm: &xlang_struct::AsmExpr,
+        inputs: xlang::vec::Vec<xlang_backend::expr::VStackValue<Self::Loc>>,
+    ) -> xlang::vec::Vec<Self::Loc> {
         todo!()
     }
 }

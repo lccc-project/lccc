@@ -1459,7 +1459,7 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
             }
 
             let syntax = syntax.unwrap_or_else(|| "".into());
-            
+
             let ret = Expr::Asm(AsmExpr {
                 opts,
                 syntax,
@@ -1471,7 +1471,7 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
                 outputs,
             });
 
-            eprintln!("Parsed asm-expr {:?}",ret);
+            eprintln!("Parsed asm-expr {:?}", ret);
             ret
         }
         Token::Ident(id) if id == "begin" => {

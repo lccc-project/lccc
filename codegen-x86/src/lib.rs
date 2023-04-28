@@ -771,7 +771,11 @@ impl FunctionRawCodegen for X86CodegenState {
         todo!()
     }
 
-    fn write_asm(&mut self, _asm: &xlang_struct::AsmExpr,_inputs: xlang::vec::Vec<VStackValue<Self::Loc>>) -> xlang::vec::Vec<Self::Loc> {
+    fn write_asm(
+        &mut self,
+        _asm: &xlang_struct::AsmExpr,
+        _inputs: xlang::vec::Vec<VStackValue<Self::Loc>>,
+    ) -> xlang::vec::Vec<Self::Loc> {
         todo!()
     }
 }

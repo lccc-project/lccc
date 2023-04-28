@@ -88,7 +88,31 @@ pub mod v1 {
             type VTable = vtable::XLangPlugin;
         }
 
+        unsafe impl AbiSafeTrait for dyn XLangPlugin + Send {
+            type VTable = vtable::XLangPlugin;
+        }
+
+        unsafe impl AbiSafeTrait for dyn XLangPlugin + Sync {
+            type VTable = vtable::XLangPlugin;
+        }
+
+        unsafe impl AbiSafeTrait for dyn XLangPlugin + Send + Sync {
+            type VTable = vtable::XLangPlugin;
+        }
+
         unsafe impl AbiSafeTrait for dyn XLangFrontend {
+            type VTable = vtable::XLangFrontend;
+        }
+
+        unsafe impl AbiSafeTrait for dyn XLangFrontend + Send {
+            type VTable = vtable::XLangFrontend;
+        }
+
+        unsafe impl AbiSafeTrait for dyn XLangFrontend + Sync {
+            type VTable = vtable::XLangFrontend;
+        }
+
+        unsafe impl AbiSafeTrait for dyn XLangFrontend + Send + Sync {
             type VTable = vtable::XLangFrontend;
         }
 
@@ -120,6 +144,9 @@ pub mod v1 {
             }
 
             unsafe impl AbiSafeVTable<dyn super::XLangPlugin> for XLangPlugin {}
+            unsafe impl AbiSafeVTable<dyn super::XLangPlugin + Send> for XLangPlugin {}
+            unsafe impl AbiSafeVTable<dyn super::XLangPlugin + Sync> for XLangPlugin {}
+            unsafe impl AbiSafeVTable<dyn super::XLangPlugin + Send + Sync> for XLangPlugin {}
 
             #[repr(C)]
             pub struct XLangFrontend {
@@ -143,6 +170,9 @@ pub mod v1 {
             }
 
             unsafe impl AbiSafeVTable<dyn super::super::XLangFrontend> for XLangFrontend {}
+            unsafe impl AbiSafeVTable<dyn super::super::XLangFrontend + Send> for XLangFrontend {}
+            unsafe impl AbiSafeVTable<dyn super::super::XLangFrontend + Sync> for XLangFrontend {}
+            unsafe impl AbiSafeVTable<dyn super::super::XLangFrontend + Send + Sync> for XLangFrontend {}
 
             #[repr(C)]
             pub struct XLangCodegen {
@@ -161,6 +191,9 @@ pub mod v1 {
             }
 
             unsafe impl AbiSafeVTable<dyn super::super::XLangCodegen> for XLangCodegen {}
+            unsafe impl AbiSafeVTable<dyn super::super::XLangCodegen + Send> for XLangCodegen {}
+            unsafe impl AbiSafeVTable<dyn super::super::XLangCodegen + Sync> for XLangCodegen {}
+            unsafe impl AbiSafeVTable<dyn super::super::XLangCodegen + Send + Sync> for XLangCodegen {}
         }
 
         xlang_host::rustcall! {unsafe extern "rustcall" fn __dtor<T>(x: *mut ()) {
@@ -308,6 +341,18 @@ pub mod v1 {
         }
 
         unsafe impl AbiSafeTrait for dyn XLangCodegen {
+            type VTable = vtable::XLangCodegen;
+        }
+
+        unsafe impl AbiSafeTrait for dyn XLangCodegen + Send {
+            type VTable = vtable::XLangCodegen;
+        }
+
+        unsafe impl AbiSafeTrait for dyn XLangCodegen + Sync {
+            type VTable = vtable::XLangCodegen;
+        }
+
+        unsafe impl AbiSafeTrait for dyn XLangCodegen + Send + Sync {
             type VTable = vtable::XLangCodegen;
         }
 
