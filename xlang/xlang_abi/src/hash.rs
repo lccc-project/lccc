@@ -171,6 +171,7 @@ impl Hasher for XLangHasher {
 
 impl Default for XLangHasher {
     fn default() -> Self {
+        // SAFETY: xlang_hash_bytes has no undefined behaviour
         Self::from_seed(unsafe { xlang_hash_bytes(Span::from_ref(&XLANG_HASH_SEED)) })
     }
 }
