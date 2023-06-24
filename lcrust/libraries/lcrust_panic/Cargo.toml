@@ -1,5 +1,5 @@
 [package]
-name = "libstd"
+name = "lcrust_panic"
 version = "0.1.0"
 authors = ["Connor Horman <chorman64@gmail.com>"]
 edition = "2018"
@@ -8,8 +8,6 @@ license = "BSD-2-Clause-Patent"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-lcrust_panic = {path="../lcrust_panic",features=["unwind"]}
 
-[build-dependencies]
-which = {version="4.1.0",path="../stdlib-deps/which-rs"}
-target-tuples = {version="0.2.2",path="../stdlib-deps/rust-target-tuples"}
+[features]
+unwind=[]

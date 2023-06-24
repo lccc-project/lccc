@@ -33,10 +33,16 @@ pub use std::prelude::v1::*;
 
 pub mod os;
 
+pub mod process;
+
 pub mod lazy;
 
 pub mod thread;
 
 pub(crate) mod sys;
+
+pub mod panic;
+
+pub mod panicking;
 
 mod rt;

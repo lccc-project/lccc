@@ -7,7 +7,7 @@ hostedtargs:=@hostedtargs@
 
 target:= @target@
 
-LIBRARIES = core alloc
+LIBRARIES = core alloc lcrust_panic
 
 ifneq (,$(findstring $(target),$(hostedtargs))) 
     LIBRARIES += std proc_macro
@@ -19,6 +19,6 @@ all:
 stamp: $(foreach lib,$(LIBRARIES),lib$(lib))
     touch stamp
 
-lib$(lib): lib$(lib)/stamp
 
-
+libcore: 
+    +$(MAKE)

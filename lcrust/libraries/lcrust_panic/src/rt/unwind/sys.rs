@@ -1,0 +1,1 @@
+include!(concat!(env!("LCRUST_PANIC_METHOD"),".rs"))

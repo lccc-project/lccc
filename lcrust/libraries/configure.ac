@@ -12,6 +12,8 @@ AC_CANONICAL_HOST
 LCRUST_PROG_RUSTC
 LCRUST_RUSTC_VERSION
 
+AC_ARG_VAR([LCCC_])
+
 if test x$rustc_is_lccc != xyes
 then
    AC_MSG_ERROR([Cannot compile lcrust libraries except on lccc])
@@ -74,6 +76,3 @@ AC_ARG_WITH([rustlibdir],[Sets the directory to install rust binaries into],[
 AC_SUBST([rustlibdir abi_version])
 
 AC_CONFIG_FILES(Makefile)
-
-AC_OUTPUT
-
