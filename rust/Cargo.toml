@@ -12,7 +12,7 @@ unicode-xid = "0.2.2"
 xlang = {path="../xlang"}
 xlang_struct = {path="../xlang/xlang_struct"}
 parking_lot = "0.12"
-peekmore = "1.0.0"
+peekmore = "1.3.0"
 lazy_static = "1"
 
 [lib]
