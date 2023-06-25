@@ -307,6 +307,6 @@ pub struct Attr {
 
 #[derive(Debug)]
 pub struct Mod {
-    pub attrs: Vec<Attr>,
+    pub attrs: Vec<Spanned<Attr>>,
     pub items: Vec<Item>,
 }

@@ -54,6 +54,17 @@ impl Span {
             hygiene: HygieneRef::default(),
         }
     }
+
+    pub fn between(start: Self, end: Self) -> Self {
+        assert_eq!(start.file, end.file);
+        assert_eq!(start.hygiene, end.hygiene);
+        Self {
+            start: start.start,
+            end: end.end,
+            file: start.file,
+            hygiene: start.hygiene,
+        }
+    }
 }
 
 impl fmt::Debug for Span {
