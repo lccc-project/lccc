@@ -3,7 +3,7 @@ use core::ops::{BitOr, BitOrAssign};
 use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
-    ast::{Attr, AttrInput, Item, Mod, SimplePath, SimplePathSegment, SimplePathSegmentBody},
+    ast::{Attr, AttrInput, Item, Mod, SimplePath, SimplePathSegment, Spanned},
     lex::{Group, GroupType, Lexeme, LexemeBody, LexemeClass},
     span::{Pos, Span},
 };
@@ -76,7 +76,7 @@ pub fn do_lexeme_classes(
             Err(x) => match &mut error {
                 Some(old) => *old |= x,
                 old @ None => *old = Some(x),
-            }
+            },
         }
     }
     Err(error.unwrap())
@@ -93,14 +93,37 @@ pub fn do_lexeme_group(
     }
 }
 
-pub fn do_simple_path_segment(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<SimplePathSegment> {
-    let (lexeme, class) = do_lexeme_classes(tree, &[LexemeClass::Identifier, LexemeClass::Keyword("super".into()), LexemeClass::Keyword("self".into()), LexemeClass::Keyword("crate".into()), LexemeClass::Punctuation("$".into())])?;
+pub fn do_simple_path_segment(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<SimplePathSegment>> {
+    let (lexeme, class) = do_lexeme_classes(
+        tree,
+        &[
+            LexemeClass::Identifier,
+            LexemeClass::Keyword("super".into()),
+            LexemeClass::Keyword("self".into()),
+            LexemeClass::Keyword("crate".into()),
+            LexemeClass::Punctuation("$".into()),
+        ],
+    )?;
     let span = lexeme.span;
     match class {
-        LexemeClass::Identifier => Ok(SimplePathSegment { body: SimplePathSegmentBody::Identifier(lexeme.into_text().unwrap()), span }),
-        LexemeClass::Keyword(x) if x == "super" => Ok(SimplePathSegment { body: SimplePathSegmentBody::SuperPath, span }),
-        LexemeClass::Keyword(x) if x == "self" => Ok(SimplePathSegment { body: SimplePathSegmentBody::SelfPath, span }),
-        LexemeClass::Keyword(x) if x == "crate" => Ok(SimplePathSegment { body: SimplePathSegmentBody::CratePath, span }),
+        LexemeClass::Identifier => Ok(Spanned {
+            body: SimplePathSegment::Identifier(lexeme.into_text().unwrap()),
+            span,
+        }),
+        LexemeClass::Keyword(x) if x == "super" => Ok(Spanned {
+            body: SimplePathSegment::SuperPath,
+            span,
+        }),
+        LexemeClass::Keyword(x) if x == "self" => Ok(Spanned {
+            body: SimplePathSegment::SelfPath,
+            span,
+        }),
+        LexemeClass::Keyword(x) if x == "crate" => Ok(Spanned {
+            body: SimplePathSegment::CratePath,
+            span,
+        }),
         LexemeClass::Punctuation(x) if x == "$" => todo!(),
         _ => unreachable!(),
     }
@@ -108,9 +131,10 @@ pub fn do_simple_path_segment(tree: &mut PeekMoreIterator<impl Iterator<Item = L
 
 pub fn do_simple_path(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
-) -> Result<SimplePath> {
+) -> Result<Spanned<SimplePath>> {
     let from_root = do_lexeme_class(tree, LexemeClass::Punctuation("::".into())).is_ok();
     let mut segments = Vec::new();
+    let span = todo!();
     loop {
         let lexeme = do_simple_path_segment(tree)?;
         segments.push(lexeme);
@@ -118,25 +142,36 @@ pub fn do_simple_path(
             break;
         }
     }
-    Ok(SimplePath { from_root, segments })
+    let path = SimplePath {
+        from_root,
+        segments,
+    };
+    Ok(Spanned { body: path, span })
 }
 
 pub fn do_attr_body(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
-) -> Result<(SimplePath, Option<AttrInput>)> {
+) -> Result<(Spanned<SimplePath>, Option<AttrInput>)> {
     let name = do_simple_path(tree)?;
     Ok((name, None))
 }
 
-pub fn do_internal_attr(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Attr> {
+pub fn do_internal_attr(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Attr>> {
     do_lexeme_class(tree, LexemeClass::Punctuation("#".into()))?;
     do_lexeme_class(tree, LexemeClass::Punctuation("!".into()))?;
     let (group, span) = do_lexeme_group(tree, Some(GroupType::Brackets))?;
     let (name, input) = do_attr_body(&mut group.body.into_iter().peekmore())?;
-    Ok(Attr { name, input, span })
+    Ok(Spanned {
+        body: Attr { name, input },
+        span: todo!(),
+    })
 }
 
-pub fn do_external_attr(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Attr> {
+pub fn do_external_attr(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Attr>> {
     do_lexeme_class(tree, LexemeClass::Punctuation("#".into()))?;
     let body = do_lexeme_group(tree, Some(GroupType::Brackets))?;
     todo!()
