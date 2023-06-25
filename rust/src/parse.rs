@@ -3,7 +3,7 @@ use core::ops::{BitOr, BitOrAssign, Deref, DerefMut};
 use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
-    ast::{Attr, AttrInput, Item, Mod, SimplePath, SimplePathSegment, Spanned},
+    ast::{Attr, AttrInput, Item, Mod, SimplePath, SimplePathSegment, Spanned, Visibility},
     lex::{Group, GroupType, Lexeme, LexemeBody, LexemeClass},
     span::{Pos, Span},
 };
@@ -246,7 +246,33 @@ pub fn do_external_attr(
     })
 }
 
+pub fn do_visibility(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Visibility>> {
+    let mut tree = tree.into_rewinder();
+    let span_start = do_lexeme_class(&mut tree, LexemeClass::Keyword("pub".into()))?.span;
+    match do_lexeme_group(&mut tree, Some(GroupType::Parens)) {
+        Ok((group, span_end)) => {
+            let path = do_simple_path(&mut group.body.into_iter().peekmore())?;
+            tree.accept();
+            Ok(Spanned {
+                body: Visibility::Scoped(path),
+                span: Span::between(span_start, span_end),
+            })
+        }
+        Err(_) => {
+            tree.accept();
+            Ok(Spanned {
+                body: Visibility::Pub,
+                span: span_start,
+            })
+        }
+    }
+}
+
 pub fn do_item(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Item> {
+    let mut tree = tree.into_rewinder();
+    let vis = do_visibility(&mut tree).ok();
     todo!()
 }
 
