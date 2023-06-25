@@ -4,20 +4,14 @@ use crate::interning::Symbol;
 
 #[derive(Clone, Copy, Default)]
 pub struct Pos {
-    pub row: usize,
-    pub col: usize,
+    pub row: u32,
+    pub col: u32,
     pub idx: usize,
-    pub file: Symbol,
 }
 
 impl Pos {
-    pub fn new(row: usize, col: usize, idx: usize, file: impl Into<Symbol>) -> Self {
-        Self {
-            row,
-            col,
-            idx,
-            file: file.into(),
-        }
+    pub fn new(row: u32, col: u32, idx: usize) -> Self {
+        Self { row, col, idx }
     }
 }
 
@@ -29,15 +23,12 @@ impl fmt::Debug for Pos {
 
 impl PartialEq for Pos {
     fn eq(&self, other: &Self) -> bool {
-        self.file == other.file && self.row == other.row && self.col == other.col
+        self.row == other.row && self.col == other.col
     }
 }
 
 impl PartialOrd for Pos {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.file != other.file {
-            return None;
-        }
         match self.row.cmp(&other.row) {
             Ordering::Equal => {}
             x => return Some(x),
@@ -50,14 +41,16 @@ impl PartialOrd for Pos {
 pub struct Span {
     pub start: Pos,
     pub end: Pos,
+    pub file: Symbol,
     pub hygiene: HygieneRef,
 }
 
 impl Span {
-    pub fn new_simple(start: Pos, end: Pos) -> Self {
+    pub fn new_simple(start: Pos, end: Pos, file: impl Into<Symbol>) -> Self {
         Self {
             start,
             end,
+            file: file.into(),
             hygiene: HygieneRef::default(),
         }
     }
@@ -65,29 +58,52 @@ impl Span {
 
 impl fmt::Debug for Span {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({:?} - {:?})", self.start, self.end)
+        write!(f, "({:?} - {:?} [{:?}])", self.start, self.end, self.file)
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct HygieneRef {
-    pub hygiene_id: u64,
-    pub mode: HygieneMode,
-    pub edition: RustEdition,
-}
+pub struct HygieneRef(pub u64);
 
 impl Default for HygieneRef {
     fn default() -> Self {
-        Self {
-            hygiene_id: 0,
-            mode: HygieneMode::CallSite,
-            edition: RustEdition::Rust2021,
-        }
+        Self::simple_with_edition(RustEdition::Rust2021)
+    }
+}
+
+impl HygieneRef {
+    pub const fn simple_with_edition(edition: RustEdition) -> Self {
+        Self::new(0, HygieneMode::CallSite, edition)
+    }
+    pub const fn new(xref_id: u64, mode: HygieneMode, edition: RustEdition) -> Self {
+        let mode = mode as u8;
+        let edition = edition as u16;
+
+        let val = ((mode as u64) << 60) | ((edition as u64) << 48) | (xref_id & 0xFFFFFFFFFFFF);
+
+        Self(val)
+    }
+
+    pub const fn xref_id(self) -> u64 {
+        self.0 & 0xFFFFFFFFFFFF
+    }
+
+    pub const fn mode(self) -> Option<HygieneMode> {
+        let val = self.0 >> 60;
+
+        HygieneMode::from_val(val as u8)
+    }
+
+    pub const fn edition(self) -> Option<RustEdition> {
+        let val = (self.0 >> 48) & 0xFFF;
+
+        RustEdition::from_val(val as u16)
     }
 }
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum HygieneMode {
     CallSite,
     MixedSite,
@@ -95,13 +111,43 @@ pub enum HygieneMode {
     NoGlobals,
 }
 
+union Transmuter<T: Copy, U: Copy> {
+    val: T,
+    res: U,
+}
+
+impl HygieneMode {
+    pub const fn from_val(val: u8) -> Option<HygieneMode> {
+        if val > 3 {
+            None
+        } else {
+            let val = Transmuter { val };
+
+            Some(unsafe { val.res })
+        }
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u16)]
 pub enum RustEdition {
     Rust2015,
     Rust2018,
     Rust2021,
     Rust2024,
+}
+
+impl RustEdition {
+    pub const fn from_val(val: u16) -> Option<RustEdition> {
+        if val > 3 {
+            None
+        } else {
+            let val = Transmuter { val };
+
+            Some(unsafe { val.res })
+        }
+    }
 }
 
 pub trait Speekerator: Iterator<Item = char> + Sized {
@@ -118,16 +164,22 @@ pub struct Speekable<I: Iterator<Item = char>> {
     inner: I,
     peeked: Option<(Pos, char)>,
     pos: Pos,
+    fname: Symbol,
 }
 
 #[allow(dead_code)]
 impl<I: Iterator<Item = char>> Speekable<I> {
-    fn new(inner: I, file_name: impl Into<Symbol>) -> Self {
+    fn new(inner: I, fname: impl Into<Symbol>) -> Self {
         Self {
             inner,
             peeked: None,
-            pos: Pos::new(1, 1, 0, file_name),
+            pos: Pos::new(1, 1, 0),
+            fname: fname.into(),
         }
+    }
+
+    pub fn file_name(&self) -> Symbol {
+        self.fname
     }
 
     fn tick(&mut self) {
@@ -135,13 +187,8 @@ impl<I: Iterator<Item = char>> Speekable<I> {
             let c = self.inner.next();
             if let Some(c) = c {
                 let next_pos = match c {
-                    '\n' => Pos::new(self.pos.row + 1, 1, self.pos.idx + 1, self.pos.file),
-                    _ => Pos::new(
-                        self.pos.row,
-                        self.pos.col + 1,
-                        self.pos.idx + 1,
-                        self.pos.file,
-                    ),
+                    '\n' => Pos::new(self.pos.row + 1, 1, self.pos.idx + 1),
+                    _ => Pos::new(self.pos.row, self.pos.col + 1, self.pos.idx + 1),
                 };
                 self.peeked = Some((self.pos, c));
                 self.pos = next_pos;
