@@ -52,7 +52,7 @@ pub fn do_lexeme_class(
         Ok(result)
     } else {
         let span = lexeme.map_or_else(
-            || Span::new_simple(Pos::default(), Pos::default()),
+            || Span::new_simple(Pos::default(), Pos::default(), ""),
             |x| x.span,
         );
         tree.reset_cursor();

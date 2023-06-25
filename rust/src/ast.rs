@@ -29,10 +29,106 @@ pub enum Visibility {
 }
 
 #[derive(Debug)]
+pub enum CrateRef {
+    Name(Symbol),
+    SelfCr,
+}
+
+#[derive(Debug)]
+pub enum ImportName {
+    /// `as $0`
+    Name(Symbol),
+    /// `as _`
+    Ignore,
+}
+
+#[derive(Debug)]
+pub enum ImportTail {
+    Group(Vec<Spanned<ImportItem>>),
+    Wildcard,
+}
+
+#[derive(Debug)]
+pub struct ImportItem {
+    prefix: Spanned<SimplePath>,
+    tail: Option<Spanned<ImportTail>>,
+    asname: Option<Spanned<ImportName>>,
+}
+
+#[derive(Debug)]
 pub enum ItemBody {
     Mod(Spanned<ItemMod>),
     Value(Spanned<ItemValue>),
+    ExternCrate {
+        craten: Spanned<CrateRef>,
+        asname: Option<Spanned<ImportName>>,
+    },
+    Use(Spanned<ImportItem>),
+    UserType(UserType),
 }
+
+#[derive(Debug)]
+pub enum StructKind {
+    Union,
+    Struct,
+}
+
+#[derive(Debug)]
+pub enum Constructor {
+    Struct(Spanned<StructCtor>),
+    Tuple(Spanned<TupleCtor>),
+    Unit,
+}
+
+#[derive(Debug)]
+pub struct StructCtor {
+    pub fields: Vec<Spanned<StructField>>,
+}
+
+#[derive(Debug)]
+pub struct StructField {
+    pub vis: Option<Spanned<Visibility>>,
+    pub name: Spanned<Symbol>,
+    pub ty: Spanned<Type>,
+}
+
+#[derive(Debug)]
+pub struct TupleCtor {
+    pub fields: Vec<Spanned<TupleField>>,
+}
+
+#[derive(Debug)]
+pub struct TupleField {
+    pub vis: Option<Spanned<Visibility>>,
+    pub ty: Spanned<Type>,
+}
+
+#[derive(Debug)]
+pub struct EnumVariant {
+    pub attrs: Vec<Spanned<Attr>>,
+    pub ctor: Spanned<Constructor>,
+    pub discriminant: Option<Spanned<Expr>>,
+}
+
+#[derive(Debug)]
+pub enum UserTypeBody {
+    Struct(Spanned<StructKind>, Spanned<Constructor>),
+    Enum(Vec<Spanned<EnumVariant>>),
+}
+
+#[derive(Debug)]
+pub struct UserType {
+    pub name: Spanned<Symbol>,
+    pub generics: Spanned<GenericParams>,
+    pub where_clauses: Option<Spanned<WhereClause>>,
+    pub body: Spanned<UserTypeBody>,
+}
+
+#[derive(Debug)]
+pub struct GenericParams {}
+
+#[derive(Debug)]
+pub struct WhereClause {}
 
 #[derive(Debug)]
 pub struct ItemMod {
@@ -68,7 +164,7 @@ pub struct ItemValue {
 
 #[derive(Debug)]
 pub struct Item {
-    pub vis: Spanned<Visibility>,
+    pub vis: Option<Spanned<Visibility>>,
     pub attrs: Vec<Spanned<Attr>>,
     pub item: Spanned<ItemBody>,
 }
