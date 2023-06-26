@@ -120,15 +120,58 @@ pub enum UserTypeBody {
 pub struct UserType {
     pub name: Spanned<Symbol>,
     pub generics: Spanned<GenericParams>,
-    pub where_clauses: Option<Spanned<WhereClause>>,
+    pub where_clauses: Option<Vec<Spanned<WhereClause>>>,
     pub body: Spanned<UserTypeBody>,
 }
 
 #[derive(Debug)]
-pub struct GenericParams {}
+pub struct GenericParams {
+    pub params: Vec<Spanned<GenericParam>>,
+}
 
 #[derive(Debug)]
-pub struct WhereClause {}
+pub enum GenericParam {
+    Type(TypeParam),
+    Lifetime(LifetimeParam),
+    Const(ConstParam),
+}
+
+#[derive(Debug)]
+pub struct TypeParam {
+    pub name: Spanned<Symbol>,
+    pub bounds: Vec<Spanned<GenericBound>>,
+}
+
+#[derive(Debug)]
+pub enum GenericBound {
+    LifetimeBound(Spanned<Lifetime>),
+    TraitBound(Spanned<Path>),
+}
+
+#[derive(Debug)]
+pub enum Lifetime {
+    Named(Spanned<Symbol>),
+    Elided,
+    Static,
+}
+
+#[derive(Debug)]
+pub struct LifetimeParam {
+    pub name: Spanned<Symbol>,
+    pub bounds: Vec<Spanned<Lifetime>>,
+}
+
+#[derive(Debug)]
+pub struct ConstParam {
+    pub name: Spanned<Symbol>,
+    pub ty: Spanned<Type>,
+}
+
+#[derive(Debug)]
+pub struct WhereClause {
+    pub ty: Spanned<Type>,
+    pub bounds: Vec<Spanned<GenericBound>>,
+}
 
 #[derive(Debug)]
 pub struct ItemMod {
@@ -200,8 +243,29 @@ pub enum PathPrefix {
 }
 
 #[derive(Debug)]
-pub enum PathSegment {
-    Identifier(Symbol),
+pub struct PathSegment {
+    pub ident: Spanned<Symbol>,
+    pub generics: Option<Spanned<GenericArgs>>,
+}
+
+#[derive(Debug)]
+pub struct GenericArgs {
+    pub args: Vec<Spanned<GenericArg>>,
+}
+
+#[derive(Debug)]
+pub enum GenericArg {
+    LifetimeArg(Spanned<Lifetime>),
+    Type(Spanned<Type>),
+    Const(Spanned<Expr>),
+    Id(Spanned<Symbol>),
+    AssociatedType(Spanned<Symbol>, Spanned<AssociatedTypeBound>),
+}
+
+#[derive(Debug)]
+pub enum AssociatedTypeBound {
+    Exact(Spanned<Type>),
+    Bound(Vec<Spanned<GenericBound>>),
 }
 
 #[derive(Debug)]
@@ -227,6 +291,25 @@ pub enum Expr {
         index: Box<Spanned<Expr>>,
     },
     AsCast(Box<Spanned<Expr>>, Box<Spanned<Type>>),
+    BlockExpr(Spanned<CompoundBlock>),
+}
+
+#[derive(Debug)]
+pub struct Block {
+    pub stats: Vec<Spanned<Statement>>,
+    pub tail_expr: Option<Box<Spanned<Expr>>>,
+}
+
+#[derive(Debug)]
+pub enum Statement {
+    DiscardExpr(Spanned<Expr>),
+    ItemDecl(Spanned<Item>),
+    Block(Spanned<CompoundBlock>),
+}
+
+#[derive(Debug)]
+pub enum CompoundBlock {
+    SimpleBlock(Spanned<Block>),
 }
 
 #[derive(Debug)]
