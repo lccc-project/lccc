@@ -2,6 +2,8 @@ use core::ops::{Deref, DerefMut};
 
 use crate::{interning::Symbol, lex::Lexeme, span::Span};
 
+pub use crate::lex::StringType;
+
 #[derive(Debug, Copy, Clone)]
 pub struct Spanned<T> {
     pub body: T,
@@ -275,6 +277,21 @@ pub struct Path {
 }
 
 #[derive(Debug)]
+pub struct Literal {
+    pub val: Spanned<Symbol>,
+    pub lit_kind: LiteralKind,
+}
+
+#[derive(Debug)]
+pub enum LiteralKind {
+    String(StringType),
+    Char(StringType),
+    Int(Option<Spanned<Symbol>>),
+    Float(Option<Spanned<Symbol>>),
+    Bool,
+}
+
+#[derive(Debug)]
 pub enum Expr {
     IdExpr(Spanned<Path>),
     BinaryExpr(Spanned<BinaryOp>, Box<Spanned<Expr>>, Box<Spanned<Expr>>),
@@ -292,6 +309,28 @@ pub enum Expr {
     },
     AsCast(Box<Spanned<Expr>>, Box<Spanned<Type>>),
     BlockExpr(Spanned<CompoundBlock>),
+    Literal(Spanned<Literal>),
+}
+
+#[derive(Debug)]
+pub enum Pattern {
+    BareId(Spanned<Symbol>),
+    Const(Spanned<Path>),
+    Binding(Spanned<BindingPattern>),
+    Discard,
+    Tuple(Vec<Spanned<Pattern>>),
+    Ref(Option<Spanned<Mutability>>, Box<Spanned<Pattern>>),
+    OrPattern(Vec<Spanned<Pattern>>),
+    RangePattern(Option<Box<Spanned<Pattern>>>, Option<Box<Spanned<Pattern>>>),
+    RangeInclusivePattern(Option<Box<Spanned<Pattern>>>, Box<Spanned<Pattern>>),
+    LiteralPattern(Spanned<Literal>),
+}
+
+#[derive(Debug)]
+pub struct BindingPattern {
+    pub ismut: Option<Spanned<Mutability>>,
+    pub id: Spanned<Symbol>,
+    pub bound_pattern: Option<Box<Spanned<Pattern>>>,
 }
 
 #[derive(Debug)]
@@ -310,6 +349,34 @@ pub enum Statement {
 #[derive(Debug)]
 pub enum CompoundBlock {
     SimpleBlock(Spanned<Block>),
+    If(Spanned<IfBlock>),
+    While(Spanned<CondBlock>),
+    Loop(Spanned<Block>),
+    Unsafe(Spanned<Block>),
+    Const(Spanned<Block>),
+    For(Spanned<ForBlock>),
+}
+
+#[derive(Debug)]
+pub struct ForBlock {
+    pub pat: Box<Spanned<Pattern>>,
+    pub iter: Box<Spanned<Expr>>,
+    pub block: Spanned<Block>,
+}
+
+#[derive(Debug)]
+pub struct IfBlock {
+    pub cond: Box<Spanned<Expr>>,
+    pub block: Spanned<Block>,
+    pub elseifs: Vec<Spanned<CondBlock>>,
+    pub elseblock: Option<Spanned<Block>>,
+}
+
+// Note: Include the defining keyword in the top-level span.
+#[derive(Debug)]
+pub struct CondBlock {
+    pub cond: Box<Spanned<Expr>>,
+    pub block: Spanned<Block>,
 }
 
 #[derive(Debug)]
