@@ -106,7 +106,7 @@ pub fn do_lexeme_class(
         let span = lexeme.map_or_else(
             || Span::new_simple(Pos::default(), Pos::default(), ""),
             |x| x.span,
-        ); 
+        );
         Err(Error {
             expected: vec![expected],
             got,
@@ -126,7 +126,7 @@ pub fn do_lexeme_classes(
         match result {
             Ok(x) => {
                 tree.accept();
-                return Ok((x, class))
+                return Ok((x, class));
             }
             Err(x) => match &mut error {
                 Some(old) => *old |= x,
@@ -188,10 +188,11 @@ pub fn do_simple_path(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<SimplePath>> {
     let mut tree = tree.into_rewinder();
-    let (from_root, mut span) = match do_lexeme_class(&mut tree, LexemeClass::Punctuation("::".into())) {
-        Ok(x) => (true, x.span),
-        Err(Error { span, .. }) => (false, span),
-    };
+    let (from_root, mut span) =
+        match do_lexeme_class(&mut tree, LexemeClass::Punctuation("::".into())) {
+            Ok(x) => (true, x.span),
+            Err(Error { span, .. }) => (false, span),
+        };
     let mut segments = Vec::new();
     loop {
         let lexeme = do_simple_path_segment(&mut tree)?;
@@ -270,7 +271,7 @@ pub fn do_visibility(
     }
 }
 
-pub fn do_item(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Item> {
+pub fn do_item(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<Item>> {
     let mut tree = tree.into_rewinder();
     let vis = do_visibility(&mut tree).ok();
     todo!()
