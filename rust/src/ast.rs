@@ -67,6 +67,49 @@ pub enum ItemBody {
     },
     Use(Spanned<ImportItem>),
     UserType(UserType),
+    Function(Function),
+    ExternBlock(ExternBlock),
+}
+
+#[derive(Debug)]
+pub struct Async;
+
+#[derive(Debug)]
+pub struct Function {
+    pub safety: Option<Spanned<Safety>>,
+    pub abi: Option<Spanned<Symbol>>,
+    pub constness: Option<Spanned<Mutability>>,
+    pub isasync: Option<Spanned<Async>>,
+    pub name: Spanned<Symbol>,
+    pub generics: Option<Spanned<GenericParams>>,
+    pub reciever: Option<Spanned<SelfParam>>,
+    pub params: Vec<Spanned<Param>>,
+    pub varargs: Option<Spanned<Varargs>>,
+    pub retty: Option<Spanned<Type>>,
+    pub body: Option<Spanned<Block>>,
+}
+
+#[derive(Debug)]
+pub struct Param {
+    pub pat: Option<Spanned<Pattern>>,
+    pub ty: Spanned<Type>,
+}
+
+#[derive(Debug)]
+pub enum SelfParam {
+    BaseSelf(Option<Spanned<Type>>),
+    RefSelf(Option<Spanned<Mutability>>),
+}
+
+#[derive(Debug)]
+pub struct Varargs {
+    pub name: Option<Spanned<Symbol>>,
+}
+
+#[derive(Debug)]
+pub struct ExternBlock {
+    pub tag: Option<Spanned<Symbol>>,
+    pub items: Vec<Spanned<Item>>,
 }
 
 #[derive(Debug)]
@@ -355,6 +398,7 @@ pub enum CompoundBlock {
     Unsafe(Spanned<Block>),
     Const(Spanned<Block>),
     For(Spanned<ForBlock>),
+    Async(Spanned<Block>),
 }
 
 #[derive(Debug)]
