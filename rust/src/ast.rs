@@ -276,7 +276,7 @@ pub enum Type {
     Path(Spanned<Path>),
     Reference(Option<Spanned<Mutability>>, Box<Spanned<Type>>),
     Pointer(Spanned<Mutability>, Box<Spanned<Type>>),
-    Array(Box<Spanned<Type>>, Option<Spanned<Expr>>),
+    Array(Box<Spanned<Type>>, Option<Box<Spanned<Expr>>>),
     FnType(FnType),
 }
 
@@ -353,6 +353,36 @@ pub enum Expr {
     AsCast(Box<Spanned<Expr>>, Box<Spanned<Type>>),
     BlockExpr(Spanned<CompoundBlock>),
     Literal(Spanned<Literal>),
+    Break(Option<Spanned<Label>>, Option<Box<Spanned<Expr>>>),
+    Continue(Option<Spanned<Label>>, Option<Box<Spanned<Expr>>>),
+    Yield(Option<Box<Spanned<Expr>>>),
+    ConstBlock(Spanned<Block>),
+    AsyncBlock(Spanned<Block>),
+    Closure(Spanned<Closure>),
+}
+
+#[derive(Debug)]
+pub struct Label {
+    pub name: Spanned<Symbol>,
+}
+
+#[derive(Debug)]
+pub struct Closure {
+    pub capture_rule: Option<Spanned<CaptureSpec>>,
+    pub params: Vec<Spanned<ClosureParam>>,
+    pub retty: Option<Spanned<Type>>,
+    pub body: Box<Spanned<Expr>>,
+}
+
+#[derive(Debug)]
+pub enum CaptureSpec {
+    Move,
+}
+
+#[derive(Debug)]
+pub struct ClosureParam {
+    pub pat: Spanned<Pattern>,
+    pub ty: Option<Spanned<Type>>,
 }
 
 #[derive(Debug)]
@@ -396,9 +426,7 @@ pub enum CompoundBlock {
     While(Spanned<CondBlock>),
     Loop(Spanned<Block>),
     Unsafe(Spanned<Block>),
-    Const(Spanned<Block>),
     For(Spanned<ForBlock>),
-    Async(Spanned<Block>),
 }
 
 #[derive(Debug)]
