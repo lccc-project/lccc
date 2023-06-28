@@ -254,7 +254,53 @@ pub fn do_visibility(
     let span_start = do_lexeme_class(&mut tree, LexemeClass::Keyword("pub".into()))?.span;
     match do_lexeme_group(&mut tree, Some(GroupType::Parens)) {
         Ok((group, span_end)) => {
-            let path = do_simple_path(&mut group.body.into_iter().peekmore())?;
+            let (Lexeme { span, .. }, class) = do_lexeme_classes(
+                &mut tree,
+                &[
+                    LexemeClass::Keyword("crate".into()),
+                    LexemeClass::Keyword("self".into()),
+                    LexemeClass::Keyword("super".into()),
+                    LexemeClass::Keyword("in".into()),
+                ],
+            )?;
+            // TODO: make this more ergonomic
+            let path = match class {
+                LexemeClass::Keyword(x) => match &*x {
+                    "crate" => Spanned {
+                        body: SimplePath {
+                            from_root: false,
+                            segments: vec![Spanned {
+                                body: SimplePathSegment::CratePath,
+                                span,
+                            }],
+                        },
+                        span,
+                    },
+                    "self" => Spanned {
+                        body: SimplePath {
+                            from_root: false,
+                            segments: vec![Spanned {
+                                body: SimplePathSegment::SelfPath,
+                                span,
+                            }],
+                        },
+                        span,
+                    },
+                    "super" => Spanned {
+                        body: SimplePath {
+                            from_root: false,
+                            segments: vec![Spanned {
+                                body: SimplePathSegment::SuperPath,
+                                span,
+                            }],
+                        },
+                        span,
+                    },
+                    "in" => do_simple_path(&mut group.body.into_iter().peekmore())?,
+                    _ => unreachable!(),
+                },
+                _ => unreachable!(),
+            };
             tree.accept();
             Ok(Spanned {
                 body: Visibility::Scoped(path),
