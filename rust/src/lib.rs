@@ -5,6 +5,7 @@
 mod ast;
 mod interning;
 mod irgen;
+mod lang;
 mod lex;
 mod macro_parse;
 mod parse;

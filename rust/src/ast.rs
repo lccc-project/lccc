@@ -359,6 +359,7 @@ pub enum Expr {
     ConstBlock(Spanned<Block>),
     AsyncBlock(Spanned<Block>),
     Closure(Spanned<Closure>),
+    Yeet(Option<Box<Expr>>),
 }
 
 #[derive(Debug)]
