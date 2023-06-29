@@ -66,9 +66,9 @@ pub enum ItemBody {
         asname: Option<Spanned<ImportName>>,
     },
     Use(Spanned<ImportItem>),
-    UserType(UserType),
-    Function(Function),
-    ExternBlock(ExternBlock),
+    UserType(Spanned<UserType>),
+    Function(Spanned<Function>),
+    ExternBlock(Spanned<ExternBlock>),
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
