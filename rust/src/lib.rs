@@ -3,6 +3,7 @@
 #![warn(clippy::pedantic, clippy::nursery)]
 
 mod ast;
+mod feature;
 mod interning;
 mod irgen;
 mod lang;

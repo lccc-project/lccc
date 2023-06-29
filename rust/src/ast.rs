@@ -519,7 +519,9 @@ pub struct SimplePath {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum AttrInput {
-    DelimTokenTree(Vec<Lexeme>, Span),
+    DelimTokenTree(Spanned<Vec<Lexeme>>),
+    MetaValue(Spanned<Literal>),
+    MetaGroup(Vec<Spanned<Attr>>),
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
