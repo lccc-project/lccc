@@ -18,8 +18,18 @@ pub fn catch_unwind<F: UnwindSafe + FnOnce() -> T>(f: F) -> Result<T, Box<dyn An
     .map(unwrap_erased_unchecked)
 }
 
+/**
+ * ```
+ * fn catch_unwind_personality(p: *mut ForeignExceptionType) -> _Unwind_Reason{
+ *     SetRegister([param 1],p);
+ *     SetIp(catch_unwind_landing_pad as *mut c_void);
+ *     _URC_INSTALL_CONTEXT
+ * }
+ * ```
+ */
 #[lang = "lcrust_catch_unwind_fn"]
 #[inline(never)]
 fn catch_unwind_erased(f: *mut dyn FnOnce() -> *mut !, _: *mut !) -> Result<*mut !, Box<dyn Any>> {
     Ok(FnOnce::call_once_unsized(f, ()))
 }
+

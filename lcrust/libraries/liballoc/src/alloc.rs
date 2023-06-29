@@ -179,6 +179,9 @@ extern "Rust" {
     static _ZNSt5alloc18__global_allocatorE: &dyn GlobalAlloc;
 }
 
+#[lcrust::allocator_function(layout = "layout", style = "malloc")]
+#[inline]
+#[lcrust::force_export] // alloc::alloc::alloc and friends are required-definition symbols, but we want to be able to inline them.
 pub unsafe fn alloc(layout: Layout) -> *mut u8 {
     if core::ptr::raw_const!(_ZNSt5alloc18__global_allocatorE).is_null() {
         handle_alloc_error(layout)
@@ -187,6 +190,9 @@ pub unsafe fn alloc(layout: Layout) -> *mut u8 {
     }
 }
 
+#[lcrust::allocator_function(layout = "layout", style = "calloc")]
+#[inline]
+#[lcrust::force_export] // alloc::alloc::alloc and friends are required-definition symbols, but we want to be able to inline them.
 pub unsafe fn alloc_zeroed(layout: Layout) -> *mut u8 {
     if core::ptr::raw_const!(_ZNSt5alloc18__global_allocatorE).is_null() {
         handle_alloc_error(layout)
@@ -195,6 +201,9 @@ pub unsafe fn alloc_zeroed(layout: Layout) -> *mut u8 {
     }
 }
 
+#[lcrust::allocator_function(layout = "layout", ptr = "ptr", style = "free")]
+#[inline]
+#[lcrust::force_export] // alloc::alloc::alloc and friends are required-definition symbols, but we want to be able to inline them.
 pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
     if core::ptr::raw_const!(_ZNSt5alloc18__global_allocatorE).is_null() {
     } else {
@@ -202,6 +211,14 @@ pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
     }
 }
 
+#[lcrust::allocator_function(
+    layout = "old_layout",
+    ptr = "ptr",
+    new_layout = "{new_size,old_layout.align}",
+    style = "realloc"
+)]
+#[inline]
+#[lcrust::force_export] // alloc::alloc::alloc and friends are required-definition symbols, but we want to be able to inline them.
 pub unsafe fn realloc(ptr: *mut u8, old_layout: Layout, new_size: usize) -> *mut u8 {
     if core::ptr::raw_const!(_ZNSt5alloc18__global_allocatorE).is_null() {
         handle_alloc_error(layout)
@@ -211,14 +228,22 @@ pub unsafe fn realloc(ptr: *mut u8, old_layout: Layout, new_size: usize) -> *mut
 }
 
 #[unstable(feature = "lccc_alloc_align_safety")]
+#[lcrust::assume_no_unwind]
+#[lcrust::pure]
+#[inline]
+#[lcrust::force_export] // alloc::alloc::alloc and friends are required-definition symbols, but we want to be able to inline them.
 pub fn alloc_align_compatible(old_align: usize, new_align: usize) -> bool {
     if core::ptr::raw_const!(_ZNSt5alloc18__global_allocatorE).is_null() {
-        true
+        true // trivially -
     } else {
         _ZNSt5alloc18__global_allocatorE.alloc_align_compatible(old_align, new_align)
     }
 }
 
+#[lcrust::assume_no_unwind]
+#[cold]
+#[inline]
+#[lcrust::force_export] // alloc::alloc::alloc and friends are required-definition symbols, but we want to be able to inline them.
 pub fn handle_alloc_error(layout: Layout) -> ! {
     extern "Rust" {
         #[no_mangle]
@@ -231,8 +256,7 @@ pub fn handle_alloc_error(layout: Layout) -> ! {
     }
 }
 
-#[__lccc::weak]
-#[__lccc::use_mangling("itanium")]
+#[lcrust::weak_def]
 #[unstable(feature = "lccc_handle_alloc_error_impl")]
 pub fn __lccc_rust_handle_alloc_error_impl(_: Layout) -> ! {
     ::__lccc::builtins::C::__builtin_trap()
@@ -355,5 +379,7 @@ unsafe impl Allocator for Global {
 
 #[unstable(feature = "lccc_alloc_align_safety")]
 unsafe impl AlignSafeAllocator for Global {
-    fn alloc_align_compatible(&self, new_align: usize, old_align: usize) -> bool {}
+    fn alloc_align_compatible(&self, new_align: usize, old_align: usize) -> bool {
+        alloc_align_compatible(new_align, old_align)
+    }
 }
