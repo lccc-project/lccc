@@ -4,24 +4,7 @@ use crate::{interning::Symbol, lex::Lexeme, span::Span};
 
 pub use crate::lex::StringType;
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-pub struct Spanned<T> {
-    pub body: T,
-    pub span: Span,
-}
-
-impl<T> Deref for Spanned<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        &self.body
-    }
-}
-
-impl<T> DerefMut for Spanned<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.body
-    }
-}
+pub use crate::span::Spanned;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Visibility {
@@ -278,6 +261,8 @@ pub enum Type {
     Pointer(Spanned<Mutability>, Box<Spanned<Type>>),
     Array(Box<Spanned<Type>>, Option<Box<Spanned<Expr>>>),
     FnType(FnType),
+    Never,
+    Tuple(Vec<Spanned<Type>>),
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]

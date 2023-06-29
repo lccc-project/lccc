@@ -37,5 +37,5 @@ define_lang_items! {
     FnOnce: fn_once,
     FnMut: fn_mut,
     Fn: fn_trait,
-
+    Main: main,
 }
