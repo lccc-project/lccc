@@ -409,7 +409,7 @@ pub struct BindingPattern {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Block {
-    pub stats: Vec<Spanned<Statement>>,
+    pub stmts: Vec<Spanned<Statement>>,
     pub tail_expr: Option<Box<Spanned<Expr>>>,
 }
 
