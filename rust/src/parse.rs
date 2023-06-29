@@ -4,7 +4,8 @@ use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
     ast::{
-        Attr, AttrInput, Item, ItemBody, Mod, SimplePath, SimplePathSegment, Spanned, Visibility, UserType, ItemValue,
+        Attr, AttrInput, ExternBlock, Function, Item, ItemBody, ItemValue, Mod, SimplePath,
+        SimplePathSegment, Spanned, UserType, Visibility, Block, Statement,
     },
     lex::{Group, GroupType, Lexeme, LexemeBody, LexemeClass},
     span::{Pos, Span},
@@ -319,85 +320,198 @@ pub fn do_visibility(
     }
 }
 
-pub fn do_item_mod(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<ItemBody>> {
+pub fn do_item_mod(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<ItemBody>> {
     let mut tree = tree.into_rewinder();
     let kw_mod = do_lexeme_class(&mut tree, LexemeClass::Keyword("mod".into()))?;
     todo!()
 }
 
-pub fn do_item_value_static(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<ItemValue>> {
+pub fn do_item_value_static(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<ItemValue>> {
     let mut tree = tree.into_rewinder();
     let kw_static = do_lexeme_class(&mut tree, LexemeClass::Keyword("static".into()))?;
     todo!()
 }
 
-pub fn do_item_value_const(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<ItemValue>> {
+pub fn do_item_value_const(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<ItemValue>> {
     let mut tree = tree.into_rewinder();
     let kw_const = do_lexeme_class(&mut tree, LexemeClass::Keyword("const".into()))?;
     todo!()
 }
 
-pub fn do_item_value(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<ItemBody>> {
+pub fn do_item_value(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<ItemBody>> {
     let mut tree = tree.into_rewinder();
     let val = match do_item_value_static(&mut tree) {
         Ok(val) => val,
         Err(x) => match do_item_value_const(&mut tree) {
             Ok(val) => val,
             Err(y) => Err(x | y)?,
-        }
+        },
     };
     let span = val.span; // copy
-    Ok(Spanned { body: ItemBody::Value(val), span })
+    Ok(Spanned {
+        body: ItemBody::Value(val),
+        span,
+    })
 }
 
-pub fn do_item_extern_crate(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<ItemBody>> {
+pub fn do_item_extern_crate(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<ItemBody>> {
     let mut tree = tree.into_rewinder();
     let kw_extern = do_lexeme_class(&mut tree, LexemeClass::Keyword("extern".into()))?;
     let kw_crate = do_lexeme_class(&mut tree, LexemeClass::Keyword("crate".into()))?;
     todo!()
 }
 
-pub fn do_item_use(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<ItemBody>> {
+pub fn do_item_use(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<ItemBody>> {
     let mut tree = tree.into_rewinder();
     let kw_use = do_lexeme_class(&mut tree, LexemeClass::Keyword("use".into()))?;
     todo!()
 }
 
-pub fn do_user_type_struct(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<UserType>> {
+pub fn do_user_type_struct(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<UserType>> {
     let mut tree = tree.into_rewinder();
     let kw_struct = do_lexeme_class(&mut tree, LexemeClass::Keyword("struct".into()))?;
     todo!()
 }
 
-pub fn do_user_type_enum(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<UserType>> {
+pub fn do_user_type_enum(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<UserType>> {
     let mut tree = tree.into_rewinder();
     let kw_enum = do_lexeme_class(&mut tree, LexemeClass::Keyword("enum".into()))?;
     todo!()
 }
 
-pub fn do_item_user_type(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<ItemBody>> {
+pub fn do_item_user_type(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<ItemBody>> {
     let mut tree = tree.into_rewinder();
     let user_type = match do_user_type_struct(&mut tree) {
         Ok(ty) => ty,
         Err(x) => match do_user_type_enum(&mut tree) {
             Ok(ty) => ty,
             Err(y) => Err(x | y)?,
-        }
+        },
     };
     let span = user_type.span; // copy
-    Ok(Spanned { body: ItemBody::UserType(user_type), span })
+    Ok(Spanned {
+        body: ItemBody::UserType(user_type),
+        span,
+    })
 }
 
-pub fn do_item_fn(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<ItemBody>> {
-    let mut tree = tree.into_rewinder();
-    let kw_fn = do_lexeme_class(&mut tree, LexemeClass::Keyword("fn".into()))?;
+pub fn do_statement(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Statement>> {
     todo!()
 }
 
-pub fn do_item_extern_block(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<ItemBody>> {
+pub fn do_block(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Block>> {
+    let (block, span) = do_lexeme_group(tree, Some(GroupType::Braces))?;
+    let mut stmts = Vec::new();
+    let mut block_tree = block.body.into_iter().peekmore();
+    while block_tree.peek().is_some() {
+        let stmt = do_statement(&mut block_tree);
+        if let Ok(stmt) = stmt {
+            stmts.push(stmt);
+        } else {
+            break
+        }
+    }
+    let tail_expr = None; // TODO
+    Ok(Spanned {
+        body: Block { stmts, tail_expr },
+        span,
+    })
+}
+
+pub fn do_item_fn(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<ItemBody>> {
     let mut tree = tree.into_rewinder();
-    let kw_extern = do_lexeme_class(&mut tree, LexemeClass::Keyword("extern".into()))?;
-    todo!()
+    let Lexeme {
+        span: span_start, ..
+    } = do_lexeme_class(&mut tree, LexemeClass::Keyword("fn".into()))?;
+    let name = do_lexeme_class(&mut tree, LexemeClass::Identifier)?;
+    let name = Spanned {
+        body: *name.text().unwrap(),
+        span: name.span,
+    };
+    let _params = do_lexeme_group(&mut tree, Some(GroupType::Parens))?;
+    let (body, span_end) = match do_lexeme_class(&mut tree, LexemeClass::Punctuation(";".into())) {
+        Ok(Lexeme { span, .. }) => (None, span),
+        Err(a) => match do_block(&mut tree) {
+            Ok(block) => {
+                let span = block.span;
+                (Some(block), span)
+            }
+            Err(b) => Err(a | b)?,
+        }
+    };
+    let span = Span::between(span_start, span_end);
+    Ok(Spanned {
+        body: ItemBody::Function(Spanned {
+            body: Function {
+                safety: None,
+                abi: None,
+                constness: None,
+                isasync: None,
+                name,
+                generics: None,
+                reciever: None,     // TODO: parse params
+                params: Vec::new(), // TODO: parse params
+                varargs: None,
+                retty: None, // TODO: duh
+                body,
+            },
+            span,
+        }),
+        span,
+    })
+}
+
+pub fn do_item_extern_block(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<ItemBody>> {
+    let mut tree = tree.into_rewinder();
+    let Lexeme {
+        span: span_start, ..
+    } = do_lexeme_class(&mut tree, LexemeClass::Keyword("extern".into()))?;
+    let tag = do_lexeme_class(&mut tree, LexemeClass::String)
+        .ok()
+        .map(|x| Spanned {
+            body: *x.text().unwrap(),
+            span: x.span,
+        });
+    let (block, span_end) = do_lexeme_group(&mut tree, Some(GroupType::Braces))?;
+    let mut items = Vec::new();
+    let mut block_tree = block.body.into_iter().peekmore();
+    while block_tree.peek().is_some() {
+        items.push(do_item(&mut block_tree)?);
+    }
+    let span = Span::between(span_start, span_end);
+    Ok(Spanned {
+        body: ItemBody::ExternBlock(Spanned {
+            body: ExternBlock { tag, items },
+            span,
+        }),
+        span,
+    })
 }
 
 pub fn do_item(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<Item>> {
