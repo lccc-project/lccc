@@ -1,5 +1,7 @@
 use core::{cmp::Ordering, fmt};
 
+use core::ops::{Deref, DerefMut};
+
 use crate::interning::Symbol;
 
 #[derive(Clone, Copy, Hash, Eq, Default)]
@@ -55,6 +57,10 @@ impl Span {
         }
     }
 
+    pub fn empty() -> Self {
+        Self::new_simple(Pos::default(), Pos::default(), Symbol::default())
+    }
+
     pub fn between(start: Self, end: Self) -> Self {
         assert_eq!(start.file, end.file);
         assert_eq!(start.hygiene, end.hygiene);
@@ -70,6 +76,46 @@ impl Span {
 impl fmt::Debug for Span {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({:?} - {:?} [{:?}])", self.start, self.end, self.file)
+    }
+}
+
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub struct Spanned<T> {
+    pub body: T,
+    pub span: Span,
+}
+impl<T> Deref for Spanned<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.body
+    }
+}
+
+impl<T> DerefMut for Spanned<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        &mut self.body
+    }
+}
+
+impl<T> Spanned<T> {
+    pub fn copy_span<U, F: FnOnce(&T) -> U>(&self, f: F) -> Spanned<U> {
+        Spanned {
+            body: f(&self.body),
+            span: self.span,
+        }
+    }
+
+    pub fn try_copy_span<U, E, F: FnOnce(&T) -> Result<U, E>>(
+        &self,
+        f: F,
+    ) -> Result<Spanned<U>, E> {
+        match f(&self.body) {
+            Ok(body) => Ok(Spanned {
+                body,
+                span: self.span,
+            }),
+            Err(e) => Err(e),
+        }
     }
 }
 

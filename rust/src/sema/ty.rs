@@ -1,5 +1,8 @@
-use crate::ast;
 pub use crate::ast::{Mutability, Safety, Spanned};
+use crate::{
+    ast::{self, PathPrefix},
+    interning::Symbol,
+};
 
 pub use super::DefId;
 use super::Definitions;
@@ -250,7 +253,7 @@ impl core::fmt::Display for Type {
     }
 }
 
-fn convert_builtin_type(name: &str, _: &Features) -> Option<Type> {
+fn convert_builtin_type(name: &str) -> Option<Type> {
     match name {
         "char" => Some(Type::Char),
         "str" => Some(Type::Str),
@@ -283,5 +286,48 @@ fn convert_builtin_type(name: &str, _: &Features) -> Option<Type> {
             Some(Type::Float(FloatWidth::Bits(size)))
         }
         _ => None,
+    }
+}
+
+pub fn convert_type(
+    defs: &Definitions,
+    curmod: DefId,
+    at_item: DefId,
+    ty: &ast::Type,
+) -> super::Result<Type> {
+    match ty {
+        ast::Type::Path(path) => match defs.find_type(curmod, &path.body, at_item) {
+            Ok(defid) => Ok(Type::UserType(defid)),
+            Err(e) => match (&path.prefix, &*path.segments) {
+                (
+                    None
+                    | Some(Spanned {
+                        body: PathPrefix::SimplePrefix(None),
+                        ..
+                    }),
+                    [seg],
+                ) => {
+                    if seg.generics.is_none() {
+                        convert_builtin_type(&seg.ident).ok_or(e)
+                    } else {
+                        Err(e)
+                    }
+                }
+                _ => Err(e),
+            },
+        },
+        ast::Type::Reference(_, _) => todo!("reference"),
+        ast::Type::Pointer(_, _) => todo!("pointer"),
+        ast::Type::Array(_, _) => todo!("array"),
+        ast::Type::FnType(_) => todo!(),
+        ast::Type::Never => Ok(Type::Never),
+        ast::Type::Tuple(tys) => {
+            let mut tys = tys
+                .iter()
+                .map(|ty| ty.try_copy_span(|ty| convert_type(defs, curmod, at_item, ty)))
+                .collect::<super::Result<Vec<_>>>()?;
+
+            Ok(Type::Tuple(tys))
+        }
     }
 }

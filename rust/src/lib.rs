@@ -4,6 +4,7 @@
 
 mod ast;
 mod feature;
+mod helpers;
 mod interning;
 mod irgen;
 mod lang;
