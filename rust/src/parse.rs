@@ -101,7 +101,7 @@ pub fn do_lexeme_class(
     let got = LexemeClass::of(lexeme);
     if got.is(&expected) {
         let result = lexeme.unwrap().clone();
-        tree.next();
+        tree.advance_cursor();
         tree.accept();
         Ok(result)
     } else {
