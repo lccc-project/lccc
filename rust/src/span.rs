@@ -2,7 +2,7 @@ use core::{cmp::Ordering, fmt};
 
 use crate::interning::Symbol;
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Hash, Eq, Default)]
 pub struct Pos {
     pub row: u32,
     pub col: u32,
@@ -37,7 +37,7 @@ impl PartialOrd for Pos {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Span {
     pub start: Pos,
     pub end: Pos,

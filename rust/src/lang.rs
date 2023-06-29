@@ -11,7 +11,7 @@ macro_rules! define_lang_items{
         }
 
         impl LangItem{
-            pub const fn from_name(x: &str) -> Option<LangItem>{
+            pub fn from_name(x: &str) -> Option<LangItem>{
                 match x{
                     $(::core::stringify!($name) => Some(Self:: $enum),)*
                     _ => None

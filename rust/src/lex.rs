@@ -7,7 +7,7 @@ use crate::{
 
 use unicode_xid::UnicodeXID;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum GroupType {
     Parens,
     Brackets,
@@ -42,7 +42,7 @@ impl GroupType {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum IdentifierType {
     Default,
     Keyword,
@@ -51,7 +51,7 @@ pub enum IdentifierType {
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum StringType {
     Default,
     Raw(u8), // number of #s
@@ -59,7 +59,7 @@ pub enum StringType {
     RawByte(u8), // see above
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum TokenType {
     Character,
     CommentMulti,
@@ -71,7 +71,7 @@ pub enum TokenType {
     String(StringType),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Group {
     pub ty: GroupType,
     pub body: Vec<Lexeme>,
@@ -90,7 +90,7 @@ impl Group {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Token {
     pub ty: TokenType,
     pub body: Symbol,
@@ -174,7 +174,7 @@ impl Token {
 }
 
 #[allow(dead_code)]
-#[derive(Clone)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub enum LexemeBody {
     Group(Group),
     Token(Token),
@@ -193,7 +193,7 @@ impl fmt::Debug for LexemeBody {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum LexemeClass {
     Character,
     Eof,
@@ -238,7 +238,7 @@ impl LexemeClass {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Lexeme {
     pub span: Span,
     pub body: LexemeBody,
@@ -266,7 +266,7 @@ pub enum Error {
     UnrecognizedChar(char, Pos),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum AstFrag {}
 
 pub type Result<T> = core::result::Result<T, Error>;
