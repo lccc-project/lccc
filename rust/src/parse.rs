@@ -4,8 +4,8 @@ use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
     ast::{
-        Attr, AttrInput, ExternBlock, Function, Item, ItemBody, ItemValue, Mod, SimplePath,
-        SimplePathSegment, Spanned, UserType, Visibility, Block, Statement,
+        Attr, AttrInput, Block, ExternBlock, Function, Item, ItemBody, ItemValue, Mod, SimplePath,
+        SimplePathSegment, Spanned, Statement, UserType, Visibility,
     },
     lex::{Group, GroupType, Lexeme, LexemeBody, LexemeClass},
     span::{Pos, Span},
@@ -430,7 +430,7 @@ pub fn do_block(
         if let Ok(stmt) = stmt {
             stmts.push(stmt);
         } else {
-            break
+            break;
         }
     }
     let tail_expr = None; // TODO
@@ -461,7 +461,7 @@ pub fn do_item_fn(
                 (Some(block), span)
             }
             Err(b) => Err(a | b)?,
-        }
+        },
     };
     let span = Span::between(span_start, span_end);
     Ok(Spanned {
