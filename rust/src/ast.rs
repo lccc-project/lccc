@@ -62,13 +62,13 @@ pub struct Function {
     pub safety: Option<Spanned<Safety>>,
     pub abi: Option<Spanned<Symbol>>,
     pub constness: Option<Spanned<Mutability>>,
-    pub isasync: Option<Spanned<Async>>,
+    pub is_async: Option<Spanned<Async>>,
     pub name: Spanned<Symbol>,
     pub generics: Option<Spanned<GenericParams>>,
     pub reciever: Option<Spanned<SelfParam>>,
     pub params: Vec<Spanned<Param>>,
     pub varargs: Option<Spanned<Varargs>>,
-    pub retty: Option<Spanned<Type>>,
+    pub ret_ty: Option<Spanned<Type>>,
     pub body: Option<Spanned<Block>>,
 }
 
@@ -400,6 +400,7 @@ pub struct Block {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Statement {
+    Empty, // everyone forgets about me
     DiscardExpr(Spanned<Expr>),
     ItemDecl(Spanned<Item>),
     Block(Spanned<CompoundBlock>),
