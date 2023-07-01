@@ -32,9 +32,9 @@ impl BitOrAssign for Error {
     fn bitor_assign(&mut self, mut rhs: Self) {
         if self.span.start > rhs.span.start {
             ()
-        } else if self.span.end < rhs.span.end {
+        } else if self.span.start < rhs.span.start {
             *self = rhs;
-        } else if self.span.end == rhs.span.end {
+        } else if self.span.start == rhs.span.start {
             self.expected.append(&mut rhs.expected);
         } else {
             todo!("{:?}, {:?}", self, rhs); // Uh oh. Multiple files collided.
@@ -418,11 +418,13 @@ pub fn do_compound_block(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<CompoundBlock>> {
     // TODO: support more than `unsafe`
+    let mut tree = tree.into_rewinder();
     let Lexeme {
         span: span_start, ..
-    } = do_lexeme_class(tree, LexemeClass::Keyword("unsafe".into()))?;
-    let block = do_block(tree)?;
+    } = do_lexeme_class(&mut tree, LexemeClass::Keyword("unsafe".into()))?;
+    let block = do_block(&mut tree)?;
     let span = Span::between(span_start, block.span);
+    tree.accept();
     Ok(Spanned {
         body: CompoundBlock::Unsafe(block),
         span,
@@ -503,20 +505,30 @@ pub fn do_block(
     let (block, span) = do_lexeme_group(tree, Some(GroupType::Braces))?;
     let mut stmts = Vec::new();
     let mut block_tree = block.body.into_iter().peekmore();
+    let mut stmt_failure = None;
     while block_tree.peek().is_some() {
-        let stmt = do_statement(&mut block_tree);
-        if let Ok(stmt) = stmt {
-            stmts.push(stmt);
-        } else {
-            break;
+        match do_statement(&mut block_tree) {
+            Ok(stmt) => stmts.push(stmt),
+            Err(e) => {
+                stmt_failure = Some(e);
+                break;
+            }
         }
     }
     let tail_expr = if block_tree.peek().is_some() {
-        Some(do_expression(&mut block_tree)?)
+        match do_expression(&mut block_tree) {
+            Ok(expr) => Some(Box::new(expr)),
+            Err(a) => {
+                if let Some(b) = stmt_failure {
+                    return Err(a | b)
+                } else {
+                    return Err(a)
+                }
+            }
+        }
     } else {
         None
-    }
-    .map(Box::new); // TODO
+    };
     Ok(Spanned {
         body: Block { stmts, tail_expr },
         span,
