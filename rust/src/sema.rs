@@ -401,71 +401,176 @@ impl Definitions {
 
                 Ok(def)
             } else {
-                panic!("Expected defid {} to be a module", searchmod);
+                panic!("Expected a module for item {}",searchmod); // TODO handle Ty::ASSOC_TYPE
             }
         }
     }
 
     pub fn find_type(&self, curmod: DefId, path: &ast::Path, at_item: DefId) -> Result<DefId> {
-        todo!()
-        // let mut resolve_mod = match &path.prefix {
-        //     None => None,
-        //     Some(Spanned {
-        //         body: ast::PathPrefix::SimplePrefix(prefix),
-        //         ..
-        //     }) => Some(match prefix {
-        //         None => DefId::ROOT,
-        //         Some(Spanned {
-        //             body: ast::SimplePathSegment::CratePath,
-        //             ..
-        //         }) => self.curcrate,
-        //         Some(Spanned {
-        //             body: ast::SimplePathSegment::SelfPath,
-        //             ..
-        //         }) => curmod,
-        //         Some(Spanned {
-        //             body: ast::SimplePathSegment::SuperPath,
-        //             ..
-        //         }) => self.definition(curmod).parent,
-        //         Some(Spanned { body, span }) => panic!("Unexpected prefix for path {:?}", body),
-        //     }),
-        //     _ => todo!("Complex paths"),
-        // };
+        let mut resolve_mod = None;
 
-        // for seg in &path.segments {
-        //     if let Some(md) = resolve_mod {
-        //         resolve_mod = Some(self.find_type_in_mod(curmod, md, seg.body.ident, at_item)?);
-        //     } else {
-        //         match self.find_type_in_mod(curmod, curmod, seg.body.ident, at_item) {
-        //             Ok(id) => resolve_mod = Some(id),
-        //             Err(e) => {
-        //                 if self.prelude_import != DefId::ROOT {
-        //                     if let Ok(id) = self.find_type_in_mod(
-        //                         curmod,
-        //                         self.prelude_import,
-        //                         seg.body.ident,
-        //                         at_item,
-        //                     ) {
-        //                         resolve_mod = Some(id);
-        //                         continue;
-        //                     }
-        //                 }
+        match &path.root{
+            Some(Spanned{body: ast::PathRoot::Root,..}) => {
+                resolve_mod = Some(DefId(0));
+            }
+            Some(Spanned{body: ast::PathRoot::QSelf(_, _),..}) => todo!("QSelf"),
+            None => {}
+        }
 
-        //                 if let Some(id) = self.crates.get(&seg.body.ident.body) {
-        //                     resolve_mod = Some(*id);
-        //                     continue;
-        //                 } else {
-        //                     return Err(e);
-        //                 }
-        //             }
-        //         }
-        //     }
-        //     if let Some(generics) = &seg.generics {
-        //         todo!("Generics")
-        //     }
-        // }
+        for seg in &path.segments{
+            match &seg.ident.body{
+                ast::SimplePathSegment::Identifier(id) => {
+                    let id = Spanned{body: *id, span: seg.ident.span};
 
-        // Ok(resolve_mod.expect("Empty path is not allowed"))
+                    if let Some(md) = resolve_mod{
+                        resolve_mod = Some(self.find_type_in_mod(curmod, md, id, at_item)?);
+                    }else{
+                        match self.find_type_in_mod(curmod,curmod,id,at_item){
+                            Ok(item) => resolve_mod = Some(item),
+                            Err(e) => {
+                                if self.prelude_import.0 != 0{
+                                    if let Ok(item) = self.find_type_in_mod(curmod, self.prelude_import, id, at_item){
+                                        resolve_mod = Some(item)
+                                    }else if let Ok(item) = self.find_type_in_mod(curmod, DefId::ROOT,id,at_item){
+                                        resolve_mod = Some(item)
+                                    }else{
+                                        return Err(e);
+                                    }
+                                }else if let Ok(item) = self.find_type_in_mod(curmod, DefId::ROOT,id,at_item){
+                                    resolve_mod = Some(item)
+                                }else{
+                                    return Err(e);
+                                }
+                            }
+                        }
+
+                        if let Some(generics) = &seg.generics{
+                            todo!("generics")
+                        }
+                    }
+                },
+                ast::SimplePathSegment::SuperPath => {
+                    if let Some(md) = resolve_mod{
+                        if md==DefId::ROOT{
+                            return Err(Error{
+                                span: seg.ident.span,
+                                text: format!("`super` is not allowed in a root"),
+                                category: ErrorCategory::CannotFindName,
+                                at_item,
+                                containing_item: curmod,
+                                relevant_item: at_item,
+                                hints: vec![SemaHint{text: format!("Remove the `::`"),itemref: at_item,refspan: path.root.as_ref().unwrap().span}],
+                            });
+                        }else{
+                            return Err(Error{
+                                span: seg.ident.span,
+                                text: format!("`super` cannot appear after any other components"),
+                                category: ErrorCategory::CannotFindName,
+                                at_item,
+                                containing_item: curmod,
+                                relevant_item: at_item,
+                                hints: vec![],
+                            });
+                        }
+                    }else{
+                        resolve_mod = Some(self.definition(curmod).parent);
+                    }
+
+                    if let Some(generics) = &seg.generics{
+                        return Err(Error{
+                            span: generics.span,
+                            text: format!("`super` cannot be generic"),
+                            category: ErrorCategory::CannotFindName,
+                            at_item,
+                            containing_item: curmod,
+                            relevant_item: at_item,
+                            hints: vec![],
+                        });
+                    }
+                },
+                ast::SimplePathSegment::SelfPath => {
+                    if let Some(md) = resolve_mod{
+                        if md==DefId::ROOT{
+                            return Err(Error{
+                                span: seg.ident.span,
+                                text: format!("`self` is not allowed in a root"),
+                                category: ErrorCategory::CannotFindName,
+                                at_item,
+                                containing_item: curmod,
+                                relevant_item: at_item,
+                                hints: vec![SemaHint{text: format!("Remove the `::`"),itemref: at_item,refspan: path.root.as_ref().unwrap().span}],
+                            });
+                        }else{
+                            return Err(Error{
+                                span: seg.ident.span,
+                                text: format!("`self` cannot appear after any other components"),
+                                category: ErrorCategory::CannotFindName,
+                                at_item,
+                                containing_item: curmod,
+                                relevant_item: at_item,
+                                hints: vec![],
+                            });
+                        }
+                    }else{
+                        resolve_mod = Some(curmod);
+                    }
+
+                    if let Some(generics) = &seg.generics{
+                        return Err(Error{
+                            span: generics.span,
+                            text: format!("`self` cannot be generic"),
+                            category: ErrorCategory::CannotFindName,
+                            at_item,
+                            containing_item: curmod,
+                            relevant_item: at_item,
+                            hints: vec![],
+                        });
+                    }
+                },
+                ast::SimplePathSegment::CratePath => {
+                    if let Some(md) = resolve_mod{
+                        if md==DefId::ROOT{
+                            return Err(Error{
+                                span: seg.ident.span,
+                                text: format!("`crate` is not allowed in a root"),
+                                category: ErrorCategory::CannotFindName,
+                                at_item,
+                                containing_item: curmod,
+                                relevant_item: at_item,
+                                hints: vec![SemaHint{text: format!("Remove the `::`"),itemref: at_item,refspan: path.root.as_ref().unwrap().span}],
+                            });
+                        }else{
+                            return Err(Error{
+                                span: seg.ident.span,
+                                text: format!("`crate` cannot appear after any other components"),
+                                category: ErrorCategory::CannotFindName,
+                                at_item,
+                                containing_item: curmod,
+                                relevant_item: at_item,
+                                hints: vec![],
+                            });
+                        }
+                    }else{
+                        resolve_mod = Some(self.curcrate);
+                    }
+
+                    if let Some(generics) = &seg.generics{
+                        return Err(Error{
+                            span: generics.span,
+                            text: format!("`crate` cannot be generic"),
+                            category: ErrorCategory::CannotFindName,
+                            at_item,
+                            containing_item: curmod,
+                            relevant_item: at_item,
+                            hints: vec![],
+                        });
+                    }
+                },
+                ast::SimplePathSegment::MacroCratePath => todo!("$crate"), // this needs to look in the macro DefId table
+            }
+        }
+
+        Ok(resolve_mod.expect("Parsing an empty path is impossible"))
     }
 }
 
