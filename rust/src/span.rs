@@ -71,6 +71,11 @@ impl Span {
             hygiene: start.hygiene,
         }
     }
+
+    pub fn with_start(mut self, nstart: Pos) -> Self {
+        self.start = nstart;
+        self
+    }
 }
 
 impl fmt::Debug for Span {
