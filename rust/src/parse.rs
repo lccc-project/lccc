@@ -484,7 +484,7 @@ pub fn do_literal(
     }
 }
 
-pub fn do_expression(
+pub fn do_primary_expression(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Expr>> {
     match do_literal(tree) {
@@ -495,8 +495,50 @@ pub fn do_expression(
                 span,
             })
         }
-        Err(a) => Err(a)?, // TODO: Literally every kind of useful expression
+        Err(a) => match do_path(tree) {
+            Ok(x) => {
+                let span = x.span;
+                Ok(Spanned {
+                    body: Expr::IdExpr(x),
+                    span,
+                })
+            }
+            Err(b) => Err(a | b)?, // TODO: Literally every other kind of useful expression
+        }
     }
+}
+
+pub fn do_expression(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Expr>> {
+    let mut lhs = do_primary_expression(tree)?;
+    while let Ok(op) = do_lexeme_classes(tree, &[LexemeClass::Group(Some(GroupType::Parens))]) { // TODO
+        match op {
+            (Lexeme { span, body: LexemeBody::Group(group) }, LexemeClass::Group(Some(GroupType::Parens))) => {
+                let mut args_tree = group.body.into_iter().peekmore();
+                let mut args = Vec::new();
+                while args_tree.peek().is_some() {
+                    args.push(do_expression(&mut args_tree)?);
+                    match do_lexeme_class(&mut args_tree, LexemeClass::Punctuation(",".into())) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            if args_tree.peek().is_some() {
+                                Err(e)?
+                            } else {
+                            }
+                        }
+                    }
+                }
+                let new_span = Span::between(lhs.span, span);
+                lhs = Spanned {
+                    body: Expr::FunctionCall { base: Box::new(lhs), method_name: None, args },
+                    span: new_span,
+                };
+            }
+            _ => unreachable!(),
+        }
+    }
+    Ok(lhs)
 }
 
 pub fn do_block(
