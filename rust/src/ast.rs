@@ -267,7 +267,7 @@ pub enum Type {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct PathSegment {
-    pub ident: Spanned<Symbol>,
+    pub ident: Spanned<SimplePathSegment>,
     pub generics: Option<Spanned<GenericArgs>>,
 }
 
@@ -292,8 +292,14 @@ pub enum AssociatedTypeBound {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum PathRoot {
+    QSelf(Box<Spanned<Type>>, Option<Box<Spanned<Path>>>),
+    Root,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Path {
-    pub q_self: Option<(Box<Spanned<Type>>, Option<Box<Spanned<Path>>>)>,
+    pub root: Option<Spanned<PathRoot>>,
     pub segments: Vec<Spanned<PathSegment>>,
 }
 

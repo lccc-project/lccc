@@ -504,7 +504,7 @@ pub fn do_primary_expression(
                 })
             }
             Err(b) => Err(a | b)?, // TODO: Literally every other kind of useful expression
-        }
+        },
     }
 }
 
@@ -512,9 +512,16 @@ pub fn do_expression(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Expr>> {
     let mut lhs = do_primary_expression(tree)?;
-    while let Ok(op) = do_lexeme_classes(tree, &[LexemeClass::Group(Some(GroupType::Parens))]) { // TODO
+    while let Ok(op) = do_lexeme_classes(tree, &[LexemeClass::Group(Some(GroupType::Parens))]) {
+        // TODO
         match op {
-            (Lexeme { span, body: LexemeBody::Group(group) }, LexemeClass::Group(Some(GroupType::Parens))) => {
+            (
+                Lexeme {
+                    span,
+                    body: LexemeBody::Group(group),
+                },
+                LexemeClass::Group(Some(GroupType::Parens)),
+            ) => {
                 let mut args_tree = group.body.into_iter().peekmore();
                 let mut args = Vec::new();
                 while args_tree.peek().is_some() {
@@ -531,7 +538,11 @@ pub fn do_expression(
                 }
                 let new_span = Span::between(lhs.span, span);
                 lhs = Spanned {
-                    body: Expr::FunctionCall { base: Box::new(lhs), method_name: None, args },
+                    body: Expr::FunctionCall {
+                        base: Box::new(lhs),
+                        method_name: None,
+                        args,
+                    },
                     span: new_span,
                 };
             }
@@ -562,9 +573,9 @@ pub fn do_block(
             Ok(expr) => Some(Box::new(expr)),
             Err(a) => {
                 if let Some(b) = stmt_failure {
-                    return Err(a | b)
+                    return Err(a | b);
                 } else {
-                    return Err(a)
+                    return Err(a);
                 }
             }
         }
@@ -580,24 +591,13 @@ pub fn do_block(
 pub fn do_path_segment(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<PathSegment>> {
-    let (lexeme, class) = do_lexeme_classes(
-        tree,
-        &[
-            LexemeClass::Identifier,
-            LexemeClass::Keyword("super".into()),
-            LexemeClass::Keyword("self".into()),
-            LexemeClass::Keyword("Self".into()),
-            LexemeClass::Keyword("crate".into()),
-            LexemeClass::Punctuation("$".into()),
-        ],
-    )?;
-    let span = lexeme.span;
-    let sym = *lexeme.text().unwrap();
+    let ident = do_simple_path_segment(tree)?;
+    let span = ident.span;
     // TODO: Generics
     // TODO: $crate
     Ok(Spanned {
         body: PathSegment {
-            ident: Spanned { body: sym, span },
+            ident,
             generics: None,
         },
         span,
@@ -605,7 +605,7 @@ pub fn do_path_segment(
 }
 
 pub fn do_path(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<Path>> {
-    // TODO: support QSelf
+    // TODO: support QSelf/::
     let mut segments = Vec::new();
     segments.push(do_path_segment(tree)?);
     let mut span = segments[0].span;
@@ -616,7 +616,7 @@ pub fn do_path(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Res
     }
     Ok(Spanned {
         body: Path {
-            q_self: None, // TODO: support QSelf
+            root: None, // TODO: support QSelf/::
             segments,
         },
         span,

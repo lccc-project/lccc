@@ -1,5 +1,9 @@
 pub use crate::ast::{Mutability, Safety, Spanned};
-use crate::{ast, interning::Symbol, span::Pos};
+use crate::{
+    ast::{self, PathSegment},
+    interning::Symbol,
+    span::Pos,
+};
 
 pub use super::DefId;
 use super::Definitions;
@@ -406,23 +410,21 @@ pub fn convert_type(
     match ty {
         ast::Type::Path(path) => match defs.find_type(curmod, &path.body, at_item) {
             Ok(defid) => Ok(Type::UserType(defid)),
-            Err(e) => todo!(), /*match (&path.prefix, &*path.segments) {
-                                   (
-                                       None
-                                       | Some(Spanned {
-                                           body: PathPrefix::SimplePrefix(None),
-                                           ..
-                                       }),
-                                       [seg],
-                                   ) => {
-                                       if seg.generics.is_none() {
-                                           convert_builtin_type(&seg.ident).ok_or(e)
-                                       } else {
-                                           Err(e)
-                                       }
-                                   }
-                                   _ => Err(e),
-                               },*/
+            Err(e) => match &*path.segments {
+                [Spanned {
+                    body:
+                        PathSegment {
+                            ident:
+                                Spanned {
+                                    body: ast::SimplePathSegment::Identifier(id),
+                                    ..
+                                },
+                            generics: None,
+                        },
+                    ..
+                }] => convert_builtin_type(id).ok_or(e),
+                _ => Err(e),
+            },
         },
         ast::Type::Reference(_, _) => todo!("reference"),
         ast::Type::Pointer(_, _) => todo!("pointer"),
