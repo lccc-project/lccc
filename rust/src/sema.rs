@@ -407,64 +407,65 @@ impl Definitions {
     }
 
     pub fn find_type(&self, curmod: DefId, path: &ast::Path, at_item: DefId) -> Result<DefId> {
-        let mut resolve_mod = match &path.prefix {
-            None => None,
-            Some(Spanned {
-                body: ast::PathPrefix::SimplePrefix(prefix),
-                ..
-            }) => Some(match prefix {
-                None => DefId::ROOT,
-                Some(Spanned {
-                    body: ast::SimplePathSegment::CratePath,
-                    ..
-                }) => self.curcrate,
-                Some(Spanned {
-                    body: ast::SimplePathSegment::SelfPath,
-                    ..
-                }) => curmod,
-                Some(Spanned {
-                    body: ast::SimplePathSegment::SuperPath,
-                    ..
-                }) => self.definition(curmod).parent,
-                Some(Spanned { body, span }) => panic!("Unexpected prefix for path {:?}", body),
-            }),
-            _ => todo!("Complex paths"),
-        };
+        todo!()
+        // let mut resolve_mod = match &path.prefix {
+        //     None => None,
+        //     Some(Spanned {
+        //         body: ast::PathPrefix::SimplePrefix(prefix),
+        //         ..
+        //     }) => Some(match prefix {
+        //         None => DefId::ROOT,
+        //         Some(Spanned {
+        //             body: ast::SimplePathSegment::CratePath,
+        //             ..
+        //         }) => self.curcrate,
+        //         Some(Spanned {
+        //             body: ast::SimplePathSegment::SelfPath,
+        //             ..
+        //         }) => curmod,
+        //         Some(Spanned {
+        //             body: ast::SimplePathSegment::SuperPath,
+        //             ..
+        //         }) => self.definition(curmod).parent,
+        //         Some(Spanned { body, span }) => panic!("Unexpected prefix for path {:?}", body),
+        //     }),
+        //     _ => todo!("Complex paths"),
+        // };
 
-        for seg in &path.segments {
-            if let Some(md) = resolve_mod {
-                resolve_mod = Some(self.find_type_in_mod(curmod, md, seg.body.ident, at_item)?);
-            } else {
-                match self.find_type_in_mod(curmod, curmod, seg.body.ident, at_item) {
-                    Ok(id) => resolve_mod = Some(id),
-                    Err(e) => {
-                        if self.prelude_import != DefId::ROOT {
-                            if let Ok(id) = self.find_type_in_mod(
-                                curmod,
-                                self.prelude_import,
-                                seg.body.ident,
-                                at_item,
-                            ) {
-                                resolve_mod = Some(id);
-                                continue;
-                            }
-                        }
+        // for seg in &path.segments {
+        //     if let Some(md) = resolve_mod {
+        //         resolve_mod = Some(self.find_type_in_mod(curmod, md, seg.body.ident, at_item)?);
+        //     } else {
+        //         match self.find_type_in_mod(curmod, curmod, seg.body.ident, at_item) {
+        //             Ok(id) => resolve_mod = Some(id),
+        //             Err(e) => {
+        //                 if self.prelude_import != DefId::ROOT {
+        //                     if let Ok(id) = self.find_type_in_mod(
+        //                         curmod,
+        //                         self.prelude_import,
+        //                         seg.body.ident,
+        //                         at_item,
+        //                     ) {
+        //                         resolve_mod = Some(id);
+        //                         continue;
+        //                     }
+        //                 }
 
-                        if let Some(id) = self.crates.get(&seg.body.ident.body) {
-                            resolve_mod = Some(*id);
-                            continue;
-                        } else {
-                            return Err(e);
-                        }
-                    }
-                }
-            }
-            if let Some(generics) = &seg.generics {
-                todo!("Generics")
-            }
-        }
+        //                 if let Some(id) = self.crates.get(&seg.body.ident.body) {
+        //                     resolve_mod = Some(*id);
+        //                     continue;
+        //                 } else {
+        //                     return Err(e);
+        //                 }
+        //             }
+        //         }
+        //     }
+        //     if let Some(generics) = &seg.generics {
+        //         todo!("Generics")
+        //     }
+        // }
 
-        Ok(resolve_mod.expect("Empty path is not allowed"))
+        // Ok(resolve_mod.expect("Empty path is not allowed"))
     }
 }
 

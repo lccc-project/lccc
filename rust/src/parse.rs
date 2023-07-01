@@ -4,8 +4,9 @@ use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
     ast::{
-        Attr, AttrInput, Block, ExternBlock, Function, Item, ItemBody, ItemValue, Mod, SimplePath, LiteralKind,
-        SimplePathSegment, Spanned, Statement, UserType, Visibility, Type, Path, PathPrefix, PathSegment, Expr, Literal, CompoundBlock,
+        Attr, AttrInput, Block, CompoundBlock, Expr, ExternBlock, Function, Item, ItemBody,
+        ItemValue, Literal, LiteralKind, Mod, Path, PathSegment, SimplePath, SimplePathSegment,
+        Spanned, Statement, Type, UserType, Visibility,
     },
     lex::{Group, GroupType, Lexeme, LexemeBody, LexemeClass},
     span::{Pos, Span},
@@ -417,7 +418,9 @@ pub fn do_compound_block(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<CompoundBlock>> {
     // TODO: support more than `unsafe`
-    let Lexeme { span: span_start, .. } = do_lexeme_class(tree, LexemeClass::Keyword("unsafe".into()))?;
+    let Lexeme {
+        span: span_start, ..
+    } = do_lexeme_class(tree, LexemeClass::Keyword("unsafe".into()))?;
     let block = do_block(tree)?;
     let span = Span::between(span_start, block.span);
     Ok(Spanned {
@@ -430,22 +433,30 @@ pub fn do_statement(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Statement>> {
     match do_lexeme_class(tree, LexemeClass::Punctuation(";".into())) {
-        Ok(x) => {
-            Ok(Spanned { body: Statement::Empty, span: x.span })
-        }
-        Err(a) => match do_item(tree) { // Oh yeah, items are statements
+        Ok(x) => Ok(Spanned {
+            body: Statement::Empty,
+            span: x.span,
+        }),
+        Err(a) => match do_item(tree) {
+            // Oh yeah, items are statements
             Ok(x) => {
                 let span = x.span;
-                Ok(Spanned { body: Statement::ItemDecl(x), span })
+                Ok(Spanned {
+                    body: Statement::ItemDecl(x),
+                    span,
+                })
             }
             Err(b) => match do_compound_block(tree) {
                 Ok(x) => {
                     let span = x.span;
-                    Ok(Spanned { body: Statement::Block(x), span })
+                    Ok(Spanned {
+                        body: Statement::Block(x),
+                        span,
+                    })
                 }
                 Err(c) => Err(a | b | c)?, // TODO: Expr statements
-            }
-        }
+            },
+        },
     }
 }
 
@@ -456,7 +467,16 @@ pub fn do_literal(
     match do_lexeme_class(tree, LexemeClass::Number) {
         Ok(x) => {
             let span = x.span;
-            Ok(Spanned { body: Literal { val: Spanned { body: *x.text().unwrap(), span }, lit_kind: LiteralKind::Int(None) }, span })
+            Ok(Spanned {
+                body: Literal {
+                    val: Spanned {
+                        body: *x.text().unwrap(),
+                        span,
+                    },
+                    lit_kind: LiteralKind::Int(None),
+                },
+                span,
+            })
         }
         Err(a) => Err(a)?, // TODO: Literally every kind of useful literal
     }
@@ -468,7 +488,10 @@ pub fn do_expression(
     match do_literal(tree) {
         Ok(x) => {
             let span = x.span;
-            Ok(Spanned { body: Expr::Literal(x), span })
+            Ok(Spanned {
+                body: Expr::Literal(x),
+                span,
+            })
         }
         Err(a) => Err(a)?, // TODO: Literally every kind of useful expression
     }
@@ -492,20 +515,12 @@ pub fn do_block(
         Some(do_expression(&mut block_tree)?)
     } else {
         None
-    }.map(Box::new); // TODO
+    }
+    .map(Box::new); // TODO
     Ok(Spanned {
         body: Block { stmts, tail_expr },
         span,
     })
-}
-
-pub fn do_path_prefix(
-    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
-) -> Result<Spanned<PathPrefix>> {
-    // TODO: support SelfTy and QSelf
-    let simple_path_segment = do_simple_path_segment(tree)?;
-    let span = simple_path_segment.span;
-    Ok(Spanned { body: PathPrefix::SimplePrefix(Some(simple_path_segment)), span })
 }
 
 pub fn do_path_segment(
@@ -526,28 +541,32 @@ pub fn do_path_segment(
     let sym = *lexeme.text().unwrap();
     // TODO: Generics
     // TODO: $crate
-    Ok(Spanned { body: PathSegment { ident: Spanned { body: sym, span }, generics: None }, span })
+    Ok(Spanned {
+        body: PathSegment {
+            ident: Spanned { body: sym, span },
+            generics: None,
+        },
+        span,
+    })
 }
 
-pub fn do_path(
-    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
-) -> Result<Spanned<Path>> {
-    let mut tree = tree.into_rewinder();
-    let prefix = do_path_prefix(&mut tree);
-    let mut span = prefix.as_ref().map_or_else(|e| e.span, |p| p.span);
+pub fn do_path(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<Path>> {
+    // TODO: support QSelf
     let mut segments = Vec::new();
-    while do_lexeme_class(&mut tree, LexemeClass::Punctuation("::".into())).is_ok() {
-        let segment = do_path_segment(&mut tree)?;
+    segments.push(do_path_segment(tree)?);
+    let mut span = segments[0].span;
+    while do_lexeme_class(tree, LexemeClass::Punctuation("::".into())).is_ok() {
+        let segment = do_path_segment(tree)?;
         span.end = segment.span.end;
         segments.push(segment);
     }
-    if segments.is_empty() {
-        if let Err(e) = prefix {
-            return Err(e); // Would use Err(e)?, but Rust isn't smart enough to see the forced control flow yet
-        }
-    }
-    tree.accept();
-    Ok(Spanned { body: Path { prefix: prefix.ok(), segments }, span })
+    Ok(Spanned {
+        body: Path {
+            q_self: None, // TODO: support QSelf
+            segments,
+        },
+        span,
+    })
 }
 
 pub fn do_tuple_type(
@@ -560,12 +579,18 @@ pub fn do_tuple_type(
         tuple.push(do_type(&mut tuple_tree)?);
         match do_lexeme_class(&mut tuple_tree, LexemeClass::Punctuation(",".into())) {
             Ok(_) => {}
-            Err(e) => if tuple_tree.peek().is_some() {
-                Err(e)?
-            } else {}
+            Err(e) => {
+                if tuple_tree.peek().is_some() {
+                    Err(e)?
+                } else {
+                }
+            }
         }
     }
-    Ok(Spanned { body: Type::Tuple(tuple), span })
+    Ok(Spanned {
+        body: Type::Tuple(tuple),
+        span,
+    })
 }
 
 pub fn do_type_no_bounds(
@@ -574,21 +599,25 @@ pub fn do_type_no_bounds(
     match do_path(tree) {
         Ok(path) => {
             let span = path.span;
-            Ok(Spanned { body: Type::Path(path), span })
+            Ok(Spanned {
+                body: Type::Path(path),
+                span,
+            })
         }
         Err(a) => match do_tuple_type(tree) {
             Ok(ty) => Ok(ty),
             Err(b) => match do_lexeme_class(tree, LexemeClass::Punctuation("!".into())) {
-                Ok(Lexeme { span, .. }) => Ok(Spanned { body: Type::Never, span }),
+                Ok(Lexeme { span, .. }) => Ok(Spanned {
+                    body: Type::Never,
+                    span,
+                }),
                 Err(c) => Err(a | b | c),
-            }
-        }
+            },
+        },
     }
 }
 
-pub fn do_type(
-    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
-) -> Result<Spanned<Type>> {
+pub fn do_type(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<Type>> {
     // TODO: impl A + B, dyn A + B
     do_type_no_bounds(tree)
 }
