@@ -1,4 +1,7 @@
-use core::{cmp::Ordering, fmt};
+use core::{
+    cmp::Ordering,
+    fmt::{self, Debug},
+};
 
 use core::ops::{Deref, DerefMut};
 
@@ -84,11 +87,20 @@ impl fmt::Debug for Span {
     }
 }
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub struct Spanned<T> {
     pub body: T,
     pub span: Span,
 }
+
+impl<T: Debug> Debug for Spanned<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({:?}) ", self.span)?;
+        self.body.fmt(f)?;
+        Ok(())
+    }
+}
+
 impl<T> Deref for Spanned<T> {
     type Target = T;
     fn deref(&self) -> &T {
