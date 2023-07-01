@@ -264,7 +264,7 @@ impl Definitions {
                 Ok(())
             }
         } else {
-            panic!("Expected defid {} to be a module",)
+            panic!("Expected defid {} to be a module",curmod)
         }
     }
 
