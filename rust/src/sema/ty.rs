@@ -2,6 +2,7 @@ pub use crate::ast::{Mutability, Safety, Spanned};
 use crate::{
     ast::{self, PathPrefix},
     interning::Symbol,
+    span::Pos,
 };
 
 pub use super::DefId;
@@ -120,6 +121,113 @@ impl core::fmt::Display for AbiTag {
     }
 }
 
+pub fn convert_tag(tag: Spanned<Symbol>, curmod: DefId, at_item: DefId) -> super::Result<AbiTag> {
+    let span = tag.span;
+    let mut tag = &**tag;
+
+    let unwind = if tag.ends_with("-unwind") {
+        tag = &tag[..(tag.len() - 7)];
+        true
+    } else {
+        false
+    };
+
+    match (tag, unwind) {
+        ("Rust", false) => Ok(AbiTag::Rust),
+        ("rust-call", false) => Ok(AbiTag::RustCall),
+        ("rust-intrinsic", false) => Ok(AbiTag::RustIntrinsic),
+        ("lcrust", false) => Ok(AbiTag::LCRust(None)),
+        (x, false) if x.starts_with("lcrust-v") => {
+            let x = &x[8..];
+
+            let ver = x.parse::<u16>().map_err(|_| {
+                let new_span = span.with_start(Pos {
+                    row: span.start.row + 8,
+                    ..span.start
+                });
+                super::Error {
+                    span,
+                    text: format!("Unknown abi {}", tag),
+                    category: super::ErrorCategory::InvalidAbi,
+                    at_item,
+                    containing_item: curmod,
+                    relevant_item: at_item,
+                    hints: vec![super::SemaHint {
+                        text: format!("Couldn't parse {} as a version of the lcrust abi", x),
+                        itemref: at_item,
+                        refspan: new_span,
+                    }],
+                }
+            })?;
+
+            Ok(AbiTag::LCRust(Some(ver)))
+        }
+        (x @ ("Rust" | "rust-call" | "rust-intrinsic" | "lcrust"), true) => Err(super::Error {
+            span,
+            text: format!("Unkown abi {}", tag),
+            category: super::ErrorCategory::InvalidAbi,
+            at_item,
+            containing_item: curmod,
+            relevant_item: at_item,
+            hints: vec![super::SemaHint {
+                text: format!("extern \"{}\" supports unwinding by default", x),
+                itemref: at_item,
+                refspan: span,
+            }],
+        }),
+        (x, true) if x.starts_with("lcrust-v") => Err(super::Error {
+            span,
+            text: format!("Unkown abi {}", tag),
+            category: super::ErrorCategory::InvalidAbi,
+            at_item,
+            containing_item: curmod,
+            relevant_item: at_item,
+            hints: vec![super::SemaHint {
+                text: format!("extern \"{}\" supports unwinding by default", x),
+                itemref: at_item,
+                refspan: span,
+            }],
+        }),
+        ("x86-interrupt", false) => Ok(AbiTag::X86Interrupt),
+        ("w65-interrupt", false) => Ok(AbiTag::W65Interrupt),
+        (x @ ("x86-interrupt" | "w65-interrupt"), true) => Err(super::Error {
+            span,
+            text: format!("Unkown abi {}", tag),
+            category: super::ErrorCategory::InvalidAbi,
+            at_item,
+            containing_item: curmod,
+            relevant_item: at_item,
+            hints: vec![super::SemaHint {
+                text: format!(
+                    "extern \"{}\" has special handing and cannot supprt unwinding",
+                    x
+                ),
+                itemref: at_item,
+                refspan: span,
+            }],
+        }),
+        ("C", unwind) => Ok(AbiTag::C { unwind }),
+        ("system", unwind) => Ok(AbiTag::System { unwind }),
+        ("stdcall", unwind) => Ok(AbiTag::Stdcall { unwind }),
+        ("fastcall", unwind) => Ok(AbiTag::Fastcall { unwind }),
+        ("thiscall", unwind) => Ok(AbiTag::Thiscall { unwind }),
+        ("vectorcall", unwind) => Ok(AbiTag::Vectorcall { unwind }),
+        ("win64", unwind) => Ok(AbiTag::Win64 { unwind }),
+        ("sysv64", unwind) => Ok(AbiTag::SysV64 { unwind }),
+        ("aapcs", unwind) => Ok(AbiTag::Aapcs { unwind }),
+        ("efiabi", unwind) => Ok(AbiTag::Efiabi { unwind }),
+        (_, _) => Err(super::Error {
+            span,
+            text: format!("Unkown abi {}", tag),
+            category: super::ErrorCategory::InvalidAbi,
+            at_item,
+            containing_item: curmod,
+            relevant_item: at_item,
+            hints: vec![],
+        }),
+    }
+}
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum IntWidth {
     Bits(NonZeroU16),
@@ -166,16 +274,16 @@ pub struct FnType {
 
 impl core::fmt::Display for FnType {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        if self.safety.body == Safety::Unsafe {
-            f.write_str("unsafe ")?;
-        }
-
         if self.constness.body == Mutability::Const {
             f.write_str("const ")?;
         }
 
         if self.asyncness.body == AsyncType::Async {
             f.write_str("async ")?;
+        }
+
+        if self.safety.body == Safety::Unsafe {
+            f.write_str("unsafe ")?;
         }
 
         self.tag.body.fmt(f)?;
@@ -210,6 +318,10 @@ pub enum Type {
     FnItem(FnType, DefId),
     UserType(DefId),
     IncompleteAlias(DefId),
+}
+
+impl Type {
+    pub const UNIT: Self = Self::Tuple(Vec::new());
 }
 
 impl core::fmt::Display for Type {
