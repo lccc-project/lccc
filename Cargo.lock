@@ -142,6 +142,7 @@ name = "frontend-rust"
 version = "0.1.0"
 dependencies = [
  "fxhash",
+ "interning-static-syms",
  "lazy_static",
  "parking_lot",
  "peekmore",
@@ -190,6 +191,10 @@ checksum = "41efed366b6d617c339c0920deaf114b9df08febf66df9810fc97f46e1bb36c4"
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "interning-static-syms"
+version = "0.1.0"
 
 [[package]]
 name = "lazy_static"

@@ -14,9 +14,9 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Error {
-    expected: Vec<LexemeClass>,
-    got: LexemeClass,
-    span: Span,
+    pub expected: Vec<LexemeClass>,
+    pub got: LexemeClass,
+    pub span: Span,
 }
 
 impl BitOr for Error {

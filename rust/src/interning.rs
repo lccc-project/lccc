@@ -81,10 +81,42 @@ impl core::fmt::Debug for Symbol {
     }
 }
 
-static COUNTER: AtomicUsize = AtomicUsize::new(1);
+static COUNTER: AtomicUsize = AtomicUsize::new(INIT_DYN_VAL as usize);
 
 lazy_static::lazy_static! {
-    static ref MAP: RwLock<(FxHashMap<&'static str, NonZeroU64>,FxHashMap<NonZeroU64,&'static str>)> = parking_lot::const_rwlock(Default::default());
+    static ref MAP: RwLock<(FxHashMap<&'static str, NonZeroU64>,FxHashMap<NonZeroU64,&'static str>)> = {
+        let mut map: (FxHashMap<&'static str, NonZeroU64>,FxHashMap<NonZeroU64,&'static str>) = Default::default();
+
+        init_static_symbols(&mut map);
+
+        parking_lot::const_rwlock(map)
+    };
+}
+
+// Do not remove
+type InitBlob = (
+    FxHashMap<&'static str, NonZeroU64>,
+    FxHashMap<NonZeroU64, &'static str>,
+);
+
+// Do not remove
+fn insert_static_symbol(
+    map: &mut (
+        FxHashMap<&'static str, NonZeroU64>,
+        FxHashMap<NonZeroU64, &'static str>,
+    ),
+    x: &'static str,
+    key: NonZeroU64,
+) {
+    let mut g = MAP.write();
+
+    g.0.insert(x, key);
+    g.1.insert(key, x);
+}
+
+// Form: Each line is either `$id:ident;` or `$id:ident: $tt:tt;` where `$tt` is a lifetime, punctuation, identifier, or literal
+interning_static_syms::gen_sym_map! {
+    SelfTy: Self;
 }
 
 impl From<&'_ str> for Symbol {

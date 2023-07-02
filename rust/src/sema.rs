@@ -845,6 +845,7 @@ fn collect_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) 
             | ast::ItemBody::ExternCrate { .. }
             | ast::ItemBody::Function(_)
             | ast::ItemBody::ExternBlock(_) => {}
+            ast::ItemBody::MacroRules(_) => unreachable!("macros are expanded before semantic analysis"),
         }
     }
 
@@ -1050,34 +1051,35 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                 for item in &blk.items {
                     let visible_from =
                         convert_visibility(defs, curmod, item.vis.as_ref())?.unwrap_or(curmod);
-                        match &item.item.body{
-                            ast::ItemBody::Function(itemfn) => {
-                                let defid = defs.allocate_defid();
-                                let inner = collect_function(defs, curmod, defid, itemfn, Some(tag), Some(Spanned{body: Safety::Unsafe, span: Span::empty()}), Some(blk.span))?;
-                                
-                                let def = defs.definition_mut(defid);
-                                def.attrs = item.attrs.clone();
-                                def.visible_from = visible_from;
-                                def.parent = curmod;
-                                def.inner = itemfn.copy_span(|_| inner);
-                
-                                defs.insert_value(curmod, itemfn.name, defid)?;
-                            }
-                            ast::ItemBody::Value(_) => todo!("value"),
-                            _ => {
-                                return Err(Error{
-                                    span: item.span,
-                                    text: format!("Cannot define items other than functions or statics in an extern block"),
-                                    category: ErrorCategory::Other,
-                                    at_item: defid,
-                                    containing_item: curmod,
-                                    relevant_item: defid,
-                                    hints: vec![SemaHint{ text: format!("Declared inside this extern block"), itemref: defid, refspan: blk.span }]
-                                })
-                            }
+                    match &item.item.body{
+                        ast::ItemBody::Function(itemfn) => {
+                            let defid = defs.allocate_defid();
+                            let inner = collect_function(defs, curmod, defid, itemfn, Some(tag), Some(Spanned{body: Safety::Unsafe, span: Span::empty()}), Some(blk.span))?;
+                            
+                            let def = defs.definition_mut(defid);
+                            def.attrs = item.attrs.clone();
+                            def.visible_from = visible_from;
+                            def.parent = curmod;
+                            def.inner = itemfn.copy_span(|_| inner);
+            
+                            defs.insert_value(curmod, itemfn.name, defid)?;
                         }
+                        ast::ItemBody::Value(_) => todo!("value"),
+                        _ => {
+                            return Err(Error{
+                                span: item.span,
+                                text: format!("Cannot define items other than functions or statics in an extern block"),
+                                category: ErrorCategory::Other,
+                                at_item: defid,
+                                containing_item: curmod,
+                                relevant_item: defid,
+                                hints: vec![SemaHint{ text: format!("Declared inside this extern block"), itemref: defid, refspan: blk.span }]
+                            })
+                        }
+                    }
                 }
             }
+            ast::ItemBody::MacroRules(_) => unreachable!("macros are expanded before semantic analysis"),
         }
     }
 
