@@ -1,5 +1,6 @@
 use core::ops::{Deref, DerefMut};
 
+use crate::lex::Group;
 use crate::{interning::Symbol, lex::Lexeme, span::Span};
 
 pub use crate::lex::StringType;
@@ -41,6 +42,12 @@ pub struct ImportItem {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct MacroRules {
+    pub name: Spanned<Symbol>,
+    pub body: Spanned<Group>,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum ItemBody {
     Mod(Spanned<ItemMod>),
     Value(Spanned<ItemValue>),
@@ -52,6 +59,7 @@ pub enum ItemBody {
     UserType(Spanned<UserType>),
     Function(Spanned<Function>),
     ExternBlock(Spanned<ExternBlock>),
+    MacroRules(Spanned<MacroRules>),
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]

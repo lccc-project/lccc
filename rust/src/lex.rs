@@ -1,8 +1,9 @@
 use core::fmt;
 
 use crate::{
+    ast,
     interning::Symbol,
-    span::{Pos, Span, Speekable, Speekerator},
+    span::{Pos, Span, Spanned, Speekable, Speekerator},
 };
 
 use unicode_xid::UnicodeXID;
@@ -267,7 +268,12 @@ pub enum Error {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum AstFrag {}
+pub enum AstFrag {
+    Vis(ast::Visibility),
+    Expr(ast::Expr),
+    Item(ast::Item),
+    Meta(ast::Attr),
+}
 
 pub type Result<T> = core::result::Result<T, Error>;
 
