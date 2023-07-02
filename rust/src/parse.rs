@@ -50,8 +50,8 @@ struct Rewinder<'a, T: Iterator<Item = Lexeme>> {
 }
 
 impl<T: Iterator<Item = Lexeme>> Rewinder<'_, T> {
-    fn accept(&mut self) {
-        self.cursor = self.inner.cursor(); // We're good; don't rewind when we drop
+    fn accept(self) {
+        core::mem::forget(self) // Rewind? Oops, I forgor
     }
 }
 
