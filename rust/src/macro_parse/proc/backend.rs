@@ -42,16 +42,19 @@ mod abi {
     use xlang::abi::rustcall;
     use xlang::abi::traits::*;
 
+    #[repr(C)]
     pub struct LCRustFnOnceVtable<A, R> {
         pub head: AbiSafeVTableHead,
         pub call_once_unsized: rustcall!(unsafe extern "rustcall" fn(*mut (), A) -> R),
     }
 
+    #[repr(C)]
     pub struct LCRustFnMutVtable<A, R> {
         pub fnonce: LCRustFnOnceVtable<A, R>,
         pub call_mut: rustcall!(unsafe extern "rustcall" fn(*mut (), A) -> R),
     }
 
+    #[repr(C)]
     pub struct LCRustFnVtable<A, R> {
         pub fnmut: LCRustFnMutVtable<A, R>,
         pub call: rustcall!(unsafe extern "rustcall" fn(*const (), A) -> R),
