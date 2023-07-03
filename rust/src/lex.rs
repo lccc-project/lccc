@@ -180,6 +180,7 @@ pub enum LexemeBody {
     Group(Group),
     Token(Token),
     AstFrag(AstFrag),
+    Eof,
 }
 
 impl fmt::Debug for LexemeBody {
@@ -190,6 +191,7 @@ impl fmt::Debug for LexemeBody {
             }
             Self::Token(Token { ty, body }) => write!(f, "Token({:?}, {:?})", ty, body),
             Self::AstFrag(frag) => write!(f, "AstFrag({:?})", frag),
+            Self::Eof => write!(f, "Eof"),
         }
     }
 }
@@ -210,7 +212,10 @@ pub enum LexemeClass {
 impl LexemeClass {
     pub fn of(lexeme: Option<&Lexeme>) -> Self {
         match lexeme {
-            None => Self::Eof,
+            None | Some(Lexeme {
+                body: LexemeBody::Eof,
+                ..
+            }) => Self::Eof,
             Some(Lexeme {
                 body: LexemeBody::Group(Group { ty, .. }),
                 ..
@@ -276,6 +281,28 @@ pub enum AstFrag {
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
+
+pub trait IsEof {
+    fn is_eof(&self) -> bool;
+}
+
+impl IsEof for Lexeme {
+    fn is_eof(&self) -> bool {
+        matches!(self.body, LexemeBody::Eof)
+    }
+}
+
+impl IsEof for Option<Lexeme> {
+    fn is_eof(&self) -> bool {
+        matches!(self, Some(Lexeme { body: LexemeBody::Eof, .. }))
+    }
+}
+
+impl IsEof for Option<&Lexeme> {
+    fn is_eof(&self) -> bool {
+        matches!(self, Some(Lexeme { body: LexemeBody::Eof, .. }))
+    }
+}
 
 fn do_str(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<(String, Pos)> {
     let mut str = String::from('"');
@@ -746,6 +773,10 @@ pub fn do_group(
             lexeme?;
         }
     };
+    result.push(Lexeme {
+        span: Span::new_simple(end, end, file.file_name()),
+        body: LexemeBody::Eof,
+    });
     Ok((result, end))
 }
 

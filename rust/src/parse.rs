@@ -8,7 +8,7 @@ use crate::{
         ItemValue, Literal, LiteralKind, Mod, Path, PathSegment, SimplePath, SimplePathSegment,
         Spanned, Statement, Type, UserType, Visibility,
     },
-    lex::{Group, GroupType, Lexeme, LexemeBody, LexemeClass},
+    lex::{Group, GroupType, Lexeme, LexemeBody, LexemeClass, IsEof},
     span::{Pos, Span},
 };
 
@@ -524,14 +524,13 @@ pub fn do_expression(
             ) => {
                 let mut args_tree = group.body.into_iter().peekmore();
                 let mut args = Vec::new();
-                while args_tree.peek().is_some() {
+                while !args_tree.peek().is_eof() {
                     args.push(do_expression(&mut args_tree)?);
                     match do_lexeme_class(&mut args_tree, LexemeClass::Punctuation(",".into())) {
                         Ok(_) => {}
                         Err(e) => {
-                            if args_tree.peek().is_some() {
+                            if !args_tree.peek().is_eof() {
                                 Err(e)?
-                            } else {
                             }
                         }
                     }
@@ -559,7 +558,7 @@ pub fn do_block(
     let mut stmts = Vec::new();
     let mut block_tree = block.body.into_iter().peekmore();
     let mut stmt_failure = None;
-    while block_tree.peek().is_some() {
+    while !block_tree.peek().is_eof() {
         match do_statement(&mut block_tree) {
             Ok(stmt) => stmts.push(stmt),
             Err(e) => {
@@ -568,7 +567,9 @@ pub fn do_block(
             }
         }
     }
-    let tail_expr = if block_tree.peek().is_some() {
+    let tail_expr = if block_tree.peek().is_eof() {
+        None
+    } else {
         match do_expression(&mut block_tree) {
             Ok(expr) => Some(Box::new(expr)),
             Err(a) => {
@@ -579,8 +580,6 @@ pub fn do_block(
                 }
             }
         }
-    } else {
-        None
     };
     Ok(Spanned {
         body: Block { stmts, tail_expr },
@@ -629,14 +628,13 @@ pub fn do_tuple_type(
     let (tuple_group, span) = do_lexeme_group(tree, Some(GroupType::Parens))?;
     let mut tuple_tree = tuple_group.body.into_iter().peekmore();
     let mut tuple = Vec::new();
-    while tuple_tree.peek().is_some() {
+    while !tuple_tree.peek().is_eof() {
         tuple.push(do_type(&mut tuple_tree)?);
         match do_lexeme_class(&mut tuple_tree, LexemeClass::Punctuation(",".into())) {
             Ok(_) => {}
             Err(e) => {
-                if tuple_tree.peek().is_some() {
+                if !tuple_tree.peek().is_eof() {
                     Err(e)?
-                } else {
                 }
             }
         }
@@ -742,7 +740,7 @@ pub fn do_item_extern_block(
     let (block, span_end) = do_lexeme_group(&mut tree, Some(GroupType::Braces))?;
     let mut items = Vec::new();
     let mut block_tree = block.body.into_iter().peekmore();
-    while block_tree.peek().is_some() {
+    while !block_tree.peek().is_eof() {
         items.push(do_item(&mut block_tree)?);
     }
     let span = Span::between(span_start, span_end);
@@ -801,7 +799,7 @@ pub fn do_mod(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Resu
 
     let mut external_attrs = Vec::new();
 
-    while tree.peek().is_some() {
+    while !tree.peek().is_eof() {
         tree.truncate_iterator_to_cursor();
         match do_internal_attr(tree) {
             Ok(attr) => attrs.push(attr),
