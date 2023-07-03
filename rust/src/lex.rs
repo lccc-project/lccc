@@ -3,7 +3,7 @@ use core::fmt;
 use crate::{
     ast,
     interning::Symbol,
-    span::{Pos, Span, Spanned, Speekable, Speekerator},
+    span::{Pos, Span, Speekable, Speekerator},
 };
 
 use unicode_xid::UnicodeXID;
@@ -79,6 +79,7 @@ pub struct Group {
 }
 
 impl Group {
+    #[allow(dead_code)] // TODO: Evaluate if we care about this
     pub fn new(ty: GroupType, body: Vec<Lexeme>) -> Self {
         Self { ty, body }
     }
@@ -272,6 +273,7 @@ pub enum Error {
     UnrecognizedChar(char, Pos),
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum AstFrag {
     Vis(ast::Visibility),

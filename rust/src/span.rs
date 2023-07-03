@@ -149,6 +149,7 @@ impl HygieneRef {
     pub const fn simple_with_edition(edition: RustEdition) -> Self {
         Self::new(0, HygieneMode::CallSite, edition)
     }
+
     pub const fn new(xref_id: u64, mode: HygieneMode, edition: RustEdition) -> Self {
         let mode = mode as u8;
         let edition = edition as u16;
@@ -158,16 +159,19 @@ impl HygieneRef {
         Self(val)
     }
 
+    #[allow(dead_code)]
     pub const fn xref_id(self) -> u64 {
         self.0 & 0xFFFFFFFFFFFF
     }
 
+    #[allow(dead_code)]
     pub const fn mode(self) -> Option<HygieneMode> {
         let val = self.0 >> 60;
 
         HygieneMode::from_val(val as u8)
     }
 
+    #[allow(dead_code)]
     pub const fn edition(self) -> Option<RustEdition> {
         let val = (self.0 >> 48) & 0xFFF;
 
@@ -191,6 +195,7 @@ union Transmuter<T: Copy, U: Copy> {
 }
 
 impl HygieneMode {
+    #[allow(dead_code)]
     pub const fn from_val(val: u8) -> Option<HygieneMode> {
         if val > 3 {
             None
@@ -213,6 +218,7 @@ pub enum RustEdition {
 }
 
 impl RustEdition {
+    #[allow(dead_code)]
     pub const fn from_val(val: u16) -> Option<RustEdition> {
         if val > 3 {
             None
