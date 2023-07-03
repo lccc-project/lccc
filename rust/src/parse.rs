@@ -8,7 +8,7 @@ use crate::{
         ItemValue, Literal, LiteralKind, Mod, Path, PathSegment, SimplePath, SimplePathSegment,
         Spanned, Statement, Type, UserType, Visibility,
     },
-    lex::{Group, GroupType, Lexeme, LexemeBody, LexemeClass, IsEof},
+    lex::{Group, GroupType, IsEof, Lexeme, LexemeBody, LexemeClass},
     span::{Pos, Span},
 };
 
@@ -793,11 +793,12 @@ pub fn do_item(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Res
     })
 }
 
-pub fn do_mod(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Mod> {
+pub fn do_mod(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<Mod>> {
     let mut attrs = Vec::new();
     let mut items = Vec::new();
 
     let mut external_attrs = Vec::new();
+    let mut span = tree.peek().unwrap().span;
 
     while !tree.peek().is_eof() {
         tree.truncate_iterator_to_cursor();
@@ -815,6 +816,11 @@ pub fn do_mod(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Resu
             },
         }
     }
+    
+    span = Span::between(span, tree.peek().unwrap().span);
 
-    Ok(Mod { attrs, items })
+    Ok(Spanned {
+        body: Mod { attrs, items },
+        span,
+    })
 }
