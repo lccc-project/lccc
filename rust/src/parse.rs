@@ -687,6 +687,7 @@ pub fn do_item_fn(
         span: name.span,
     };
     let _params = do_lexeme_group(&mut tree, Some(GroupType::Parens))?;
+    // TODO: receiver
     let ret_ty = match do_lexeme_class(&mut tree, LexemeClass::Punctuation("->".into())) {
         Ok(_) => Some(do_type(&mut tree)?),
         Err(_) => None,
@@ -712,7 +713,7 @@ pub fn do_item_fn(
                 is_async: None,
                 name,
                 generics: None,
-                reciever: None,     // TODO: parse params
+                receiver: None,     // TODO: parse params
                 params: Vec::new(), // TODO: parse params
                 varargs: None,
                 ret_ty,
