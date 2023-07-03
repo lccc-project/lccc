@@ -5,11 +5,12 @@ use peekmore::{PeekMore, PeekMoreIterator};
 use crate::{
     ast::{
         Attr, AttrInput, Block, CompoundBlock, Expr, ExternBlock, Function, Item, ItemBody,
-        ItemValue, Literal, LiteralKind, Mod, Path, PathSegment, SimplePath, SimplePathSegment,
-        Spanned, Statement, Type, UserType, Visibility,
+        ItemValue, Literal, LiteralKind, Mod, Param, Path, PathSegment, Pattern, SimplePath,
+        SimplePathSegment, Spanned, Statement, Type, UserType, Visibility,
     },
+    interning::Symbol,
     lex::{Group, GroupType, IsEof, Lexeme, LexemeBody, LexemeClass},
-    span::{Pos, Span}, interning::Symbol,
+    span::{Pos, Span},
 };
 
 #[derive(Debug)]
@@ -674,6 +675,37 @@ pub fn do_type(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Res
     do_type_no_bounds(tree)
 }
 
+pub fn do_pattern(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Pattern>> {
+    // TODO: anything interesting
+    let lexeme = do_lexeme_class(tree, LexemeClass::Identifier)?;
+    let span = lexeme.span;
+    Ok(Spanned {
+        body: Pattern::BareId(Spanned {
+            body: lexeme.into_text().unwrap(),
+            span,
+        }),
+        span,
+    })
+}
+
+pub fn do_param(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Param>> {
+    // TODO: handle params without names
+    let mut tree = tree.into_rewinder();
+    let pat = do_pattern(&mut tree)?;
+    do_lexeme_class(&mut tree, LexemeClass::Punctuation(":".into()))?;
+    let ty = do_type(&mut tree)?;
+    tree.accept();
+    let span = Span::between(pat.span, ty.span);
+    Ok(Spanned {
+        body: Param { pat: Some(pat), ty },
+        span,
+    })
+}
+
 pub fn do_item_fn(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<ItemBody>> {
@@ -686,8 +718,21 @@ pub fn do_item_fn(
         body: *name.text().unwrap(),
         span: name.span,
     };
-    let _params = do_lexeme_group(&mut tree, Some(GroupType::Parens))?;
+    let (params_group, _) = do_lexeme_group(&mut tree, Some(GroupType::Parens))?;
     // TODO: receiver
+    let mut params_tree = params_group.body.into_iter().peekmore();
+    let mut params = Vec::new();
+    while !params_tree.peek().is_eof() {
+        params.push(do_param(&mut params_tree)?);
+        match do_lexeme_class(&mut params_tree, LexemeClass::Punctuation(",".into())) {
+            Ok(_) => {}
+            Err(e) => {
+                if !params_tree.peek().is_eof() {
+                    Err(e)?
+                }
+            }
+        }
+    }
     let ret_ty = match do_lexeme_class(&mut tree, LexemeClass::Punctuation("->".into())) {
         Ok(_) => Some(do_type(&mut tree)?),
         Err(_) => None,
@@ -713,8 +758,8 @@ pub fn do_item_fn(
                 is_async: None,
                 name,
                 generics: None,
-                receiver: None,     // TODO: parse params
-                params: Vec::new(), // TODO: parse params
+                receiver: None, // TODO: parse receiver
+                params,
                 varargs: None,
                 ret_ty,
                 body,
@@ -726,12 +771,15 @@ pub fn do_item_fn(
 }
 
 pub fn do_string(
-    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Symbol>> {
     let full_str = do_lexeme_class(tree, LexemeClass::String)?;
     let str = full_str.text().unwrap();
-    let str = &str[1..str.len()-1]; // TODO: parse the string
-    Ok(Spanned { body: str.into(), span: full_str.span })
+    let str = &str[1..str.len() - 1]; // TODO: parse the string
+    Ok(Spanned {
+        body: str.into(),
+        span: full_str.span,
+    })
 }
 
 pub fn do_item_extern_block(
