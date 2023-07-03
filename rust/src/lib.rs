@@ -62,6 +62,9 @@ impl XLangFrontend for RustFrontend {
         println!("{:#?}", lexed);
         let parsed = do_mod(&mut lexed.into_iter().peekmore()).unwrap();
         println!("{:#?}", parsed);
+        let mut defs = Definitions::new();
+        convert_crate(&mut defs, &parsed).unwrap();
+        println!("{}", defs);
         io::Result::Ok(())
     }
 }
