@@ -850,10 +850,34 @@ pub fn do_string(
         unreachable!()
     };
     let str = full_str.text().unwrap();
-    let str = &str[1..str.len() - 1]; // TODO: parse the string
+    let str = match str_ty {
+        StringType::Default => &str[1..str.len() - 1], // Skip    " and "
+        StringType::Byte => &str[2..str.len() - 1],    // Skip   b" and "
+        StringType::Raw(x) => {
+            let hashes = usize::from(x);
+            &str[hashes + 2..str.len() - 1 - hashes] //   Skip  r#" and "#
+        }
+        StringType::RawByte(x) => {
+            let hashes = usize::from(x);
+            &str[hashes + 3..str.len() - 1 - hashes] //   Skip rb#" and "#
+        }
+    };
+    let mut parsed = String::new();
+    let mut str_iter = str.chars();
+    while let Some(c) = str_iter.next() {
+        match c {
+            '\\' => match str_iter.next() {
+                Some('0') => parsed.push('\0'),
+                Some('n') => parsed.push('\n'),
+                None => todo!("throw an error"),
+                Some(x) => todo!("\\{}", x),
+            },
+            x => parsed.push(x),
+        }
+    }
     Ok((
         Spanned {
-            body: str.into(),
+            body: parsed.into(),
             span: full_str.span,
         },
         str_ty,
