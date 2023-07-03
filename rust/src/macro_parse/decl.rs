@@ -195,5 +195,6 @@ pub fn do_macro_input(
             body: MacroInputToken::BareToken(tok),
             span,
         })),
+        crate::lex::LexemeBody::Eof => Ok(None),
     }
 }
