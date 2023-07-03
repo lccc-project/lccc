@@ -73,7 +73,7 @@ pub struct Function {
     pub is_async: Option<Spanned<Async>>,
     pub name: Spanned<Symbol>,
     pub generics: Option<Spanned<GenericParams>>,
-    pub reciever: Option<Spanned<SelfParam>>,
+    pub receiver: Option<Spanned<SelfParam>>,
     pub params: Vec<Spanned<Param>>,
     pub varargs: Option<Spanned<Varargs>>,
     pub ret_ty: Option<Spanned<Type>>,
