@@ -9,7 +9,8 @@ use crate::{
         SimplePathSegment, Spanned, Statement, Type, UserType, Visibility,
     },
     interning::Symbol,
-    lex::{Group, GroupType, IsEof, Lexeme, LexemeBody, LexemeClass},
+    lex::{Group, GroupType, IsEof, Lexeme, LexemeBody, LexemeClass, StringType, Token, TokenType},
+    sema::ty::Mutability,
     span::{Pos, Span},
 };
 
@@ -466,7 +467,7 @@ pub fn do_statement(
 pub fn do_literal(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Literal>> {
-    // Only handling int lits for now
+    // Only handling int and string lits for now
     match do_lexeme_class(tree, LexemeClass::Number) {
         Ok(x) => {
             let span = x.span;
@@ -481,7 +482,19 @@ pub fn do_literal(
                 span,
             })
         }
-        Err(a) => Err(a)?, // TODO: Literally every kind of useful literal
+        Err(a) => match do_string(tree) {
+            Ok((str, ty)) => {
+                let span = str.span;
+                Ok(Spanned {
+                    body: Literal {
+                        val: str,
+                        lit_kind: LiteralKind::String(ty),
+                    },
+                    span,
+                })
+            }
+            Err(b) => Err(a | b)?, // TODO: Literally every other kind of useful literal
+        },
     }
 }
 
@@ -646,6 +659,38 @@ pub fn do_tuple_type(
     })
 }
 
+pub fn do_pointer_type(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Type>> {
+    let mut tree = tree.into_rewinder();
+    let Lexeme {
+        span: span_start, ..
+    } = do_lexeme_class(&mut tree, LexemeClass::Punctuation("*".into()))?;
+    let mutability_kw = do_lexeme_classes(
+        &mut tree,
+        &[
+            LexemeClass::Keyword("mut".into()),
+            LexemeClass::Keyword("const".into()),
+        ],
+    )?;
+    let mutability_span = mutability_kw.0.span;
+    let mutability = Spanned {
+        body: match mutability_kw.1 {
+            LexemeClass::Keyword(x) if x == "mut" => Mutability::Mut,
+            LexemeClass::Keyword(x) if x == "const" => Mutability::Const,
+            _ => unreachable!(),
+        },
+        span: mutability_span,
+    };
+    let inner = do_type_no_bounds(&mut tree)?;
+    let span = Span::between(span_start, inner.span);
+    tree.accept();
+    Ok(Spanned {
+        body: Type::Pointer(mutability, Box::new(inner)),
+        span,
+    })
+}
+
 pub fn do_type_no_bounds(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Type>> {
@@ -664,7 +709,10 @@ pub fn do_type_no_bounds(
                     body: Type::Never,
                     span,
                 }),
-                Err(c) => Err(a | b | c),
+                Err(c) => match do_pointer_type(tree) {
+                    Ok(ty) => Ok(ty),
+                    Err(d) => Err(a | b | c | d)?,
+                },
             },
         },
     }
@@ -772,14 +820,30 @@ pub fn do_item_fn(
 
 pub fn do_string(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
-) -> Result<Spanned<Symbol>> {
+) -> Result<(Spanned<Symbol>, StringType)> {
     let full_str = do_lexeme_class(tree, LexemeClass::String)?;
+    let str_ty = *if let Lexeme {
+        body:
+            LexemeBody::Token(Token {
+                ty: TokenType::String(str_ty),
+                ..
+            }),
+        ..
+    } = &full_str
+    {
+        str_ty
+    } else {
+        unreachable!()
+    };
     let str = full_str.text().unwrap();
     let str = &str[1..str.len() - 1]; // TODO: parse the string
-    Ok(Spanned {
-        body: str.into(),
-        span: full_str.span,
-    })
+    Ok((
+        Spanned {
+            body: str.into(),
+            span: full_str.span,
+        },
+        str_ty,
+    ))
 }
 
 pub fn do_item_extern_block(
@@ -789,7 +853,7 @@ pub fn do_item_extern_block(
     let Lexeme {
         span: span_start, ..
     } = do_lexeme_class(&mut tree, LexemeClass::Keyword("extern".into()))?;
-    let tag = do_string(&mut tree).ok();
+    let tag = do_string(&mut tree).ok().map(|x| x.0);
     let (block, span_end) = do_lexeme_group(&mut tree, Some(GroupType::Braces))?;
     let mut items = Vec::new();
     let mut block_tree = block.body.into_iter().peekmore();
