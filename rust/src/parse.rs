@@ -9,7 +9,7 @@ use crate::{
         Spanned, Statement, Type, UserType, Visibility,
     },
     lex::{Group, GroupType, IsEof, Lexeme, LexemeBody, LexemeClass},
-    span::{Pos, Span},
+    span::{Pos, Span}, interning::Symbol,
 };
 
 #[derive(Debug)]
@@ -724,6 +724,15 @@ pub fn do_item_fn(
     })
 }
 
+pub fn do_string(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>
+) -> Result<Spanned<Symbol>> {
+    let full_str = do_lexeme_class(tree, LexemeClass::String)?;
+    let str = full_str.text().unwrap();
+    let str = &str[1..str.len()-1]; // TODO: parse the string
+    Ok(Spanned { body: str.into(), span: full_str.span })
+}
+
 pub fn do_item_extern_block(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<ItemBody>> {
@@ -731,12 +740,7 @@ pub fn do_item_extern_block(
     let Lexeme {
         span: span_start, ..
     } = do_lexeme_class(&mut tree, LexemeClass::Keyword("extern".into()))?;
-    let tag = do_lexeme_class(&mut tree, LexemeClass::String)
-        .ok()
-        .map(|x| Spanned {
-            body: *x.text().unwrap(),
-            span: x.span,
-        });
+    let tag = do_string(&mut tree).ok();
     let (block, span_end) = do_lexeme_group(&mut tree, Some(GroupType::Braces))?;
     let mut items = Vec::new();
     let mut block_tree = block.body.into_iter().peekmore();
@@ -816,7 +820,7 @@ pub fn do_mod(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Resu
             },
         }
     }
-    
+
     span = Span::between(span, tree.peek().unwrap().span);
 
     Ok(Spanned {
