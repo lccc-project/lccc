@@ -517,7 +517,16 @@ pub fn do_primary_expression(
                     span,
                 })
             }
-            Err(b) => Err(a | b)?, // TODO: Literally every other kind of useful expression
+            Err(b) => match do_compound_block(tree) {
+                Ok(x) => {
+                    let span = x.span;
+                    Ok(Spanned {
+                        body: Expr::BlockExpr(x),
+                        span,
+                    })
+                },
+                Err(c) => Err(a | b | c), // TODO: Literally every other kind of useful expression
+            }
         },
     }
 }
