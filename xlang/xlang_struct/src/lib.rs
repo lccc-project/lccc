@@ -1,4 +1,16 @@
-#![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+#![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery, missing_docs)]
+//! Crate for structural representation of xlang ir
+//! The types in this crate provide a high-level field of XIR that is easily programatically generatable, consummable, and manipulable.
+//!
+//! Each item in this section describes the syntax for that item in textual XIR. It is assumed that productions from other items are in-scope as non-terminals.
+//! Additionaly, the following non-terminals are defined as unicode properties from Unicode 15.0.0. A character matches the non-terminal if it has that property:
+//! * `XID_Start`
+//! * `XID_Part`
+//! * `White_Space`
+//!
+//! It is assumed that, between
+//!
+
 use std::convert::TryFrom;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
@@ -8,12 +20,56 @@ use xlang_targets::Target;
 #[doc(hidden)]
 pub mod macros;
 
+///
+/// A component of a [`Path`], the name of a global object in xlang.
+///
+/// Path components can either be an identifier, some kind of special component which is an arbitrary string literal, or contain generics.
+/// The first component of a [`Path`] may additionally be the root id.
+///
+/// The full ABNF for a path component in xlang is:
+///
+/// ```abnf
+/// id-start := <XID_Start> / "_" / "$" / "."
+/// id-part := <XID_Part> / "_" / "$" / "." / "#"
+///
+/// identifier :=  <id-start><id-part>*
+///
+/// special-path-component := "#" <string-literal>
+///
+/// generics := "<" [<generic-param> ["," *<generic-param>]] ">"
+///
+/// path-component := <identifier> / <special-path-component> / <generics>
+/// ```
 #[repr(u16)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum PathComponent {
+    /// The start of a [`Path`] that names objects in the global scope.
+    /// This is allowed only as the first element of a [`Path`]
+    /// This doesn't get parsed as a normal path component, but rather the absence of a path component preceeding a leading `::` in a path.
     Root,
+    /// A normal Identifier component, such as `foo`, `bar`, or `_ZTV_ZNSt5alloc.ll_ZNSt5alloc15GlobalAllocatorE$_ZNSt5alloc6SystemE__`
+    /// An xlang identifier matches the BNF:
+    /// ```abnf
+    /// id-start := <XID_Start> / "_" / "$" / "."
+    /// id-part := <XID_Part> / "_" / "$" / "." / "#"
+    ///
+    /// identifier :=  <id-start><id-part>*
+    /// ```
     Text(String),
+    /// A special identifier component that otherwise isn't an identifier, such as `#"Foo"` or `#"signature:(int)->int"`.
+    /// The contents of the String are largely unbounded
+    ///
+    /// A special path component matches the BNF:
+    /// ```abnf
+    /// special-path-component := "#" <string-literal>
+    /// ``
     SpecialComponent(String),
+    /// Parameters for instantiating a generic item, such as `<int(32)>` or `<float(32),{global_address foo}>`
+    ///
+    /// Generics match the BNF:
+    /// ```abnf
+    /// generics := "<" [<generic-parm> ["," *<generic-param>]] ">"
+    /// ```
     Generics(Vec<GenericParameter>),
 }
 
@@ -37,9 +93,20 @@ impl core::fmt::Display for PathComponent {
     }
 }
 
+///
+/// A [`Path`] in xlang is a named reference to a global object, such as `foo`, `::bar`, or `::baz::hi::<int(32),float(32),{const undef uinit *near segment(42) unique non_null addr_space(3) int(4096)}>`
+///
+/// A path matches the following BNF:
+/// ```abnf
+///
+/// path := ["::"] <path-component> [*("::" <path-component>)]
+///
+/// ```
+///
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
 pub struct Path {
+    /// The components of the path, separated by `::`
     pub components: Vec<PathComponent>,
 }
 
@@ -56,10 +123,19 @@ impl core::fmt::Display for Path {
     }
 }
 
+/// A compile-time parameter to a generic item (type, function, or static)
+///
+/// A generic parameter matches the BNF:
+///
+/// ```abnf
+/// generic-arg := <type> / "{" <value> "}"
+/// ```
 #[repr(u16)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum GenericParameter {
+    /// A generic parameter type, such as `int(32)`
     Type(Type),
+    /// A generic parameter type
     Value(Value),
 }
 
@@ -68,18 +144,52 @@ impl core::fmt::Display for GenericParameter {
         match self {
             GenericParameter::Type(ty) => ty.fmt(f),
             GenericParameter::Value(val) => {
-                f.write_str("const ")?;
-                val.fmt(f)
+                f.write_str("{")?;
+                val.fmt(f)?;
+                f.write_str("}")
             }
         }
     }
 }
 
+/// the content of an annotation
+///
+/// An Annotation Item matches the following BNF:
+///
+/// ```abnf
+/// annotation-id := <path>
+///
+/// annotation-key-value := <annotation-id> "=" <value>
+///
+/// annotation-group := <annotation-id> "(" [<annotation-item> [*("," <annotation-item>)] ")"
+///
+/// annotation-item := <annotation-id> / <annotation-key-value> / <annotation-group>
+///
+/// ```
+///
 #[repr(u8)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum AnnotationItem {
+    /// A bare path in an annotation, such as `alignment` or `lccc::map`
+    ///
+    /// Matches the BNF:
+    /// ```abnf
+    /// annotation-id := <path>
+    /// ```
     Identifier(Path),
+    /// A key-value pair in an annotation, such as `debug_info_name = "foo"`
+    ///
+    /// Matches the BNF:
+    /// ```abnf
+    /// annotation-id := <path>
+    /// ```
     Value(Path, Value),
+    /// A named group in an annotation, such as `sort_fields(alignment)`
+    ///
+    /// Matches the BNF:
+    /// ```anbf
+    /// annotation-group := <annotation-id> "(" [<annotation-item> [*("," <annotation-item>)] ")"
+    /// ``
     Meta(Path, Vec<Self>),
 }
 
@@ -103,9 +213,17 @@ impl core::fmt::Display for AnnotationItem {
     }
 }
 
+/// An annotation, like `#[unwind_personality_routine(foo.__UW_personality)]`
+///
+/// Matches the following BNF:
+/// ```abnf
+/// annotation := "#" "[" <anotation-item> "]"
+/// ```
+///
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Annotation {
+    /// The content of the annotation
     pub inner: AnnotationItem,
 }
 
@@ -117,19 +235,33 @@ impl core::fmt::Display for Annotation {
     }
 }
 
+/// Annotations stored by an annoted element, such as a struct body or declaration.
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
 pub struct AnnotatedElement {
+    /// Annotations attached to the item
     pub annotations: Vec<Annotation>,
 }
 
+/// The visibility of a definition/declaration
+///
+/// Matches the BNF:
+/// ```abnf
+/// visibility := ["public" / "origin" / "module" / "private"]
+/// ```
+///
 #[repr(u16)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Visibility {
+    /// Visible to all items (public)
     Public = 0,
+    /// Visible to all items within the same top-level module (origin)
     Origin = 1,
+    /// Visible to all items within the current module (module)
     Module = 2,
+    /// Visible only to items within the current scope (private)
     Private = 3,
+    /// Not visible to any item
     None = 4,
 }
 
