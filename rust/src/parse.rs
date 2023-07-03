@@ -526,7 +526,13 @@ pub fn do_expression(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Expr>> {
     let mut lhs = do_primary_expression(tree)?;
-    while let Ok(op) = do_lexeme_classes(tree, &[LexemeClass::Group(Some(GroupType::Parens))]) {
+    while let Ok(op) = do_lexeme_classes(
+        tree,
+        &[
+            LexemeClass::Group(Some(GroupType::Parens)),
+            LexemeClass::Keyword("as".into()),
+        ],
+    ) {
         // TODO
         match op {
             (
@@ -558,6 +564,14 @@ pub fn do_expression(
                     },
                     span: new_span,
                 };
+            }
+            (_, LexemeClass::Keyword(x)) if x == "as" => {
+                let ty = do_type_no_bounds(tree)?;
+                let new_span = Span::between(lhs.span, ty.span);
+                lhs = Spanned {
+                    body: Expr::AsCast(Box::new(lhs), Box::new(ty)),
+                    span: new_span,
+                }
             }
             _ => unreachable!(),
         }
