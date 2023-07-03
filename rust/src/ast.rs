@@ -1,12 +1,11 @@
-use core::ops::{Deref, DerefMut};
-
 use crate::lex::Group;
-use crate::{interning::Symbol, lex::Lexeme, span::Span};
+use crate::{interning::Symbol, lex::Lexeme};
 
 pub use crate::lex::StringType;
 
 pub use crate::span::Spanned;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Visibility {
     Pub,
@@ -14,12 +13,14 @@ pub enum Visibility {
     Scoped(Spanned<SimplePath>),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum CrateRef {
     Name(Symbol),
     SelfCr,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum ImportName {
     /// `as $0`
@@ -28,6 +29,7 @@ pub enum ImportName {
     Ignore,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum ImportTail {
     Group(Vec<Spanned<ImportItem>>),
@@ -47,6 +49,7 @@ pub struct MacroRules {
     pub body: Spanned<Group>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum ItemBody {
     Mod(Spanned<ItemMod>),
@@ -86,6 +89,7 @@ pub struct Param {
     pub ty: Spanned<Type>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum SelfParam {
     BaseSelf(Option<Spanned<Type>>),
@@ -103,12 +107,14 @@ pub struct ExternBlock {
     pub items: Vec<Spanned<Item>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum StructKind {
     Union,
     Struct,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Constructor {
     Struct(Spanned<StructCtor>),
@@ -146,6 +152,7 @@ pub struct EnumVariant {
     pub discriminant: Option<Spanned<Expr>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum UserTypeBody {
     Struct(Spanned<StructKind>, Spanned<Constructor>),
@@ -165,6 +172,7 @@ pub struct GenericParams {
     pub params: Vec<Spanned<GenericParam>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum GenericParam {
     Type(TypeParam),
@@ -178,12 +186,14 @@ pub struct TypeParam {
     pub bounds: Vec<Spanned<GenericBound>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum GenericBound {
     LifetimeBound(Spanned<Lifetime>),
     TraitBound(Spanned<Path>),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum Lifetime {
     Named(Spanned<Symbol>),
@@ -221,12 +231,14 @@ pub enum Mutability {
     Mut,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum GlobalPattern {
     Name(Option<Spanned<Mutability>>, Spanned<Symbol>),
     Discard,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum ValueKind {
     Static,
@@ -262,6 +274,7 @@ pub enum Safety {
     Safe,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Type {
     Path(Spanned<Path>),
@@ -284,6 +297,7 @@ pub struct GenericArgs {
     pub args: Vec<Spanned<GenericArg>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum GenericArg {
     LifetimeArg(Spanned<Lifetime>),
@@ -293,12 +307,14 @@ pub enum GenericArg {
     AssociatedType(Spanned<Symbol>, Spanned<AssociatedTypeBound>),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum AssociatedTypeBound {
     Exact(Spanned<Type>),
     Bound(Vec<Spanned<GenericBound>>),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum PathRoot {
     QSelf(Box<Spanned<Type>>, Option<Box<Spanned<Path>>>),
@@ -317,6 +333,7 @@ pub struct Literal {
     pub lit_kind: LiteralKind,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum LiteralKind {
     String(StringType),
@@ -326,6 +343,7 @@ pub enum LiteralKind {
     Bool,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Expr {
     IdExpr(Spanned<Path>),
@@ -367,6 +385,7 @@ pub struct Closure {
     pub body: Box<Spanned<Expr>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum CaptureSpec {
     Move,
@@ -378,6 +397,7 @@ pub struct ClosureParam {
     pub ty: Option<Spanned<Type>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Pattern {
     BareId(Spanned<Symbol>),
@@ -405,6 +425,7 @@ pub struct Block {
     pub tail_expr: Option<Box<Spanned<Expr>>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Statement {
     Empty, // everyone forgets about me
@@ -413,6 +434,7 @@ pub enum Statement {
     Block(Spanned<CompoundBlock>),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum CompoundBlock {
     SimpleBlock(Spanned<Block>),
@@ -445,6 +467,7 @@ pub struct CondBlock {
     pub block: Spanned<Block>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum BinaryOp {
     Add,
@@ -481,6 +504,7 @@ pub enum BinaryOp {
     RangeInclusive,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum UnaryOp {
     RawAddrOf(Spanned<Mutability>),
@@ -495,6 +519,7 @@ pub enum UnaryOp {
     Try,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum SimplePathSegment {
     Identifier(Symbol),
@@ -510,6 +535,7 @@ pub struct SimplePath {
     pub segments: Vec<Spanned<SimplePathSegment>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum AttrInput {
     DelimTokenTree(Spanned<Vec<Lexeme>>),

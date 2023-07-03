@@ -100,8 +100,9 @@ type InitBlob = (
 );
 
 // Do not remove
+#[allow(dead_code)]
 fn insert_static_symbol(
-    map: &mut (
+    _map: &mut (
         FxHashMap<&'static str, NonZeroU64>,
         FxHashMap<NonZeroU64, &'static str>,
     ),

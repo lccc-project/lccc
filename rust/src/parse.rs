@@ -327,7 +327,7 @@ pub fn do_item_mod(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<ItemBody>> {
     let mut tree = tree.into_rewinder();
-    let kw_mod = do_lexeme_class(&mut tree, LexemeClass::Keyword("mod".into()))?;
+    let _kw_mod = do_lexeme_class(&mut tree, LexemeClass::Keyword("mod".into()))?;
     todo!()
 }
 
@@ -335,7 +335,7 @@ pub fn do_item_value_static(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<ItemValue>> {
     let mut tree = tree.into_rewinder();
-    let kw_static = do_lexeme_class(&mut tree, LexemeClass::Keyword("static".into()))?;
+    let _kw_static = do_lexeme_class(&mut tree, LexemeClass::Keyword("static".into()))?;
     todo!()
 }
 
@@ -343,7 +343,7 @@ pub fn do_item_value_const(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<ItemValue>> {
     let mut tree = tree.into_rewinder();
-    let kw_const = do_lexeme_class(&mut tree, LexemeClass::Keyword("const".into()))?;
+    let _kw_const = do_lexeme_class(&mut tree, LexemeClass::Keyword("const".into()))?;
     todo!()
 }
 
@@ -369,8 +369,8 @@ pub fn do_item_extern_crate(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<ItemBody>> {
     let mut tree = tree.into_rewinder();
-    let kw_extern = do_lexeme_class(&mut tree, LexemeClass::Keyword("extern".into()))?;
-    let kw_crate = do_lexeme_class(&mut tree, LexemeClass::Keyword("crate".into()))?;
+    let _kw_extern = do_lexeme_class(&mut tree, LexemeClass::Keyword("extern".into()))?;
+    let _kw_crate = do_lexeme_class(&mut tree, LexemeClass::Keyword("crate".into()))?;
     todo!()
 }
 
@@ -378,7 +378,7 @@ pub fn do_item_use(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<ItemBody>> {
     let mut tree = tree.into_rewinder();
-    let kw_use = do_lexeme_class(&mut tree, LexemeClass::Keyword("use".into()))?;
+    let _kw_use = do_lexeme_class(&mut tree, LexemeClass::Keyword("use".into()))?;
     todo!()
 }
 
@@ -386,7 +386,7 @@ pub fn do_user_type_struct(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<UserType>> {
     let mut tree = tree.into_rewinder();
-    let kw_struct = do_lexeme_class(&mut tree, LexemeClass::Keyword("struct".into()))?;
+    let _kw_struct = do_lexeme_class(&mut tree, LexemeClass::Keyword("struct".into()))?;
     todo!()
 }
 
@@ -394,7 +394,7 @@ pub fn do_user_type_enum(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<UserType>> {
     let mut tree = tree.into_rewinder();
-    let kw_enum = do_lexeme_class(&mut tree, LexemeClass::Keyword("enum".into()))?;
+    let _kw_enum = do_lexeme_class(&mut tree, LexemeClass::Keyword("enum".into()))?;
     todo!()
 }
 
