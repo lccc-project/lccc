@@ -322,7 +322,7 @@ impl<'a> HirLowerer<'a> {
         stat: &Spanned<ast::Statement>,
     ) -> super::Result<()> {
         match &stat.body {
-            ast::Statement::Empty => todo!(),
+            ast::Statement::Empty => {}, // Yeet it out of existence.
             ast::Statement::DiscardExpr(expr) => {
                 let expr = self.desugar_expr(expr)?;
                 self.stats
