@@ -16,6 +16,8 @@ use crate::lang::LangItem;
 use crate::sema::ty::AsyncType;
 use crate::span::Span;
 
+use self::hir::HirFunctionBody;
+use self::hir::HirLowerer;
 use self::ty::FnType;
 
 macro_rules! as_simple_component {
@@ -89,9 +91,11 @@ pub enum ErrorCategory {
     AlreadyDefined,
     InvalidAbi,
     InvalidFunction,
+    InvalidExpression,
 }
 
 pub mod ty;
+pub mod hir;
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub struct DefId(u32);
@@ -123,6 +127,8 @@ pub struct Definition {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum FunctionBody {
     Incomplete,
+    AstBody(Spanned<ast::Block>),
+    HirBody(Spanned<HirFunctionBody>),
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -185,6 +191,22 @@ impl Definitions {
         self.definition(defid).inner.span
     }
 
+    pub fn as_module_mut(&mut self, defid: DefId) -> &mut Module{
+        if let Definition{inner: Spanned{body: DefinitionInner::Module(md),..},..} = self.definition_mut(defid){
+            md
+        }else{
+            panic!("Expected defid {} to be a module",defid)
+        }
+    }
+
+    pub fn as_module(&self, defid: DefId) -> &Module{
+        if let Definition{inner: Spanned{body: DefinitionInner::Module(md),..},..} = self.definition(defid){
+            md
+        }else{
+            panic!("Expected defid {} to be a module",defid)
+        }
+    }
+
     pub fn definition(&self, defid: DefId) -> &Definition {
         self.defs
             .get(&defid)
@@ -226,7 +248,7 @@ impl Definitions {
                 Ok(())
             }
         } else {
-            panic!("Expected defid {} to be a module",)
+            panic!("Expected defid {} to be a module",curmod)
         }
     }
 
@@ -335,6 +357,105 @@ impl Definitions {
             } = self.definition(searchmod)
             {
                 let mut def = match md.types.get(&id.body) {
+                    Some(id) => *id,
+                    None => {
+                        let mut found = Vec::new();
+                        for &usestar in &md.wildcard_imports {
+                            if !self.visible_from(usestar, curmod) {
+                                continue;
+                            }
+                            if let Ok(id) = self.find_type_in_mod(curmod, usestar, id, at_item) {
+                                found.push(id);
+                            }
+                        }
+
+                        match found.len() {
+                            0 => {
+                                return Err(Error {
+                                    span: id.span,
+                                    text: format!("Cannot find item {}", id.body),
+                                    category: ErrorCategory::CannotFindName,
+                                    at_item,
+                                    containing_item: curmod,
+                                    relevant_item: searchmod,
+                                    hints: vec![],
+                                })
+                            }
+                            1 => found[0],
+                            _ => {
+                                return Err(Error {
+                                    span: id.span,
+                                    text: format!("Item {} is ambiguous", id.body),
+                                    category: ErrorCategory::CannotFindName,
+                                    at_item,
+                                    containing_item: curmod,
+                                    relevant_item: searchmod,
+                                    hints: vec![],
+                                })
+                            }
+                        }
+                    }
+                };
+
+                if !self.visible_from(def, curmod) {
+                    return Err(Error {
+                        span: id.span,
+                        text: format!("Cannot find item {}", id.body),
+                        category: ErrorCategory::InvisibleEntity,
+                        at_item,
+                        containing_item: curmod,
+                        relevant_item: searchmod,
+                        hints: vec![],
+                    });
+                }
+
+                while let Definition {
+                    inner:
+                        Spanned {
+                            body: DefinitionInner::UseName(actual),
+                            ..
+                        },
+                    ..
+                } = self.definition(def)
+                {
+                    def = *actual;
+                }
+
+                Ok(def)
+            } else {
+                panic!("Expected a module for item {}",searchmod); // TODO handle Ty::ASSOC_TYPE
+            }
+        }
+    }
+
+    pub fn find_value_in_mod(
+        &self,
+        curmod: DefId,
+        searchmod: DefId,
+        id: Spanned<Symbol>,
+        at_item: DefId,
+    ) -> Result<DefId> {
+        if searchmod == DefId::ROOT {
+            Err(Error{
+                span: id.span,
+                text: format!("Cannot find `::{}`",id.body),
+                category: ErrorCategory::CannotFindName,
+                at_item,
+                containing_item: curmod,
+                relevant_item: at_item,
+                hints: vec![]
+            })
+        } else {
+            if let Definition {
+                inner:
+                    Spanned {
+                        body: DefinitionInner::Module(md),
+                        ..
+                    },
+                ..
+            } = self.definition(searchmod)
+            {
+                let mut def = match md.values.get(&id.body) {
                     Some(id) => *id,
                     None => {
                         let mut found = Vec::new();
@@ -682,6 +803,25 @@ impl Definitions {
                         let nested = tabs.nest();
                         nested.fmt(fmt)?;
                         fmt.write_str("/*incomplete*/\n")?;
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                    Some(FunctionBody::AstBody(stats)) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        for stat in &stats.stmts{
+                            fmt.write_fmt(format_args!("{}{:?}\n",nested,stat.body))?;
+                        }
+                        if let Some(tail) = &stats.tail_expr{
+                            fmt.write_fmt(format_args!("{}{:?}\n",nested,tail.body))?;
+                        }
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                    Some(FunctionBody::HirBody(body)) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        body.display_body(fmt, nested)?;
                         tabs.fmt(fmt)?;
                         fmt.write_str("}\n")
                     }
@@ -1086,6 +1226,94 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
     Ok(())
 }
 
+pub fn convert_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) -> Result<()>{
+    for item in &md.items{
+        match &item.item.body{
+            ast::ItemBody::Mod(md) => {
+                let name = md.name;
+
+                let semamod = defs.find_type_in_mod(curmod, curmod, name, curmod)?;
+
+                convert_values(defs,semamod,md.content.as_ref().expect("out-of-line mods aren't a thing in sema"))?;
+            },
+            ast::ItemBody::Value(_) => todo!("static or const"),
+            
+            
+            ast::ItemBody::Function(fbody) => {
+                let name = fbody.name;
+
+                let fndef = defs.find_value_in_mod(curmod,curmod,name,curmod)?;
+
+                if let Definition{inner: Spanned{body: DefinitionInner::Function(_, body),..},..} = defs.definition_mut(fndef){
+                    if let Some(ast_body) = &fbody.body.body{
+                        *body = Some(FunctionBody::AstBody(ast_body.clone()));
+                        
+                    }else {
+                        return Err(Error{
+                            span: fbody.span,
+                            text: format!("Expected fn {} to have a body",name.body),
+                            category: ErrorCategory::InvalidFunction,
+                            at_item: fndef,
+                            containing_item: curmod,
+                            relevant_item: fndef,
+                            hints: vec![]
+                        });
+                    }
+                }else{
+                    panic!("Expected {} (defid {}) to name a function",name.body, fndef);
+                }
+            },
+            ast::ItemBody::Use(_) |
+            ast::ItemBody::UserType(_) |
+            ast::ItemBody::ExternCrate { .. } |
+            ast::ItemBody::ExternBlock(_) => {},
+            ast::ItemBody::MacroRules(_) => unreachable!(),
+        }
+    }
+
+    Ok(())
+}
+
+pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()>{
+    let tys = defs.as_module(curmod).types.clone();
+
+    for &Pair(sym,defid) in &tys{
+        if let Definition{inner: Spanned{body: DefinitionInner::Module(_),..},..} = defs.definition(defid){
+            desugar_values(defs,defid)?;
+        }
+    }
+
+    let values = defs.as_module(curmod).values.clone();
+
+    for &Pair(sym,defid) in &values{
+        let def = defs.definition_mut(defid);
+        match &mut def.inner.body{
+            DefinitionInner::Function(fnty,val @ Some(_)) => {
+                match val.take(){
+                    Some(FunctionBody::AstBody(block)) => {
+                        let mut vardebugmap = HashMap::new();
+                        let safety = fnty.safety.body;
+                        let span = block.span;
+                        let mut builder = HirLowerer::new(defs,defid,curmod,&mut vardebugmap);
+                        builder.desugar_block(Some(&mut |expr|hir::HirStatement::Return(expr)), &block)?;
+
+                        let body = builder.into_fn_body(safety, span);
+
+                        match &mut defs.definition_mut(defid).inner.body{
+                            DefinitionInner::Function(_,val) => *val = Some(FunctionBody::HirBody(block.copy_span(|_|body))),
+                            _ => unreachable!()
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
 pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<()> {
     let root = defs.allocate_defid();
     defs.set_current_crate(root);
@@ -1093,5 +1321,10 @@ pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<(
     scan_modules(defs, root, md)?;
     collect_types(defs, root, md)?;
     collect_values(defs,root,md)?;
+    /* TODO: Convert types */
+    convert_values(defs,root,md)?;
+
+
+    desugar_values(defs,root)?;
     Ok(())
 }
