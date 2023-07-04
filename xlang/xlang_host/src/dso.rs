@@ -33,12 +33,12 @@ macro_rules! impl_a_lot_of_fn_ptrs{
         $(($($id:ident),*)),*
     } => {
             $(
-            unsafe impl<R, $($id),*> FnPtr for extern"C" fn($($id),*)->R{
+            unsafe impl<R, $($id),*> FnPtr for extern "C" fn($($id),*)->R{
                 unsafe fn from_raw_ptr(p: *mut c_void) -> Option<Self>{
                     core::mem::transmute(p)
                 }
             }
-            unsafe impl<R, $($id),*> FnPtr for unsafe extern"C" fn($($id),*)->R{
+            unsafe impl<R, $($id),*> FnPtr for unsafe extern "C" fn($($id),*)->R{
                 unsafe fn from_raw_ptr(p: *mut c_void) -> Option<Self>{
                     core::mem::transmute(p)
                 }
@@ -104,7 +104,7 @@ macro_rules! impl_a_lot_of_fn_ptrs{
                 }
             }
             #[cfg(all(windows,target_arch="x86"))]
-            unsafe impl<R, $($id),*> FnPtr for unsafe extern"stdcall" fn($($id),*)->R{
+            unsafe impl<R, $($id),*> FnPtr for unsafe extern "stdcall" fn($($id),*)->R{
                 unsafe fn from_raw_ptr(p: *mut c_void) -> Option<Self>{
                     core::mem::transmute(p)
                 }
