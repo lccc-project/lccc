@@ -261,6 +261,64 @@ impl core::fmt::Display for IntType {
     }
 }
 
+pub fn parse_int_suffix(
+    sym: Spanned<Symbol>,
+    at_item: DefId,
+    curmod: DefId,
+) -> super::Result<Spanned<IntType>> {
+    let span = sym.span;
+    let sym = sym.strip_prefix('_').unwrap_or(&sym);
+
+    let (first, size) = sym.split_at(1);
+
+    let signed = match first {
+        "i" => true,
+        "u" => false,
+        _ => {
+            return Err(super::Error {
+                span,
+                text: format!("Expected a integer suffix, got {}", sym),
+                category: super::ErrorCategory::Other,
+                at_item,
+                containing_item: curmod,
+                relevant_item: at_item,
+                hints: vec![],
+            });
+        }
+    };
+    let width = if size == "size" {
+        IntWidth::Size
+    } else {
+        let size = size.parse::<NonZeroU16>().map_err(|_| super::Error {
+            span,
+            text: format!("Invalid integer suffix {}", sym),
+            category: super::ErrorCategory::Other,
+            at_item,
+            containing_item: curmod,
+            relevant_item: at_item,
+            hints: vec![],
+        })?;
+        match size.get() {
+            8 | 16 | 32 | 64 | 128 => {}
+            _ => Err(super::Error {
+                span,
+                text: format!("Invalid integer suffix {}", sym),
+                category: super::ErrorCategory::Other,
+                at_item,
+                containing_item: curmod,
+                relevant_item: at_item,
+                hints: vec![],
+            })?,
+        }
+        IntWidth::Bits(size)
+    };
+
+    Ok(Spanned {
+        body: IntType { signed, width },
+        span,
+    })
+}
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct FnType {
     pub safety: Spanned<Safety>,

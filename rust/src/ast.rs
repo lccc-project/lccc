@@ -327,6 +327,33 @@ pub struct Path {
     pub segments: Vec<Spanned<PathSegment>>,
 }
 
+impl Path {
+    pub fn as_bare_id(&self) -> Option<Spanned<Symbol>> {
+        if self.root.is_some() {
+            None
+        } else {
+            match &*self.segments {
+                [lone] => {
+                    if lone.generics.is_some() {
+                        None
+                    } else {
+                        match &lone.ident.body {
+                            SimplePathSegment::Identifier(id) => {
+                                Some(lone.ident.copy_span(|_| *id))
+                            }
+                            SimplePathSegment::SuperPath => None,
+                            SimplePathSegment::SelfPath => None,
+                            SimplePathSegment::CratePath => None,
+                            SimplePathSegment::MacroCratePath => None,
+                        }
+                    }
+                }
+                _ => None,
+            }
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub struct Literal {
     pub val: Spanned<Symbol>,
@@ -502,6 +529,45 @@ pub enum BinaryOp {
     RightShiftAssign,
     Range,
     RangeInclusive,
+}
+
+impl core::fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            BinaryOp::Add => f.write_str("+"),
+            BinaryOp::Sub => f.write_str("-"),
+            BinaryOp::Mul => f.write_str("*"),
+            BinaryOp::Div => f.write_str("/"),
+            BinaryOp::Rem => f.write_str("%"),
+            BinaryOp::BitAnd => f.write_str("&"),
+            BinaryOp::BitOr => f.write_str("|"),
+            BinaryOp::BitXor => f.write_str("^"),
+            BinaryOp::BoolAnd => f.write_str("&&"),
+            BinaryOp::BoolOr => f.write_str("||"),
+            BinaryOp::Less => f.write_str("<"),
+            BinaryOp::Greater => f.write_str(">"),
+            BinaryOp::Equal => f.write_str("=="),
+            BinaryOp::LessEqual => f.write_str("<="),
+            BinaryOp::GreaterEqual => f.write_str(">="),
+            BinaryOp::Assign => f.write_str("="),
+            BinaryOp::AddAssign => f.write_str("+="),
+            BinaryOp::SubAssign => f.write_str("-="),
+            BinaryOp::MulAssign => f.write_str("*="),
+            BinaryOp::DivAssign => f.write_str("/="),
+            BinaryOp::RemAssign => f.write_str("%="),
+            BinaryOp::BitAndAssign => f.write_str("&="),
+            BinaryOp::BitOrAssign => f.write_str("|="),
+            BinaryOp::BitXorAssign => f.write_str("^="),
+            BinaryOp::BoolAndAssign => f.write_str("&&="),
+            BinaryOp::BoolOrAssign => f.write_str("||="),
+            BinaryOp::LeftShift => f.write_str("<<"),
+            BinaryOp::RightShift => f.write_str(">>"),
+            BinaryOp::LeftShiftAssign => f.write_str("<<="),
+            BinaryOp::RightShiftAssign => f.write_str(">>="),
+            BinaryOp::Range => f.write_str(".."),
+            BinaryOp::RangeInclusive => f.write_str("..="),
+        }
+    }
 }
 
 #[allow(dead_code)]
