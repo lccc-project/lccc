@@ -32,6 +32,7 @@ pub enum HirExpr {
     Const(DefId),
     Unreachable,
     Cast(Box<Spanned<HirExpr>>, Spanned<Type>),
+    Tuple(Vec<Spanned<HirExpr>>),
 }
 
 impl core::fmt::Display for HirExpr {
@@ -58,6 +59,19 @@ impl core::fmt::Display for HirExpr {
                 f.write_str("\"")?;
                 s.escape_default().fmt(f)?;
                 f.write_str("\"")
+            }
+            HirExpr::Tuple(v) => {
+                f.write_str("(")?;
+                let mut sep = "";
+                for val in v {
+                    f.write_str(sep)?;
+                    sep = ", ";
+                    val.body.fmt(f)?;
+                }
+                if v.len() == 1 {
+                    f.write_str(",")?;
+                }
+                f.write_str(")")
             }
         }
     }
@@ -426,7 +440,11 @@ impl<'a> HirLowerer<'a> {
         let last_stat = if blk.tail_expr.is_none() {
             if let Some((last, stats)) = stmts.split_last() {
                 stmts = stats;
-                Some(last)
+                if let ast::Statement::Empty = &last.body {
+                    None
+                } else {
+                    Some(last)
+                }
             } else {
                 None
             }
@@ -446,6 +464,11 @@ impl<'a> HirLowerer<'a> {
             let return_stat = (ret.unwrap_or(&mut |expr| HirStatement::Discard(expr)))(expr);
 
             self.stats.push(tail_expr.copy_span(|_| return_stat));
+        } else {
+            if let Some(ret) = ret {
+                self.stats
+                    .push(blk.copy_span(|_| ret(blk.copy_span(|_| HirExpr::Tuple(vec![])))));
+            }
         }
         Ok(())
     }
