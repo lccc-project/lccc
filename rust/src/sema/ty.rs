@@ -376,6 +376,7 @@ pub enum Type {
     FnItem(FnType, DefId),
     UserType(DefId),
     IncompleteAlias(DefId),
+    Pointer(Spanned<Mutability>, Box<Spanned<Type>>),
 }
 
 impl Type {
@@ -418,6 +419,12 @@ impl core::fmt::Display for Type {
             Self::IncompleteAlias(defid) => {
                 defid.fmt(f)?;
                 f.write_str(" /* unresolved type alias */")
+            }
+            Self::Pointer(mt, inner) => {
+                f.write_str("*")?;
+                mt.body.fmt(f)?;
+                f.write_str(" ")?;
+                inner.body.fmt(f)
             }
         }
     }
@@ -485,7 +492,11 @@ pub fn convert_type(
             },
         },
         ast::Type::Reference(_, _) => todo!("reference"),
-        ast::Type::Pointer(_, _) => todo!("pointer"),
+        ast::Type::Pointer(mt, ty) => {
+            let ty = ty.try_copy_span(|ty| convert_type(defs, curmod, at_item, ty))?;
+
+            Ok(Type::Pointer(*mt, Box::new(ty)))
+        }
         ast::Type::Array(_, _) => todo!("array"),
         ast::Type::FnType(_) => todo!(),
         ast::Type::Never => Ok(Type::Never),

@@ -231,6 +231,15 @@ pub enum Mutability {
     Mut,
 }
 
+impl core::fmt::Display for Mutability {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Self::Const => f.write_str("const"),
+            Self::Mut => f.write_str("mut"),
+        }
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum GlobalPattern {
