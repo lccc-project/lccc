@@ -1,11 +1,11 @@
 use xlang::abi::collection::HashMap;
 
-use crate::ast::{self, Literal, LiteralKind, Mutability, Safety};
+use crate::ast::{self, Literal, LiteralKind, Mutability, Safety, StringType};
 use crate::helpers::{FetchIncrement, TabPrinter};
 use crate::interning::Symbol;
 use crate::span::Span;
 
-use super::ty::IntType;
+use super::ty::{IntType, Type};
 
 use super::{DefId, Spanned};
 
@@ -28,7 +28,10 @@ impl core::fmt::Debug for HirVarId {
 pub enum HirExpr {
     Var(HirVarId),
     ConstInt(Option<Spanned<IntType>>, u128),
+    ConstString(StringType, Spanned<Symbol>),
     Const(DefId),
+    Unreachable,
+    Cast(Box<Spanned<HirExpr>>, Spanned<Type>),
 }
 
 impl core::fmt::Display for HirExpr {
@@ -44,6 +47,18 @@ impl core::fmt::Display for HirExpr {
                 Ok(())
             }
             HirExpr::Const(def) => def.fmt(f),
+            HirExpr::Unreachable => f.write_str("unreachable"),
+            HirExpr::Cast(inner, ty) => {
+                f.write_str("(")?;
+                inner.body.fmt(f)?;
+                f.write_str(") as ")?;
+                ty.body.fmt(f)
+            }
+            HirExpr::ConstString(_, s) => {
+                f.write_str("\"")?;
+                s.escape_default().fmt(f)?;
+                f.write_str("\"")
+            }
         }
     }
 }
@@ -75,6 +90,7 @@ pub enum HirStatement {
 pub enum HirBlock {
     Normal(Vec<Spanned<HirStatement>>),
     Unsafe(Vec<Spanned<HirStatement>>),
+    Loop(Vec<Spanned<HirStatement>>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -91,6 +107,7 @@ impl HirFunctionBody {
     ) -> core::fmt::Result {
         let stats = match &self.body.body {
             HirBlock::Normal(stats) | HirBlock::Unsafe(stats) => stats,
+            _ => unreachable!(),
         };
 
         for stat in stats {
@@ -141,6 +158,16 @@ impl HirFunctionBody {
                 HirBlock::Unsafe(stats) => {
                     tabs.fmt(f)?;
                     f.write_str("unsafe {\n")?;
+                    let nested = tabs.nest();
+                    for stat in stats {
+                        self.display_statement(stat, f, nested)?;
+                    }
+                    tabs.fmt(f)?;
+                    f.write_str("}\n")
+                }
+                HirBlock::Loop(stats) => {
+                    tabs.fmt(f)?;
+                    f.write_str("loop {\n")?;
                     let nested = tabs.nest();
                     for stat in stats {
                         self.display_statement(stat, f, nested)?;
@@ -251,9 +278,9 @@ impl<'a> HirLowerer<'a> {
                     todo!("complicated path")
                 }
             }
-            ast::Expr::BinaryExpr(_, _, _) => todo!(),
-            ast::Expr::UnaryExpr(_, _) => todo!(),
-            ast::Expr::RangeFull => todo!(),
+            ast::Expr::BinaryExpr(_, _, _) => todo!("binary expr"),
+            ast::Expr::UnaryExpr(_, _) => todo!("unary expr"),
+            ast::Expr::RangeFull => todo!("range"),
             ast::Expr::FunctionCall {
                 base,
                 method_name,
@@ -279,10 +306,18 @@ impl<'a> HirLowerer<'a> {
 
                 Ok(expr.copy_span(|_| HirExpr::Var(*hirvar)))
             }
-            ast::Expr::MemberAccess(_, _) => todo!(),
-            ast::Expr::Index { base, index } => todo!(),
-            ast::Expr::AsCast(_, _) => todo!(),
-            ast::Expr::BlockExpr(_) => todo!(),
+            ast::Expr::MemberAccess(_, _) => todo!("member access"),
+            ast::Expr::Index { base, index } => todo!("index"),
+            ast::Expr::AsCast(inner, ty) => {
+                let inner = self.desugar_expr(inner)?;
+
+                let ty = ty.try_copy_span(|ty| {
+                    super::ty::convert_type(self.defs, self.curmod, self.atitem, ty)
+                })?;
+
+                Ok(expr.copy_span(|_| HirExpr::Cast(Box::new(inner), ty)))
+            }
+            ast::Expr::BlockExpr(_) => todo!("block expr"),
             ast::Expr::Literal(lit) => match lit.body {
                 Literal {
                     lit_kind: LiteralKind::Int(suffix),
@@ -304,15 +339,19 @@ impl<'a> HirLowerer<'a> {
 
                     Ok(expr.copy_span(|_| HirExpr::ConstInt(ty, val)))
                 }
-                _ => todo!(),
+                Literal {
+                    lit_kind: LiteralKind::String(skind),
+                    val: sym,
+                } => Ok(expr.copy_span(|_| HirExpr::ConstString(skind, sym))),
+                _ => todo!("literal"),
             },
-            ast::Expr::Break(_, _) => todo!(),
-            ast::Expr::Continue(_, _) => todo!(),
-            ast::Expr::Yield(_) => todo!(),
-            ast::Expr::ConstBlock(_) => todo!(),
-            ast::Expr::AsyncBlock(_) => todo!(),
-            ast::Expr::Closure(_) => todo!(),
-            ast::Expr::Yeet(_) => todo!(),
+            ast::Expr::Break(_, _) => todo!("break"),
+            ast::Expr::Continue(_, _) => todo!("continue"),
+            ast::Expr::Yield(_) => todo!("yield"),
+            ast::Expr::ConstBlock(_) => todo!("const block"),
+            ast::Expr::AsyncBlock(_) => todo!("async blck"),
+            ast::Expr::Closure(_) => todo!("closure"),
+            ast::Expr::Yeet(_) => todo!("yeet"),
         }
     }
 
@@ -343,9 +382,21 @@ impl<'a> HirLowerer<'a> {
                     self.stats
                         .push(stat.copy_span(|_| HirStatement::Block(blk.copy_span(|_| block))));
                 }
-                ast::CompoundBlock::If(_) => todo!(),
-                ast::CompoundBlock::While(_) => todo!(),
-                ast::CompoundBlock::Loop(_) => todo!(),
+                ast::CompoundBlock::If(_) => todo!("if"),
+                ast::CompoundBlock::While(_) => todo!("while"),
+                ast::CompoundBlock::Loop(blk) => {
+                    let mut lowerer =
+                        HirLowerer::new(self.defs, self.atitem, self.curmod, self.vardebugmap);
+
+                    lowerer.varnames = self.varnames.clone();
+
+                    lowerer.desugar_block(ret, blk)?;
+
+                    let block = HirBlock::Loop(lowerer.stats);
+
+                    self.stats
+                        .push(stat.copy_span(|_| HirStatement::Block(blk.copy_span(|_| block))));
+                }
                 ast::CompoundBlock::Unsafe(blk) => {
                     let mut lowerer =
                         HirLowerer::new(self.defs, self.atitem, self.curmod, self.vardebugmap);
@@ -359,7 +410,7 @@ impl<'a> HirLowerer<'a> {
                     self.stats
                         .push(stat.copy_span(|_| HirStatement::Block(blk.copy_span(|_| block))));
                 }
-                ast::CompoundBlock::For(_) => todo!(),
+                ast::CompoundBlock::For(_) => todo!("for"),
             },
         }
         Ok(())
