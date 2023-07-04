@@ -122,10 +122,10 @@ impl HirFunctionBody {
 
                 val.body.fmt(f)?;
 
-                f.write_str(";")
+                f.write_str(";\n")
             }
             HirStatement::Return(expr) => {
-                f.write_fmt(format_args!("{}return {};", tabs, expr.body))
+                f.write_fmt(format_args!("{}return {};\n", tabs, expr.body))
             }
             HirStatement::Block(b) => match &b.body {
                 HirBlock::Normal(stats) => {
@@ -322,7 +322,7 @@ impl<'a> HirLowerer<'a> {
         stat: &Spanned<ast::Statement>,
     ) -> super::Result<()> {
         match &stat.body {
-            ast::Statement::Empty => {}, // Yeet it out of existence.
+            ast::Statement::Empty => {} // Yeet it out of existence.
             ast::Statement::DiscardExpr(expr) => {
                 let expr = self.desugar_expr(expr)?;
                 self.stats
@@ -336,7 +336,7 @@ impl<'a> HirLowerer<'a> {
 
                     lowerer.varnames = self.varnames.clone();
 
-                    lowerer.desugar_block(None, blk)?;
+                    lowerer.desugar_block(ret, blk)?;
 
                     let block = HirBlock::Normal(lowerer.stats);
 
@@ -352,7 +352,7 @@ impl<'a> HirLowerer<'a> {
 
                     lowerer.varnames = self.varnames.clone();
 
-                    lowerer.desugar_block(None, blk)?;
+                    lowerer.desugar_block(ret, blk)?;
 
                     let block = HirBlock::Unsafe(lowerer.stats);
 
