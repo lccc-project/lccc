@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 fn main() {
     let rustc = std::env::var_os("RUSTC").unwrap();
-    let rustflags = std::env::var("CARGO_ENCODED_RUSTFLAGS").unwrap();
+    let rustflags = std::env::var("CARGO_ENCODED_RUSTFLAGS")
+        .ok()
+        .unwrap_or_else(String::new);
 
     let flags = rustflags.split('\u{1f}').collect::<Vec<&str>>();
 

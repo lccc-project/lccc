@@ -1,4 +1,4 @@
-#![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery, missing_docs)]
+#![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
 //! Crate for structural representation of xlang ir
 //! The types in this crate provide a high-level field of XIR that is easily programatically generatable, consummable, and manipulable.
 //!
