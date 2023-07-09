@@ -1,12 +1,13 @@
 pub use crate::ast::{Mutability, Safety, Spanned};
 use crate::{
     ast::{self, PathSegment},
+    helpers::nzu16,
     interning::Symbol,
     span::Pos,
 };
 
 pub use super::DefId;
-use super::Definitions;
+use super::{cx::ConstExpr, mir::RegionId, tyck::InferId, Definitions};
 use crate::feature::Features;
 
 use core::num::NonZeroU16;
@@ -240,10 +241,34 @@ pub enum FloatWidth {
     Long,
 }
 
+// Write the Rust type here
+#[allow(non_upper_case_globals)]
+impl FloatWidth {
+    pub const f32: FloatWidth = FloatWidth::Bits(nzu16!(32));
+    pub const f64: FloatWidth = FloatWidth::Bits(nzu16!(64));
+}
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct IntType {
     pub signed: bool,
     pub width: IntWidth,
+}
+
+#[allow(non_upper_case_globals)] // Write the Rust type here
+impl IntType {
+    pub const isize: IntType = IntType {
+        signed: true,
+        width: IntWidth::Size,
+    };
+    pub const usize: IntType = IntType {
+        signed: false,
+        width: IntWidth::Size,
+    };
+
+    pub const u8: IntType = IntType {
+        signed: false,
+        width: IntWidth::Bits(nzu16!(8)),
+    };
 }
 
 impl core::fmt::Display for IntType {
@@ -357,9 +382,29 @@ impl core::fmt::Display for FnType {
             f.write_str(sep)?;
             f.write_str("...")?;
         }
-        f.write_str(")")?;
+        f.write_str(") -> ")?;
 
         self.retty.body.fmt(f)
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum SemaLifetime {
+    Bound(Spanned<Symbol>),
+    Region(RegionId),
+    Static,
+}
+
+impl core::fmt::Display for SemaLifetime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bound(sym) => {
+                f.write_str("'")?;
+                f.write_str(sym)
+            }
+            Self::Region(reg) => reg.fmt(f),
+            Self::Static => f.write_str("'static"),
+        }
     }
 }
 
@@ -377,6 +422,14 @@ pub enum Type {
     UserType(DefId),
     IncompleteAlias(DefId),
     Pointer(Spanned<Mutability>, Box<Spanned<Type>>),
+    Array(Box<Spanned<Type>>, Spanned<ConstExpr>),
+    Inferable(InferId),
+    InferableInt(InferId),
+    Reference(
+        Option<Spanned<SemaLifetime>>,
+        Spanned<Mutability>,
+        Box<Spanned<Type>>,
+    ),
 }
 
 impl Type {
@@ -425,6 +478,26 @@ impl core::fmt::Display for Type {
                 mt.body.fmt(f)?;
                 f.write_str(" ")?;
                 inner.body.fmt(f)
+            }
+            Self::Inferable(_) => f.write_str("{{type}}"),
+            Self::InferableInt(_) => f.write_str("{{int}}"),
+            Self::Array(elem, len) => {
+                f.write_str("[")?;
+                elem.body.fmt(f)?;
+                f.write_str("; ")?;
+                len.body.fmt(f)
+            }
+            Self::Reference(life, mt, ty) => {
+                f.write_str("&")?;
+                if let Some(life) = life {
+                    life.body.fmt(f)?;
+                    f.write_str(" ")?;
+                }
+
+                if mt.body == Mutability::Mut {
+                    f.write_str("mut ")?;
+                }
+                ty.body.fmt(f)
             }
         }
     }

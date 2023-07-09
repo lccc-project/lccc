@@ -39,3 +39,41 @@ impl core::fmt::Display for TabPrinter {
         Ok(())
     }
 }
+
+macro_rules! nzu16 {
+    ($val:expr) => {{
+        const __VAL: ::core::num::NonZeroU16 = {
+            const __LIT: u16 = $val;
+            [()][(__LIT == 0) as usize];
+
+            unsafe { ::core::num::NonZeroU16::new_unchecked(__LIT) }
+        };
+        __VAL
+    }};
+}
+
+pub(crate) use nzu16;
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum CyclicOperationStatus {
+    Complete,
+    Incomplete,
+}
+
+impl core::ops::BitAnd for CyclicOperationStatus {
+    type Output = Self;
+    fn bitand(self, rhs: Self) -> Self {
+        match (self, rhs) {
+            (CyclicOperationStatus::Complete, CyclicOperationStatus::Complete) => {
+                CyclicOperationStatus::Complete
+            }
+            _ => CyclicOperationStatus::Incomplete,
+        }
+    }
+}
+
+impl core::ops::BitAndAssign for CyclicOperationStatus {
+    fn bitand_assign(&mut self, rhs: Self) {
+        *self = *self & rhs;
+    }
+}

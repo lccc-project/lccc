@@ -19,6 +19,7 @@ use crate::span::Span;
 use self::hir::HirFunctionBody;
 use self::hir::HirLowerer;
 use self::ty::FnType;
+use self::tyck::ThirFunctionBody;
 
 macro_rules! as_simple_component {
     (self) => {
@@ -92,10 +93,14 @@ pub enum ErrorCategory {
     InvalidAbi,
     InvalidFunction,
     InvalidExpression,
+    TycheckError(tyck::TycheckErrorCategory),
 }
 
 pub mod ty;
 pub mod hir;
+pub mod mir;
+pub mod cx;
+pub mod tyck;
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub struct DefId(u32);
@@ -129,6 +134,7 @@ pub enum FunctionBody {
     Incomplete,
     AstBody(Spanned<ast::Block>),
     HirBody(Spanned<HirFunctionBody>),
+    ThirBody(Spanned<ThirFunctionBody>)
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -825,6 +831,13 @@ impl Definitions {
                         tabs.fmt(fmt)?;
                         fmt.write_str("}\n")
                     }
+                    Some(FunctionBody::ThirBody(body)) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        body.display_body(fmt, nested)?;
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
                 }
             }
             DefinitionInner::UseName(item) => {
@@ -1314,6 +1327,53 @@ pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()>{
     Ok(())
 }
 
+pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()>{
+    let tys = defs.as_module(curmod).types.clone();
+
+    for &Pair(sym,defid) in &tys{
+        if let Definition{inner: Spanned{body: DefinitionInner::Module(_),..},..} = defs.definition(defid){
+            tycheck_values(defs,defid)?;
+        }
+    }
+
+    let values = defs.as_module(curmod).values.clone();
+
+    for &Pair(sym,defid) in &values{
+        let def = defs.definition_mut(defid);
+        match &mut def.inner.body{
+            DefinitionInner::Function(fnty,val @ Some(_)) => {
+                match val.take(){
+                    Some(FunctionBody::HirBody(block)) => {
+                        let (stats,safety) = match block.body.body.body{
+                            hir::HirBlock::Normal(stats) => (stats,Safety::Safe),
+                            hir::HirBlock::Unsafe(stats) => (stats,Safety::Unsafe),
+                            hir::HirBlock::Loop(_) => unreachable!(),
+                        };
+
+                        let mut converter = tyck::ThirConverter::new(defs, safety, defid, curmod,block.body.vardebugmap);
+
+                        for stat in stats{
+                            converter.write_statement(&stat)?;
+                        }
+
+                        let body = converter.into_thir_body(block.body.body.span);
+
+                        match &mut defs.definition_mut(defid).inner.body{
+                            DefinitionInner::Function(_,val) => *val = Some(FunctionBody::ThirBody(Spanned{body,span: block.span})),
+                            _ => unreachable!()
+                        }
+
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
 pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<()> {
     let root = defs.allocate_defid();
     defs.set_current_crate(root);
@@ -1326,5 +1386,6 @@ pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<(
 
 
     desugar_values(defs,root)?;
+    tycheck_values(defs,root)?;
     Ok(())
 }
