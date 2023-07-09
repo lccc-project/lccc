@@ -18,6 +18,14 @@ impl Pos {
     pub fn new(row: u32, col: u32, idx: usize) -> Self {
         Self { row, col, idx }
     }
+
+    pub const fn synthetic() -> Self {
+        Self {
+            row: !0,
+            col: !0,
+            idx: !0,
+        }
+    }
 }
 
 impl fmt::Debug for Pos {
@@ -62,6 +70,10 @@ impl Span {
 
     pub fn empty() -> Self {
         Self::new_simple(Pos::default(), Pos::default(), Symbol::default())
+    }
+
+    pub fn synthetic() -> Self {
+        Self::new_simple(Pos::synthetic(), Pos::synthetic(), Symbol::default())
     }
 
     pub fn between(start: Self, end: Self) -> Self {
