@@ -1,6 +1,15 @@
-use crate::ast::Mutability;
+use xlang::abi::collection::HashMap;
 
-use super::{ty::Type, Spanned};
+use crate::{
+    ast::{Mutability, StringType},
+    helpers::TabPrinter,
+    interning::Symbol,
+};
+
+use super::{
+    ty::{IntType, Type},
+    DefId, Spanned,
+};
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub struct RegionId(u32);
@@ -53,6 +62,27 @@ pub enum MirExpr {
     Var(SsaVarId),
     Read(Box<Spanned<MirExpr>>),
     Alloca(Mutability, Type, Box<Spanned<MirExpr>>),
+    ConstInt(IntType, Spanned<u128>),
+    ConstString(StringType, Spanned<Symbol>),
+    Const(DefId),
+}
+
+impl core::fmt::Display for MirExpr {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            MirExpr::Unreachable => f.write_str("unreachable"),
+            MirExpr::Var(var) => var.fmt(f),
+            MirExpr::Read(expr) => f.write_fmt(format_args!("read(*{})", expr.body)),
+            MirExpr::Alloca(mt, ty, val) => {
+                f.write_fmt(format_args!("alloc {} {} ({})", mt, ty, val.body))
+            }
+            MirExpr::ConstInt(ity, val) => f.write_fmt(format_args!("{}_{}", val.body, ity)),
+            MirExpr::ConstString(_, val) => {
+                f.write_fmt(format_args!("\"{}\"", val.escape_default()))
+            }
+            MirExpr::Const(defid) => defid.fmt(f),
+        }
+    }
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
@@ -78,16 +108,70 @@ pub enum MirTerminator {
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct MirCallInfo {
-    pub targ: Spanned<MirExpr>,
     pub retplace: Spanned<SsaVarId>, // id of the return place, which is made live in the next
+    pub targ: Spanned<MirExpr>,
+    pub params: Vec<Spanned<MirExpr>>,
     pub next: MirJumpInfo,
     pub unwind: Option<MirJumpInfo>,
+}
+
+impl core::fmt::Display for MirCallInfo {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        self.retplace.body.fmt(f)?;
+        f.write_str(" = ")?;
+        self.targ.body.fmt(f)?;
+        f.write_str("(")?;
+        let mut sep = "";
+
+        for param in &self.params {
+            f.write_str(sep)?;
+            sep = ", ";
+            param.body.fmt(f)?;
+        }
+
+        f.write_str(")")?;
+
+        f.write_str(" next ")?;
+
+        self.next.fmt(f)?;
+
+        if let Some(unwind) = &self.unwind {
+            f.write_str(" unwind ")?;
+            unwind.fmt(f)?;
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct MirTailcallInfo {
     pub targ: Spanned<MirExpr>,
+    pub params: Vec<Spanned<MirExpr>>,
     pub unwind: Option<MirJumpInfo>,
+}
+
+impl core::fmt::Display for MirTailcallInfo {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        self.targ.body.fmt(f)?;
+        f.write_str("(")?;
+        let mut sep = "";
+
+        for param in &self.params {
+            f.write_str(sep)?;
+            sep = ", ";
+            param.body.fmt(f)?;
+        }
+
+        f.write_str(")")?;
+
+        if let Some(unwind) = &self.unwind {
+            f.write_str(" unwind ")?;
+            unwind.fmt(f)?;
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
@@ -96,9 +180,107 @@ pub struct MirJumpInfo {
     pub remaps: Vec<(SsaVarId, SsaVarId)>,
 }
 
+impl core::fmt::Display for MirJumpInfo {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        self.targbb.fmt(f)?;
+        f.write_str(" [")?;
+
+        let mut sep = "";
+
+        for (l, r) in &self.remaps {
+            f.write_str(sep)?;
+            sep = ", ";
+            l.fmt(f)?;
+            f.write_str(" => ")?;
+            r.fmt(f)?;
+        }
+
+        f.write_str("]")
+    }
+}
+
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct MirBasicBlock {
     pub id: BasicBlockId,
     pub stats: Vec<Spanned<MirStatement>>,
     pub term: Spanned<MirTerminator>,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct MirFunctionBody {
+    pub bbs: Vec<MirBasicBlock>,
+    pub vardbg_info: HashMap<SsaVarId, Spanned<Symbol>>,
+}
+
+impl MirFunctionBody {
+    pub fn display_body(
+        &self,
+        f: &mut core::fmt::Formatter,
+        tabs: TabPrinter,
+    ) -> core::fmt::Result {
+        for bb in &self.bbs {
+            self.display_block(bb, f, tabs.nest())?;
+        }
+        Ok(())
+    }
+
+    fn display_block(
+        &self,
+        bb: &MirBasicBlock,
+        f: &mut core::fmt::Formatter,
+        tabs: TabPrinter,
+    ) -> core::fmt::Result {
+        use core::fmt::Display;
+        bb.id.fmt(f)?;
+        f.write_str(": {\n")?;
+
+        for stat in &bb.stats {
+            self.display_stat(stat, f, tabs.nest())?;
+        }
+
+        self.display_term(&bb.term, f, tabs.nest())?;
+
+        tabs.fmt(f)?;
+        f.write_str("}\n")?;
+        Ok(())
+    }
+
+    fn display_stat(
+        &self,
+        stat: &MirStatement,
+        f: &mut core::fmt::Formatter,
+        tabs: TabPrinter,
+    ) -> core::fmt::Result {
+        use core::fmt::Display;
+        tabs.fmt(f)?;
+        match stat {
+            MirStatement::Write(ptr, val) => {
+                f.write_fmt(format_args!("write(*{},{})", ptr.body, val.body))
+            }
+            MirStatement::Declare { var, ty, init } => f.write_fmt(format_args!(
+                "let {}: {} = {};",
+                var.body, ty.body, init.body
+            )),
+            MirStatement::StoreDead(var) => f.write_fmt(format_args!("store dead {};", var)),
+            MirStatement::EndRegion(region) => f.write_fmt(format_args!("end region {};", region)),
+        }
+    }
+
+    fn display_term(
+        &self,
+        term: &MirTerminator,
+        f: &mut core::fmt::Formatter,
+        tabs: TabPrinter,
+    ) -> core::fmt::Result {
+        use core::fmt::Display;
+        tabs.fmt(f)?;
+
+        match term {
+            MirTerminator::Call(call) => f.write_fmt(format_args!("call {}", call)),
+            MirTerminator::Tailcall(tc) => f.write_fmt(format_args!("tailcall {}", tc)),
+            MirTerminator::Return(expr) => f.write_fmt(format_args!("return {}", expr.body)),
+            MirTerminator::Jump(jmp) => f.write_fmt(format_args!("jump {}", jmp)),
+            MirTerminator::Unreachable => f.write_str("unreachable"),
+        }
+    }
 }
