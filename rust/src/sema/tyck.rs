@@ -16,6 +16,8 @@ use super::{
     DefId, Definitions, Error, ErrorCategory, Result, Spanned,
 };
 
+use CyclicOperationStatus::*;
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum TycheckErrorCategory {
     InferenceFailure,
@@ -150,6 +152,16 @@ pub enum ThirBlock {
     Normal(Vec<Spanned<ThirStatement>>),
     Unsafe(Vec<Spanned<ThirStatement>>),
     Loop(Vec<Spanned<ThirStatement>>),
+}
+
+impl ThirBlock {
+    fn inner_mut(&mut self) -> &mut Vec<Spanned<ThirStatement>> {
+        match self {
+            Self::Normal(x) => x,
+            Self::Unsafe(x) => x,
+            Self::Loop(x) => x,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -822,13 +834,35 @@ impl<'a> Inferer<'a> {
 
     pub fn unify_statement(
         &mut self,
-        stat: &mut ThirStatement,
+        stmt: &mut ThirStatement,
     ) -> super::Result<CyclicOperationStatus> {
-        todo!()
+        let mut status = Complete;
+        match stmt {
+            ThirStatement::Block(blk) => status &= self.unify_block(&mut blk.body)?,
+            ThirStatement::Call {
+                retplace,
+                fnexpr,
+                method_name,
+                params,
+            } => todo!(),
+            ThirStatement::Define { ty, .. } => {
+                status &= if ty.body.is_inference() {
+                    Incomplete
+                } else {
+                    Complete
+                }
+            }
+            x => todo!("{:?}", x),
+        }
+        Ok(status)
     }
 
     pub fn unify_block(&mut self, blk: &mut ThirBlock) -> super::Result<CyclicOperationStatus> {
-        todo!()
+        let mut status = Complete;
+        for stmt in blk.inner_mut() {
+            status &= self.unify_statement(stmt)?;
+        }
+        Ok(status)
     }
 
     pub fn propagate_block(&mut self, blk: &mut ThirBlock) -> super::Result<CyclicOperationStatus> {

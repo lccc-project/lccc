@@ -8,7 +8,6 @@ use crate::{
 
 pub use super::DefId;
 use super::{cx::ConstExpr, mir::RegionId, tyck::InferId, Definitions};
-use crate::feature::Features;
 
 use core::num::NonZeroU16;
 
@@ -434,6 +433,10 @@ pub enum Type {
 
 impl Type {
     pub const UNIT: Self = Self::Tuple(Vec::new());
+
+    pub fn is_inference(&self) -> bool {
+        matches!(self, Self::Inferable(_) | Self::InferableInt(_))
+    }
 }
 
 impl core::fmt::Display for Type {
