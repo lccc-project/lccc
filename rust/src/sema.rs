@@ -96,10 +96,10 @@ pub enum ErrorCategory {
     TycheckError(tyck::TycheckErrorCategory),
 }
 
-pub mod ty;
+pub mod cx;
 pub mod hir;
 pub mod mir;
-pub mod cx;
+pub mod ty;
 pub mod tyck;
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
@@ -134,7 +134,7 @@ pub enum FunctionBody {
     Incomplete,
     AstBody(Spanned<ast::Block>),
     HirBody(Spanned<HirFunctionBody>),
-    ThirBody(Spanned<ThirFunctionBody>)
+    ThirBody(Spanned<ThirFunctionBody>),
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -197,19 +197,35 @@ impl Definitions {
         self.definition(defid).inner.span
     }
 
-    pub fn as_module_mut(&mut self, defid: DefId) -> &mut Module{
-        if let Definition{inner: Spanned{body: DefinitionInner::Module(md),..},..} = self.definition_mut(defid){
+    pub fn as_module_mut(&mut self, defid: DefId) -> &mut Module {
+        if let Definition {
+            inner:
+                Spanned {
+                    body: DefinitionInner::Module(md),
+                    ..
+                },
+            ..
+        } = self.definition_mut(defid)
+        {
             md
-        }else{
-            panic!("Expected defid {} to be a module",defid)
+        } else {
+            panic!("Expected defid {} to be a module", defid)
         }
     }
 
-    pub fn as_module(&self, defid: DefId) -> &Module{
-        if let Definition{inner: Spanned{body: DefinitionInner::Module(md),..},..} = self.definition(defid){
+    pub fn as_module(&self, defid: DefId) -> &Module {
+        if let Definition {
+            inner:
+                Spanned {
+                    body: DefinitionInner::Module(md),
+                    ..
+                },
+            ..
+        } = self.definition(defid)
+        {
             md
-        }else{
-            panic!("Expected defid {} to be a module",defid)
+        } else {
+            panic!("Expected defid {} to be a module", defid)
         }
     }
 
@@ -254,7 +270,7 @@ impl Definitions {
                 Ok(())
             }
         } else {
-            panic!("Expected defid {} to be a module",curmod)
+            panic!("Expected defid {} to be a module", curmod)
         }
     }
 
@@ -292,7 +308,7 @@ impl Definitions {
                 Ok(())
             }
         } else {
-            panic!("Expected defid {} to be a module",curmod)
+            panic!("Expected defid {} to be a module", curmod)
         }
     }
 
@@ -429,7 +445,7 @@ impl Definitions {
 
                 Ok(def)
             } else {
-                panic!("Expected a module for item {}",searchmod); // TODO handle Ty::ASSOC_TYPE
+                panic!("Expected a module for item {}", searchmod); // TODO handle Ty::ASSOC_TYPE
             }
         }
     }
@@ -442,14 +458,14 @@ impl Definitions {
         at_item: DefId,
     ) -> Result<DefId> {
         if searchmod == DefId::ROOT {
-            Err(Error{
+            Err(Error {
                 span: id.span,
-                text: format!("Cannot find `::{}`",id.body),
+                text: format!("Cannot find `::{}`", id.body),
                 category: ErrorCategory::CannotFindName,
                 at_item,
                 containing_item: curmod,
                 relevant_item: at_item,
-                hints: vec![]
+                hints: vec![],
             })
         } else {
             if let Definition {
@@ -528,7 +544,7 @@ impl Definitions {
 
                 Ok(def)
             } else {
-                panic!("Expected a module for item {}",searchmod); // TODO handle Ty::ASSOC_TYPE
+                panic!("Expected a module for item {}", searchmod); // TODO handle Ty::ASSOC_TYPE
             }
         }
     }
@@ -536,60 +552,82 @@ impl Definitions {
     pub fn find_type(&self, curmod: DefId, path: &ast::Path, at_item: DefId) -> Result<DefId> {
         let mut resolve_mod = None;
 
-        match &path.root{
-            Some(Spanned{body: ast::PathRoot::Root,..}) => {
+        match &path.root {
+            Some(Spanned {
+                body: ast::PathRoot::Root,
+                ..
+            }) => {
                 resolve_mod = Some(DefId(0));
             }
-            Some(Spanned{body: ast::PathRoot::QSelf(_, _),..}) => todo!("QSelf"),
+            Some(Spanned {
+                body: ast::PathRoot::QSelf(_, _),
+                ..
+            }) => todo!("QSelf"),
             None => {}
         }
 
-        for seg in &path.segments{
-            match &seg.ident.body{
+        for seg in &path.segments {
+            match &seg.ident.body {
                 ast::SimplePathSegment::Identifier(id) => {
-                    let id = Spanned{body: *id, span: seg.ident.span};
+                    let id = Spanned {
+                        body: *id,
+                        span: seg.ident.span,
+                    };
 
-                    if let Some(md) = resolve_mod{
+                    if let Some(md) = resolve_mod {
                         resolve_mod = Some(self.find_type_in_mod(curmod, md, id, at_item)?);
-                    }else{
-                        match self.find_type_in_mod(curmod,curmod,id,at_item){
+                    } else {
+                        match self.find_type_in_mod(curmod, curmod, id, at_item) {
                             Ok(item) => resolve_mod = Some(item),
                             Err(e) => {
-                                if self.prelude_import.0 != 0{
-                                    if let Ok(item) = self.find_type_in_mod(curmod, self.prelude_import, id, at_item){
+                                if self.prelude_import.0 != 0 {
+                                    if let Ok(item) = self.find_type_in_mod(
+                                        curmod,
+                                        self.prelude_import,
+                                        id,
+                                        at_item,
+                                    ) {
                                         resolve_mod = Some(item)
-                                    }else if let Ok(item) = self.find_type_in_mod(curmod, DefId::ROOT,id,at_item){
+                                    } else if let Ok(item) =
+                                        self.find_type_in_mod(curmod, DefId::ROOT, id, at_item)
+                                    {
                                         resolve_mod = Some(item)
-                                    }else{
+                                    } else {
                                         return Err(e);
                                     }
-                                }else if let Ok(item) = self.find_type_in_mod(curmod, DefId::ROOT,id,at_item){
+                                } else if let Ok(item) =
+                                    self.find_type_in_mod(curmod, DefId::ROOT, id, at_item)
+                                {
                                     resolve_mod = Some(item)
-                                }else{
+                                } else {
                                     return Err(e);
                                 }
                             }
                         }
 
-                        if let Some(generics) = &seg.generics{
+                        if let Some(generics) = &seg.generics {
                             todo!("generics")
                         }
                     }
-                },
+                }
                 ast::SimplePathSegment::SuperPath => {
-                    if let Some(md) = resolve_mod{
-                        if md==DefId::ROOT{
-                            return Err(Error{
+                    if let Some(md) = resolve_mod {
+                        if md == DefId::ROOT {
+                            return Err(Error {
                                 span: seg.ident.span,
                                 text: format!("`super` is not allowed in a root"),
                                 category: ErrorCategory::CannotFindName,
                                 at_item,
                                 containing_item: curmod,
                                 relevant_item: at_item,
-                                hints: vec![SemaHint{text: format!("Remove the `::`"),itemref: at_item,refspan: path.root.as_ref().unwrap().span}],
+                                hints: vec![SemaHint {
+                                    text: format!("Remove the `::`"),
+                                    itemref: at_item,
+                                    refspan: path.root.as_ref().unwrap().span,
+                                }],
                             });
-                        }else{
-                            return Err(Error{
+                        } else {
+                            return Err(Error {
                                 span: seg.ident.span,
                                 text: format!("`super` cannot appear after any other components"),
                                 category: ErrorCategory::CannotFindName,
@@ -599,12 +637,12 @@ impl Definitions {
                                 hints: vec![],
                             });
                         }
-                    }else{
+                    } else {
                         resolve_mod = Some(self.definition(curmod).parent);
                     }
 
-                    if let Some(generics) = &seg.generics{
-                        return Err(Error{
+                    if let Some(generics) = &seg.generics {
+                        return Err(Error {
                             span: generics.span,
                             text: format!("`super` cannot be generic"),
                             category: ErrorCategory::CannotFindName,
@@ -614,21 +652,25 @@ impl Definitions {
                             hints: vec![],
                         });
                     }
-                },
+                }
                 ast::SimplePathSegment::SelfPath => {
-                    if let Some(md) = resolve_mod{
-                        if md==DefId::ROOT{
-                            return Err(Error{
+                    if let Some(md) = resolve_mod {
+                        if md == DefId::ROOT {
+                            return Err(Error {
                                 span: seg.ident.span,
                                 text: format!("`self` is not allowed in a root"),
                                 category: ErrorCategory::CannotFindName,
                                 at_item,
                                 containing_item: curmod,
                                 relevant_item: at_item,
-                                hints: vec![SemaHint{text: format!("Remove the `::`"),itemref: at_item,refspan: path.root.as_ref().unwrap().span}],
+                                hints: vec![SemaHint {
+                                    text: format!("Remove the `::`"),
+                                    itemref: at_item,
+                                    refspan: path.root.as_ref().unwrap().span,
+                                }],
                             });
-                        }else{
-                            return Err(Error{
+                        } else {
+                            return Err(Error {
                                 span: seg.ident.span,
                                 text: format!("`self` cannot appear after any other components"),
                                 category: ErrorCategory::CannotFindName,
@@ -638,12 +680,12 @@ impl Definitions {
                                 hints: vec![],
                             });
                         }
-                    }else{
+                    } else {
                         resolve_mod = Some(curmod);
                     }
 
-                    if let Some(generics) = &seg.generics{
-                        return Err(Error{
+                    if let Some(generics) = &seg.generics {
+                        return Err(Error {
                             span: generics.span,
                             text: format!("`self` cannot be generic"),
                             category: ErrorCategory::CannotFindName,
@@ -653,21 +695,25 @@ impl Definitions {
                             hints: vec![],
                         });
                     }
-                },
+                }
                 ast::SimplePathSegment::CratePath => {
-                    if let Some(md) = resolve_mod{
-                        if md==DefId::ROOT{
-                            return Err(Error{
+                    if let Some(md) = resolve_mod {
+                        if md == DefId::ROOT {
+                            return Err(Error {
                                 span: seg.ident.span,
                                 text: format!("`crate` is not allowed in a root"),
                                 category: ErrorCategory::CannotFindName,
                                 at_item,
                                 containing_item: curmod,
                                 relevant_item: at_item,
-                                hints: vec![SemaHint{text: format!("Remove the `::`"),itemref: at_item,refspan: path.root.as_ref().unwrap().span}],
+                                hints: vec![SemaHint {
+                                    text: format!("Remove the `::`"),
+                                    itemref: at_item,
+                                    refspan: path.root.as_ref().unwrap().span,
+                                }],
                             });
-                        }else{
-                            return Err(Error{
+                        } else {
+                            return Err(Error {
                                 span: seg.ident.span,
                                 text: format!("`crate` cannot appear after any other components"),
                                 category: ErrorCategory::CannotFindName,
@@ -677,12 +723,12 @@ impl Definitions {
                                 hints: vec![],
                             });
                         }
-                    }else{
+                    } else {
                         resolve_mod = Some(self.curcrate);
                     }
 
-                    if let Some(generics) = &seg.generics{
-                        return Err(Error{
+                    if let Some(generics) = &seg.generics {
+                        return Err(Error {
                             span: generics.span,
                             text: format!("`crate` cannot be generic"),
                             category: ErrorCategory::CannotFindName,
@@ -692,7 +738,7 @@ impl Definitions {
                             hints: vec![],
                         });
                     }
-                },
+                }
                 ast::SimplePathSegment::MacroCratePath => todo!("$crate"), // this needs to look in the macro DefId table
             }
         }
@@ -719,7 +765,9 @@ impl Definitions {
         fmt.write_str(") ")?;
 
         match &def.inner.body {
-            DefinitionInner::Placeholder | DefinitionInner::ExternBlock => unreachable!("This should not happen"),
+            DefinitionInner::Placeholder | DefinitionInner::ExternBlock => {
+                unreachable!("This should not happen")
+            }
             DefinitionInner::Module(md) => {
                 fmt.write_str("mod ")?;
                 fmt.write_str(item_name)?;
@@ -815,11 +863,11 @@ impl Definitions {
                     Some(FunctionBody::AstBody(stats)) => {
                         fmt.write_str("{\n")?;
                         let nested = tabs.nest();
-                        for stat in &stats.stmts{
-                            fmt.write_fmt(format_args!("{}{:?}\n",nested,stat.body))?;
+                        for stat in &stats.stmts {
+                            fmt.write_fmt(format_args!("{}{:?}\n", nested, stat.body))?;
                         }
-                        if let Some(tail) = &stats.tail_expr{
-                            fmt.write_fmt(format_args!("{}{:?}\n",nested,tail.body))?;
+                        if let Some(tail) = &stats.tail_expr {
+                            fmt.write_fmt(format_args!("{}{:?}\n", nested, tail.body))?;
                         }
                         tabs.fmt(fmt)?;
                         fmt.write_str("}\n")
@@ -998,7 +1046,9 @@ fn collect_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) 
             | ast::ItemBody::ExternCrate { .. }
             | ast::ItemBody::Function(_)
             | ast::ItemBody::ExternBlock(_) => {}
-            ast::ItemBody::MacroRules(_) => unreachable!("macros are expanded before semantic analysis"),
+            ast::ItemBody::MacroRules(_) => {
+                unreachable!("macros are expanded before semantic analysis")
+            }
         }
     }
 
@@ -1208,13 +1258,13 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                         ast::ItemBody::Function(itemfn) => {
                             let defid = defs.allocate_defid();
                             let inner = collect_function(defs, curmod, defid, itemfn, Some(tag), Some(Spanned{body: Safety::Unsafe, span: Span::empty()}), Some(blk.span))?;
-                            
+
                             let def = defs.definition_mut(defid);
                             def.attrs = item.attrs.clone();
                             def.visible_from = visible_from;
                             def.parent = curmod;
                             def.inner = itemfn.copy_span(|_| inner);
-            
+
                             defs.insert_value(curmod, itemfn.name, defid)?;
                         }
                         ast::ItemBody::Value(_) => todo!("value"),
@@ -1232,54 +1282,71 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                     }
                 }
             }
-            ast::ItemBody::MacroRules(_) => unreachable!("macros are expanded before semantic analysis"),
+            ast::ItemBody::MacroRules(_) => {
+                unreachable!("macros are expanded before semantic analysis")
+            }
         }
     }
 
     Ok(())
 }
 
-pub fn convert_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) -> Result<()>{
-    for item in &md.items{
-        match &item.item.body{
+pub fn convert_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) -> Result<()> {
+    for item in &md.items {
+        match &item.item.body {
             ast::ItemBody::Mod(md) => {
                 let name = md.name;
 
                 let semamod = defs.find_type_in_mod(curmod, curmod, name, curmod)?;
 
-                convert_values(defs,semamod,md.content.as_ref().expect("out-of-line mods aren't a thing in sema"))?;
-            },
+                convert_values(
+                    defs,
+                    semamod,
+                    md.content
+                        .as_ref()
+                        .expect("out-of-line mods aren't a thing in sema"),
+                )?;
+            }
             ast::ItemBody::Value(_) => todo!("static or const"),
-            
-            
+
             ast::ItemBody::Function(fbody) => {
                 let name = fbody.name;
 
-                let fndef = defs.find_value_in_mod(curmod,curmod,name,curmod)?;
+                let fndef = defs.find_value_in_mod(curmod, curmod, name, curmod)?;
 
-                if let Definition{inner: Spanned{body: DefinitionInner::Function(_, body),..},..} = defs.definition_mut(fndef){
-                    if let Some(ast_body) = &fbody.body.body{
+                if let Definition {
+                    inner:
+                        Spanned {
+                            body: DefinitionInner::Function(_, body),
+                            ..
+                        },
+                    ..
+                } = defs.definition_mut(fndef)
+                {
+                    if let Some(ast_body) = &fbody.body.body {
                         *body = Some(FunctionBody::AstBody(ast_body.clone()));
-                        
-                    }else {
-                        return Err(Error{
+                    } else {
+                        return Err(Error {
                             span: fbody.span,
-                            text: format!("Expected fn {} to have a body",name.body),
+                            text: format!("Expected fn {} to have a body", name.body),
                             category: ErrorCategory::InvalidFunction,
                             at_item: fndef,
                             containing_item: curmod,
                             relevant_item: fndef,
-                            hints: vec![]
+                            hints: vec![],
                         });
                     }
-                }else{
-                    panic!("Expected {} (defid {}) to name a function",name.body, fndef);
+                } else {
+                    panic!(
+                        "Expected {} (defid {}) to name a function",
+                        name.body, fndef
+                    );
                 }
-            },
-            ast::ItemBody::Use(_) |
-            ast::ItemBody::UserType(_) |
-            ast::ItemBody::ExternCrate { .. } |
-            ast::ItemBody::ExternBlock(_) => {},
+            }
+            ast::ItemBody::Use(_)
+            | ast::ItemBody::UserType(_)
+            | ast::ItemBody::ExternCrate { .. }
+            | ast::ItemBody::ExternBlock(_) => {}
             ast::ItemBody::MacroRules(_) => unreachable!(),
         }
     }
@@ -1287,39 +1354,48 @@ pub fn convert_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::M
     Ok(())
 }
 
-pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()>{
+pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     let tys = defs.as_module(curmod).types.clone();
 
-    for &Pair(sym,defid) in &tys{
-        if let Definition{inner: Spanned{body: DefinitionInner::Module(_),..},..} = defs.definition(defid){
-            desugar_values(defs,defid)?;
+    for &Pair(sym, defid) in &tys {
+        if let Definition {
+            inner:
+                Spanned {
+                    body: DefinitionInner::Module(_),
+                    ..
+                },
+            ..
+        } = defs.definition(defid)
+        {
+            desugar_values(defs, defid)?;
         }
     }
 
     let values = defs.as_module(curmod).values.clone();
 
-    for &Pair(sym,defid) in &values{
+    for &Pair(sym, defid) in &values {
         let def = defs.definition_mut(defid);
-        match &mut def.inner.body{
-            DefinitionInner::Function(fnty,val @ Some(_)) => {
-                match val.take(){
-                    Some(FunctionBody::AstBody(block)) => {
-                        let mut vardebugmap = HashMap::new();
-                        let safety = fnty.safety.body;
-                        let span = block.span;
-                        let mut builder = HirLowerer::new(defs,defid,curmod,&mut vardebugmap);
-                        builder.desugar_block(Some(&mut |expr|hir::HirStatement::Return(expr)), &block)?;
+        match &mut def.inner.body {
+            DefinitionInner::Function(fnty, val @ Some(_)) => match val.take() {
+                Some(FunctionBody::AstBody(block)) => {
+                    let mut vardebugmap = HashMap::new();
+                    let safety = fnty.safety.body;
+                    let span = block.span;
+                    let mut builder = HirLowerer::new(defs, defid, curmod, &mut vardebugmap);
+                    builder
+                        .desugar_block(Some(&mut |expr| hir::HirStatement::Return(expr)), &block)?;
 
-                        let body = builder.into_fn_body(safety, span);
+                    let body = builder.into_fn_body(safety, span);
 
-                        match &mut defs.definition_mut(defid).inner.body{
-                            DefinitionInner::Function(_,val) => *val = Some(FunctionBody::HirBody(block.copy_span(|_|body))),
-                            _ => unreachable!()
+                    match &mut defs.definition_mut(defid).inner.body {
+                        DefinitionInner::Function(_, val) => {
+                            *val = Some(FunctionBody::HirBody(block.copy_span(|_| body)))
                         }
+                        _ => unreachable!(),
                     }
-                    _ => {}
                 }
-            }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -1327,46 +1403,62 @@ pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()>{
     Ok(())
 }
 
-pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()>{
+pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     let tys = defs.as_module(curmod).types.clone();
 
-    for &Pair(sym,defid) in &tys{
-        if let Definition{inner: Spanned{body: DefinitionInner::Module(_),..},..} = defs.definition(defid){
-            tycheck_values(defs,defid)?;
+    for &Pair(sym, defid) in &tys {
+        if let Definition {
+            inner:
+                Spanned {
+                    body: DefinitionInner::Module(_),
+                    ..
+                },
+            ..
+        } = defs.definition(defid)
+        {
+            tycheck_values(defs, defid)?;
         }
     }
 
     let values = defs.as_module(curmod).values.clone();
 
-    for &Pair(sym,defid) in &values{
+    for &Pair(sym, defid) in &values {
         let def = defs.definition_mut(defid);
-        match &mut def.inner.body{
-            DefinitionInner::Function(fnty,val @ Some(_)) => {
-                match val.take(){
-                    Some(FunctionBody::HirBody(block)) => {
-                        let (stats,safety) = match block.body.body.body{
-                            hir::HirBlock::Normal(stats) => (stats,Safety::Safe),
-                            hir::HirBlock::Unsafe(stats) => (stats,Safety::Unsafe),
-                            hir::HirBlock::Loop(_) => unreachable!(),
-                        };
+        match &mut def.inner.body {
+            DefinitionInner::Function(fnty, val @ Some(_)) => match val.take() {
+                Some(FunctionBody::HirBody(block)) => {
+                    let (stats, safety) = match block.body.body.body {
+                        hir::HirBlock::Normal(stats) => (stats, Safety::Safe),
+                        hir::HirBlock::Unsafe(stats) => (stats, Safety::Unsafe),
+                        hir::HirBlock::Loop(_) => unreachable!(),
+                    };
 
-                        let mut converter = tyck::ThirConverter::new(defs, safety, defid, curmod,block.body.vardebugmap);
+                    let mut converter = tyck::ThirConverter::new(
+                        defs,
+                        safety,
+                        defid,
+                        curmod,
+                        block.body.vardebugmap,
+                    );
 
-                        for stat in stats{
-                            converter.write_statement(&stat)?;
-                        }
-
-                        let body = converter.into_thir_body(block.body.body.span);
-
-                        match &mut defs.definition_mut(defid).inner.body{
-                            DefinitionInner::Function(_,val) => *val = Some(FunctionBody::ThirBody(Spanned{body,span: block.span})),
-                            _ => unreachable!()
-                        }
-
+                    for stat in stats {
+                        converter.write_statement(&stat)?;
                     }
-                    _ => {}
+
+                    let body = converter.into_thir_body(block.body.body.span);
+
+                    match &mut defs.definition_mut(defid).inner.body {
+                        DefinitionInner::Function(_, val) => {
+                            *val = Some(FunctionBody::ThirBody(Spanned {
+                                body,
+                                span: block.span,
+                            }))
+                        }
+                        _ => unreachable!(),
+                    }
                 }
-            }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -1380,12 +1472,11 @@ pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<(
 
     scan_modules(defs, root, md)?;
     collect_types(defs, root, md)?;
-    collect_values(defs,root,md)?;
+    collect_values(defs, root, md)?;
     /* TODO: Convert types */
-    convert_values(defs,root,md)?;
+    convert_values(defs, root, md)?;
 
-
-    desugar_values(defs,root)?;
-    tycheck_values(defs,root)?;
+    desugar_values(defs, root)?;
+    tycheck_values(defs, root)?;
     Ok(())
 }

@@ -421,9 +421,18 @@ pub fn do_compound_block(
 ) -> Result<Spanned<CompoundBlock>> {
     // TODO: support more than `unsafe` and `loop`
     let mut tree = tree.into_rewinder();
-    let (Lexeme {
-        span: span_start, ..
-    }, class) = do_lexeme_classes(&mut tree, &[LexemeClass::Keyword("unsafe".into()), LexemeClass::Keyword("loop".into())])?;
+    let (
+        Lexeme {
+            span: span_start, ..
+        },
+        class,
+    ) = do_lexeme_classes(
+        &mut tree,
+        &[
+            LexemeClass::Keyword("unsafe".into()),
+            LexemeClass::Keyword("loop".into()),
+        ],
+    )?;
     let block = do_block(&mut tree)?;
     let span = Span::between(span_start, block.span);
     tree.accept();
@@ -431,7 +440,7 @@ pub fn do_compound_block(
         body: match class {
             LexemeClass::Keyword(x) if x == "unsafe" => CompoundBlock::Unsafe(block),
             LexemeClass::Keyword(x) if x == "loop" => CompoundBlock::Loop(block),
-            _ => unreachable!()
+            _ => unreachable!(),
         },
         span,
     })
@@ -528,9 +537,9 @@ pub fn do_primary_expression(
                         body: Expr::BlockExpr(x),
                         span,
                     })
-                },
+                }
                 Err(c) => Err(a | b | c), // TODO: Literally every other kind of useful expression
-            }
+            },
         },
     }
 }

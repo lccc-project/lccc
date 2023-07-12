@@ -213,7 +213,8 @@ pub enum LexemeClass {
 impl LexemeClass {
     pub fn of(lexeme: Option<&Lexeme>) -> Self {
         match lexeme {
-            None | Some(Lexeme {
+            None
+            | Some(Lexeme {
                 body: LexemeBody::Eof,
                 ..
             }) => Self::Eof,
@@ -296,13 +297,25 @@ impl IsEof for Lexeme {
 
 impl IsEof for Option<Lexeme> {
     fn is_eof(&self) -> bool {
-        matches!(self, Some(Lexeme { body: LexemeBody::Eof, .. }))
+        matches!(
+            self,
+            Some(Lexeme {
+                body: LexemeBody::Eof,
+                ..
+            })
+        )
     }
 }
 
 impl IsEof for Option<&Lexeme> {
     fn is_eof(&self) -> bool {
-        matches!(self, Some(Lexeme { body: LexemeBody::Eof, .. }))
+        matches!(
+            self,
+            Some(Lexeme {
+                body: LexemeBody::Eof,
+                ..
+            })
+        )
     }
 }
 
