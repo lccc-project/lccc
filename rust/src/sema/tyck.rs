@@ -844,13 +844,53 @@ impl<'a> Inferer<'a> {
                 fnexpr,
                 method_name,
                 params,
-            } => todo!(),
-            ThirStatement::Define { ty, .. } => {
-                status &= if ty.body.is_inference() {
-                    Incomplete
-                } else {
-                    Complete
+            } => {
+                status &= self.unify_single_expr(fnexpr)?;
+
+                if method_name.is_some() {
+                    todo!("method")
                 }
+
+                let span = fnexpr.span;
+
+                let fnty = match &mut fnexpr.ty {
+                    Type::FnPtr(ty) => ty,
+                    Type::FnItem(ty, _) => ty,
+                    Type::Inferable(_) => return Ok(status),
+                    ty => {
+                        return Err(Error {
+                            span,
+                            text: format!("Cannot use primitive function call on {}", ty),
+                            category: ErrorCategory::TycheckError(
+                                TycheckErrorCategory::InferenceFailure,
+                            ),
+                            at_item: self.curdef,
+                            containing_item: self.curmod,
+                            relevant_item: self.curmod,
+                            hints: vec![],
+                        })
+                    }
+                };
+
+                status &= fnty
+                    .paramtys
+                    .iter_mut()
+                    .zip(params)
+                    .try_fold(status, |status, (ty, param)| {
+                        Ok(status & self.unify_typed_expr(param, ty)?)
+                    })?;
+
+                if let Some(retplace) = retplace {
+                    status &= self.unify_typed_expr(retplace, &mut fnty.retty)?;
+                }
+            }
+            ThirStatement::Define { .. } => {
+                // status &= if ty.body.is_inference() {
+                //     Incomplete
+                // } else {
+                //     Complete
+                // }
+                // We didn't actually unify an inference var here, so don't say so -
             }
             x => todo!("{:?}", x),
         }
@@ -859,8 +899,12 @@ impl<'a> Inferer<'a> {
 
     pub fn unify_block(&mut self, blk: &mut ThirBlock) -> super::Result<CyclicOperationStatus> {
         let mut status = Complete;
-        for stmt in blk.inner_mut() {
-            status &= self.unify_statement(stmt)?;
+        match blk {
+            ThirBlock::Normal(stats) | ThirBlock::Unsafe(stats) | ThirBlock::Loop(stats) => {
+                for stat in stats {
+                    status &= self.unify_statement(stat)?;
+                }
+            }
         }
         Ok(status)
     }
