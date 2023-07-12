@@ -759,6 +759,16 @@ impl<'a> Inferer<'a> {
         }
     }
 
+    pub fn unify_typed_expr(
+        &mut self,
+        left: &mut ThirExpr,
+        ty: &mut Type,
+    ) -> super::Result<CyclicOperationStatus> {
+        let status = self.unify_types(&mut left.ty, ty)?;
+
+        return Ok(status & self.unify_single_expr(left)?);
+    }
+
     pub fn unify_single_expr(
         &mut self,
         left: &mut ThirExpr,
@@ -808,5 +818,20 @@ impl<'a> Inferer<'a> {
         status &= self.unify_single_expr(right)?;
 
         Ok(status)
+    }
+
+    pub fn unify_statement(
+        &mut self,
+        stat: &mut ThirStatement,
+    ) -> super::Result<CyclicOperationStatus> {
+        todo!()
+    }
+
+    pub fn unify_block(&mut self, blk: &mut ThirBlock) -> super::Result<CyclicOperationStatus> {
+        todo!()
+    }
+
+    pub fn propagate_block(&mut self, blk: &mut ThirBlock) -> super::Result<CyclicOperationStatus> {
+        todo!()
     }
 }
