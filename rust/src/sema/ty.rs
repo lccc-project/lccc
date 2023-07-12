@@ -485,7 +485,8 @@ impl core::fmt::Display for Type {
                 f.write_str("[")?;
                 elem.body.fmt(f)?;
                 f.write_str("; ")?;
-                len.body.fmt(f)
+                len.body.fmt(f)?;
+                f.write_str("]")
             }
             Self::Reference(life, mt, ty) => {
                 f.write_str("&")?;

@@ -458,7 +458,9 @@ impl<'a> ThirConverter<'a> {
                 cat: ValueCategory::Rvalue,
                 inner: ThirExprInner::Unreachable,
             }),
-            hir::HirExpr::Cast(_, _) => todo!("cast"),
+            hir::HirExpr::Cast(expr, ty) => {
+                Ok(ThirExpr { ty: ty.body.clone(), cat: ValueCategory::Rvalue, inner: ThirExprInner::Cast(Box::new(self.convert_rvalue(expr)?), ty.clone()) })
+            }
             hir::HirExpr::Tuple(vals) => {
                 let vals = vals
                     .iter()
