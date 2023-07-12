@@ -13,7 +13,7 @@ use super::{
     cx::ConstExpr,
     hir::HirVarId,
     ty::{IntType, SemaLifetime},
-    DefId, Definitions, Error, ErrorCategory, Result, Spanned,
+    DefId, DefinitionInner, Definitions, Error, ErrorCategory, Result, Spanned,
 };
 
 use CyclicOperationStatus::*;
@@ -892,6 +892,14 @@ impl<'a> Inferer<'a> {
                 // }
                 // We didn't actually unify an inference var here, so don't say so -
             }
+            ThirStatement::Return(expr) => match &self.defs.definition(self.curdef).inner.body {
+                DefinitionInner::Function(fnty, _) => {
+                    let mut retty = (*fnty.retty).clone();
+
+                    status &= self.unify_typed_expr(expr, &mut retty)?;
+                }
+                _ => unreachable!("One would hope we'd be typechecking the inside of a function body (or a static/const)")
+            },
             x => todo!("{:?}", x),
         }
         Ok(status)
@@ -910,6 +918,104 @@ impl<'a> Inferer<'a> {
     }
 
     pub fn propagate_block(&mut self, blk: &mut ThirBlock) -> super::Result<CyclicOperationStatus> {
-        todo!()
+        let mut status = Complete;
+        match blk {
+            ThirBlock::Normal(stats) | ThirBlock::Unsafe(stats) | ThirBlock::Loop(stats) => {
+                for stat in stats {
+                    status &= self.propagate_statement(stat)?;
+                }
+            }
+        }
+        Ok(status)
+    }
+
+    pub fn propagate_statement(
+        &mut self,
+        stat: &mut ThirStatement,
+    ) -> super::Result<CyclicOperationStatus> {
+        let mut status = Complete;
+        match stat {
+            ThirStatement::Assign { dest, val, op } => {
+                status &= self.propagate_expr(dest)?;
+                status &= self.propagate_expr(val)?;
+            }
+            ThirStatement::Define {
+                mutability,
+                var,
+                ty,
+            } => status &= self.propagate_type(ty)?,
+            ThirStatement::Return(ret) => status &= self.propagate_expr(ret)?,
+            ThirStatement::Block(blk) => status &= self.propagate_block(blk)?,
+            ThirStatement::Discard(expr) => status &= self.propagate_expr(expr)?,
+            ThirStatement::Call {
+                retplace,
+                fnexpr,
+                method_name,
+                params,
+            } => {
+                if let Some(retplace) = retplace {
+                    status &= self.propagate_expr(retplace)?;
+                }
+
+                status &= self.propagate_expr(fnexpr)?;
+
+                for param in params {
+                    status &= self.propagate_expr(param)?;
+                }
+            }
+        }
+        Ok(status)
+    }
+
+    pub fn propagate_expr(&mut self, expr: &mut ThirExpr) -> super::Result<CyclicOperationStatus> {
+        let mut status = self.propagate_type(&mut expr.ty)?;
+
+        match &mut expr.inner {
+            ThirExprInner::Read(inner) => status &= self.propagate_expr(inner)?,
+            ThirExprInner::Cast(inner, ty) => {
+                status &= self.propagate_type(ty)?;
+                status &= self.propagate_expr(inner)?;
+            }
+            ThirExprInner::Tuple(exprs) => {
+                for expr in exprs {
+                    status &= self.propagate_expr(expr)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(status)
+    }
+
+    pub fn propagate_type(&mut self, ty: &mut Type) -> super::Result<CyclicOperationStatus> {
+        match ty {
+            Type::Tuple(tys) => {
+                let mut status = Complete;
+                for ty in tys {
+                    status &= self.propagate_type(ty)?;
+                }
+                Ok(status)
+            }
+            Type::FnPtr(fnty) => {
+                let mut status = self.propagate_type(&mut fnty.retty)?;
+
+                for ty in &mut fnty.paramtys {
+                    status &= self.propagate_type(ty)?;
+                }
+
+                Ok(status)
+            }
+            Type::Pointer(_, pty) => self.propagate_type(pty),
+            Type::Array(inner, _) => self.propagate_type(inner),
+            Type::Inferable(infer) | Type::InferableInt(infer) => {
+                if let Some(subty) = self.inference_set.get(infer) {
+                    *ty = subty.clone();
+                    Ok(Incomplete)
+                } else {
+                    Ok(Complete)
+                }
+            }
+            Type::Reference(_, _, inner) => self.propagate_type(inner),
+            _ => Ok(Complete),
+        }
     }
 }
