@@ -16,10 +16,10 @@ use crate::lang::LangItem;
 use crate::sema::ty::AsyncType;
 use crate::span::Span;
 
-use self::hir::HirFunctionBody;
 use self::hir::HirLowerer;
 use self::ty::FnType;
 use self::tyck::ThirFunctionBody;
+use self::{hir::HirFunctionBody, tyck::Inferer};
 
 macro_rules! as_simple_component {
     (self) => {
@@ -1445,7 +1445,28 @@ pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
                         converter.write_statement(&stat)?;
                     }
 
-                    let body = converter.into_thir_body(block.body.body.span);
+                    let mut body = converter.into_thir_body(block.body.body.span);
+
+                    let mut inferer = Inferer::new(&defs, defid, curmod);
+
+                    let mut iter_count = 0;
+                    const MAX_ITER: usize = 4096;
+
+                    loop {
+                        if inferer.unify_block(&mut body.body.body)?.is_complete() {
+                            break;
+                        }
+
+                        if inferer.propagate_block(&mut body.body.body)?.is_complete() {
+                            break;
+                        }
+
+                        iter_count += 1;
+
+                        if iter_count > MAX_ITER {
+                            panic!("Semantic analyzer failed to resolve types. This is an ICE in this case.");
+                        }
+                    }
 
                     match &mut defs.definition_mut(defid).inner.body {
                         DefinitionInner::Function(_, val) => {

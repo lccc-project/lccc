@@ -60,6 +60,12 @@ pub enum CyclicOperationStatus {
     Incomplete,
 }
 
+impl CyclicOperationStatus {
+    pub fn is_complete(&self) -> bool {
+        *self == CyclicOperationStatus::Complete
+    }
+}
+
 impl core::ops::BitAnd for CyclicOperationStatus {
     type Output = Self;
     fn bitand(self, rhs: Self) -> Self {
