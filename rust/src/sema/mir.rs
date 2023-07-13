@@ -97,6 +97,7 @@ impl core::fmt::Display for MirExpr {
                 if *mt == Mutability::Mut {
                     f.write_str("mut ")?;
                 }
+                f.write_str("*")?;
                 inner.body.fmt(f)
             }
             MirExpr::Cast(inner, ty) => f.write_fmt(format_args!("({}) as {}", inner.body, ty)),
