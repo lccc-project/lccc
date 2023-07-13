@@ -56,6 +56,12 @@ impl core::fmt::Debug for SsaVarId {
     }
 }
 
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
+pub enum RefKind {
+    Raw,
+    Ref,
+}
+
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum MirExpr {
     Unreachable,
@@ -65,6 +71,8 @@ pub enum MirExpr {
     ConstInt(IntType, Spanned<u128>),
     ConstString(StringType, Spanned<Symbol>),
     Const(DefId),
+    Retag(RefKind, Mutability, Box<Spanned<MirExpr>>),
+    Cast(Box<Spanned<MirExpr>>, Type),
 }
 
 impl core::fmt::Display for MirExpr {
@@ -74,13 +82,24 @@ impl core::fmt::Display for MirExpr {
             MirExpr::Var(var) => var.fmt(f),
             MirExpr::Read(expr) => f.write_fmt(format_args!("read(*{})", expr.body)),
             MirExpr::Alloca(mt, ty, val) => {
-                f.write_fmt(format_args!("alloc {} {} ({})", mt, ty, val.body))
+                f.write_fmt(format_args!("alloca {} {} ({})", mt, ty, val.body))
             }
             MirExpr::ConstInt(ity, val) => f.write_fmt(format_args!("{}_{}", val.body, ity)),
             MirExpr::ConstString(_, val) => {
                 f.write_fmt(format_args!("\"{}\"", val.escape_default()))
             }
             MirExpr::Const(defid) => defid.fmt(f),
+            MirExpr::Retag(rk, mt, inner) => {
+                f.write_str("&")?;
+                if *rk == RefKind::Raw {
+                    f.write_str("raw ")?
+                }
+                if *mt == Mutability::Mut {
+                    f.write_str("mut ")?;
+                }
+                inner.body.fmt(f)
+            }
+            MirExpr::Cast(inner, ty) => f.write_fmt(format_args!("({}) as {}", inner.body, ty)),
         }
     }
 }
