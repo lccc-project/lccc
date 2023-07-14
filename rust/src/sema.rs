@@ -16,7 +16,7 @@ use crate::lang::LangItem;
 use crate::sema::ty::AsyncType;
 use crate::span::Span;
 
-use self::hir::HirLowerer;
+use self::{hir::HirLowerer, mir::MirFunctionBody};
 use self::ty::FnType;
 use self::tyck::ThirFunctionBody;
 use self::{hir::HirFunctionBody, tyck::Inferer};
@@ -135,6 +135,7 @@ pub enum FunctionBody {
     AstBody(Spanned<ast::Block>),
     HirBody(Spanned<HirFunctionBody>),
     ThirBody(Spanned<ThirFunctionBody>),
+    MirBody(Spanned<MirFunctionBody>),
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -860,13 +861,13 @@ impl Definitions {
                         tabs.fmt(fmt)?;
                         fmt.write_str("}\n")
                     }
-                    Some(FunctionBody::AstBody(stats)) => {
+                    Some(FunctionBody::AstBody(stmts)) => {
                         fmt.write_str("{\n")?;
                         let nested = tabs.nest();
-                        for stat in &stats.stmts {
-                            fmt.write_fmt(format_args!("{}{:?}\n", nested, stat.body))?;
+                        for stmt in &stmts.stmts {
+                            fmt.write_fmt(format_args!("{}{:?}\n", nested, stmt.body))?;
                         }
-                        if let Some(tail) = &stats.tail_expr {
+                        if let Some(tail) = &stmts.tail_expr {
                             fmt.write_fmt(format_args!("{}{:?}\n", nested, tail.body))?;
                         }
                         tabs.fmt(fmt)?;
@@ -880,6 +881,13 @@ impl Definitions {
                         fmt.write_str("}\n")
                     }
                     Some(FunctionBody::ThirBody(body)) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        body.display_body(fmt, nested)?;
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                    Some(FunctionBody::MirBody(body)) => {
                         fmt.write_str("{\n")?;
                         let nested = tabs.nest();
                         body.display_body(fmt, nested)?;
@@ -1427,9 +1435,9 @@ pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
         match &mut def.inner.body {
             DefinitionInner::Function(fnty, val @ Some(_)) => match val.take() {
                 Some(FunctionBody::HirBody(block)) => {
-                    let (stats, safety) = match block.body.body.body {
-                        hir::HirBlock::Normal(stats) => (stats, Safety::Safe),
-                        hir::HirBlock::Unsafe(stats) => (stats, Safety::Unsafe),
+                    let (stmts, safety) = match block.body.body.body {
+                        hir::HirBlock::Normal(stmts) => (stmts, Safety::Safe),
+                        hir::HirBlock::Unsafe(stmts) => (stmts, Safety::Unsafe),
                         hir::HirBlock::Loop(_) => unreachable!(),
                     };
 
@@ -1441,8 +1449,8 @@ pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
                         block.body.vardebugmap,
                     );
 
-                    for stat in stats {
-                        converter.write_statement(&stat)?;
+                    for stmt in stmts {
+                        converter.write_statement(&stmt)?;
                     }
 
                     let mut body = converter.into_thir_body(block.body.body.span);
@@ -1487,6 +1495,25 @@ pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     Ok(())
 }
 
+pub fn mir_lower(defs: &mut Definitions, curmod: DefId) -> Result<()> {
+    let values = defs.as_module(curmod).values.clone();
+
+    for &Pair(_sym, defid) in &values {
+        let def = defs.definition_mut(defid);
+        match &mut def.inner.body {
+            DefinitionInner::Function(_fnty, val @ Some(_)) => match val.take() {
+                Some(FunctionBody::ThirBody(block)) => {
+
+                }
+                _ => {}
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
 pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<()> {
     let root = defs.allocate_defid();
     defs.set_current_crate(root);
@@ -1499,5 +1526,7 @@ pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<(
 
     desugar_values(defs, root)?;
     tycheck_values(defs, root)?;
+
+    mir_lower(defs, root)?;
     Ok(())
 }
