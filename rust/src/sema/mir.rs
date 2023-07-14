@@ -8,7 +8,7 @@ use crate::{
 
 use super::{
     ty::{IntType, Type},
-    DefId, Spanned,
+    DefId, Spanned, Definitions,
 };
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
@@ -222,7 +222,7 @@ impl core::fmt::Display for MirJumpInfo {
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct MirBasicBlock {
     pub id: BasicBlockId,
-    pub stats: Vec<Spanned<MirStatement>>,
+    pub stmts: Vec<Spanned<MirStatement>>,
     pub term: Spanned<MirTerminator>,
 }
 
@@ -254,8 +254,8 @@ impl MirFunctionBody {
         bb.id.fmt(f)?;
         f.write_str(": {\n")?;
 
-        for stat in &bb.stats {
-            self.display_stat(stat, f, tabs.nest())?;
+        for stmt in &bb.stmts {
+            self.display_stmt(stmt, f, tabs.nest())?;
         }
 
         self.display_term(&bb.term, f, tabs.nest())?;
@@ -265,15 +265,15 @@ impl MirFunctionBody {
         Ok(())
     }
 
-    fn display_stat(
+    fn display_stmt(
         &self,
-        stat: &MirStatement,
+        stmt: &MirStatement,
         f: &mut core::fmt::Formatter,
         tabs: TabPrinter,
     ) -> core::fmt::Result {
         use core::fmt::Display;
         tabs.fmt(f)?;
-        match stat {
+        match stmt {
             MirStatement::Write(ptr, val) => {
                 f.write_fmt(format_args!("write(*{},{})", ptr.body, val.body))
             }
@@ -302,5 +302,15 @@ impl MirFunctionBody {
             MirTerminator::Jump(jmp) => f.write_fmt(format_args!("jump {}", jmp)),
             MirTerminator::Unreachable => f.write_str("unreachable"),
         }
+    }
+}
+
+pub struct MirConverter<'a> {
+    defs: &'a Definitions,
+}
+
+impl<'a> MirConverter<'a> {
+    pub fn new(defs: &'a Definitions) -> Self {
+        Self { defs }
     }
 }

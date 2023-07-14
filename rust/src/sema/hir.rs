@@ -119,13 +119,13 @@ impl HirFunctionBody {
         f: &mut core::fmt::Formatter,
         tabs: TabPrinter,
     ) -> core::fmt::Result {
-        let stats = match &self.body.body {
-            HirBlock::Normal(stats) | HirBlock::Unsafe(stats) => stats,
+        let stmts = match &self.body.body {
+            HirBlock::Normal(stmts) | HirBlock::Unsafe(stmts) => stmts,
             _ => unreachable!(),
         };
 
-        for stat in stats {
-            self.display_statement(stat, f, tabs)?;
+        for stmt in stmts {
+            self.display_statement(stmt, f, tabs)?;
         }
 
         Ok(())
@@ -133,12 +133,12 @@ impl HirFunctionBody {
 
     fn display_statement(
         &self,
-        stat: &HirStatement,
+        stmt: &HirStatement,
         f: &mut core::fmt::Formatter,
         tabs: TabPrinter,
     ) -> core::fmt::Result {
         use core::fmt::Display;
-        match stat {
+        match stmt {
             HirStatement::Assign { dest, val, op } => {
                 tabs.fmt(f)?;
                 dest.body.fmt(f)?;
@@ -159,32 +159,32 @@ impl HirFunctionBody {
                 f.write_fmt(format_args!("{}return {};\n", tabs, expr.body))
             }
             HirStatement::Block(b) => match &b.body {
-                HirBlock::Normal(stats) => {
+                HirBlock::Normal(stmts) => {
                     tabs.fmt(f)?;
                     f.write_str("{\n")?;
                     let nested = tabs.nest();
-                    for stat in stats {
-                        self.display_statement(stat, f, nested)?;
+                    for stmt in stmts {
+                        self.display_statement(stmt, f, nested)?;
                     }
                     tabs.fmt(f)?;
                     f.write_str("}\n")
                 }
-                HirBlock::Unsafe(stats) => {
+                HirBlock::Unsafe(stmts) => {
                     tabs.fmt(f)?;
                     f.write_str("unsafe {\n")?;
                     let nested = tabs.nest();
-                    for stat in stats {
-                        self.display_statement(stat, f, nested)?;
+                    for stmt in stmts {
+                        self.display_statement(stmt, f, nested)?;
                     }
                     tabs.fmt(f)?;
                     f.write_str("}\n")
                 }
-                HirBlock::Loop(stats) => {
+                HirBlock::Loop(stmts) => {
                     tabs.fmt(f)?;
                     f.write_str("loop {\n")?;
                     let nested = tabs.nest();
-                    for stat in stats {
-                        self.display_statement(stat, f, nested)?;
+                    for stmt in stmts {
+                        self.display_statement(stmt, f, nested)?;
                     }
                     tabs.fmt(f)?;
                     f.write_str("}\n")
@@ -256,7 +256,7 @@ pub struct HirLowerer<'a> {
     atitem: DefId,
     curmod: DefId,
     nexthirvarid: u32,
-    stats: Vec<Spanned<HirStatement>>,
+    stmts: Vec<Spanned<HirStatement>>,
 }
 
 impl<'a> HirLowerer<'a> {
@@ -273,7 +273,7 @@ impl<'a> HirLowerer<'a> {
             varnames: HashMap::new(),
             vardebugmap,
             nexthirvarid: 0,
-            stats: Vec::new(),
+            stmts: Vec::new(),
         }
     }
 
@@ -301,7 +301,7 @@ impl<'a> HirLowerer<'a> {
                 args,
             } => {
                 let hirvar = expr.copy_span(|_| HirVarId(self.nexthirvarid.fetch_increment()));
-                self.stats.push(expr.copy_span(|_| HirStatement::Define {
+                self.stmts.push(expr.copy_span(|_| HirStatement::Define {
                     mutability: expr.copy_span(|_| Mutability::Const),
                     var: hirvar,
                     ty: None,
@@ -311,7 +311,7 @@ impl<'a> HirLowerer<'a> {
                     .iter()
                     .map(|expr| self.desugar_expr(expr))
                     .collect::<super::Result<Vec<_>>>()?;
-                self.stats.push(expr.copy_span(|_| HirStatement::Call {
+                self.stmts.push(expr.copy_span(|_| HirStatement::Call {
                     retplace: Some(hirvar.copy_span(|hirvar| HirExpr::Var(*hirvar))),
                     fnexpr: base,
                     method_name: *method_name,
@@ -369,17 +369,17 @@ impl<'a> HirLowerer<'a> {
         }
     }
 
-    pub fn desugar_stat(
+    pub fn desugar_stmt(
         &mut self,
         ret: Option<&mut dyn FnMut(Spanned<HirExpr>) -> HirStatement>,
-        stat: &Spanned<ast::Statement>,
+        stmt: &Spanned<ast::Statement>,
     ) -> super::Result<()> {
-        match &stat.body {
+        match &stmt.body {
             ast::Statement::Empty => {} // Yeet it out of existence.
             ast::Statement::DiscardExpr(expr) => {
                 let expr = self.desugar_expr(expr)?;
-                self.stats
-                    .push(stat.copy_span(|_| HirStatement::Discard(expr)));
+                self.stmts
+                    .push(stmt.copy_span(|_| HirStatement::Discard(expr)));
             }
             ast::Statement::ItemDecl(_) => {}
             ast::Statement::Block(blk) => match &blk.body {
@@ -391,10 +391,10 @@ impl<'a> HirLowerer<'a> {
 
                     lowerer.desugar_block(ret, blk)?;
 
-                    let block = HirBlock::Normal(lowerer.stats);
+                    let block = HirBlock::Normal(lowerer.stmts);
 
-                    self.stats
-                        .push(stat.copy_span(|_| HirStatement::Block(blk.copy_span(|_| block))));
+                    self.stmts
+                        .push(stmt.copy_span(|_| HirStatement::Block(blk.copy_span(|_| block))));
                 }
                 ast::CompoundBlock::If(_) => todo!("if"),
                 ast::CompoundBlock::While(_) => todo!("while"),
@@ -406,10 +406,10 @@ impl<'a> HirLowerer<'a> {
 
                     lowerer.desugar_block(ret, blk)?;
 
-                    let block = HirBlock::Loop(lowerer.stats);
+                    let block = HirBlock::Loop(lowerer.stmts);
 
-                    self.stats
-                        .push(stat.copy_span(|_| HirStatement::Block(blk.copy_span(|_| block))));
+                    self.stmts
+                        .push(stmt.copy_span(|_| HirStatement::Block(blk.copy_span(|_| block))));
                 }
                 ast::CompoundBlock::Unsafe(blk) => {
                     let mut lowerer =
@@ -419,10 +419,10 @@ impl<'a> HirLowerer<'a> {
 
                     lowerer.desugar_block(ret, blk)?;
 
-                    let block = HirBlock::Unsafe(lowerer.stats);
+                    let block = HirBlock::Unsafe(lowerer.stmts);
 
-                    self.stats
-                        .push(stat.copy_span(|_| HirStatement::Block(blk.copy_span(|_| block))));
+                    self.stmts
+                        .push(stmt.copy_span(|_| HirStatement::Block(blk.copy_span(|_| block))));
                 }
                 ast::CompoundBlock::For(_) => todo!("for"),
             },
@@ -437,9 +437,9 @@ impl<'a> HirLowerer<'a> {
     ) -> super::Result<()> {
         let mut stmts = blk.stmts.as_slice();
 
-        let last_stat = if blk.tail_expr.is_none() {
-            if let Some((last, stats)) = stmts.split_last() {
-                stmts = stats;
+        let last_stmt = if blk.tail_expr.is_none() {
+            if let Some((last, rest_stmts)) = stmts.split_last() {
+                stmts = rest_stmts;
                 if let ast::Statement::Empty = &last.body {
                     None
                 } else {
@@ -452,21 +452,21 @@ impl<'a> HirLowerer<'a> {
             None
         };
 
-        for stat in stmts {
-            self.desugar_stat(None, stat)?;
+        for stmt in stmts {
+            self.desugar_stmt(None, stmt)?;
         }
 
-        if let Some(stat) = last_stat {
-            self.desugar_stat(ret, stat)?;
+        if let Some(stmt) = last_stmt {
+            self.desugar_stmt(ret, stmt)?;
         } else if let Some(tail_expr) = &blk.tail_expr {
             let expr = self.desugar_expr(tail_expr)?;
 
-            let return_stat = (ret.unwrap_or(&mut |expr| HirStatement::Discard(expr)))(expr);
+            let return_stmt = (ret.unwrap_or(&mut |expr| HirStatement::Discard(expr)))(expr);
 
-            self.stats.push(tail_expr.copy_span(|_| return_stat));
+            self.stmts.push(tail_expr.copy_span(|_| return_stmt));
         } else {
             if let Some(ret) = ret {
-                self.stats
+                self.stmts
                     .push(blk.copy_span(|_| ret(blk.copy_span(|_| HirExpr::Tuple(vec![])))));
             }
         }
@@ -475,8 +475,8 @@ impl<'a> HirLowerer<'a> {
 
     pub fn into_fn_body(self, safety: Safety, span: Span) -> HirFunctionBody {
         let body = match safety {
-            Safety::Safe => HirBlock::Normal(self.stats),
-            Safety::Unsafe => HirBlock::Unsafe(self.stats),
+            Safety::Safe => HirBlock::Normal(self.stmts),
+            Safety::Unsafe => HirBlock::Unsafe(self.stmts),
         };
 
         HirFunctionBody {

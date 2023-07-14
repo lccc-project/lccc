@@ -176,13 +176,13 @@ impl ThirFunctionBody {
         f: &mut core::fmt::Formatter,
         tabs: TabPrinter,
     ) -> core::fmt::Result {
-        let stats = match &self.body.body {
-            ThirBlock::Normal(stats) | ThirBlock::Unsafe(stats) => stats,
+        let stmts = match &self.body.body {
+            ThirBlock::Normal(stmts) | ThirBlock::Unsafe(stmts) => stmts,
             _ => unreachable!(),
         };
 
-        for stat in stats {
-            self.display_statement(stat, f, tabs)?;
+        for stmt in stmts {
+            self.display_statement(stmt, f, tabs)?;
         }
 
         Ok(())
@@ -190,12 +190,12 @@ impl ThirFunctionBody {
 
     fn display_statement(
         &self,
-        stat: &ThirStatement,
+        stmt: &ThirStatement,
         f: &mut core::fmt::Formatter,
         tabs: TabPrinter,
     ) -> core::fmt::Result {
         use core::fmt::Display;
-        match stat {
+        match stmt {
             ThirStatement::Assign { dest, val, op } => {
                 tabs.fmt(f)?;
                 dest.body.fmt(f)?;
@@ -216,32 +216,32 @@ impl ThirFunctionBody {
                 f.write_fmt(format_args!("{}return {};\n", tabs, expr.body))
             }
             ThirStatement::Block(b) => match &b.body {
-                ThirBlock::Normal(stats) => {
+                ThirBlock::Normal(stmts) => {
                     tabs.fmt(f)?;
                     f.write_str("{\n")?;
                     let nested = tabs.nest();
-                    for stat in stats {
-                        self.display_statement(stat, f, nested)?;
+                    for stmt in stmts {
+                        self.display_statement(stmt, f, nested)?;
                     }
                     tabs.fmt(f)?;
                     f.write_str("}\n")
                 }
-                ThirBlock::Unsafe(stats) => {
+                ThirBlock::Unsafe(stmts) => {
                     tabs.fmt(f)?;
                     f.write_str("unsafe {\n")?;
                     let nested = tabs.nest();
-                    for stat in stats {
-                        self.display_statement(stat, f, nested)?;
+                    for stmt in stmts {
+                        self.display_statement(stmt, f, nested)?;
                     }
                     tabs.fmt(f)?;
                     f.write_str("}\n")
                 }
-                ThirBlock::Loop(stats) => {
+                ThirBlock::Loop(stmts) => {
                     tabs.fmt(f)?;
                     f.write_str("loop {\n")?;
                     let nested = tabs.nest();
-                    for stat in stats {
-                        self.display_statement(stat, f, nested)?;
+                    for stmt in stmts {
+                        self.display_statement(stmt, f, nested)?;
                     }
                     tabs.fmt(f)?;
                     f.write_str("}\n")
@@ -318,7 +318,7 @@ pub struct ThirConverter<'a> {
     inference_set: HashMap<InferId, Type>,
     var_defs: HashMap<HirVarId, ThirVarDef>,
     safety: Safety,
-    stats: Vec<Spanned<ThirStatement>>,
+    stmts: Vec<Spanned<ThirStatement>>,
     at_item: DefId,
     containing_item: DefId,
     next_infer: u32,
@@ -338,7 +338,7 @@ impl<'a> ThirConverter<'a> {
             inference_set: HashMap::new(),
             var_defs: HashMap::new(),
             safety: Safety::Safe,
-            stats: Vec::new(),
+            stmts: Vec::new(),
             at_item,
             containing_item,
             next_infer: 0,
@@ -499,19 +499,19 @@ impl<'a> ThirConverter<'a> {
         })
     }
 
-    pub fn write_statement(&mut self, stat: &Spanned<hir::HirStatement>) -> super::Result<()> {
-        let stat = self.convert_statement(stat)?;
+    pub fn write_statement(&mut self, stmt: &Spanned<hir::HirStatement>) -> super::Result<()> {
+        let stmt = self.convert_statement(stmt)?;
 
-        self.stats.push(stat);
+        self.stmts.push(stmt);
 
         Ok(())
     }
 
     pub fn convert_statement(
         &mut self,
-        stat: &Spanned<hir::HirStatement>,
+        stmt: &Spanned<hir::HirStatement>,
     ) -> super::Result<Spanned<ThirStatement>> {
-        stat.try_copy_span(|hirstat| match hirstat {
+        stmt.try_copy_span(|hirstmt| match hirstmt {
             hir::HirStatement::Assign { dest, val, op } => {
                 let dest = self.convert_expr(dest)?;
                 let mut val = self.convert_rvalue(val)?;
@@ -560,22 +560,22 @@ impl<'a> ThirConverter<'a> {
             }
             hir::HirStatement::Block(b) => Ok(ThirStatement::Block(b.try_copy_span(|b| {
                 match b {
-                    hir::HirBlock::Normal(stats) => Ok(ThirBlock::Normal(
-                        stats
+                    hir::HirBlock::Normal(stmts) => Ok(ThirBlock::Normal(
+                        stmts
                             .iter()
-                            .map(|stat| self.convert_statement(stat))
+                            .map(|stmt| self.convert_statement(stmt))
                             .collect::<Result<_>>()?,
                     )),
-                    hir::HirBlock::Unsafe(stats) => Ok(ThirBlock::Unsafe(
-                        stats
+                    hir::HirBlock::Unsafe(stmts) => Ok(ThirBlock::Unsafe(
+                        stmts
                             .iter()
-                            .map(|stat| self.convert_statement(stat))
+                            .map(|stmt| self.convert_statement(stmt))
                             .collect::<Result<_>>()?,
                     )),
-                    hir::HirBlock::Loop(stats) => Ok(ThirBlock::Loop(
-                        stats
+                    hir::HirBlock::Loop(stmts) => Ok(ThirBlock::Loop(
+                        stmts
                             .iter()
-                            .map(|stat| self.convert_statement(stat))
+                            .map(|stmt| self.convert_statement(stmt))
                             .collect::<Result<_>>()?,
                     )),
                 }
@@ -617,8 +617,8 @@ impl<'a> ThirConverter<'a> {
 
     pub fn into_thir_body(self, span: Span) -> ThirFunctionBody {
         let body = match self.safety {
-            Safety::Safe => ThirBlock::Normal(self.stats),
-            Safety::Unsafe => ThirBlock::Unsafe(self.stats),
+            Safety::Safe => ThirBlock::Normal(self.stmts),
+            Safety::Unsafe => ThirBlock::Unsafe(self.stmts),
         };
         ThirFunctionBody {
             vardefs: self.var_defs,
@@ -908,9 +908,9 @@ impl<'a> Inferer<'a> {
     pub fn unify_block(&mut self, blk: &mut ThirBlock) -> super::Result<CyclicOperationStatus> {
         let mut status = Complete;
         match blk {
-            ThirBlock::Normal(stats) | ThirBlock::Unsafe(stats) | ThirBlock::Loop(stats) => {
-                for stat in stats {
-                    status &= self.unify_statement(stat)?;
+            ThirBlock::Normal(stmts) | ThirBlock::Unsafe(stmts) | ThirBlock::Loop(stmts) => {
+                for stmt in stmts {
+                    status &= self.unify_statement(stmt)?;
                 }
             }
         }
@@ -920,9 +920,9 @@ impl<'a> Inferer<'a> {
     pub fn propagate_block(&mut self, blk: &mut ThirBlock) -> super::Result<CyclicOperationStatus> {
         let mut status = Complete;
         match blk {
-            ThirBlock::Normal(stats) | ThirBlock::Unsafe(stats) | ThirBlock::Loop(stats) => {
-                for stat in stats {
-                    status &= self.propagate_statement(stat)?;
+            ThirBlock::Normal(stmts) | ThirBlock::Unsafe(stmts) | ThirBlock::Loop(stmts) => {
+                for stmt in stmts {
+                    status &= self.propagate_statement(stmt)?;
                 }
             }
         }
@@ -931,10 +931,10 @@ impl<'a> Inferer<'a> {
 
     pub fn propagate_statement(
         &mut self,
-        stat: &mut ThirStatement,
+        stmt: &mut ThirStatement,
     ) -> super::Result<CyclicOperationStatus> {
         let mut status = Complete;
-        match stat {
+        match stmt {
             ThirStatement::Assign { dest, val, op } => {
                 status &= self.propagate_expr(dest)?;
                 status &= self.propagate_expr(val)?;
