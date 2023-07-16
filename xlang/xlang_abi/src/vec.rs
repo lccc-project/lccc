@@ -65,7 +65,7 @@ impl<T, A: Allocator> Drop for Vec<T, A> {
                 self.cap.checked_mul(core::mem::size_of::<T>()).unwrap(),
                 core::mem::align_of::<T>(),
             )
-        };
+        }.align_to_fundamental().unwrap();
         if layout.size() != 0 {
             unsafe {
                 self.alloc.deallocate(self.ptr.as_nonnull().cast(), layout);
@@ -700,10 +700,10 @@ macro_rules! vec{
 #[cfg(test)]
 mod test {
     use super::Vec;
+
     #[test]
     fn test_vec_new() {
         let vec = Vec::<u32>::new();
-
         assert_eq!(vec.len(), 0);
     }
 
@@ -711,6 +711,16 @@ mod test {
     fn test_vec_empty() {
         let vec: Vec<u32> = vec![];
         assert_eq!(vec.len(), 0);
+    }
+
+    #[test]
+    fn test_vec_new_reserve() {
+        let mut vec: Vec<u32> = Vec::new();
+        vec.reserve(128);
+        vec.push(1); // Just to make sure pushing doesn't crash / cause UB
+        assert_eq!(vec.capacity(), 128);
+        assert_eq!(vec.len(), 1);
+        assert_eq!(vec[0], 1);
     }
 
     #[test]
