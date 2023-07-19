@@ -1,3 +1,5 @@
+#![allow(improper_ctypes_definitions)]
+
 use crate::{
     alloc::Allocator,
     span::{Span, SpanMut},

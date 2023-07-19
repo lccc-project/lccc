@@ -16,10 +16,10 @@ use crate::lang::LangItem;
 use crate::sema::ty::AsyncType;
 use crate::span::Span;
 
-use self::{hir::HirLowerer, mir::MirFunctionBody};
 use self::ty::FnType;
 use self::tyck::ThirFunctionBody;
 use self::{hir::HirFunctionBody, tyck::Inferer};
+use self::{hir::HirLowerer, mir::MirFunctionBody};
 
 macro_rules! as_simple_component {
     (self) => {
@@ -98,6 +98,7 @@ pub enum ErrorCategory {
 
 pub mod cx;
 pub mod hir;
+pub mod intrin;
 pub mod mir;
 pub mod ty;
 pub mod tyck;
@@ -136,6 +137,7 @@ pub enum FunctionBody {
     HirBody(Spanned<HirFunctionBody>),
     ThirBody(Spanned<ThirFunctionBody>),
     MirBody(Spanned<MirFunctionBody>),
+    Intrinsic(intrin::IntrinsicDef),
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -178,6 +180,7 @@ pub struct Definitions {
     prelude_import: DefId,
     visibility_cache: HashSet<(DefId, DefId)>,
     extern_blocks: Vec<DefId>,
+    intrinsics: HashMap<intrin::IntrinsicDef, DefId>,
 }
 
 impl Definitions {
@@ -191,6 +194,7 @@ impl Definitions {
             prelude_import: DefId::ROOT,
             visibility_cache: HashSet::new(),
             extern_blocks: Vec::new(),
+            intrinsics: HashMap::new(),
         }
     }
 
@@ -894,6 +898,11 @@ impl Definitions {
                         tabs.fmt(fmt)?;
                         fmt.write_str("}\n")
                     }
+                    Some(FunctionBody::Intrinsic(intrin)) => {
+                        fmt.write_str(" = ")?;
+                        fmt.write_str(intrin.name())?;
+                        fmt.write_str(";")
+                    }
                 }
             }
             DefinitionInner::UseName(item) => {
@@ -1502,11 +1511,9 @@ pub fn mir_lower(defs: &mut Definitions, curmod: DefId) -> Result<()> {
         let def = defs.definition_mut(defid);
         match &mut def.inner.body {
             DefinitionInner::Function(_fnty, val @ Some(_)) => match val.take() {
-                Some(FunctionBody::ThirBody(block)) => {
-
-                }
+                Some(FunctionBody::ThirBody(block)) => {}
                 _ => {}
-            }
+            },
             _ => {}
         }
     }
@@ -1516,6 +1523,8 @@ pub fn mir_lower(defs: &mut Definitions, curmod: DefId) -> Result<()> {
 
 pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<()> {
     let root = defs.allocate_defid();
+
+    intrin::IntrinsicDef::register_intrinsics(defs);
     defs.set_current_crate(root);
 
     scan_modules(defs, root, md)?;

@@ -507,7 +507,7 @@ impl core::fmt::Display for Type {
     }
 }
 
-fn convert_builtin_type(name: &str) -> Option<Type> {
+pub fn convert_builtin_type(name: &str) -> Option<Type> {
     match name {
         "char" => Some(Type::Char),
         "str" => Some(Type::Str),
