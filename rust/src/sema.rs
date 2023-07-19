@@ -1080,6 +1080,7 @@ fn collect_function(
     outer_tag: Option<Spanned<ty::AbiTag>>,
     outer_safety: Option<Spanned<Safety>>,
     outer_span: Option<Span>,
+    outer_defid: Option<DefId>,
 ) -> Result<DefinitionInner> {
     let actual_tag = itemfn
         .abi
@@ -1202,7 +1203,7 @@ fn collect_function(
         |span| span.copy_span(|_| true),
     );
 
-    let fnty = FnType {
+    let mut fnty = FnType {
         safety,
         constness,
         asyncness,
@@ -1214,7 +1215,59 @@ fn collect_function(
 
     let fnbody = match &itemfn.body.body {
         Some(_) => Some(FunctionBody::Incomplete),
-        None => None,
+        None => {
+            if let Some(Spanned {
+                body: ty::AbiTag::RustIntrinsic,
+                ..
+            }) = outer_tag
+            {
+                if let Some(intrin) = intrin::IntrinsicDef::from_name(&itemfn.name) {
+                    let sig = intrin.signature();
+
+                    fnty.safety = sig.safety;
+                    fnty.constness = sig.constness;
+
+                    if fnty.paramtys != sig.paramtys || fnty.retty != sig.retty {
+                        return Err(Error {
+                            span: itemfn.name.span,
+                            text: format!(
+                                "Wrong signature for intrinsic function `{}`",
+                                itemfn.name.body
+                            ),
+                            category: ErrorCategory::InvalidFunction,
+                            at_item: item,
+                            containing_item: curmod,
+                            relevant_item: item,
+                            hints: vec![SemaHint {
+                                text: format!(
+                                    "Declared in an `extern \"rust-intrinsics\"` block here"
+                                ),
+                                itemref: outer_defid.unwrap(),
+                                refspan: outer_span.unwrap(),
+                            }],
+                        });
+                    }
+
+                    Some(FunctionBody::Intrinsic(intrin))
+                } else {
+                    return Err(Error {
+                        span: itemfn.name.span,
+                        text: format!("Unrecognized intrinsic `{}`", itemfn.name.body),
+                        category: ErrorCategory::InvalidFunction,
+                        at_item: item,
+                        containing_item: curmod,
+                        relevant_item: item,
+                        hints: vec![SemaHint {
+                            text: format!("Declared in an `extern \"rust-intrinsics\"` block here"),
+                            itemref: outer_defid.unwrap(),
+                            refspan: outer_span.unwrap(),
+                        }],
+                    });
+                }
+            } else {
+                None
+            }
+        }
     };
 
     Ok(DefinitionInner::Function(fnty, fnbody))
@@ -1236,7 +1289,7 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
             ast::ItemBody::Value(_) => todo!("value"),
             ast::ItemBody::Function(itemfn) => {
                 let defid = defs.allocate_defid();
-                let inner = collect_function(defs, curmod, defid, itemfn, None, None, None)?;
+                let inner = collect_function(defs, curmod, defid, itemfn, None, None, None, None)?;
 
                 let def = defs.definition_mut(defid);
                 def.attrs = item.attrs.clone();
@@ -1247,9 +1300,9 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                 defs.insert_value(curmod, itemfn.name, defid)?;
             }
             ast::ItemBody::ExternBlock(blk) => {
-                let defid = defs.allocate_defid();
+                let extern_defid = defs.allocate_defid();
 
-                let def = defs.definition_mut(defid);
+                let def = defs.definition_mut(extern_defid);
 
                 def.attrs = item.attrs.clone();
                 def.visible_from = curmod;
@@ -1271,10 +1324,11 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                 for item in &blk.items {
                     let visible_from =
                         convert_visibility(defs, curmod, item.vis.as_ref())?.unwrap_or(curmod);
+                    let defid = defs.allocate_defid();
                     match &item.item.body{
                         ast::ItemBody::Function(itemfn) => {
-                            let defid = defs.allocate_defid();
-                            let inner = collect_function(defs, curmod, defid, itemfn, Some(tag), Some(Spanned{body: Safety::Unsafe, span: Span::empty()}), Some(blk.span))?;
+                            
+                            let inner = collect_function(defs, curmod, defid, itemfn, Some(tag), Some(Spanned{body: Safety::Unsafe, span: Span::empty()}), Some(blk.span),Some(extern_defid))?;
 
                             let def = defs.definition_mut(defid);
                             def.attrs = item.attrs.clone();
@@ -1292,8 +1346,8 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                                 category: ErrorCategory::Other,
                                 at_item: defid,
                                 containing_item: curmod,
-                                relevant_item: defid,
-                                hints: vec![SemaHint{ text: format!("Declared inside this extern block"), itemref: defid, refspan: blk.span }]
+                                relevant_item: extern_defid,
+                                hints: vec![SemaHint{ text: format!("Declared inside this extern block"), itemref: extern_defid, refspan: blk.span }]
                             })
                         }
                     }

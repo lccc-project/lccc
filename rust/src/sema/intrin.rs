@@ -76,27 +76,27 @@ macro_rules! parse_cvarargs {
     };
 }
 
-macro_rules! parse_type{
+macro_rules! parse_type_inner{
     (($inner:ty)) => {
         parse_type!($inner)
     };
     ($ident:ident) => {
         super::ty::convert_builtin_type(::core::stringify!($ident)).unwrap() // TODO: also support lang item types and generics
     };
-    (&$inner:ty) => {
-        Type::Reference(None, spanned!(Mutability::Const), spanned!(box parse_type!($inner)))
+    (&$($inner:ty)*) => {
+        {Type::Reference(None, spanned!(Mutability::Const), spanned!(box parse_type!($($inner)*)))}
     };
-    (&mut $inner:ty) => {
-        Type::Reference(None, spanned!(Mutability::Mut), spanned!(box parse_type!($inner)))
+    (&mut $($inner:ty)*) => {
+        {Type::Reference(None, spanned!(Mutability::Mut), spanned!(box parse_type!($($inner)*)))}
     };
-    (*const $inner:ty) => {
-        Type::Pointer(spanned!(Mutability::Const), spanned!(box parse_type!($inner)))
+    (*const $($inner:ty)*) => {
+        {Type::Pointer(spanned!(Mutability::Const), spanned!(box parse_type!($($inner)*)))}
     };
-    (*mut $inner:ty) => {
-        Type::Pointer(spanned!(Mutability::Mut), spanned!(box parse_type!($inner)))
+    (*mut $($inner:ty)*) => {
+        {Type::Pointer(spanned!(Mutability::Mut), spanned!(box parse_type!($($inner)*)))}
     };
     (($($inner:ty),* $(,)?)) => {
-        Type::Tuple(vec![spanned!($(parse_type!($inner)),*)])
+        {{Type::Tuple(vec![spanned!($(parse_type!($inner)),*)])}}
     };
     (!) => {
         Type::Never
@@ -112,8 +112,11 @@ macro_rules! parse_type{
             iscvarargs: spanned!(parse_cvarargs!($($(... $($_vol2)?)?)?))
         }
     };
+}
+
+macro_rules! parse_type{
     ($inner:ty) => {
-        ::defile::expr!(parse_type!(@$inner))
+        {::defile::expr!({parse_type_inner!(@$inner)})}
     };
 }
 
@@ -177,4 +180,5 @@ macro_rules! def_intrinsics{
 
 def_intrinsics! {
     unsafe intrin __builtin_unreachable() -> !;
+    unsafe intrin __builtin_abort() -> !;
 }
