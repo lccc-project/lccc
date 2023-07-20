@@ -119,18 +119,18 @@ dependencies = [
 
 [[package]]
 name = "defile"
-version = "0.1.2"
+version = "0.2.0-rc1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4362749ff7c9a178a405cde5e93c1f5de0cb66403313460e1e10f09632592513"
+checksum = "b31a874b8371a974730822818fcb3f6525806b3e55d24bea5f967f4e3c3e6070"
 dependencies = [
  "defile-proc_macros",
 ]
 
 [[package]]
 name = "defile-proc_macros"
-version = "0.1.2"
+version = "0.2.0-rc1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f86f4483ac4efccc7a82314a40a7234a352181aa8aa8369a7c5bebfdd94a9b46"
+checksum = "d383398ca8bd248b7d39512047610a6cb348ee1310ef6486c3925608213d9bbd"
 
 [[package]]
 name = "either"

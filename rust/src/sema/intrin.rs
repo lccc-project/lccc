@@ -96,7 +96,7 @@ macro_rules! parse_type_inner{
         {Type::Pointer(spanned!(Mutability::Mut), spanned!(box parse_type!($($inner)*)))}
     };
     (($($inner:ty),* $(,)?)) => {
-        {{Type::Tuple(vec![spanned!($(parse_type!($inner)),*)])}}
+        {{Type::Tuple(vec![$(spanned!(parse_type!($inner))),*])}}
     };
     (!) => {
         Type::Never
@@ -116,7 +116,7 @@ macro_rules! parse_type_inner{
 
 macro_rules! parse_type{
     ($inner:ty) => {
-        {::defile::expr!({parse_type_inner!(@$inner)})}
+        {::defile::defile!({parse_type_inner!(@$inner)})}
     };
 }
 
@@ -128,7 +128,7 @@ macro_rules! parse_intrinsic_signature{
             asyncness: spanned!(ty::AsyncType::Normal),
             tag: spanned!(AbiTag::RustIntrinsic),
             retty: spanned!(box parse_type!($retty)),
-            paramtys: vec![$(spanned!($param)),*],
+            paramtys: vec![$(spanned!(parse_type!($param))),*],
             iscvarargs: spanned!(false),
         }
     };
@@ -152,7 +152,7 @@ macro_rules! def_intrinsics{
                 }
             }
 
-            pub fn name(self) -> &'static str{
+            pub fn name(&self) -> &'static str{
                 match self{
                     $(Self::$name => ::core::stringify!($name)),*
                 }
@@ -180,5 +180,8 @@ macro_rules! def_intrinsics{
 
 def_intrinsics! {
     unsafe intrin __builtin_unreachable() -> !;
-    unsafe intrin __builtin_abort() -> !;
+    intrin __builtin_abort() -> !;
+    intrin impl_id() -> &str;
+    unsafe intrin __builtin_allocate(usize, usize) -> *mut u8;
+    unsafe intrin __builtin_deallocate(usize, usize, *mut u8) -> ();
 }

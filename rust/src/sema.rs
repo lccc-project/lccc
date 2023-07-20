@@ -901,7 +901,7 @@ impl Definitions {
                     Some(FunctionBody::Intrinsic(intrin)) => {
                         fmt.write_str(" = ")?;
                         fmt.write_str(intrin.name())?;
-                        fmt.write_str(";")
+                        fmt.write_str(";\n")
                     }
                 }
             }
@@ -1227,7 +1227,40 @@ fn collect_function(
                     fnty.safety = sig.safety;
                     fnty.constness = sig.constness;
 
-                    if fnty.paramtys != sig.paramtys || fnty.retty != sig.retty {
+                    fnty.paramtys.iter()
+                        .zip(&sig.paramtys)
+                        .enumerate()
+                        .map(|(n,(def,intrin))| {
+                            if def.body != intrin.body{
+                                Err(Error {
+                                    span: itemfn.name.span,
+                                    text: format!(
+                                        "Wrong signature for intrinsic function `{}`",
+                                        itemfn.name.body
+                                    ),
+                                    category: ErrorCategory::InvalidFunction,
+                                    at_item: item,
+                                    containing_item: curmod,
+                                    relevant_item: item,
+                                    hints: vec![SemaHint {
+                                        text: format!(
+                                            "Declared in an `extern \"rust-intrinsics\"` block here"
+                                        ),
+                                        itemref: outer_defid.unwrap(),
+                                        refspan: outer_span.unwrap(),
+                                    }, SemaHint {
+                                        text: format!("Expected type `{}` for parameter {}, got type `{}` instead", intrin.body,n,def.body),
+                                        itemref: item,
+                                        refspan: def.span
+                                    }],
+                                })
+                            }else{
+                                Ok(())
+                            }
+                        })
+                        .try_for_each(|e|e)?;
+
+                    if fnty.retty.body != sig.retty.body{
                         return Err(Error {
                             span: itemfn.name.span,
                             text: format!(
@@ -1244,6 +1277,10 @@ fn collect_function(
                                 ),
                                 itemref: outer_defid.unwrap(),
                                 refspan: outer_span.unwrap(),
+                            }, SemaHint {
+                                text: format!("Expected return type to be `{}` got type `{}` instead", sig.retty.body,fnty.retty.body),
+                                itemref: item,
+                                refspan: fnty.retty.span
                             }],
                         });
                     }
@@ -1269,6 +1306,7 @@ fn collect_function(
             }
         }
     };
+
 
     Ok(DefinitionInner::Function(fnty, fnbody))
 }
@@ -1447,7 +1485,7 @@ pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     for &Pair(sym, defid) in &values {
         let def = defs.definition_mut(defid);
         match &mut def.inner.body {
-            DefinitionInner::Function(fnty, val @ Some(_)) => match val.take() {
+            DefinitionInner::Function(fnty, val @ Some(FunctionBody::AstBody(_))) => match val.take() {
                 Some(FunctionBody::AstBody(block)) => {
                     let mut vardebugmap = HashMap::new();
                     let safety = fnty.safety.body;
@@ -1496,7 +1534,7 @@ pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     for &Pair(sym, defid) in &values {
         let def = defs.definition_mut(defid);
         match &mut def.inner.body {
-            DefinitionInner::Function(fnty, val @ Some(_)) => match val.take() {
+            DefinitionInner::Function(fnty, val @ Some(FunctionBody::HirBody(_))) => match val.take() {
                 Some(FunctionBody::HirBody(block)) => {
                     let (stmts, safety) = match block.body.body.body {
                         hir::HirBlock::Normal(stmts) => (stmts, Safety::Safe),
@@ -1564,9 +1602,9 @@ pub fn mir_lower(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     for &Pair(_sym, defid) in &values {
         let def = defs.definition_mut(defid);
         match &mut def.inner.body {
-            DefinitionInner::Function(_fnty, val @ Some(_)) => match val.take() {
+            DefinitionInner::Function(_fnty, val @ Some(FunctionBody::ThirBody(_))) => match val.take() {
                 Some(FunctionBody::ThirBody(block)) => {}
-                _ => {}
+                _ => unreachable!()
             },
             _ => {}
         }
@@ -1590,6 +1628,6 @@ pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<(
     desugar_values(defs, root)?;
     tycheck_values(defs, root)?;
 
-    mir_lower(defs, root)?;
+    // mir_lower(defs, root)?;
     Ok(())
 }
