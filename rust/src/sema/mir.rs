@@ -10,6 +10,7 @@ use crate::{
 
 use super::{
     hir::HirVarId,
+    intrin::IntrinsicDef,
     ty::{FnType, IntType, Type},
     tyck::{Movability, ThirExpr, ThirExprInner, ThirStatement},
     DefId, Definitions, SemaHint, Spanned,
@@ -90,6 +91,7 @@ pub enum MirExpr {
     Retag(RefKind, Mutability, Box<Spanned<MirExpr>>),
     Cast(Box<Spanned<MirExpr>>, Type),
     Tuple(Vec<Spanned<MirExpr>>),
+    Intrinsic(IntrinsicDef),
 }
 
 impl core::fmt::Display for MirExpr {
@@ -130,6 +132,7 @@ impl core::fmt::Display for MirExpr {
                 }
                 f.write_str(")")
             }
+            MirExpr::Intrinsic(intrin) => f.write_str(intrin.name()),
         }
     }
 }
@@ -161,6 +164,7 @@ pub enum MirTerminator {
 pub struct MirCallInfo {
     pub retplace: Spanned<SsaVarId>, // id of the return place, which is made live in the next
     pub targ: Spanned<MirExpr>,
+    pub fnty: FnType,
     pub params: Vec<Spanned<MirExpr>>,
     pub next: MirJumpInfo,
     pub unwind: Option<MirJumpInfo>,
@@ -171,6 +175,8 @@ impl core::fmt::Display for MirCallInfo {
         self.retplace.body.fmt(f)?;
         f.write_str(" = ")?;
         self.targ.body.fmt(f)?;
+        f.write_str(": ")?;
+        self.fnty.fmt(f)?;
         f.write_str("(")?;
         let mut sep = "";
 
@@ -198,6 +204,7 @@ impl core::fmt::Display for MirCallInfo {
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct MirTailcallInfo {
     pub targ: Spanned<MirExpr>,
+    pub fnty: FnType,
     pub params: Vec<Spanned<MirExpr>>,
     pub unwind: Option<MirJumpInfo>,
 }
@@ -205,6 +212,8 @@ pub struct MirTailcallInfo {
 impl core::fmt::Display for MirTailcallInfo {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         self.targ.body.fmt(f)?;
+        f.write_str(": ")?;
+        self.fnty.fmt(f)?;
         f.write_str("(")?;
         let mut sep = "";
 
@@ -566,15 +575,18 @@ impl<'a> MirConverter<'a> {
             super::tyck::ThirExprInner::Var(_) => {
                 panic!("only top level rvalues get lowered by `lower_expr`")
             }
-            super::tyck::ThirExprInner::Const(mut defid) => {
-                if let Some(intrin) = self.defs.canoncalize_intrinsic(defid) {
-                    defid = intrin;
+            super::tyck::ThirExprInner::Const(defid) => {
+                if let Some(intrin) = self.defs.get_intrinsic(defid) {
+                    Ok(Spanned {
+                        span,
+                        body: MirExpr::Intrinsic(intrin),
+                    })
+                } else {
+                    Ok(Spanned {
+                        span,
+                        body: MirExpr::Const(defid),
+                    })
                 }
-
-                Ok(Spanned {
-                    span,
-                    body: MirExpr::Const(defid),
-                })
             }
             super::tyck::ThirExprInner::ConstInt(intty, ival) => {
                 let intty = intty
@@ -883,23 +895,60 @@ impl<'a> MirConverter<'a> {
                 method_name,
                 params,
             } => {
-                let retty = match &fnexpr.ty {
-                    Type::FnItem(fnty, _) | Type::FnPtr(fnty) => (*fnty.retty).clone(),
+                let fnty = match &fnexpr.ty {
+                    Type::FnItem(fnty, _) | Type::FnPtr(fnty) => fnty.clone(),
                     _ => unreachable!(),
                 };
 
                 let targ = self.lower_expr(fnexpr)?;
+
+                if let MirExpr::Intrinsic(intrin) = &targ.body {
+                    match intrin {
+                        IntrinsicDef::__builtin_unreachable => {
+                            let bb = self.cur_basic_block.finish_and_reset(Spanned {
+                                body: MirTerminator::Unreachable,
+                                span,
+                            });
+                            self.basic_blocks.push(bb);
+                            return Ok(());
+                        }
+                        IntrinsicDef::impl_id => {
+                            if let Some(retplace) = retplace {
+                                self.lower_write(
+                                    retplace,
+                                    Spanned {
+                                        span,
+                                        body: MirExpr::ConstString(
+                                            StringType::Default,
+                                            Symbol::intern(concat!(
+                                                "lccc (",
+                                                env!("CARGO_PKG_VERSION"),
+                                                ")"
+                                            )),
+                                        ),
+                                    },
+                                    None,
+                                    span,
+                                )?;
+
+                                return Ok(());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
 
                 let params = params
                     .into_iter()
                     .map(|expr| self.lower_expr(expr))
                     .collect::<super::Result<Vec<_>>>()?;
 
-                if retty.body == Type::Never {
+                if fnty.retty.body == Type::Never {
                     // Always tailcall if `!`
 
                     let tailcall = MirTailcallInfo {
                         targ,
+                        fnty,
                         params,
                         unwind: None,
                     };
@@ -924,6 +973,7 @@ impl<'a> MirConverter<'a> {
                             span: varspan,
                         },
                         targ,
+                        fnty,
                         params,
                         next: jmp,
                         unwind: None,

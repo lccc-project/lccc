@@ -16,6 +16,7 @@ use crate::lang::LangItem;
 use crate::sema::ty::AsyncType;
 use crate::span::Span;
 
+use self::intrin::IntrinsicDef;
 use self::ty::FnType;
 use self::tyck::ThirBlock;
 use self::tyck::ThirFunctionBody;
@@ -200,11 +201,15 @@ impl Definitions {
         }
     }
 
-    pub fn canoncalize_intrinsic(&self, defid: DefId) -> Option<DefId>{
+    pub fn get_intrinsic(&self, defid: DefId) -> Option<IntrinsicDef>{
         match self.definition(defid).inner.body{
-            DefinitionInner::Function(_, Some(FunctionBody::Intrinsic(intrin))) => Some(self.intrinsics[&intrin]),
+            DefinitionInner::Function(_, Some(FunctionBody::Intrinsic(intrin))) => Some(intrin),
             _ => None
         }
+    }
+
+    pub fn canon_def(&self, intrin: IntrinsicDef) -> DefId{
+        self.intrinsics[&intrin]
     }
 
     pub fn spanof(&self, defid: DefId) -> Span {
