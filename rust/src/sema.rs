@@ -17,6 +17,7 @@ use crate::sema::ty::AsyncType;
 use crate::span::Span;
 
 use self::ty::FnType;
+use self::tyck::ThirBlock;
 use self::tyck::ThirFunctionBody;
 use self::{hir::HirFunctionBody, tyck::Inferer};
 use self::{hir::HirLowerer, mir::MirFunctionBody};
@@ -94,6 +95,7 @@ pub enum ErrorCategory {
     InvalidFunction,
     InvalidExpression,
     TycheckError(tyck::TycheckErrorCategory),
+    BorrowckError(mir::BorrowckErrorCategory),
 }
 
 pub mod cx;
@@ -195,6 +197,13 @@ impl Definitions {
             visibility_cache: HashSet::new(),
             extern_blocks: Vec::new(),
             intrinsics: HashMap::new(),
+        }
+    }
+
+    pub fn canoncalize_intrinsic(&self, defid: DefId) -> Option<DefId>{
+        match self.definition(defid).inner.body{
+            DefinitionInner::Function(_, Some(FunctionBody::Intrinsic(intrin))) => Some(self.intrinsics[&intrin]),
+            _ => None
         }
     }
 
@@ -749,6 +758,53 @@ impl Definitions {
         }
 
         Ok(resolve_mod.expect("Parsing an empty path is impossible"))
+    }
+
+    pub fn is_copy(&self, ty: &ty::Type) -> bool{
+        match ty{
+            ty::Type::Bool |
+            ty::Type::Int(_) |
+            ty::Type::Float(_) |
+            ty::Type::Char |
+            ty::Type::Str |
+            ty::Type::Never |
+            ty::Type::FnPtr(_) |
+            ty::Type::FnItem(_, _) |
+            ty::Type::Pointer(_, _) => true,
+            ty::Type::Reference(_, mt, _) => mt.body==Mutability::Const,
+            ty::Type::Tuple(inner) => inner.iter().all(|ty| self.is_copy(ty)),
+            ty::Type::UserType(_) => false, // for now
+            ty::Type::IncompleteAlias(_) => panic!("incomplete alias held too late"),
+            ty::Type::Array(ty, _) => self.is_copy(ty),
+            ty::Type::InferableInt(_) |
+            ty::Type::Inferable(_) => panic!("Cannot determine copyability of an uninfered type"),
+            
+            
+        }
+    }
+
+    pub fn type_defid(&self, ty: &ty::Type) -> DefId{
+        // todo: look up primitive impl lang item
+        match ty{
+            ty::Type::Bool |
+            ty::Type::Int(_) |
+            ty::Type::Float(_) |
+            ty::Type::Char |
+            ty::Type::Str |
+            ty::Type::Never |
+            ty::Type::FnPtr(_) |
+            ty::Type::Pointer(_, _) |
+            ty::Type::Reference(_, _, _) |
+            ty::Type::Array(_, _) |
+            ty::Type::Tuple(_) => DefId::ROOT,
+            ty::Type::UserType(defid) |
+            ty::Type::FnItem(_, defid) => *defid,
+            ty::Type::IncompleteAlias(_) => panic!("incomplete alias held too late"),
+            ty::Type::InferableInt(_) |
+            ty::Type::Inferable(_) => panic!("Canot determine owning definition of an uninfered type"),
+            
+            
+        }
     }
 }
 
@@ -1603,7 +1659,28 @@ pub fn mir_lower(defs: &mut Definitions, curmod: DefId) -> Result<()> {
         let def = defs.definition_mut(defid);
         match &mut def.inner.body {
             DefinitionInner::Function(_fnty, val @ Some(FunctionBody::ThirBody(_))) => match val.take() {
-                Some(FunctionBody::ThirBody(block)) => {}
+                Some(FunctionBody::ThirBody(block)) => {
+                    let mut lowerer = mir::MirConverter::new(defs, defid, curmod, block.body.vardefs.into_iter()
+                        .flat_map(|Pair(a,b)|Some(Pair(a,b.debug_name?)))
+                        .collect());
+                    let stmts = match block.body.body.body{
+                        ThirBlock::Normal(stmts) | ThirBlock::Unsafe(stmts) => stmts,
+                        _ => unreachable!()
+                    };
+
+                    for stmt in stmts{
+                        lowerer.write_statement(stmt)?;
+                    }
+
+                    let body = lowerer.finish();
+
+                    match &mut defs.definition_mut(defid).inner.body{
+                        DefinitionInner::Function(_, ibody) => {
+                            *ibody = Some(FunctionBody::MirBody(Spanned{span: block.span,body}));
+                        }
+                        _ => unreachable!()
+                    }
+                }
                 _ => unreachable!()
             },
             _ => {}
@@ -1626,8 +1703,9 @@ pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<(
     convert_values(defs, root, md)?;
 
     desugar_values(defs, root)?;
+    println!("{}\n",defs);
     tycheck_values(defs, root)?;
-
-    // mir_lower(defs, root)?;
+    println!("{}\n",defs);
+    mir_lower(defs, root)?;
     Ok(())
 }

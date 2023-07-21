@@ -308,7 +308,7 @@ impl ThirFunctionBody {
 pub struct ThirVarDef {
     mt: Spanned<Mutability>,
     ty: Spanned<Type>,
-    debug_name: Option<Spanned<Symbol>>,
+    pub debug_name: Option<Spanned<Symbol>>,
 }
 
 use super::hir;
