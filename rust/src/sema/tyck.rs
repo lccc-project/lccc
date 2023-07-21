@@ -900,6 +900,9 @@ impl<'a> Inferer<'a> {
                 }
                 _ => unreachable!("One would hope we'd be typechecking the inside of a function body (or a static/const)")
             },
+            ThirStatement::Discard(expr) => {
+                status &= self.unify_single_expr(expr)?;
+            }
             x => todo!("{:?}", x),
         }
         Ok(status)

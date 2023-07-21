@@ -471,7 +471,29 @@ pub fn do_statement(
                         span,
                     })
                 }
-                Err(c) => Err(a | b | c)?, // TODO: Expr statements
+                Err(c) => {
+                    let mut rewinder = tree.into_rewinder();
+                    match do_expression(&mut rewinder) {
+                        Ok(x) => {
+                            let span = x.span;
+                            match do_lexeme_class(
+                                &mut rewinder,
+                                LexemeClass::Punctuation(Symbol::intern(";")),
+                            ) {
+                                Ok(lexeme) => {
+                                    let span = Span::between(span, lexeme.span);
+                                    rewinder.accept();
+                                    Ok(Spanned {
+                                        span,
+                                        body: Statement::DiscardExpr(x),
+                                    })
+                                }
+                                Err(e) => Err(e),
+                            }
+                        }
+                        Err(d) => Err(a | b | c | d),
+                    }
+                } // TODO: Expr statements
             },
         },
     }
@@ -621,7 +643,10 @@ pub fn do_block(
         None
     } else {
         match do_expression(&mut block_tree) {
-            Ok(expr) => Some(Box::new(expr)),
+            Ok(expr) => {
+                do_lexeme_class(&mut block_tree, LexemeClass::Eof)?;
+                Some(Box::new(expr))
+            }
             Err(a) => {
                 if let Some(b) = stmt_failure {
                     return Err(a | b);

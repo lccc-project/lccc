@@ -89,6 +89,7 @@ pub enum MirExpr {
     Const(DefId),
     Retag(RefKind, Mutability, Box<Spanned<MirExpr>>),
     Cast(Box<Spanned<MirExpr>>, Type),
+    Tuple(Vec<Spanned<MirExpr>>),
 }
 
 impl core::fmt::Display for MirExpr {
@@ -117,6 +118,18 @@ impl core::fmt::Display for MirExpr {
                 inner.body.fmt(f)
             }
             MirExpr::Cast(inner, ty) => f.write_fmt(format_args!("({}) as {}", inner.body, ty)),
+            MirExpr::Tuple(vals) => {
+                f.write_str("(")?;
+
+                let mut sep = "";
+
+                for val in vals {
+                    f.write_str(sep)?;
+                    sep = ", ";
+                    val.body.fmt(f)?;
+                }
+                f.write_str(")")
+            }
         }
     }
 }
@@ -587,7 +600,17 @@ impl<'a> MirConverter<'a> {
                     body: MirExpr::Cast(Box::new(inner), ty.body),
                 })
             }
-            super::tyck::ThirExprInner::Tuple(_) => todo!(),
+            super::tyck::ThirExprInner::Tuple(vals) => {
+                let vals = vals
+                    .into_iter()
+                    .map(|expr| self.lower_expr(expr))
+                    .collect::<super::Result<Vec<_>>>()?;
+
+                Ok(Spanned {
+                    span,
+                    body: MirExpr::Tuple(vals),
+                })
+            }
         }
     }
 

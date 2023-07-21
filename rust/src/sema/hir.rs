@@ -377,6 +377,7 @@ impl<'a> HirLowerer<'a> {
         match &stmt.body {
             ast::Statement::Empty => {} // Yeet it out of existence.
             ast::Statement::DiscardExpr(expr) => {
+                eprintln!("Desugaring `{:?};`", expr);
                 let expr = self.desugar_expr(expr)?;
                 self.stmts
                     .push(stmt.copy_span(|_| HirStatement::Discard(expr)));
@@ -435,15 +436,17 @@ impl<'a> HirLowerer<'a> {
         ret: Option<&mut dyn FnMut(Spanned<HirExpr>) -> HirStatement>,
         blk: &Spanned<ast::Block>,
     ) -> super::Result<()> {
+        eprintln!("Entered desugar block");
+        eprintln!("Tail expr: {:?}", blk.tail_expr);
         let mut stmts = blk.stmts.as_slice();
 
         let last_stmt = if blk.tail_expr.is_none() {
             if let Some((last, rest_stmts)) = stmts.split_last() {
-                stmts = rest_stmts;
-                if let ast::Statement::Empty = &last.body {
-                    None
-                } else {
+                if let ast::Statement::Block(_) = &last.body {
+                    stmts = rest_stmts;
                     Some(last)
+                } else {
+                    None
                 }
             } else {
                 None
@@ -453,6 +456,7 @@ impl<'a> HirLowerer<'a> {
         };
 
         for stmt in stmts {
+            eprintln!("Desugaring statement: {:?}", stmt);
             self.desugar_stmt(None, stmt)?;
         }
 
