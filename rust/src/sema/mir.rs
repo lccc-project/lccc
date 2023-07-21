@@ -857,6 +857,10 @@ impl<'a> MirConverter<'a> {
                             self.write_statement(stmt)?;
                         }
 
+                        if self.cur_basic_block.id == BasicBlockId::UNUSED {
+                            return Ok(());
+                        }
+
                         let bb = self.cur_basic_block.finish_and_reset(Spanned {
                             body: term,
                             span: blk.span,

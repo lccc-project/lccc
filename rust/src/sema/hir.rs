@@ -405,7 +405,7 @@ impl<'a> HirLowerer<'a> {
 
                     lowerer.varnames = self.varnames.clone();
 
-                    lowerer.desugar_block(ret, blk)?;
+                    lowerer.desugar_block(None, blk)?; // handle `break` at some point
 
                     let block = HirBlock::Loop(lowerer.stmts);
 
