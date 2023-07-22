@@ -65,7 +65,9 @@ impl<T, A: Allocator> Drop for Vec<T, A> {
                 self.cap.checked_mul(core::mem::size_of::<T>()).unwrap(),
                 core::mem::align_of::<T>(),
             )
-        }.align_to_fundamental().unwrap();
+        }
+        .align_to_fundamental()
+        .unwrap();
         if layout.size() != 0 {
             unsafe {
                 self.alloc.deallocate(self.ptr.as_nonnull().cast(), layout);

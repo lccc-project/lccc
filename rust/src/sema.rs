@@ -5,7 +5,7 @@ use xlang::abi::collection::HashSet;
 use xlang::abi::pair::Pair;
 
 use crate::ast;
-pub use crate::ast::Attr;
+pub use attr::Attr;
 
 pub use crate::span::Spanned;
 
@@ -18,6 +18,8 @@ use crate::span::Span;
 
 use self::intrin::IntrinsicDef;
 use self::ty::FnType;
+use self::ty::SemaLifetime;
+use self::ty::Type;
 use self::tyck::ThirBlock;
 use self::tyck::ThirFunctionBody;
 use self::{hir::HirFunctionBody, tyck::Inferer};
@@ -60,7 +62,7 @@ macro_rules! matches_simple_path{
 
             !to_match.from_root && to_match.segments.iter().map(|seg| seg.body)
                 .zip(&path)
-                .all(|(a,b)| a==b)
+                .all(|(a,b)| a==*b)
         }
     };
 }
@@ -95,10 +97,12 @@ pub enum ErrorCategory {
     InvalidAbi,
     InvalidFunction,
     InvalidExpression,
+    InvalidAttr,
     TycheckError(tyck::TycheckErrorCategory),
     BorrowckError(mir::BorrowckErrorCategory),
 }
 
+pub mod attr;
 pub mod cx;
 pub mod hir;
 pub mod intrin;
@@ -126,11 +130,31 @@ impl core::fmt::Debug for DefId {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum TypeConstraint{
+    Trait(DefId),
+    Lifetime(SemaLifetime)
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum GenericParamInfo{
+    Lifetime(Vec<SemaLifetime>),
+    Type(Vec<TypeConstraint>),
+    Const(Type)
+} 
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct GenericParams{
+    pub params: Vec<GenericParamInfo>,
+    pub by_name: HashMap<Spanned<Symbol>,u32>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Definition {
     pub visible_from: DefId,
     pub parent: DefId,
     pub attrs: Vec<Spanned<Attr>>,
     pub inner: Spanned<DefinitionInner>,
+    pub generics: GenericParams,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -156,6 +180,15 @@ pub enum UserType {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ImplBlock{
+    pub trait_def: Option<DefId>,
+    pub ty: ty::Type,
+    pub assoc_types: HashMap<Symbol,DefId>,
+    pub values: HashMap<Symbol,DefId>,
+}
+
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum DefinitionInner {
     Placeholder,
     Module(Module),
@@ -171,6 +204,7 @@ pub enum DefinitionInner {
 pub struct Module {
     pub types: HashMap<Symbol, DefId>,
     pub values: HashMap<Symbol, DefId>,
+    pub impls: Vec<DefId>,
     pub wildcard_imports: Vec<DefId>,
 }
 
@@ -344,6 +378,10 @@ impl Definitions {
                     body: DefinitionInner::Placeholder,
                     span: Span::empty(),
                 },
+                generics: GenericParams{
+                    params: vec![],
+                    by_name: HashMap::new(),
+                }
             },
         );
 
@@ -368,6 +406,20 @@ impl Definitions {
         let vis = self.definition(item).visible_from;
 
         self.visibility_matches(vis, curmod)
+    }
+
+    pub fn owning_crate(&self, item: DefId) -> DefId{
+        if item==DefId::ROOT{
+           item
+        }else{
+            let parent = self.definition(item).parent;
+
+            if parent==DefId::ROOT{
+                item
+            }else{
+                self.owning_crate(parent)
+            }
+        }
     }
 
     pub fn find_type_in_mod(
@@ -783,32 +835,24 @@ impl Definitions {
             ty::Type::Array(ty, _) => self.is_copy(ty),
             ty::Type::InferableInt(_) |
             ty::Type::Inferable(_) => panic!("Cannot determine copyability of an uninfered type"),
-            
-            
+            ty::Type::Param(_) => false, // for now
         }
+    }
+
+    pub fn get_lang_item(&self, lang: LangItem) -> Option<DefId>{
+        self.lang_items.get(&lang).copied()
     }
 
     pub fn type_defid(&self, ty: &ty::Type) -> DefId{
         // todo: look up primitive impl lang item
         match ty{
-            ty::Type::Bool |
-            ty::Type::Int(_) |
-            ty::Type::Float(_) |
-            ty::Type::Char |
-            ty::Type::Str |
-            ty::Type::Never |
-            ty::Type::FnPtr(_) |
-            ty::Type::Pointer(_, _) |
-            ty::Type::Reference(_, _, _) |
-            ty::Type::Array(_, _) |
-            ty::Type::Tuple(_) => DefId::ROOT,
             ty::Type::UserType(defid) |
             ty::Type::FnItem(_, defid) => *defid,
             ty::Type::IncompleteAlias(_) => panic!("incomplete alias held too late"),
             ty::Type::InferableInt(_) |
             ty::Type::Inferable(_) => panic!("Canot determine owning definition of an uninfered type"),
-            
-            
+            ty::Type::Param(_) => DefId::ROOT,
+            prim => prim.as_lang_item().and_then(|lang| self.get_lang_item(lang)).unwrap_or(DefId::ROOT)
         }
     }
 }
@@ -1025,6 +1069,7 @@ fn scan_modules(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) -
         types: HashMap::new(),
         values: HashMap::new(),
         wildcard_imports: Vec::new(),
+        impls: Vec::new(),
     };
     for item in &md.items {
         let span = item.span;
@@ -1035,7 +1080,8 @@ fn scan_modules(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) -
 
                 let def = defs.definition_mut(defid);
                 def.parent = curmod;
-                def.attrs = item.attrs.clone();
+                def.attrs = item.attrs.iter().map(|attr|attr::parse_meta(attr, defid, defid))
+                    .collect::<Result<_>>()?;
 
                 scan_modules(defs, curmod, md.content.as_ref().unwrap())?;
 
@@ -1112,7 +1158,17 @@ fn collect_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) 
                 };
 
                 let def = defs.definition_mut(defid);
-                def.attrs = item.attrs.clone();
+                def.attrs = item.attrs.iter().map(|attr|attr::parse_meta(attr, defid, curmod))
+                    .collect::<Result<_>>()?;
+
+                // for attr in &def.attrs{
+                //     match &attr.body{
+                //         Attr::Lang(lang) => {
+                //             if lang.
+                //         },
+                //     }
+                // }
+
                 def.parent = curmod;
                 def.inner = uty.copy_span(|_| DefinitionInner::UserType(utys));
                 def.visible_from = visible_from;
@@ -1391,7 +1447,8 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                 let inner = collect_function(defs, curmod, defid, itemfn, None, None, None, None)?;
 
                 let def = defs.definition_mut(defid);
-                def.attrs = item.attrs.clone();
+                def.attrs = item.attrs.iter().map(|attr|attr::parse_meta(attr, defid, curmod))
+                    .collect::<Result<_>>()?;
                 def.visible_from = visible_from;
                 def.parent = curmod;
                 def.inner = itemfn.copy_span(|_| inner);
@@ -1403,7 +1460,8 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
 
                 let def = defs.definition_mut(extern_defid);
 
-                def.attrs = item.attrs.clone();
+                def.attrs = item.attrs.iter().map(|attr|attr::parse_meta(attr, extern_defid, curmod))
+                    .collect::<Result<_>>()?;
                 def.visible_from = curmod;
                 def.inner = blk.copy_span(|_| DefinitionInner::ExternBlock);
 
@@ -1430,7 +1488,8 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                             let inner = collect_function(defs, curmod, defid, itemfn, Some(tag), Some(Spanned{body: Safety::Unsafe, span: Span::empty()}), Some(blk.span),Some(extern_defid))?;
 
                             let def = defs.definition_mut(defid);
-                            def.attrs = item.attrs.clone();
+                            def.attrs = item.attrs.iter().map(|attr|attr::parse_meta(attr, defid, defid))
+                                .collect::<Result<_>>()?;
                             def.visible_from = visible_from;
                             def.parent = curmod;
                             def.inner = itemfn.copy_span(|_| inner);

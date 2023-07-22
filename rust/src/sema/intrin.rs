@@ -21,6 +21,12 @@ macro_rules! spanned {
     };
 }
 
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum IntrinsicGenericParam {
+    Type,
+    Const,
+}
+
 macro_rules! parse_safety {
     () => {
         Safety::Safe
@@ -80,6 +86,9 @@ macro_rules! parse_type_inner{
     (($inner:ty)) => {
         parse_type!($inner)
     };
+    (Var$(::)?<$id:literal>) => {
+        (super::ty::Type::Param($id))
+    };
     ($ident:ident) => {
         super::ty::convert_builtin_type(::core::stringify!($ident)).unwrap() // TODO: also support lang item types and generics
     };
@@ -134,9 +143,24 @@ macro_rules! parse_intrinsic_signature{
     };
 }
 
+macro_rules! parse_intrinsic_generic {
+    (type) => {
+        IntrinsicGenericParam::Type
+    };
+    (const) => {
+        IntrinsicGenericParam::Const
+    };
+}
+
+macro_rules! parse_intrinsic_generics{
+    ($($param:ident),* $(,)?) => {
+        &[$(parse_intrinsic_generic!($param)),*]
+    }
+}
+
 macro_rules! def_intrinsics{
     {
-        $($(unsafe $(@$_vol:tt)?)? intrin $name:ident($($param:ty),* $(,)?) -> $retty:ty;)*
+        $($(unsafe $(@$_vol:tt)?)? intrin $name:ident $(<$($gen_param:ident),* $(,)?>)?($($param:ty),* $(,)?) -> $retty:ty;)*
     } => {
         #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
         #[allow(non_camel_case_types)]
@@ -164,6 +188,13 @@ macro_rules! def_intrinsics{
                 }
             }
 
+            #[allow(dead_code)]
+            pub fn generic_params(&self) -> &'static [IntrinsicGenericParam]{
+                match self{
+                    $(Self::$name => parse_intrinsic_generics!($($($gen_param),*)?)),*
+                }
+            }
+
             pub fn register_intrinsics(defs: &mut Definitions){
                 $({
                     let defid = defs.allocate_defid();
@@ -184,4 +215,12 @@ def_intrinsics! {
     intrin impl_id() -> &str;
     unsafe intrin __builtin_allocate(usize, usize) -> *mut u8;
     unsafe intrin __builtin_deallocate(usize, usize, *mut u8) -> ();
+    intrin type_id<type>() -> (*const u8, usize);
+    intrin type_name<type>() -> &str;
+    intrin destroy_at<type>(*mut Var<0>) -> ();
+    intrin discriminant<type,type>(&Var<0>) -> Var<1>;
+    unsafe intrin transmute<type,type>(Var<0>) -> Var<1>;
+    intrin black_box<type>(Var<0>) -> Var<1>;
+    unsafe intrin construct_in_place<type,type,type>(*mut Var<0>,Var<1>,Var<2>) -> ();
+    unsafe intrin __builtin_read_freeze<type>(*const Var<0>) -> Var<0>;
 }

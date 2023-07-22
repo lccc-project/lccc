@@ -604,10 +604,35 @@ pub enum SimplePathSegment {
     MacroCratePath,
 }
 
+impl core::fmt::Display for SimplePathSegment {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            SimplePathSegment::Identifier(id) => f.write_str(id),
+            SimplePathSegment::SuperPath => f.write_str("super"),
+            SimplePathSegment::SelfPath => f.write_str("self"),
+            SimplePathSegment::CratePath => f.write_str("crate"),
+            SimplePathSegment::MacroCratePath => f.write_str("$crate"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct SimplePath {
     pub from_root: bool,
     pub segments: Vec<Spanned<SimplePathSegment>>,
+}
+
+impl core::fmt::Display for SimplePath {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        let mut sep = if self.from_root { "::" } else { "" };
+
+        for seg in &self.segments {
+            f.write_str(sep);
+            sep = "::";
+            seg.body.fmt(f)?;
+        }
+        Ok(())
+    }
 }
 
 #[allow(dead_code)]

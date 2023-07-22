@@ -3,6 +3,7 @@ use crate::{
     ast::{self, PathSegment},
     helpers::nzu16,
     interning::Symbol,
+    lang::LangItem,
     span::Pos,
 };
 
@@ -429,6 +430,7 @@ pub enum Type {
         Spanned<Mutability>,
         Box<Spanned<Type>>,
     ),
+    Param(u32),
 }
 
 impl Type {
@@ -436,6 +438,33 @@ impl Type {
 
     pub fn is_inference(&self) -> bool {
         matches!(self, Self::Inferable(_) | Self::InferableInt(_))
+    }
+
+    pub fn as_lang_item(&self) -> Option<LangItem> {
+        match self {
+            Self::Bool => Some(LangItem::Bool),
+            Self::Char => Some(LangItem::Char),
+            Self::Str => Some(LangItem::Str),
+            Self::Array(_, _) => Some(LangItem::Array),
+            Self::Tuple(tuples) if tuples.len() == 0 => Some(LangItem::Unit),
+            Self::Tuple(_) => Some(LangItem::Tuple),
+            Self::Pointer(
+                Spanned {
+                    body: Mutability::Const,
+                    ..
+                },
+                _,
+            ) => Some(LangItem::ConstPtr),
+            Self::Pointer(
+                Spanned {
+                    body: Mutability::Mut,
+                    ..
+                },
+                _,
+            ) => Some(LangItem::MutPtr),
+            Self::Never => Some(LangItem::Never),
+            _ => None,
+        }
     }
 }
 
@@ -503,6 +532,7 @@ impl core::fmt::Display for Type {
                 }
                 ty.body.fmt(f)
             }
+            Self::Param(var) => f.write_fmt(format_args!("%{}", var)),
         }
     }
 }
