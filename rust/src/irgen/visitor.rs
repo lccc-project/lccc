@@ -4,7 +4,7 @@ use crate::{
     interning::Symbol,
     sema::{
         mir,
-        ty::{self, Mutability},
+        ty,
         DefId, DefinitionInner, Definitions, FunctionBody,
     },
 };
@@ -12,38 +12,36 @@ use crate::{
 macro_rules! def_visitors{
     ($($vis:vis trait $trait:path {$(fn $visitor_fn:ident(&mut self $(,$($pname:ident : $ty:ty ),* $(,)?)?) $(-> $ret_ty:ty)?;)*})*) => {
         $(
-
-        impl<V: $trait + ?Sized> $trait for &mut V{
-            $(
-                #[inline]
-                fn $visitor_fn(&mut self, $($($pname: $ty),*)?) $(-> $ret_ty)?{
-                    <V as $trait>::$visitor_fn(self, $($($pname),*)?)
-                }
-            )*
-        }
-
-        impl<V: $trait + ?Sized> $trait for Box<V>{
-            $(
-                #[inline]
-                fn $visitor_fn(&mut self, $($($pname: $ty),*)?) $(-> $ret_ty)?{
-                    <V as $trait>::$visitor_fn(self, $($($pname),*)?)
-                }
-            )*
-        }
-
-        impl<V: $trait> $trait for Option<V>{
-            $(
-                #[inline]
-                fn $visitor_fn(&mut self, $($($pname: $ty),*)?) $(-> $ret_ty)?{
-                    match self{
-                        Some(this) => <V as $trait>::$visitor_fn(this, $($($pname),*)?),
-                        None => core::default::Default::default()
+            impl<V: $trait + ?Sized> $trait for &mut V {
+                $(
+                    #[inline]
+                    fn $visitor_fn(&mut self, $($($pname: $ty),*)?) $(-> $ret_ty)? {
+                        <V as $trait>::$visitor_fn(self, $($($pname),*)?)
                     }
+                )*
+            }
 
-                }
-            )*
-        }
-    )*
+            impl<V: $trait + ?Sized> $trait for Box<V> {
+                $(
+                    #[inline]
+                    fn $visitor_fn(&mut self, $($($pname: $ty),*)?) $(-> $ret_ty)? {
+                        <V as $trait>::$visitor_fn(self, $($($pname),*)?)
+                    }
+                )*
+            }
+
+            impl<V: $trait> $trait for Option<V> {
+                $(
+                    #[inline]
+                    fn $visitor_fn(&mut self, $($($pname: $ty),*)?) $(-> $ret_ty)? {
+                        match self {
+                            Some(this) => <V as $trait>::$visitor_fn(this, $($($pname),*)?),
+                            None => core::default::Default::default()
+                        }
+                    }
+                )*
+            }
+        )*
     }
 }
 
@@ -65,7 +63,7 @@ pub fn visit_module<V: ModVisitor>(
 
     for Pair(name, def) in &md.types {
         if defs.is_module(*def) {
-            let mut visitor = visit.visit_submodule();
+            let visitor = visit.visit_submodule();
             names.push(*name);
             visit_module(*def, defs, visitor, names);
             names.pop();
@@ -74,7 +72,7 @@ pub fn visit_module<V: ModVisitor>(
 
     for Pair(name, def) in &md.types {
         if !defs.is_module(*def) {
-            let mut visitor = visit.visit_type();
+            let visitor = visit.visit_type();
             names.push(*name);
             visit_type_def(*def, defs, visitor, names);
             names.pop();
@@ -82,7 +80,7 @@ pub fn visit_module<V: ModVisitor>(
     }
 
     for Pair(name, def) in &md.values {
-        let mut visitor = visit.visit_value();
+        let visitor = visit.visit_value();
         names.push(*name);
         visit_value_def(*def, defs, visitor, names);
         names.pop();
@@ -119,7 +117,7 @@ pub fn visit_value_def<V: ValueDefVisitor>(
     visit.visit_name(names);
     match &defs.definition(def).inner.body {
         DefinitionInner::Function(fnty, body @ (Some(FunctionBody::MirBody(_)) | None)) => {
-            let mut visitor = visit.visit_function();
+            let visitor = visit.visit_function();
             visit_fndef(visitor, fnty, body, defs);
         }
         _ => panic!("Invalid definition"),
