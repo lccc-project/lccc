@@ -29,17 +29,21 @@ use xlang::targets::Target;
 use crate::{
     lex::filter_comments,
     parse::do_mod,
-    sema::{convert_crate, Definitions},
+    sema::{convert_crate, Definitions}, irgen::irgen,
 };
 
 struct RustFrontend {
     filename: Option<String>,
+    defs: Option<Definitions>,
 }
 
 impl RustFrontend {
     #[must_use]
     pub const fn new() -> Self {
-        Self { filename: None }
+        Self {
+            filename: None,
+            defs: None,
+        }
     }
 }
 
@@ -54,28 +58,33 @@ impl XLangFrontend for RustFrontend {
 
     fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
         let mut file = file.into_chars();
-        let mut lexed = lex(
-            &mut file,
-            self.filename
-                .as_ref()
-                .map(|x| x.to_string())
-                .unwrap_or_default(),
-        )
-        .unwrap();
+        let filename = self
+            .filename
+            .as_ref()
+            .map(|x| x.to_string())
+            .unwrap_or_default();
+
+        let crate_name = filename.rsplit('/').next().unwrap();
+        let crate_name = crate_name.rsplit('\\').next().unwrap();
+        let crate_name = crate_name.split('.').next().unwrap();
+
+        let mut lexed = lex(&mut file, &*filename).unwrap();
         filter_comments(&mut lexed);
-        println!("{:#?}", lexed);
         let parsed = do_mod(&mut lexed.into_iter().peekmore()).unwrap();
-        println!("{:#?}", parsed);
         let mut defs = Definitions::new();
         convert_crate(&mut defs, &parsed).unwrap();
-        println!("{}", defs);
+
+        defs.set_current_crate_name(crate_name);
+
+        self.defs = Some(defs);
         io::Result::Ok(())
     }
 }
 
 impl XLangPlugin for RustFrontend {
-    fn accept_ir(&mut self, _file: &mut ir::File) -> Result<(), Error> {
-        // println!("{:#?}", file);
+    fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
+        irgen(self.defs.as_mut().unwrap(), file);
+        println!("{:#?}", file);
         Result::Ok(())
     }
 

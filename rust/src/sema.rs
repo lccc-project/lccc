@@ -4,7 +4,7 @@ use xlang::abi::collection::HashMap;
 use xlang::abi::collection::HashSet;
 use xlang::abi::pair::Pair;
 
-use crate::ast;
+use crate::{ast, irgen::visitor::{ModVisitor, visit_module}};
 pub use attr::Attr;
 
 pub use crate::span::Spanned;
@@ -405,6 +405,10 @@ impl Definitions {
 
     pub fn set_current_crate(&mut self, curcrate: DefId) {
         self.curcrate = curcrate;
+    }
+
+    pub fn set_current_crate_name(&mut self, name: impl Into<Symbol>) {
+        self.crates.insert(name.into(), self.curcrate);
     }
 
     fn visibility_matches(&self, vis: DefId, curmod: DefId) -> bool {
@@ -872,6 +876,12 @@ impl Definitions {
                 .as_lang_item()
                 .and_then(|lang| self.get_lang_item(lang))
                 .unwrap_or(DefId::ROOT),
+        }
+    }
+
+    pub fn visit_all_crates<V: ModVisitor>(&self, mut visitor: V) {
+        for c in &self.crates {
+            visit_module(c.1, self, &mut visitor, &mut vec![c.0]);
         }
     }
 }
@@ -1819,9 +1829,7 @@ pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<(
     convert_values(defs, root, md)?;
 
     desugar_values(defs, root)?;
-    println!("{}\n", defs);
     tycheck_values(defs, root)?;
-    println!("{}\n", defs);
     mir_lower(defs, root)?;
     Ok(())
 }

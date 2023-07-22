@@ -164,7 +164,6 @@ dependencies = [
  "peekmore",
  "unicode-xid",
  "xlang",
- "xlang_struct",
 ]
 
 [[package]]
