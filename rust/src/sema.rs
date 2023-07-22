@@ -282,6 +282,21 @@ impl Definitions {
         }
     }
 
+    pub fn is_module(&self, defid: DefId) -> bool{
+        if let Definition {
+            inner:
+                Spanned {
+                    body: DefinitionInner::Module(md),
+                    ..
+                },
+            ..
+        } = self.definition(defid){
+            true
+        }else{
+            false
+        }
+    }
+
     pub fn definition(&self, defid: DefId) -> &Definition {
         self.defs
             .get(&defid)
