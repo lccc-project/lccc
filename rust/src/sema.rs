@@ -130,22 +130,22 @@ impl core::fmt::Debug for DefId {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum TypeConstraint{
+pub enum TypeConstraint {
     Trait(DefId),
-    Lifetime(SemaLifetime)
+    Lifetime(SemaLifetime),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum GenericParamInfo{
+pub enum GenericParamInfo {
     Lifetime(Vec<SemaLifetime>),
     Type(Vec<TypeConstraint>),
-    Const(Type)
-} 
+    Const(Type),
+}
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct GenericParams{
+pub struct GenericParams {
     pub params: Vec<GenericParamInfo>,
-    pub by_name: HashMap<Spanned<Symbol>,u32>,
+    pub by_name: HashMap<Spanned<Symbol>, u32>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -180,13 +180,12 @@ pub enum UserType {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct ImplBlock{
+pub struct ImplBlock {
     pub trait_def: Option<DefId>,
     pub ty: ty::Type,
-    pub assoc_types: HashMap<Symbol,DefId>,
-    pub values: HashMap<Symbol,DefId>,
+    pub assoc_types: HashMap<Symbol, DefId>,
+    pub values: HashMap<Symbol, DefId>,
 }
-
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum DefinitionInner {
@@ -235,14 +234,14 @@ impl Definitions {
         }
     }
 
-    pub fn get_intrinsic(&self, defid: DefId) -> Option<IntrinsicDef>{
-        match self.definition(defid).inner.body{
+    pub fn get_intrinsic(&self, defid: DefId) -> Option<IntrinsicDef> {
+        match self.definition(defid).inner.body {
             DefinitionInner::Function(_, Some(FunctionBody::Intrinsic(intrin))) => Some(intrin),
-            _ => None
+            _ => None,
         }
     }
 
-    pub fn canon_def(&self, intrin: IntrinsicDef) -> DefId{
+    pub fn canon_def(&self, intrin: IntrinsicDef) -> DefId {
         self.intrinsics[&intrin]
     }
 
@@ -282,7 +281,7 @@ impl Definitions {
         }
     }
 
-    pub fn is_module(&self, defid: DefId) -> bool{
+    pub fn is_module(&self, defid: DefId) -> bool {
         if let Definition {
             inner:
                 Spanned {
@@ -290,9 +289,10 @@ impl Definitions {
                     ..
                 },
             ..
-        } = self.definition(defid){
+        } = self.definition(defid)
+        {
             true
-        }else{
+        } else {
             false
         }
     }
@@ -393,10 +393,10 @@ impl Definitions {
                     body: DefinitionInner::Placeholder,
                     span: Span::empty(),
                 },
-                generics: GenericParams{
+                generics: GenericParams {
                     params: vec![],
                     by_name: HashMap::new(),
-                }
+                },
             },
         );
 
@@ -423,15 +423,15 @@ impl Definitions {
         self.visibility_matches(vis, curmod)
     }
 
-    pub fn owning_crate(&self, item: DefId) -> DefId{
-        if item==DefId::ROOT{
-           item
-        }else{
+    pub fn owning_crate(&self, item: DefId) -> DefId {
+        if item == DefId::ROOT {
+            item
+        } else {
             let parent = self.definition(item).parent;
 
-            if parent==DefId::ROOT{
+            if parent == DefId::ROOT {
                 item
-            }else{
+            } else {
                 self.owning_crate(parent)
             }
         }
@@ -832,42 +832,46 @@ impl Definitions {
         Ok(resolve_mod.expect("Parsing an empty path is impossible"))
     }
 
-    pub fn is_copy(&self, ty: &ty::Type) -> bool{
-        match ty{
-            ty::Type::Bool |
-            ty::Type::Int(_) |
-            ty::Type::Float(_) |
-            ty::Type::Char |
-            ty::Type::Str |
-            ty::Type::Never |
-            ty::Type::FnPtr(_) |
-            ty::Type::FnItem(_, _) |
-            ty::Type::Pointer(_, _) => true,
-            ty::Type::Reference(_, mt, _) => mt.body==Mutability::Const,
+    pub fn is_copy(&self, ty: &ty::Type) -> bool {
+        match ty {
+            ty::Type::Bool
+            | ty::Type::Int(_)
+            | ty::Type::Float(_)
+            | ty::Type::Char
+            | ty::Type::Str
+            | ty::Type::Never
+            | ty::Type::FnPtr(_)
+            | ty::Type::FnItem(_, _)
+            | ty::Type::Pointer(_, _) => true,
+            ty::Type::Reference(_, mt, _) => mt.body == Mutability::Const,
             ty::Type::Tuple(inner) => inner.iter().all(|ty| self.is_copy(ty)),
             ty::Type::UserType(_) => false, // for now
             ty::Type::IncompleteAlias(_) => panic!("incomplete alias held too late"),
             ty::Type::Array(ty, _) => self.is_copy(ty),
-            ty::Type::InferableInt(_) |
-            ty::Type::Inferable(_) => panic!("Cannot determine copyability of an uninfered type"),
+            ty::Type::InferableInt(_) | ty::Type::Inferable(_) => {
+                panic!("Cannot determine copyability of an uninfered type")
+            }
             ty::Type::Param(_) => false, // for now
         }
     }
 
-    pub fn get_lang_item(&self, lang: LangItem) -> Option<DefId>{
+    pub fn get_lang_item(&self, lang: LangItem) -> Option<DefId> {
         self.lang_items.get(&lang).copied()
     }
 
-    pub fn type_defid(&self, ty: &ty::Type) -> DefId{
+    pub fn type_defid(&self, ty: &ty::Type) -> DefId {
         // todo: look up primitive impl lang item
-        match ty{
-            ty::Type::UserType(defid) |
-            ty::Type::FnItem(_, defid) => *defid,
+        match ty {
+            ty::Type::UserType(defid) | ty::Type::FnItem(_, defid) => *defid,
             ty::Type::IncompleteAlias(_) => panic!("incomplete alias held too late"),
-            ty::Type::InferableInt(_) |
-            ty::Type::Inferable(_) => panic!("Canot determine owning definition of an uninfered type"),
+            ty::Type::InferableInt(_) | ty::Type::Inferable(_) => {
+                panic!("Canot determine owning definition of an uninfered type")
+            }
             ty::Type::Param(_) => DefId::ROOT,
-            prim => prim.as_lang_item().and_then(|lang| self.get_lang_item(lang)).unwrap_or(DefId::ROOT)
+            prim => prim
+                .as_lang_item()
+                .and_then(|lang| self.get_lang_item(lang))
+                .unwrap_or(DefId::ROOT),
         }
     }
 }
@@ -1095,7 +1099,10 @@ fn scan_modules(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) -
 
                 let def = defs.definition_mut(defid);
                 def.parent = curmod;
-                def.attrs = item.attrs.iter().map(|attr|attr::parse_meta(attr, defid, defid))
+                def.attrs = item
+                    .attrs
+                    .iter()
+                    .map(|attr| attr::parse_meta(attr, defid, defid))
                     .collect::<Result<_>>()?;
 
                 scan_modules(defs, curmod, md.content.as_ref().unwrap())?;
@@ -1173,7 +1180,10 @@ fn collect_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) 
                 };
 
                 let def = defs.definition_mut(defid);
-                def.attrs = item.attrs.iter().map(|attr|attr::parse_meta(attr, defid, curmod))
+                def.attrs = item
+                    .attrs
+                    .iter()
+                    .map(|attr| attr::parse_meta(attr, defid, curmod))
                     .collect::<Result<_>>()?;
 
                 // for attr in &def.attrs{
@@ -1392,7 +1402,7 @@ fn collect_function(
                         })
                         .try_for_each(|e|e)?;
 
-                    if fnty.retty.body != sig.retty.body{
+                    if fnty.retty.body != sig.retty.body {
                         return Err(Error {
                             span: itemfn.name.span,
                             text: format!(
@@ -1403,17 +1413,23 @@ fn collect_function(
                             at_item: item,
                             containing_item: curmod,
                             relevant_item: item,
-                            hints: vec![SemaHint {
-                                text: format!(
-                                    "Declared in an `extern \"rust-intrinsics\"` block here"
-                                ),
-                                itemref: outer_defid.unwrap(),
-                                refspan: outer_span.unwrap(),
-                            }, SemaHint {
-                                text: format!("Expected return type to be `{}` got type `{}` instead", sig.retty.body,fnty.retty.body),
-                                itemref: item,
-                                refspan: fnty.retty.span
-                            }],
+                            hints: vec![
+                                SemaHint {
+                                    text: format!(
+                                        "Declared in an `extern \"rust-intrinsics\"` block here"
+                                    ),
+                                    itemref: outer_defid.unwrap(),
+                                    refspan: outer_span.unwrap(),
+                                },
+                                SemaHint {
+                                    text: format!(
+                                        "Expected return type to be `{}` got type `{}` instead",
+                                        sig.retty.body, fnty.retty.body
+                                    ),
+                                    itemref: item,
+                                    refspan: fnty.retty.span,
+                                },
+                            ],
                         });
                     }
 
@@ -1439,7 +1455,6 @@ fn collect_function(
         }
     };
 
-
     Ok(DefinitionInner::Function(fnty, fnbody))
 }
 
@@ -1462,7 +1477,10 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                 let inner = collect_function(defs, curmod, defid, itemfn, None, None, None, None)?;
 
                 let def = defs.definition_mut(defid);
-                def.attrs = item.attrs.iter().map(|attr|attr::parse_meta(attr, defid, curmod))
+                def.attrs = item
+                    .attrs
+                    .iter()
+                    .map(|attr| attr::parse_meta(attr, defid, curmod))
                     .collect::<Result<_>>()?;
                 def.visible_from = visible_from;
                 def.parent = curmod;
@@ -1475,7 +1493,10 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
 
                 let def = defs.definition_mut(extern_defid);
 
-                def.attrs = item.attrs.iter().map(|attr|attr::parse_meta(attr, extern_defid, curmod))
+                def.attrs = item
+                    .attrs
+                    .iter()
+                    .map(|attr| attr::parse_meta(attr, extern_defid, curmod))
                     .collect::<Result<_>>()?;
                 def.visible_from = curmod;
                 def.inner = blk.copy_span(|_| DefinitionInner::ExternBlock);
@@ -1499,7 +1520,6 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                     let defid = defs.allocate_defid();
                     match &item.item.body{
                         ast::ItemBody::Function(itemfn) => {
-                            
                             let inner = collect_function(defs, curmod, defid, itemfn, Some(tag), Some(Spanned{body: Safety::Unsafe, span: Span::empty()}), Some(blk.span),Some(extern_defid))?;
 
                             let def = defs.definition_mut(defid);
@@ -1620,7 +1640,9 @@ pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     for &Pair(sym, defid) in &values {
         let def = defs.definition_mut(defid);
         match &mut def.inner.body {
-            DefinitionInner::Function(fnty, val @ Some(FunctionBody::AstBody(_))) => match val.take() {
+            DefinitionInner::Function(fnty, val @ Some(FunctionBody::AstBody(_))) => match val
+                .take()
+            {
                 Some(FunctionBody::AstBody(block)) => {
                     let mut vardebugmap = HashMap::new();
                     let safety = fnty.safety.body;
@@ -1669,61 +1691,63 @@ pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     for &Pair(sym, defid) in &values {
         let def = defs.definition_mut(defid);
         match &mut def.inner.body {
-            DefinitionInner::Function(fnty, val @ Some(FunctionBody::HirBody(_))) => match val.take() {
-                Some(FunctionBody::HirBody(block)) => {
-                    let (stmts, safety) = match block.body.body.body {
-                        hir::HirBlock::Normal(stmts) => (stmts, Safety::Safe),
-                        hir::HirBlock::Unsafe(stmts) => (stmts, Safety::Unsafe),
-                        hir::HirBlock::Loop(_) => unreachable!(),
-                    };
+            DefinitionInner::Function(fnty, val @ Some(FunctionBody::HirBody(_))) => {
+                match val.take() {
+                    Some(FunctionBody::HirBody(block)) => {
+                        let (stmts, safety) = match block.body.body.body {
+                            hir::HirBlock::Normal(stmts) => (stmts, Safety::Safe),
+                            hir::HirBlock::Unsafe(stmts) => (stmts, Safety::Unsafe),
+                            hir::HirBlock::Loop(_) => unreachable!(),
+                        };
 
-                    let mut converter = tyck::ThirConverter::new(
-                        defs,
-                        safety,
-                        defid,
-                        curmod,
-                        block.body.vardebugmap,
-                    );
+                        let mut converter = tyck::ThirConverter::new(
+                            defs,
+                            safety,
+                            defid,
+                            curmod,
+                            block.body.vardebugmap,
+                        );
 
-                    for stmt in stmts {
-                        converter.write_statement(&stmt)?;
+                        for stmt in stmts {
+                            converter.write_statement(&stmt)?;
+                        }
+
+                        let mut body = converter.into_thir_body(block.body.body.span);
+
+                        let mut inferer = Inferer::new(&defs, defid, curmod);
+
+                        let mut iter_count = 0;
+                        const MAX_ITER: usize = 4096;
+
+                        loop {
+                            if inferer.unify_block(&mut body.body.body)?.is_complete() {
+                                break;
+                            }
+
+                            if inferer.propagate_block(&mut body.body.body)?.is_complete() {
+                                break;
+                            }
+
+                            iter_count += 1;
+
+                            if iter_count > MAX_ITER {
+                                panic!("Semantic analyzer failed to resolve types. This is an ICE in this case.");
+                            }
+                        }
+
+                        match &mut defs.definition_mut(defid).inner.body {
+                            DefinitionInner::Function(_, val) => {
+                                *val = Some(FunctionBody::ThirBody(Spanned {
+                                    body,
+                                    span: block.span,
+                                }))
+                            }
+                            _ => unreachable!(),
+                        }
                     }
-
-                    let mut body = converter.into_thir_body(block.body.body.span);
-
-                    let mut inferer = Inferer::new(&defs, defid, curmod);
-
-                    let mut iter_count = 0;
-                    const MAX_ITER: usize = 4096;
-
-                    loop {
-                        if inferer.unify_block(&mut body.body.body)?.is_complete() {
-                            break;
-                        }
-
-                        if inferer.propagate_block(&mut body.body.body)?.is_complete() {
-                            break;
-                        }
-
-                        iter_count += 1;
-
-                        if iter_count > MAX_ITER {
-                            panic!("Semantic analyzer failed to resolve types. This is an ICE in this case.");
-                        }
-                    }
-
-                    match &mut defs.definition_mut(defid).inner.body {
-                        DefinitionInner::Function(_, val) => {
-                            *val = Some(FunctionBody::ThirBody(Spanned {
-                                body,
-                                span: block.span,
-                            }))
-                        }
-                        _ => unreachable!(),
-                    }
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
             _ => {}
         }
     }
@@ -1737,31 +1761,44 @@ pub fn mir_lower(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     for &Pair(_sym, defid) in &values {
         let def = defs.definition_mut(defid);
         match &mut def.inner.body {
-            DefinitionInner::Function(_fnty, val @ Some(FunctionBody::ThirBody(_))) => match val.take() {
-                Some(FunctionBody::ThirBody(block)) => {
-                    let mut lowerer = mir::MirConverter::new(defs, defid, curmod, block.body.vardefs.into_iter()
-                        .flat_map(|Pair(a,b)|Some(Pair(a,b.debug_name?)))
-                        .collect());
-                    let stmts = match block.body.body.body{
-                        ThirBlock::Normal(stmts) | ThirBlock::Unsafe(stmts) => stmts,
-                        _ => unreachable!()
-                    };
+            DefinitionInner::Function(_fnty, val @ Some(FunctionBody::ThirBody(_))) => {
+                match val.take() {
+                    Some(FunctionBody::ThirBody(block)) => {
+                        let mut lowerer = mir::MirConverter::new(
+                            defs,
+                            defid,
+                            curmod,
+                            block
+                                .body
+                                .vardefs
+                                .into_iter()
+                                .flat_map(|Pair(a, b)| Some(Pair(a, b.debug_name?)))
+                                .collect(),
+                        );
+                        let stmts = match block.body.body.body {
+                            ThirBlock::Normal(stmts) | ThirBlock::Unsafe(stmts) => stmts,
+                            _ => unreachable!(),
+                        };
 
-                    for stmt in stmts{
-                        lowerer.write_statement(stmt)?;
-                    }
-
-                    let body = lowerer.finish();
-
-                    match &mut defs.definition_mut(defid).inner.body{
-                        DefinitionInner::Function(_, ibody) => {
-                            *ibody = Some(FunctionBody::MirBody(Spanned{span: block.span,body}));
+                        for stmt in stmts {
+                            lowerer.write_statement(stmt)?;
                         }
-                        _ => unreachable!()
+
+                        let body = lowerer.finish();
+
+                        match &mut defs.definition_mut(defid).inner.body {
+                            DefinitionInner::Function(_, ibody) => {
+                                *ibody = Some(FunctionBody::MirBody(Spanned {
+                                    span: block.span,
+                                    body,
+                                }));
+                            }
+                            _ => unreachable!(),
+                        }
                     }
+                    _ => unreachable!(),
                 }
-                _ => unreachable!()
-            },
+            }
             _ => {}
         }
     }
@@ -1782,9 +1819,9 @@ pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<(
     convert_values(defs, root, md)?;
 
     desugar_values(defs, root)?;
-    println!("{}\n",defs);
+    println!("{}\n", defs);
     tycheck_values(defs, root)?;
-    println!("{}\n",defs);
+    println!("{}\n", defs);
     mir_lower(defs, root)?;
     Ok(())
 }
