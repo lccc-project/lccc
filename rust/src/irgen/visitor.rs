@@ -6,7 +6,15 @@ use crate::{
 };
 
 macro_rules! def_visitors{
-    ($($vis:vis trait $trait:path {$(fn $visitor_fn:ident(&mut self $(,$($pname:ident : $ty:ty ),* $(,)?)?) $(-> $ret_ty:ty)?;)*})*) => {
+    (
+        $(
+            $vis:vis trait $trait:ident {
+                $(
+                    fn $visitor_fn:ident(&mut self $(,$($pname:ident : $ty:ty ),* $(,)?)?) $(-> $ret_ty:ty)?;
+                )*
+            }
+        )*
+    ) => {
         $(
             impl<V: $trait + ?Sized> $trait for &mut V {
                 $(
@@ -37,15 +45,14 @@ macro_rules! def_visitors{
                     }
                 )*
             }
+
+            $vis trait $trait {
+                $(
+                    fn $visitor_fn(&mut self, $($($pname: $ty),*)?) $(-> $ret_ty)?;
+                )*
+            }
         )*
     }
-}
-
-pub trait ModVisitor {
-    fn visit_defid(&mut self, defid: DefId);
-    fn visit_submodule(&mut self) -> Option<Box<dyn ModVisitor + '_>>;
-    fn visit_type(&mut self) -> Option<Box<dyn TypeDefVisitor + '_>>;
-    fn visit_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>>;
 }
 
 pub fn visit_module<V: ModVisitor>(
@@ -83,10 +90,6 @@ pub fn visit_module<V: ModVisitor>(
     }
 }
 
-pub trait TypeDefVisitor {
-    fn visit_defid(&mut self, defid: DefId);
-}
-
 #[allow(unused_variables)]
 pub fn visit_type_def<V: TypeDefVisitor>(
     def: DefId,
@@ -96,12 +99,6 @@ pub fn visit_type_def<V: TypeDefVisitor>(
 ) {
     visit.visit_defid(def);
     todo!()
-}
-
-pub trait ValueDefVisitor {
-    fn visit_name(&mut self, name: &[Symbol]);
-    fn visit_defid(&mut self, defid: DefId);
-    fn visit_function(&mut self) -> Option<Box<dyn FunctionDefVisitor + '_>>;
 }
 
 pub fn visit_value_def<V: ValueDefVisitor>(
@@ -119,11 +116,6 @@ pub fn visit_value_def<V: ValueDefVisitor>(
         }
         _ => panic!("Invalid definition"),
     }
-}
-
-pub trait FunctionDefVisitor {
-    fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>>;
-    fn visit_fnbody(&mut self) -> Option<Box<dyn FunctionBodyVisitor + '_>>;
 }
 
 pub fn visit_fndef<V: FunctionDefVisitor>(
@@ -144,10 +136,6 @@ pub fn visit_fndef<V: FunctionDefVisitor>(
     }
 }
 
-pub trait FunctionBodyVisitor {
-    fn visit_basic_block(&mut self) -> Option<Box<dyn BasicBlockVisitor + '_>>;
-}
-
 pub fn visit_fnbody<V: FunctionBodyVisitor>(
     mut visitor: V,
     fnbody: &mir::MirFunctionBody,
@@ -157,12 +145,6 @@ pub fn visit_fnbody<V: FunctionBodyVisitor>(
         let visitor = visitor.visit_basic_block();
         visit_basic_block(visitor, bb, defs);
     }
-}
-
-pub trait BasicBlockVisitor {
-    fn visit_id(&mut self, id: mir::BasicBlockId);
-    fn visit_stat(&mut self) -> Option<Box<dyn StatementVisitor + '_>>;
-    fn visit_term(&mut self) -> Option<Box<dyn TerminatorVisitor + '_>>;
 }
 
 pub fn visit_basic_block<V: BasicBlockVisitor>(
@@ -179,8 +161,6 @@ pub fn visit_basic_block<V: BasicBlockVisitor>(
     visit_terminator(visitor.visit_term(), &bb.term, defs);
 }
 
-pub trait StatementVisitor {}
-
 #[allow(unused_variables, unused_mut)]
 pub fn visit_statement<V: StatementVisitor>(
     mut visitor: V,
@@ -190,8 +170,6 @@ pub fn visit_statement<V: StatementVisitor>(
     todo!()
 }
 
-pub trait TerminatorVisitor {}
-
 #[allow(unused_variables, unused_mut)]
 pub fn visit_terminator<V: TerminatorVisitor>(
     mut visitor: V,
@@ -199,13 +177,6 @@ pub fn visit_terminator<V: TerminatorVisitor>(
     defs: &Definitions,
 ) {
     todo!()
-}
-
-pub trait FunctionTyVisitor {
-    fn visit_tag(&mut self, abi: ty::AbiTag);
-    fn visit_return(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
-    fn visit_param(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
-    fn visit_cvarargs(&mut self);
 }
 
 pub fn visit_fnty<V: FunctionTyVisitor>(mut visitor: V, fnty: &ty::FnType, defs: &Definitions) {
@@ -222,10 +193,6 @@ pub fn visit_fnty<V: FunctionTyVisitor>(mut visitor: V, fnty: &ty::FnType, defs:
     }
 }
 
-pub trait TypeVisitor {
-    fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>>;
-}
-
 pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definitions) {
     match ty {
         ty::Type::Tuple(tys) => {
@@ -237,10 +204,6 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
         }
         x => todo!("{:?}", x),
     }
-}
-
-pub trait TupleTyVisitor {
-    fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
 }
 
 pub fn visit_type_tuple<V: TupleTyVisitor>(mut visitor: V, tys: &[ty::Type], defs: &Definitions) {
