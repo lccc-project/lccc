@@ -139,7 +139,8 @@ pub fn visit_value_def<V: ValueDefVisitor>(
             let visitor = visit.visit_function();
             visit_fndef(visitor, fnty, body, defs);
         }
-        _ => panic!("Invalid definition"),
+        DefinitionInner::Function(_, Some(FunctionBody::Intrinsic(_))) => {}
+        x => panic!("Invalid definition: {:?}", x),
     }
 }
 
