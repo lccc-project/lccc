@@ -2,8 +2,8 @@ use crate::interning::Symbol;
 use crate::sema::{ty::AbiTag, DefId, Definitions};
 
 use self::visitor::{
-    FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, ModVisitor, TypeDefVisitor,
-    TypeVisitor, ValueDefVisitor,
+    FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, ModVisitor, TupleTyVisitor,
+    TypeDefVisitor, TypeVisitor, ValueDefVisitor,
 };
 
 use xlang::ir;
@@ -170,6 +170,7 @@ struct NameFunctionTyVisitor<'a> {
     defid: DefId,
     name: &'a [Symbol],
     abi: AbiTag,
+    params: Vec<String>,
 }
 
 impl<'a> NameFunctionTyVisitor<'a> {
@@ -185,6 +186,7 @@ impl<'a> NameFunctionTyVisitor<'a> {
             defid,
             name,
             abi: AbiTag::Rust,
+            params: Vec::new(),
         }
     }
 }
@@ -199,7 +201,13 @@ impl<'a> FunctionTyVisitor for NameFunctionTyVisitor<'a> {
     }
 
     fn visit_param(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
-        todo!()
+        let idx = self.params.len();
+        self.params.push(String::new());
+        Some(Box::new(NameTypeVisitor::new(
+            self.names,
+            self.int_mangler,
+            &mut self.params[idx],
+        )))
     }
 
     fn visit_cvarargs(&mut self) {
@@ -215,10 +223,41 @@ impl Drop for NameFunctionTyVisitor<'_> {
             mangled += &*component;
         }
         mangled.push('E');
-        // TODO: params and cvarargs
-        // until then, all parameter lists take void
-        mangled.push('v');
+        // TODO: cvarargs
+        if self.params.is_empty() {
+            mangled.push('v');
+        } else {
+            for param in &self.params {
+                mangled += param;
+            }
+        }
         self.names.insert(self.defid, mangled);
+    }
+}
+
+pub struct NameTypeVisitor<'a, 'b> {
+    names: &'a mut HashMap<DefId, String>,
+    int_mangler: &'a IntMangler,
+    name_out: &'b mut String,
+}
+
+impl<'a, 'b> NameTypeVisitor<'a, 'b> {
+    fn new(
+        names: &'a mut HashMap<DefId, String>,
+        int_mangler: &'a IntMangler,
+        name_out: &'b mut String,
+    ) -> Self {
+        Self {
+            names,
+            int_mangler,
+            name_out,
+        }
+    }
+}
+
+impl<'a, 'b> TypeVisitor for NameTypeVisitor<'a, 'b> {
+    fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>> {
+        todo!()
     }
 }
 
