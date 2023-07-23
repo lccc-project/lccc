@@ -1,12 +1,11 @@
-
 use crate::sema::Definitions;
 
 use xlang::abi::collection::HashMap;
 use xlang::ir;
 use xlang::targets::{properties::get_properties, Target};
 
-pub mod visitor;
 pub mod name_visitor;
+pub mod visitor;
 
 use name_visitor::NameModVisitor;
 
