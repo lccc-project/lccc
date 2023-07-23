@@ -7,7 +7,7 @@ mod unspecified {
 }
 
 cfg_match::cfg_match! {
-    doc => #[doc(no_inline)] pub type uintptr = unspecified::unspecified_uint;
+    doc => #[doc = ""] pub type uintptr = unspecified::unspecified_uint;
     target_pointer_width = "16" => #[doc = ""] pub type uintptr = u16;
     target_pointer_width = "32" => #[doc = ""] pub type uintptr = u32;
     target_pointer_width = "64" => #[doc = ""] pub type uintptr = u64;
@@ -15,7 +15,7 @@ cfg_match::cfg_match! {
 }
 
 cfg_match::cfg_match! {
-    doc => #[doc(no_inline)] pub type size_t = unspecified::unspecified_uint;
+    doc => #[doc = ""] pub type size_t = unspecified::unspecified_uint;
     target_pointer_width = "16" => #[doc = ""] pub type size_t = u16;
     target_pointer_width = "32" => #[doc = ""] pub type size_t = u32;
     target_pointer_width = "64" => #[doc = ""] pub type size_t = u64;
@@ -23,7 +23,7 @@ cfg_match::cfg_match! {
 }
 
 cfg_match::cfg_match! {
-    doc => #[doc(no_inline)] pub type intptr = unspecified::unspecified_int;
+    doc => #[doc = ""] pub type intptr = unspecified::unspecified_int;
     target_pointer_width = "16" => #[doc = ""] pub type intptr = i16;
     target_pointer_width = "32" => #[doc = ""] pub type intptr = i32;
     target_pointer_width = "64" => #[doc = ""] pub type intptr = i64;
@@ -31,7 +31,7 @@ cfg_match::cfg_match! {
 }
 
 cfg_match::cfg_match! {
-    doc => #[doc(no_inline)] pub type ptrdiff_t = unspecified::unspecified_int;
+    doc => #[doc = ""] pub type ptrdiff_t = unspecified::unspecified_int;
     target_pointer_width = "16" => #[doc = ""] pub type ptrdiff_t = i16;
     target_pointer_width = "32" => #[doc = ""] pub type ptrdiff_t = i32;
     target_pointer_width = "64" => #[doc = ""] pub type ptrdiff_t = i64;
