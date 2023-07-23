@@ -2,8 +2,8 @@ use crate::interning::Symbol;
 use crate::sema::{ty::AbiTag, DefId, Definitions};
 
 use self::visitor::{
-    FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, ModVisitor, TupleTyVisitor,
-    TypeDefVisitor, TypeVisitor, ValueDefVisitor,
+    FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, ModVisitor, PointerTyVisitor,
+    TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
 };
 
 use xlang::ir;
@@ -201,13 +201,17 @@ impl<'a> FunctionTyVisitor for NameFunctionTyVisitor<'a> {
     }
 
     fn visit_param(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
-        let idx = self.params.len();
-        self.params.push(String::new());
-        Some(Box::new(NameTypeVisitor::new(
-            self.names,
-            self.int_mangler,
-            &mut self.params[idx],
-        )))
+        if matches!(self.abi, AbiTag::C { .. }) {
+            None
+        } else {
+            let idx = self.params.len();
+            self.params.push(String::new());
+            Some(Box::new(NameTypeVisitor::new(
+                self.names,
+                self.int_mangler,
+                &mut self.params[idx],
+            )))
+        }
     }
 
     fn visit_cvarargs(&mut self) {
@@ -217,21 +221,29 @@ impl<'a> FunctionTyVisitor for NameFunctionTyVisitor<'a> {
 
 impl Drop for NameFunctionTyVisitor<'_> {
     fn drop(&mut self) {
-        let mut mangled = String::from("_ZN");
-        for component in self.name {
-            mangled += component.len().to_string();
-            mangled += &*component;
-        }
-        mangled.push('E');
-        // TODO: cvarargs
-        if self.params.is_empty() {
-            mangled.push('v');
-        } else {
-            for param in &self.params {
-                mangled += param;
+        match self.abi {
+            AbiTag::Rust => {
+                let mut mangled = String::from("_ZN");
+                for component in self.name {
+                    mangled += component.len().to_string();
+                    mangled += &*component;
+                }
+                mangled.push('E');
+                // TODO: cvarargs
+                if self.params.is_empty() {
+                    mangled.push('v');
+                } else {
+                    for param in &self.params {
+                        mangled += param;
+                    }
+                }
+                self.names.insert(self.defid, mangled);
             }
+            AbiTag::C { .. } => {
+                self.names.insert(self.defid, self.name.last().unwrap().into());
+            }
+            _ => todo!()
         }
-        self.names.insert(self.defid, mangled);
     }
 }
 
@@ -259,10 +271,16 @@ impl<'a, 'b> TypeVisitor for NameTypeVisitor<'a, 'b> {
     fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>> {
         todo!()
     }
+
+    fn visit_pointer(&mut self) -> Option<Box<dyn PointerTyVisitor + '_>> {
+        todo!()
+    }
 }
 
 pub fn irgen(defs: &mut Definitions, file: &mut ir::File) {
     let int_mangler = IntMangler::new(&file.target);
     let mut names = HashMap::new();
     defs.visit_all_crates(NameModVisitor::new(&mut names, &int_mangler));
+    println!("{:?}", names);
+    todo!()
 }

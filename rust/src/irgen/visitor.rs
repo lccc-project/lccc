@@ -262,6 +262,9 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
         return;
     }
     match ty {
+        ty::Type::Pointer(mutability, ty) => {
+            visit_type_pointer(visitor.visit_pointer(), mutability.body, &ty.body, defs);
+        }
         ty::Type::Tuple(tys) => {
             visit_type_tuple(
                 visitor.visit_tuple(),
@@ -271,6 +274,11 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
         }
         x => todo!("{:?}", x),
     }
+}
+
+pub fn visit_type_pointer<V: PointerTyVisitor>(mut visitor: V, mutability: ty::Mutability, ty: &ty::Type, defs: &Definitions) {
+    visitor.visit_mutability(mutability);
+    visit_type(visitor.visit_type(), ty, defs);
 }
 
 pub fn visit_type_tuple<V: TupleTyVisitor>(mut visitor: V, tys: &[ty::Type], defs: &Definitions) {
@@ -345,11 +353,17 @@ def_visitors! {
         fn visit_cvarargs(&mut self);
     }
 
-    pub trait TypeVisitor {
-        fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>>;
+    pub trait PointerTyVisitor {
+        fn visit_mutability(&mut self, mutability: ty::Mutability);
+        fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
     }
 
     pub trait TupleTyVisitor {
         fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
+    }
+
+    pub trait TypeVisitor {
+        fn visit_pointer(&mut self) -> Option<Box<dyn PointerTyVisitor + '_>>;
+        fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>>;
     }
 }
