@@ -302,7 +302,8 @@ extern "C" {
     /// ## SAFETY
     /// This function is always safe to call when xlang_interface is linked.
     /// No undefined behaviour is observed when calling this function
-    pub fn xlang_get_target_properties(targ: &Target) -> Option<&'static TargetProperties<'static>>;
+    pub fn xlang_get_target_properties(targ: &Target)
+        -> Option<&'static TargetProperties<'static>>;
 }
 
 #[cfg(any(miri, test))]
