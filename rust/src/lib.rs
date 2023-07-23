@@ -27,9 +27,10 @@ use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 use xlang::targets::Target;
 
 use crate::{
+    irgen::irgen,
     lex::filter_comments,
     parse::do_mod,
-    sema::{convert_crate, Definitions}, irgen::irgen,
+    sema::{convert_crate, Definitions},
 };
 
 struct RustFrontend {
