@@ -267,7 +267,7 @@ mod x86;
     note = "internal interface that doesn't get linked in via xlang_interface. Use [`get_properties`] or [`xlang_get_properties`] instead"
 )]
 #[must_use]
-pub fn __get_properties(targ: Target) -> Option<&'static TargetProperties<'static>> {
+pub fn __get_properties(targ: &Target) -> Option<&'static TargetProperties<'static>> {
     target_tuples::match_targets! {
         match (targ.into()){
             x86_64-*-linux-gnu => Some(&linux::X86_64_LINUX_GNU),
@@ -302,13 +302,13 @@ extern "C" {
     /// ## SAFETY
     /// This function is always safe to call when xlang_interface is linked.
     /// No undefined behaviour is observed when calling this function
-    pub fn xlang_get_target_properties(targ: Target) -> Option<&'static TargetProperties<'static>>;
+    pub fn xlang_get_target_properties(targ: &Target) -> Option<&'static TargetProperties<'static>>;
 }
 
 #[cfg(any(miri, test))]
 #[allow(deprecated, missing_docs)]
 pub unsafe extern "C" fn xlang_get_target_properties(
-    targ: Target,
+    targ: &Target,
 ) -> Option<&'static TargetProperties<'static>> {
     __get_properties(targ)
 }
@@ -318,6 +318,6 @@ pub unsafe extern "C" fn xlang_get_target_properties(
 ///
 /// Returns the properties for the given target, or None if the target is not known.
 #[must_use]
-pub fn get_properties(targ: Target) -> Option<&'static TargetProperties<'static>> {
+pub fn get_properties(targ: &Target) -> Option<&'static TargetProperties<'static>> {
     unsafe { xlang_get_target_properties(targ) }
 }

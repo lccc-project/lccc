@@ -289,7 +289,7 @@ fn main() {
 
     let xtarget = xlang::targets::Target::from(&target);
 
-    let properties = xlang::targets::properties::get_properties(xtarget.clone()).unwrap();
+    let properties = xlang::targets::properties::get_properties(&xtarget).unwrap();
 
     let arch_mach = match arch_machine {
         Some("generic") | None => properties.arch.default_machine,

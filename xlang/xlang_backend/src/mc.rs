@@ -650,7 +650,7 @@ impl<W: MCWriter> XLangPlugin for MCBackend<W> {
 
     fn set_target(&mut self, targ: Target) {
         self.name_targ = Some(targ.name.to_string());
-        self.properties = Some(xlang::targets::properties::get_properties(targ).unwrap());
+        self.properties = Some(xlang::targets::properties::get_properties(&targ).unwrap());
     }
 }
 

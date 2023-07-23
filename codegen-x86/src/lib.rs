@@ -1319,7 +1319,7 @@ impl XLangPlugin for X86CodegenPlugin {
     #[allow(clippy::needless_borrow)] // Incorrect lint
     fn set_target(&mut self, targ: xlang::targets::Target) {
         self.target = Some((&targ).into());
-        self.properties = xlang::targets::properties::get_properties(targ);
+        self.properties = xlang::targets::properties::get_properties(&targ);
         self.features = get_features_from_properties(
             self.properties.unwrap(),
             self.properties.unwrap().arch.default_machine,
@@ -1422,7 +1422,7 @@ mod test {
 
     fn run_codegen_test(sig: FnType, f: &FunctionBody, expected: &[u8], target: Target) {
         let xtarget = xlang::targets::Target::from(&target);
-        let properties = xlang::targets::properties::get_properties(xtarget).unwrap();
+        let properties = xlang::targets::properties::get_properties(&xtarget).unwrap();
         let features =
             crate::get_features_from_properties(properties, properties.arch.default_machine);
         let tys = Rc::new(TypeInformation::from_properties(properties));

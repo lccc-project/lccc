@@ -1110,7 +1110,7 @@ impl XLangPlugin for CleverCodegenPlugin {
     #[allow(clippy::needless_borrow)] // Incorrect lint
     fn set_target(&mut self, targ: xlang::targets::Target) {
         self.target = Some((&targ).into());
-        self.properties = xlang::targets::properties::get_properties(targ);
+        self.properties = xlang::targets::properties::get_properties(&targ);
         self.features = get_features_from_properties(
             self.properties.unwrap(),
             self.properties.unwrap().arch.default_machine,

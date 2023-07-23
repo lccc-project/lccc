@@ -1275,7 +1275,7 @@ fn tycheck_block(
 }
 
 pub fn tycheck(x: &mut File) {
-    let targ = xlang::targets::properties::get_properties(x.target.clone()).unwrap();
+    let targ = xlang::targets::properties::get_properties(&x.target).unwrap();
     let mut typestate = TypeState {
         tys: HashMap::new(),
         aggregate: HashMap::new(),

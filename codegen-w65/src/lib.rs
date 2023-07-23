@@ -988,7 +988,7 @@ impl XLangPlugin for W65CodegenPlugin {
     #[allow(clippy::needless_borrow)] // Incorrect lint
     fn set_target(&mut self, targ: xlang::targets::Target) {
         self.target = Some((&targ).into());
-        self.properties = xlang::targets::properties::get_properties(targ);
+        self.properties = xlang::targets::properties::get_properties(&targ);
     }
 }
 

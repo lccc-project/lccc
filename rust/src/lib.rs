@@ -36,6 +36,7 @@ use crate::{
 struct RustFrontend {
     filename: Option<String>,
     defs: Option<Definitions>,
+    target: Option<Target>,
 }
 
 impl RustFrontend {
@@ -44,6 +45,7 @@ impl RustFrontend {
         Self {
             filename: None,
             defs: None,
+            target: None,
         }
     }
 }
@@ -84,12 +86,15 @@ impl XLangFrontend for RustFrontend {
 
 impl XLangPlugin for RustFrontend {
     fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
+        file.target = self.target.clone().unwrap();
         irgen(self.defs.as_mut().unwrap(), file);
         println!("{:#?}", file);
         Result::Ok(())
     }
 
-    fn set_target(&mut self, _: Target) {}
+    fn set_target(&mut self, target: Target) {
+        self.target = Some(target);
+    }
 }
 
 xlang::host::rustcall! {

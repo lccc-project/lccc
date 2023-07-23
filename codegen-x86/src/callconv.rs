@@ -288,8 +288,8 @@ pub fn get_callconv<S: std::hash::BuildHasher + Clone + 'static>(
 ) -> Option<Box<dyn X86CallConv>> {
     target_tuples::match_targets! {
         match (target){
-            x86_64-*-linux-gnu => Some(Box::new(SysV64CC(xlang::targets::properties::get_properties(target.into())?,features,tys))),
-            x86_64-*-linux-gnux32 => Some(Box::new(SysV64CC(xlang::targets::properties::get_properties(target.into())?,features,tys)))
+            x86_64-*-linux-gnu => Some(Box::new(SysV64CC(xlang::targets::properties::get_properties(&target.into())?,features,tys))),
+            x86_64-*-linux-gnux32 => Some(Box::new(SysV64CC(xlang::targets::properties::get_properties(&target.into())?,features,tys)))
         }
     }
 }
