@@ -28,7 +28,7 @@ impl core::fmt::Display for Error {
 
         let mut sep = "";
         for class in &self.expected {
-            f.write_str("sep")?;
+            f.write_str(sep)?;
             sep = ", ";
             class.fmt(f)?;
         }
