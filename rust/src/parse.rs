@@ -239,7 +239,27 @@ pub fn do_attr_body(
 ) -> Result<(Spanned<SimplePath>, Option<AttrInput>)> {
     // TODO: support attr inputs
     let name = do_simple_path(tree)?;
-    Ok((name, None))
+
+    let input = match do_lexeme_classes(
+        tree,
+        &[
+            LexemeClass::Punctuation(Symbol::intern("=")),
+            LexemeClass::Group(Some(GroupType::Parens)),
+            LexemeClass::Eof,
+        ],
+    )? {
+        (_, LexemeClass::Punctuation(_)) => Some(AttrInput::MetaValue(do_literal(tree)?)),
+        (group, LexemeClass::Group(_)) => match group.body {
+            LexemeBody::Group(g) => Some(AttrInput::DelimTokenTree(Spanned {
+                body: g.body,
+                span: group.span,
+            })),
+            _ => unreachable!(),
+        },
+        (_, _) => None,
+    };
+
+    Ok((name, input))
 }
 
 pub fn do_internal_attr(

@@ -22,6 +22,10 @@ pub enum Attr {
     Lang(Spanned<LangItem>),
     Repr(Spanned<Repr>),
     Inline(Option<Spanned<InlineFrequency>>),
+    NoStd,
+    NoCore,
+    NoMain,
+    NoMangle,
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -100,6 +104,10 @@ impl core::fmt::Display for Attr {
             Self::Repr(repr) => f.write_fmt(format_args!("#[repr({})]", repr.body)),
             Self::Inline(None) => f.write_str("#[inline]"),
             Self::Inline(Some(freq)) => f.write_fmt(format_args!("#[inline({})]", freq.body)),
+            Self::NoCore => f.write_str("#[no_core]"),
+            Self::NoStd => f.write_str("#[no_std]"),
+            Self::NoMain => f.write_str("#[no_main]"),
+            Self::NoMangle => f.write_str("#[no_mangle]"),
         }
     }
 }
@@ -704,6 +712,22 @@ pub fn parse_meta(
                 span,
             })
         }
+        MetaContent::MetaPath(id) if matches_simple_path!(id, no_core) => Ok(Spanned {
+            body: Attr::NoCore,
+            span,
+        }),
+        MetaContent::MetaPath(id) if matches_simple_path!(id, no_std) => Ok(Spanned {
+            body: Attr::NoStd,
+            span,
+        }),
+        MetaContent::MetaPath(id) if matches_simple_path!(id, no_main) => Ok(Spanned {
+            body: Attr::NoMain,
+            span,
+        }),
+        MetaContent::MetaPath(id) if matches_simple_path!(id, no_mangle) => Ok(Spanned {
+            body: Attr::NoMangle,
+            span,
+        }),
         m => Err(Error {
             span,
             text: format!("Invalid built-in attrbute #[{}]", m),

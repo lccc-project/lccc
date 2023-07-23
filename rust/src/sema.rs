@@ -1267,7 +1267,7 @@ fn collect_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) 
                 def.visible_from = visible_from;
 
                 defs.insert_type(curmod, uty.name, defid)?;
-                defs.collect_lang_items(defid, &[LangItemTarget::Type]);
+                defs.collect_lang_items(defid, &[LangItemTarget::Type])?;
             }
             ast::ItemBody::Use(_) => todo!("use"),
             ast::ItemBody::Value(_)
@@ -1557,7 +1557,7 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                 def.inner = itemfn.copy_span(|_| inner);
 
                 defs.insert_value(curmod, itemfn.name, defid)?;
-                defs.collect_lang_items(defid, &[LangItemTarget::Function]);
+                defs.collect_lang_items(defid, &[LangItemTarget::Function])?;
             }
             ast::ItemBody::ExternBlock(blk) => {
                 let extern_defid = defs.allocate_defid();
