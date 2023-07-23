@@ -369,6 +369,18 @@ pub struct Literal {
     pub lit_kind: LiteralKind,
 }
 
+impl core::fmt::Display for Literal {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self.lit_kind {
+            LiteralKind::String(_) => {
+                f.write_fmt(format_args!("\"{}\"", self.val.escape_default()))
+            }
+            LiteralKind::Char(_) => f.write_fmt(format_args!("'{}'", self.val.escape_default())),
+            _ => f.write_str(&self.val),
+        }
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum LiteralKind {
@@ -640,7 +652,6 @@ impl core::fmt::Display for SimplePath {
 pub enum AttrInput {
     DelimTokenTree(Spanned<Vec<Lexeme>>),
     MetaValue(Spanned<Literal>),
-    MetaGroup(Vec<Spanned<Attr>>),
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]

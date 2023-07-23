@@ -4,7 +4,11 @@ use xlang::abi::collection::HashMap;
 use xlang::abi::collection::HashSet;
 use xlang::abi::pair::Pair;
 
-use crate::{ast, irgen::visitor::{ModVisitor, visit_module}};
+use crate::lang::LangItemTarget;
+use crate::{
+    ast,
+    irgen::visitor::{visit_module, ModVisitor},
+};
 pub use attr::Attr;
 
 pub use crate::span::Spanned;
@@ -884,6 +888,54 @@ impl Definitions {
             visit_module(c.1, self, &mut visitor, &mut vec![c.0]);
         }
     }
+
+    fn collect_lang_items(&mut self, defid: DefId, targ: &[LangItemTarget]) -> Result<()> {
+        let def = &self.defs[&defid];
+        let containing_item = def.parent;
+
+        for attr in &def.attrs {
+            match attr.body {
+                Attr::Lang(lang) => {
+                    if !targ.into_iter().any(|&targ| lang.target() == targ) {
+                        return Err(Error {
+                            span: lang.span,
+                            text: format!("Lang item {} does not apply to this item", lang.name()),
+                            category: ErrorCategory::InvalidAttr,
+                            at_item: defid,
+                            containing_item,
+                            relevant_item: defid,
+                            hints: vec![],
+                        });
+                    }
+
+                    if let Some(existing) = self.lang_items.insert(*lang, defid) {
+                        return Err(Error {
+                            span: lang.span,
+                            text: format!(
+                                "Found existing definition for lang item {}",
+                                lang.name()
+                            ),
+                            category: ErrorCategory::InvalidAttr,
+                            at_item: defid,
+                            containing_item,
+                            relevant_item: existing,
+                            hints: vec![SemaHint {
+                                text: format!(
+                                    "Previous definiton for lang item {} here",
+                                    lang.name()
+                                ),
+                                itemref: existing,
+                                refspan: self.defs[&existing].inner.span,
+                            }],
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Definitions {
@@ -897,6 +949,12 @@ impl Definitions {
         use core::fmt::Display;
         let def = self.definition(id);
         let vis = def.visible_from;
+
+        for attr in &def.attrs {
+            tabs.fmt(fmt)?;
+            attr.body.fmt(fmt)?;
+            fmt.write_str("\n")?;
+        }
 
         tabs.fmt(fmt)?;
         fmt.write_str("pub(in ")?;
@@ -1209,6 +1267,7 @@ fn collect_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) 
                 def.visible_from = visible_from;
 
                 defs.insert_type(curmod, uty.name, defid)?;
+                defs.collect_lang_items(defid, &[LangItemTarget::Type]);
             }
             ast::ItemBody::Use(_) => todo!("use"),
             ast::ItemBody::Value(_)
@@ -1492,11 +1551,13 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                     .iter()
                     .map(|attr| attr::parse_meta(attr, defid, curmod))
                     .collect::<Result<_>>()?;
+
                 def.visible_from = visible_from;
                 def.parent = curmod;
                 def.inner = itemfn.copy_span(|_| inner);
 
                 defs.insert_value(curmod, itemfn.name, defid)?;
+                defs.collect_lang_items(defid, &[LangItemTarget::Function]);
             }
             ast::ItemBody::ExternBlock(blk) => {
                 let extern_defid = defs.allocate_defid();

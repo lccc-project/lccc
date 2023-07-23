@@ -4,11 +4,14 @@ pub enum LangItemTarget {
     Variant,
     Function,
     AssociatedType,
+    AssociatedFunction,
+    Trait,
+    ImplBlock,
 }
 
 macro_rules! define_lang_items{
     {
-        $($enum:ident: $name:ident),* $(,)?
+        $($enum:ident: $name:ident @ $target:ident),* $(,)?
     } => {
         #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
         #[repr(u32)]
@@ -19,17 +22,22 @@ macro_rules! define_lang_items{
         }
 
         impl LangItem{
-            pub fn from_name(x: &str) -> Option<LangItem>{
+            pub fn from_name(x: &str) -> Option<Self>{
                 match x{
                     $(::core::stringify!($name) => Some(Self:: $enum),)*
                     _ => None
                 }
             }
 
-            #[allow(dead_code)]
             pub const fn name(&self) -> &'static str{
                 match self{
                     $(Self:: $enum => ::core::stringify!($name)),*
+                }
+            }
+
+            pub const fn target(&self) -> LangItemTarget{
+                match self{
+                    $(Self:: $enum => LangItemTarget:: $target),*
                 }
             }
         }
@@ -37,40 +45,40 @@ macro_rules! define_lang_items{
 }
 
 define_lang_items! {
-    Copy: copy,
-    Clone: clone,
-    IntoIterator: into_iterator,
-    IteratorNext: iterator_next,
-    Some: some,
-    None: none,
-    FnOnce: fn_once,
-    FnMut: fn_mut,
-    Fn: fn_trait,
-    Main: main,
-    Bool: bool,
-    Unit: unit,
-    Tuple: tuple,
-    Slice: slice,
-    Array: array,
-    I8: i8,
-    I16: i16,
-    I32: i32,
-    I64: i64,
-    I128: i128,
-    ISize: isize,
-    U8:    u8,
-    U16:   u16,
-    U32:   u32,
-    U64:   u64,
-    U128:  u128,
-    USize: usize,
-    F32: f32,
-    F64: f64,
-    F32Rt: f32_rt,
-    F64Rt: f64_rt,
-    ConstPtr: const_ptr,
-    MutPtr: mut_ptr,
-    Char: char,
-    Str: str,
-    Never: never,
+    Copy: copy @ Trait,
+    Clone: clone @ Trait,
+    IntoIterator: into_iterator @ Trait,
+    IteratorNext: iterator_next @ AssociatedFunction,
+    Some: some @ Variant,
+    None: none @ Variant,
+    FnOnce: fn_once @ Trait,
+    FnMut: fn_mut @ Trait,
+    Fn: fn_trait @ Trait,
+    Main: main @ Function,
+    Bool: bool @ ImplBlock,
+    Unit: unit @ ImplBlock,
+    Tuple: tuple @ ImplBlock,
+    Slice: slice @ ImplBlock,
+    Array: array @ ImplBlock,
+    I8: i8 @ ImplBlock,
+    I16: i16 @ ImplBlock,
+    I32: i32 @ ImplBlock,
+    I64: i64 @ ImplBlock,
+    I128: i128 @ ImplBlock,
+    ISize: isize @ ImplBlock,
+    U8:    u8 @ ImplBlock,
+    U16:   u16 @ ImplBlock,
+    U32:   u32 @ ImplBlock,
+    U64:   u64 @ ImplBlock,
+    U128:  u128 @ ImplBlock,
+    USize: usize @ ImplBlock,
+    F32: f32 @ ImplBlock,
+    F64: f64 @ ImplBlock,
+    F32Rt: f32_rt @ ImplBlock,
+    F64Rt: f64_rt @ ImplBlock,
+    ConstPtr: const_ptr @ ImplBlock,
+    MutPtr: mut_ptr @ ImplBlock,
+    Char: char @ ImplBlock,
+    Str: str @ ImplBlock,
+    Never: never @ ImplBlock,
 }

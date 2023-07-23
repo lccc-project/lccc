@@ -180,7 +180,7 @@ impl Token {
 pub enum LexemeBody {
     Group(Group),
     Token(Token),
-    AstFrag(AstFrag),
+    AstFrag(Box<AstFrag>),
     Eof,
 }
 

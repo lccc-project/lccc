@@ -21,6 +21,24 @@ pub struct Error {
     pub span: Span,
 }
 
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        use core::fmt::Debug; // TODO: Pretty-print Lexeme Class as well
+        f.write_str("Expected ")?;
+
+        let mut sep = "";
+        for class in &self.expected {
+            f.write_str("sep")?;
+            sep = ", ";
+            class.fmt(f)?;
+        }
+
+        f.write_str(" got ")?;
+
+        self.got.fmt(f)
+    }
+}
+
 impl BitOr for Error {
     type Output = Self;
 
@@ -46,13 +64,13 @@ impl BitOrAssign for Error {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-struct Rewinder<'a, T: Iterator<Item = Lexeme>> {
+pub struct Rewinder<'a, T: Iterator<Item = Lexeme>> {
     inner: &'a mut PeekMoreIterator<T>,
     cursor: usize,
 }
 
 impl<T: Iterator<Item = Lexeme>> Rewinder<'_, T> {
-    fn accept(self) {
+    pub fn accept(self) {
         core::mem::forget(self) // Rewind? Oops, I forgor
     }
 }
@@ -84,7 +102,7 @@ impl<'a, T: Iterator<Item = Lexeme>> DerefMut for Rewinder<'a, T> {
     }
 }
 
-trait IntoRewinder<'a> {
+pub trait IntoRewinder<'a> {
     type Iter: Iterator<Item = Lexeme>;
     fn into_rewinder(self) -> Rewinder<'a, Self::Iter>;
 }
