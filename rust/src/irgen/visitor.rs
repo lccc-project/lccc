@@ -276,7 +276,12 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
     }
 }
 
-pub fn visit_type_pointer<V: PointerTyVisitor>(mut visitor: V, mutability: ty::Mutability, ty: &ty::Type, defs: &Definitions) {
+pub fn visit_type_pointer<V: PointerTyVisitor>(
+    mut visitor: V,
+    mutability: ty::Mutability,
+    ty: &ty::Type,
+    defs: &Definitions,
+) {
     visitor.visit_mutability(mutability);
     visit_type(visitor.visit_type(), ty, defs);
 }

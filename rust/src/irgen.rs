@@ -240,9 +240,10 @@ impl Drop for NameFunctionTyVisitor<'_> {
                 self.names.insert(self.defid, mangled);
             }
             AbiTag::C { .. } => {
-                self.names.insert(self.defid, self.name.last().unwrap().into());
+                self.names
+                    .insert(self.defid, self.name.last().unwrap().into());
             }
-            _ => todo!()
+            _ => todo!(),
         }
     }
 }
