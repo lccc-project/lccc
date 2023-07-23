@@ -7,7 +7,7 @@
 //! ## Defining an ABI Safe Trait
 //! Any trait can be defined as ABI Safe if it meets the following requirements:
 //! 1. The trait must be Object Safe
-//! 2. All trait methods that are not bound by Self: Sized must have an abi-safe receiver (Either &Self, &mut Self, Box<Self>, or Pin<P> where P is one of the preceeding types)
+//! 2. All trait methods that are not bound by Self: Sized must have an abi-safe receiver (Either `&Self`, `&mut Self`, `Box<Self>`, or `Pin<P>` where `P` is one of the preceeding types)
 //! 3. Every trait method not bound by Self: Sized must be declared with an explicit abi, which should not be extern"Rust", extern"rust-call", or extern"rust-intrinsic"
 //! 4. Every trait method bound by Self: Sized must have a default impl (this is required as the `#[abi_safe]` macro produces code that implements the trait, and can't implement Self: Sized methods)
 //! 5. Unsafe traits may have additional requirements on the Preconditions of implementors, as the macro produces implementations of the trait that forward to the vtable
@@ -166,7 +166,7 @@ pub struct AbiSafeVTableHead {
 ///
 /// ## Safety
 /// It shall be valid to transmute &Self to &`AbiSafeVTableHead`
-/// Additionally, if T: `AbiSafeTrait`, then it must be valid to transmute between implementors of `AbiSafeVTable`<T> and references thereto
+/// Additionally, if T: `AbiSafeTrait`, then it must be valid to transmute between implementors of `AbiSafeVTable<T>` and references thereto
 pub unsafe trait AbiSafeVTable<T: ?Sized>: Sized {
     /// Returns the size field of the `VTable`
     fn size_of(&self) -> usize {
