@@ -23,6 +23,10 @@ macro_rules! def_visitors{
                         <V as $trait>::$visitor_fn(self, $($($pname),*)?)
                     }
                 )*
+
+                fn is_none(&self) -> bool {
+                    (**self).is_none()
+                }
             }
 
             impl<V: $trait + ?Sized> $trait for Box<V> {
@@ -32,6 +36,10 @@ macro_rules! def_visitors{
                         <V as $trait>::$visitor_fn(self, $($($pname),*)?)
                     }
                 )*
+
+                fn is_none(&self) -> bool {
+                    (**self).is_none()
+                }
             }
 
             impl<V: $trait> $trait for Option<V> {
@@ -44,12 +52,20 @@ macro_rules! def_visitors{
                         }
                     }
                 )*
+
+                fn is_none(&self) -> bool {
+                    Option::is_none(self)
+                }
             }
 
             $vis trait $trait {
                 $(
                     fn $visitor_fn(&mut self, $($($pname: $ty),*)?) $(-> $ret_ty)?;
                 )*
+
+                fn is_none(&self) -> bool {
+                    false
+                }
             }
         )*
     }
@@ -61,6 +77,9 @@ pub fn visit_module<V: ModVisitor>(
     mut visit: V,
     names: &mut Vec<Symbol>,
 ) {
+    if visit.is_none() {
+        return;
+    }
     visit.visit_defid(md);
     let md = defs.as_module(md);
 
@@ -97,6 +116,9 @@ pub fn visit_type_def<V: TypeDefVisitor>(
     mut visit: V,
     names: &mut Vec<Symbol>,
 ) {
+    if visit.is_none() {
+        return;
+    }
     visit.visit_defid(def);
     todo!()
 }
@@ -107,6 +129,9 @@ pub fn visit_value_def<V: ValueDefVisitor>(
     mut visit: V,
     names: &mut Vec<Symbol>,
 ) {
+    if visit.is_none() {
+        return;
+    }
     visit.visit_defid(def);
     visit.visit_name(names);
     match &defs.definition(def).inner.body {
@@ -124,6 +149,9 @@ pub fn visit_fndef<V: FunctionDefVisitor>(
     body: &Option<FunctionBody>,
     defs: &Definitions,
 ) {
+    if visitor.is_none() {
+        return;
+    }
     let fnty_visit = visitor.visit_fnty();
     visit_fnty(fnty_visit, fnty, defs);
     match body {
@@ -141,6 +169,9 @@ pub fn visit_fnbody<V: FunctionBodyVisitor>(
     fnbody: &mir::MirFunctionBody,
     defs: &Definitions,
 ) {
+    if visitor.is_none() {
+        return;
+    }
     for bb in &fnbody.bbs {
         let visitor = visitor.visit_basic_block();
         visit_basic_block(visitor, bb, defs);
@@ -152,6 +183,9 @@ pub fn visit_basic_block<V: BasicBlockVisitor>(
     bb: &mir::MirBasicBlock,
     defs: &Definitions,
 ) {
+    if visitor.is_none() {
+        return;
+    }
     visitor.visit_id(bb.id);
 
     for stmt in &bb.stmts {
@@ -167,19 +201,49 @@ pub fn visit_statement<V: StatementVisitor>(
     stmt: &mir::MirStatement,
     defs: &Definitions,
 ) {
+    if visitor.is_none() {
+        return;
+    }
     todo!()
+}
+
+pub fn visit_terminator<V: TerminatorVisitor>(
+    mut visitor: V,
+    term: &mir::MirTerminator,
+    defs: &Definitions,
+) {
+    if visitor.is_none() {
+        return;
+    }
+    match term {
+        mir::MirTerminator::Call(info) => visit_call(visitor.visit_call(), info, defs),
+        mir::MirTerminator::Jump(info) => visit_jump(visitor.visit_jump(), info),
+        x => todo!("{:?}", x),
+    }
 }
 
 #[allow(unused_variables, unused_mut)]
-pub fn visit_terminator<V: TerminatorVisitor>(
-    mut visitor: V,
-    stmt: &mir::MirTerminator,
-    defs: &Definitions,
-) {
+pub fn visit_call<V: CallVisitor>(mut visitor: V, info: &mir::MirCallInfo, defs: &Definitions) {
+    if visitor.is_none() {
+        return;
+    }
     todo!()
 }
 
+pub fn visit_jump<V: JumpVisitor>(mut visitor: V, info: &mir::MirJumpInfo) {
+    if visitor.is_none() {
+        return;
+    }
+    visitor.visit_target_bb(info.targbb);
+    for remap in &info.remaps {
+        visitor.visit_remap(remap.0, remap.1);
+    }
+}
+
 pub fn visit_fnty<V: FunctionTyVisitor>(mut visitor: V, fnty: &ty::FnType, defs: &Definitions) {
+    if visitor.is_none() {
+        return;
+    }
     visitor.visit_tag(*fnty.tag);
 
     visit_type(visitor.visit_return(), &fnty.retty, defs);
@@ -194,6 +258,9 @@ pub fn visit_fnty<V: FunctionTyVisitor>(mut visitor: V, fnty: &ty::FnType, defs:
 }
 
 pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definitions) {
+    if visitor.is_none() {
+        return;
+    }
     match ty {
         ty::Type::Tuple(tys) => {
             visit_type_tuple(
@@ -207,6 +274,9 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
 }
 
 pub fn visit_type_tuple<V: TupleTyVisitor>(mut visitor: V, tys: &[ty::Type], defs: &Definitions) {
+    if visitor.is_none() {
+        return;
+    }
     for ty in tys {
         visit_type(visitor.visit_type(), ty, defs);
     }
@@ -245,9 +315,28 @@ def_visitors! {
         fn visit_term(&mut self) -> Option<Box<dyn TerminatorVisitor + '_>>;
     }
 
+    pub trait ExprVisitor {}
+
     pub trait StatementVisitor {}
 
-    pub trait TerminatorVisitor {}
+    pub trait CallVisitor {
+        fn visit_retplace(&mut self, retplace: mir::SsaVarId);
+        fn visit_target(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>>;
+        fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_next(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
+        // TODO: visit unwind
+    }
+
+    pub trait JumpVisitor {
+        fn visit_target_bb(&mut self, targbb: mir::BasicBlockId);
+        fn visit_remap(&mut self, src: mir::SsaVarId, targ: mir::SsaVarId);
+    }
+
+    pub trait TerminatorVisitor {
+        fn visit_call(&mut self) -> Option<Box<dyn CallVisitor + '_>>;
+        fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
+    }
 
     pub trait FunctionTyVisitor {
         fn visit_tag(&mut self, abi: ty::AbiTag);
