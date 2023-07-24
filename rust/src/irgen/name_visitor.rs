@@ -173,7 +173,7 @@ impl<'a> FunctionTyVisitor for NameFunctionTyVisitor<'a> {
 impl Drop for NameFunctionTyVisitor<'_> {
     fn drop(&mut self) {
         match self.abi {
-            AbiTag::Rust => {
+            AbiTag::LCRust(_) | AbiTag::Rust => {
                 let mut mangled = String::from("_ZN");
                 for component in self.name {
                     mangled += component.len().to_string();
