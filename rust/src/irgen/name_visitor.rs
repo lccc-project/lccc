@@ -1,22 +1,25 @@
 use crate::interning::Symbol;
 use crate::sema::{ty::AbiTag, DefId};
 
-use super::visitor::{
-    FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, ModVisitor, PointerTyVisitor,
-    TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
+use super::{
+    visitor::{
+        FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, ModVisitor, PointerTyVisitor,
+        TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
+    },
+    NameMap,
 };
 
-use xlang::abi::{collection::HashMap, string::String, vec::Vec};
+use xlang::abi::{string::String, vec::Vec};
 
 use super::IntMangler;
 
 pub struct NameModVisitor<'a> {
-    names: &'a mut HashMap<DefId, String>,
+    names: &'a mut NameMap,
     int_mangler: &'a IntMangler,
 }
 
 impl<'a> NameModVisitor<'a> {
-    pub fn new(names: &'a mut HashMap<DefId, String>, int_mangler: &'a IntMangler) -> Self {
+    pub fn new(names: &'a mut NameMap, int_mangler: &'a IntMangler) -> Self {
         Self { names, int_mangler }
     }
 }
@@ -41,14 +44,14 @@ impl<'a> ModVisitor for NameModVisitor<'a> {
 }
 
 struct NameValueDefVisitor<'a> {
-    names: &'a mut HashMap<DefId, String>,
+    names: &'a mut NameMap,
     int_mangler: &'a IntMangler,
     defid: Option<DefId>,
     name: Option<Vec<Symbol>>,
 }
 
 impl<'a> NameValueDefVisitor<'a> {
-    fn new(names: &'a mut HashMap<DefId, String>, int_mangler: &'a IntMangler) -> Self {
+    fn new(names: &'a mut NameMap, int_mangler: &'a IntMangler) -> Self {
         Self {
             names,
             int_mangler,
@@ -78,7 +81,7 @@ impl<'a> ValueDefVisitor for NameValueDefVisitor<'a> {
 }
 
 struct NameFunctionDefVisitor<'a> {
-    names: &'a mut HashMap<DefId, String>,
+    names: &'a mut NameMap,
     int_mangler: &'a IntMangler,
     defid: DefId,
     name: &'a [Symbol],
@@ -86,7 +89,7 @@ struct NameFunctionDefVisitor<'a> {
 
 impl<'a> NameFunctionDefVisitor<'a> {
     fn new(
-        names: &'a mut HashMap<DefId, String>,
+        names: &'a mut NameMap,
         int_mangler: &'a IntMangler,
         defid: DefId,
         name: &'a [Symbol],
@@ -116,7 +119,7 @@ impl<'a> FunctionDefVisitor for NameFunctionDefVisitor<'a> {
 }
 
 struct NameFunctionTyVisitor<'a> {
-    names: &'a mut HashMap<DefId, String>,
+    names: &'a mut NameMap,
     int_mangler: &'a IntMangler,
     defid: DefId,
     name: &'a [Symbol],
@@ -126,7 +129,7 @@ struct NameFunctionTyVisitor<'a> {
 
 impl<'a> NameFunctionTyVisitor<'a> {
     fn new(
-        names: &'a mut HashMap<DefId, String>,
+        names: &'a mut NameMap,
         int_mangler: &'a IntMangler,
         defid: DefId,
         name: &'a [Symbol],
@@ -188,11 +191,10 @@ impl Drop for NameFunctionTyVisitor<'_> {
                         mangled += param;
                     }
                 }
-                self.names.insert(self.defid, mangled);
+                self.names.insert(self.defid, mangled.into());
             }
             AbiTag::C { .. } => {
-                self.names
-                    .insert(self.defid, self.name.last().unwrap().into());
+                self.names.insert(self.defid, *self.name.last().unwrap());
             }
             _ => todo!(),
         }
@@ -201,17 +203,13 @@ impl Drop for NameFunctionTyVisitor<'_> {
 
 #[allow(dead_code)]
 struct NameTypeVisitor<'a, 'b> {
-    names: &'a mut HashMap<DefId, String>,
+    names: &'a mut NameMap,
     int_mangler: &'a IntMangler,
     name_out: &'b mut String,
 }
 
 impl<'a, 'b> NameTypeVisitor<'a, 'b> {
-    fn new(
-        names: &'a mut HashMap<DefId, String>,
-        int_mangler: &'a IntMangler,
-        name_out: &'b mut String,
-    ) -> Self {
+    fn new(names: &'a mut NameMap, int_mangler: &'a IntMangler, name_out: &'b mut String) -> Self {
         Self {
             names,
             int_mangler,

@@ -1,13 +1,21 @@
-use crate::sema::Definitions;
+pub mod visitor;
+
+pub mod name_visitor;
+pub mod xir_visitor;
+
+use crate::{
+    interning::Symbol,
+    irgen::xir_visitor::XirModVisitor,
+    sema::{DefId, Definitions},
+};
 
 use xlang::abi::collection::HashMap;
 use xlang::ir;
 use xlang::targets::{properties::get_properties, Target};
 
-pub mod name_visitor;
-pub mod visitor;
-
 use name_visitor::NameModVisitor;
+
+pub type NameMap = HashMap<DefId, Symbol>;
 
 #[allow(dead_code)]
 pub struct IntMangler {
@@ -57,8 +65,8 @@ impl IntMangler {
 
 pub fn irgen(defs: &mut Definitions, file: &mut ir::File) {
     let int_mangler = IntMangler::new(&file.target);
-    let mut names = HashMap::new();
+    let mut names = NameMap::new();
     defs.visit_all_crates(NameModVisitor::new(&mut names, &int_mangler));
     println!("{:?}", names);
-    todo!()
+    defs.visit_all_crates(XirModVisitor::new(&mut names, file));
 }

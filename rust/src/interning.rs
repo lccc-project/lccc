@@ -132,6 +132,12 @@ impl From<String> for Symbol {
     }
 }
 
+impl From<xlang::abi::string::String> for Symbol {
+    fn from(x: xlang::abi::string::String) -> Self {
+        Self::intern(&*x)
+    }
+}
+
 impl Symbol {
     pub fn intern_by_val(st: String) -> Self {
         let rdgrd = MAP.read();
