@@ -4,7 +4,7 @@ use crate::{
     ast::{AttrInput, Literal, LiteralKind, SimplePath, SimplePathSegment},
     interning::Symbol,
     lang::LangItem,
-    lex::{self, do_lexeme_str, Lexeme, LexemeClass},
+    lex::{self, Lexeme, LexemeClass},
     parse::{self, do_lexeme_class, do_lexeme_group, do_literal, IntoRewinder},
     span::Span,
 };

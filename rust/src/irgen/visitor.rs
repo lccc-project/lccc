@@ -2,7 +2,7 @@ use xlang::abi::pair::Pair;
 
 use crate::{
     interning::Symbol,
-    sema::{mir, ty, DefId, DefinitionInner, Definitions, FunctionBody},
+    sema::{mir, ty, DefId, DefinitionInner, Definitions, FunctionBody, Attr},
 };
 
 macro_rules! def_visitors{
@@ -134,13 +134,27 @@ pub fn visit_value_def<V: ValueDefVisitor>(
     }
     visit.visit_defid(def);
     visit.visit_name(names);
-    match &defs.definition(def).inner.body {
+    let def = defs.definition(def);
+    for attr in &def.attrs {
+        visit_attr(visit.visit_attr(), &attr.body);
+    }
+    match &def.inner.body {
         DefinitionInner::Function(fnty, body @ (Some(FunctionBody::MirBody(_)) | None)) => {
             let visitor = visit.visit_function();
             visit_fndef(visitor, fnty, body, defs);
         }
         DefinitionInner::Function(_, Some(FunctionBody::Intrinsic(_))) => {}
         x => panic!("Invalid definition: {:?}", x),
+    }
+}
+
+pub fn visit_attr<V: AttrVisitor>(
+    mut visitor: V,
+    attr: &Attr,
+) {
+    match attr {
+        Attr::NoMangle => visitor.visit_no_mangle(),
+        x => todo!("{:?}", x),
     }
 }
 
@@ -308,9 +322,14 @@ def_visitors! {
         fn visit_defid(&mut self, defid: DefId);
     }
 
+    pub trait AttrVisitor {
+        fn visit_no_mangle(&mut self);
+    }
+
     pub trait ValueDefVisitor {
-        fn visit_name(&mut self, name: &[Symbol]);
         fn visit_defid(&mut self, defid: DefId);
+        fn visit_name(&mut self, name: &[Symbol]);
+        fn visit_attr(&mut self) -> Option<Box<dyn AttrVisitor + '_>>;
         fn visit_function(&mut self) -> Option<Box<dyn FunctionDefVisitor + '_>>;
     }
 

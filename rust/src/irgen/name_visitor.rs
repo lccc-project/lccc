@@ -3,8 +3,8 @@ use crate::sema::{ty::AbiTag, DefId};
 
 use super::{
     visitor::{
-        FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, ModVisitor, PointerTyVisitor,
-        TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
+        AttrVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, ModVisitor,
+        PointerTyVisitor, TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
     },
     NameMap,
 };
@@ -48,6 +48,7 @@ struct NameValueDefVisitor<'a> {
     int_mangler: &'a IntMangler,
     defid: Option<DefId>,
     name: Option<Vec<Symbol>>,
+    no_mangle: bool,
 }
 
 impl<'a> NameValueDefVisitor<'a> {
@@ -57,6 +58,7 @@ impl<'a> NameValueDefVisitor<'a> {
             int_mangler,
             defid: None,
             name: None,
+            no_mangle: false,
         }
     }
 }
@@ -70,13 +72,34 @@ impl<'a> ValueDefVisitor for NameValueDefVisitor<'a> {
         self.name = Some(name.iter().copied().collect());
     }
 
+    fn visit_attr(&mut self) -> Option<Box<dyn AttrVisitor + '_>> {
+        Some(Box::new(NameAttrVisitor::new(&mut self.no_mangle)))
+    }
+
     fn visit_function(&mut self) -> Option<Box<dyn FunctionDefVisitor + '_>> {
         Some(Box::new(NameFunctionDefVisitor::new(
             self.names,
             self.int_mangler,
             self.defid.take().unwrap(),
             self.name.as_deref().take().unwrap(),
+            self.no_mangle,
         )))
+    }
+}
+
+struct NameAttrVisitor<'a> {
+    no_mangle: &'a mut bool,
+}
+
+impl<'a> NameAttrVisitor<'a> {
+    fn new(no_mangle: &'a mut bool) -> Self {
+        Self { no_mangle }
+    }
+}
+
+impl<'a> AttrVisitor for NameAttrVisitor<'a> {
+    fn visit_no_mangle(&mut self) {
+        *self.no_mangle = true;
     }
 }
 
@@ -85,6 +108,7 @@ struct NameFunctionDefVisitor<'a> {
     int_mangler: &'a IntMangler,
     defid: DefId,
     name: &'a [Symbol],
+    no_mangle: bool,
 }
 
 impl<'a> NameFunctionDefVisitor<'a> {
@@ -93,12 +117,14 @@ impl<'a> NameFunctionDefVisitor<'a> {
         int_mangler: &'a IntMangler,
         defid: DefId,
         name: &'a [Symbol],
+        no_mangle: bool,
     ) -> Self {
         Self {
             names,
             int_mangler,
             defid,
             name,
+            no_mangle,
         }
     }
 }
@@ -110,6 +136,7 @@ impl<'a> FunctionDefVisitor for NameFunctionDefVisitor<'a> {
             self.int_mangler,
             self.defid,
             self.name,
+            self.no_mangle,
         )))
     }
 
@@ -123,7 +150,7 @@ struct NameFunctionTyVisitor<'a> {
     int_mangler: &'a IntMangler,
     defid: DefId,
     name: &'a [Symbol],
-    abi: AbiTag,
+    no_mangle: bool,
     params: Vec<String>,
 }
 
@@ -133,29 +160,28 @@ impl<'a> NameFunctionTyVisitor<'a> {
         int_mangler: &'a IntMangler,
         defid: DefId,
         name: &'a [Symbol],
+        no_mangle: bool,
     ) -> Self {
         Self {
             names,
             int_mangler,
             defid,
             name,
-            abi: AbiTag::Rust,
+            no_mangle,
             params: Vec::new(),
         }
     }
 }
 
 impl<'a> FunctionTyVisitor for NameFunctionTyVisitor<'a> {
-    fn visit_tag(&mut self, abi: AbiTag) {
-        self.abi = abi;
-    }
+    fn visit_tag(&mut self, _: AbiTag) {}
 
     fn visit_return(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
         None
     }
 
     fn visit_param(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
-        if matches!(self.abi, AbiTag::C { .. }) {
+        if self.no_mangle {
             None
         } else {
             let idx = self.params.len();
@@ -175,28 +201,24 @@ impl<'a> FunctionTyVisitor for NameFunctionTyVisitor<'a> {
 
 impl Drop for NameFunctionTyVisitor<'_> {
     fn drop(&mut self) {
-        match self.abi {
-            AbiTag::LCRust(_) | AbiTag::Rust => {
-                let mut mangled = String::from("_ZN");
-                for component in self.name {
-                    mangled += component.len().to_string();
-                    mangled += &*component;
-                }
-                mangled.push('E');
-                // TODO: cvarargs
-                if self.params.is_empty() {
-                    mangled.push('v');
-                } else {
-                    for param in &self.params {
-                        mangled += param;
-                    }
-                }
-                self.names.insert(self.defid, mangled.into());
+        if self.no_mangle {
+            self.names.insert(self.defid, *self.name.last().unwrap());
+        } else {
+            let mut mangled = String::from("_ZN");
+            for component in self.name {
+                mangled += component.len().to_string();
+                mangled += &*component;
             }
-            AbiTag::C { .. } => {
-                self.names.insert(self.defid, *self.name.last().unwrap());
+            mangled.push('E');
+            // TODO: cvarargs
+            if self.params.is_empty() {
+                mangled.push('v');
+            } else {
+                for param in &self.params {
+                    mangled += param;
+                }
             }
-            _ => todo!(),
+            self.names.insert(self.defid, mangled.into());
         }
     }
 }
