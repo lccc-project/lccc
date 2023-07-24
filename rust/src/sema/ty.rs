@@ -269,6 +269,11 @@ impl IntType {
         signed: false,
         width: IntWidth::Bits(nzu16!(8)),
     };
+
+    pub const i32: IntType = IntType {
+        signed: true,
+        width: IntWidth::Bits(nzu16!(32)),
+    };
 }
 
 impl core::fmt::Display for IntType {

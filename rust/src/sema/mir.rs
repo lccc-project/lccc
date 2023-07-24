@@ -40,7 +40,7 @@ impl core::fmt::Debug for RegionId {
 }
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
-pub struct BasicBlockId(u32);
+pub struct BasicBlockId(pub(crate) u32);
 
 impl BasicBlockId {
     pub const UNUSED: BasicBlockId = BasicBlockId(!0);
@@ -59,7 +59,7 @@ impl core::fmt::Debug for BasicBlockId {
 }
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
-pub struct SsaVarId(u32);
+pub struct SsaVarId(pub(crate) u32);
 
 impl core::fmt::Display for SsaVarId {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {

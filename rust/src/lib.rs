@@ -24,6 +24,7 @@ use xlang::abi::result::Result;
 use xlang::abi::string::StringView;
 use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
+use xlang::targets::properties::{get_properties, TargetProperties};
 use xlang::targets::Target;
 
 use crate::{
@@ -37,6 +38,7 @@ struct RustFrontend {
     filename: Option<String>,
     defs: Option<Definitions>,
     target: Option<Target>,
+    props: Option<&'static TargetProperties<'static>>,
 }
 
 impl RustFrontend {
@@ -46,6 +48,7 @@ impl RustFrontend {
             filename: None,
             defs: None,
             target: None,
+            props: None,
         }
     }
 }
@@ -77,6 +80,7 @@ impl XLangFrontend for RustFrontend {
         let mut defs = Definitions::new();
         convert_crate(&mut defs, &parsed).unwrap();
 
+        eprintln!("{}", defs);
         defs.set_current_crate_name(crate_name);
 
         self.defs = Some(defs);
@@ -93,6 +97,7 @@ impl XLangPlugin for RustFrontend {
     }
 
     fn set_target(&mut self, target: Target) {
+        self.props = Some(get_properties(&target).unwrap());
         self.target = Some(target);
     }
 }

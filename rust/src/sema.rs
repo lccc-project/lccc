@@ -3,6 +3,7 @@ use ast::Safety;
 use xlang::abi::collection::HashMap;
 use xlang::abi::collection::HashSet;
 use xlang::abi::pair::Pair;
+use xlang::targets::properties::TargetProperties;
 
 use crate::lang::LangItemTarget;
 use crate::{
@@ -1596,6 +1597,11 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                             let def = defs.definition_mut(defid);
                             def.attrs = item.attrs.iter().map(|attr|attr::parse_meta(attr, defid, defid))
                                 .collect::<Result<_>>()?;
+
+                            // TODO: check for override attribute
+
+                            def.attrs.push(Spanned{body: attr::Attr::NoMangle,span: blk.span});
+
                             def.visible_from = visible_from;
                             def.parent = curmod;
                             def.inner = itemfn.copy_span(|_| inner);
@@ -1877,6 +1883,24 @@ pub fn mir_lower(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     Ok(())
 }
 
+pub fn find_main(defs: &mut Definitions, root: DefId) -> Result<(DefId, Span)> {
+    if let Some(defid) = defs.get_lang_item(LangItem::Main) {
+        Ok((defid, defs.definition(defid).inner.span))
+    } else {
+        let defid = defs.find_value_in_mod(
+            root,
+            root,
+            Spanned {
+                body: Symbol::intern("main"),
+                span: Span::synthetic(),
+            },
+            root,
+        )?;
+
+        Ok((defid, defs.definition(defid).inner.span))
+    }
+}
+
 pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<()> {
     let root = defs.allocate_defid();
 
@@ -1892,5 +1916,153 @@ pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<(
     desugar_values(defs, root)?;
     tycheck_values(defs, root)?;
     mir_lower(defs, root)?;
+
+    // TODO: Check if we're actually inside a bin crate
+
+    {
+        let lccc_main = defs.allocate_defid();
+        let (main, main_span) = find_main(defs, root)?;
+
+        let ity = ty::IntType::i32;
+
+        let first_block = mir::BasicBlockId(0);
+
+        let fnty = match &defs.definition(main).inner.body {
+            DefinitionInner::Function(fnty, _) => fnty.clone(),
+            _ => panic!("Invalid item found for `main`"),
+        };
+
+        let retty = fnty.retty.body.clone();
+
+        let body = if retty == Type::Never {
+            let tailcall = mir::MirTailcallInfo {
+                targ: Spanned {
+                    body: mir::MirExpr::Const(main),
+                    span: main_span,
+                },
+                fnty,
+                params: vec![],
+                unwind: None,
+            };
+
+            let block = mir::MirBasicBlock {
+                id: first_block,
+                stmts: vec![],
+                term: Spanned {
+                    body: mir::MirTerminator::Tailcall(tailcall),
+                    span: main_span,
+                },
+            };
+
+            mir::MirFunctionBody {
+                bbs: vec![block],
+                vardbg_info: HashMap::new(),
+            }
+        } else {
+            let var = mir::SsaVarId(0);
+            let second_block = mir::BasicBlockId(1);
+            let jmp = mir::MirJumpInfo {
+                targbb: second_block,
+                remaps: vec![],
+            };
+            let call = mir::MirCallInfo {
+                retplace: Spanned {
+                    body: var,
+                    span: main_span,
+                },
+                targ: Spanned {
+                    body: mir::MirExpr::Const(main),
+                    span: main_span,
+                },
+                fnty,
+                params: vec![],
+                next: jmp,
+                unwind: None,
+            };
+
+            let first_block = mir::MirBasicBlock {
+                id: first_block,
+                stmts: vec![],
+                term: Spanned {
+                    body: mir::MirTerminator::Call(call),
+                    span: main_span,
+                },
+            };
+
+            // TODO: Call Terminator trait
+
+            let second_block = mir::MirBasicBlock {
+                id: second_block,
+                stmts: vec![],
+                term: Spanned {
+                    body: mir::MirTerminator::Return(Spanned {
+                        body: mir::MirExpr::ConstInt(ity, 0),
+                        span: main_span,
+                    }),
+                    span: main_span,
+                },
+            };
+
+            mir::MirFunctionBody {
+                bbs: vec![first_block, second_block],
+                vardbg_info: HashMap::new(),
+            }
+        };
+
+        let fnty = ty::FnType {
+            safety: Spanned {
+                body: Safety::Unsafe,
+                span: main_span,
+            },
+            constness: Spanned {
+                body: Mutability::Mut,
+                span: main_span,
+            },
+            asyncness: Spanned {
+                body: ty::AsyncType::Normal,
+                span: main_span,
+            },
+            tag: Spanned {
+                body: ty::AbiTag::LCRust(Some(0)),
+                span: main_span,
+            },
+            retty: Box::new(Spanned {
+                body: Type::Int(ity),
+                span: main_span,
+            }),
+            paramtys: vec![],
+            iscvarargs: Spanned {
+                body: false,
+                span: main_span,
+            },
+        };
+        let def = defs.definition_mut(lccc_main);
+
+        def.inner = Spanned {
+            body: DefinitionInner::Function(
+                fnty,
+                Some(FunctionBody::MirBody(Spanned {
+                    body,
+                    span: main_span,
+                })),
+            ),
+            span: main_span,
+        };
+        def.attrs = vec![Spanned {
+            body: attr::Attr::NoMangle,
+            span: main_span,
+        }];
+        def.visible_from = lccc_main;
+
+        defs.insert_value(
+            root,
+            Spanned {
+                body: Symbol::intern("__lccc_main"),
+                span: Span::synthetic(),
+            },
+            lccc_main,
+        )?;
+    }
+
     Ok(())
 }
