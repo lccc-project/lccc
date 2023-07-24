@@ -2,7 +2,7 @@ use xlang::abi::pair::Pair;
 
 use crate::{
     interning::Symbol,
-    sema::{mir, ty, DefId, DefinitionInner, Definitions, FunctionBody, Attr},
+    sema::{mir, ty, Attr, DefId, DefinitionInner, Definitions, FunctionBody},
 };
 
 macro_rules! def_visitors{
@@ -148,10 +148,7 @@ pub fn visit_value_def<V: ValueDefVisitor>(
     }
 }
 
-pub fn visit_attr<V: AttrVisitor>(
-    mut visitor: V,
-    attr: &Attr,
-) {
+pub fn visit_attr<V: AttrVisitor>(mut visitor: V, attr: &Attr) {
     match attr {
         Attr::NoMangle => visitor.visit_no_mangle(),
         x => todo!("{:?}", x),
