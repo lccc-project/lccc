@@ -194,17 +194,6 @@ macro_rules! def_intrinsics{
                     $(Self::$name => parse_intrinsic_generics!($($($gen_param),*)?)),*
                 }
             }
-
-            pub fn register_intrinsics(defs: &mut Definitions){
-                $({
-                    let defid = defs.allocate_defid();
-                    let intrin = Self::$name;
-                    let sig = intrin.signature();
-
-                    defs.definition_mut(defid).inner = spanned!(DefinitionInner::Function(sig,Some(super::FunctionBody::Intrinsic(intrin))));
-                    defs.intrinsics.insert(intrin,defid);
-                })*
-            }
         }
     }
 }
@@ -222,5 +211,10 @@ def_intrinsics! {
     unsafe intrin transmute<type,type>(Var<0>) -> Var<1>;
     intrin black_box<type>(Var<0>) -> Var<1>;
     unsafe intrin construct_in_place<type,type,type>(*mut Var<0>,Var<1>,Var<2>) -> ();
+    unsafe intrin __builtin_read<type>(*const Var<0>) -> Var<0>;
     unsafe intrin __builtin_read_freeze<type>(*const Var<0>) -> Var<0>;
+    unsafe intrin __builtin_read_volatile<type>(*const Var<0>) -> Var<0>;
+    unsafe intrin __builtin_write<type>(*mut Var<0>,Var<0>) -> ();
+    unsafe intrin __builtin_write_volatile<type>(*mut Var<0>, Var<0>) -> ();
+    
 }

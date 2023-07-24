@@ -6,6 +6,7 @@ use xlang::abi::pair::Pair;
 use xlang::targets::properties::TargetProperties;
 
 use crate::lang::LangItemTarget;
+use crate::CrateType;
 use crate::{
     ast,
     irgen::visitor::{visit_module, ModVisitor},
@@ -1115,6 +1116,10 @@ impl Definitions {
 impl core::fmt::Display for Definitions {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         for &Pair(name, crdef) in &self.crates {
+            for attr in &self.definition(crdef).attrs {
+                attr.body.fmt(f)?;
+                f.write_str("\n")?;
+            }
             f.write_str("extern crate ")?;
             f.write_str(&name)?;
             f.write_str(" /*")?;
@@ -1130,9 +1135,18 @@ impl core::fmt::Display for Definitions {
                     body: DefinitionInner::Module(md),
                     ..
                 },
+            attrs,
             ..
         } = self.definition(self.curcrate)
         {
+            for attr in attrs {
+                attr.body.fmt(f)?;
+                f.write_str("\n")?;
+            }
+            f.write_str("extern crate self /*")?;
+            self.curcrate.fmt(f)?;
+            f.write_str("*/;\n\n")?;
+
             let tabs = TabPrinter::new();
             for &star_mod in &md.wildcard_imports {
                 f.write_fmt(format_args!("{}use {}::*;\n", tabs, star_mod))?;
@@ -1191,8 +1205,15 @@ fn scan_modules(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) -
             _ => {}
         }
     }
+    let def = defs.definition_mut(curmod);
 
-    defs.definition_mut(curmod).inner = md.copy_span(|_| DefinitionInner::Module(ret));
+    def.inner = md.copy_span(|_| DefinitionInner::Module(ret));
+
+    def.attrs = md
+        .attrs
+        .iter()
+        .map(|attr| attr::parse_meta(attr, curmod, curmod))
+        .collect::<Result<_>>()?;
 
     Ok(())
 }
@@ -1901,10 +1922,12 @@ pub fn find_main(defs: &mut Definitions, root: DefId) -> Result<(DefId, Span)> {
     }
 }
 
-pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<()> {
+pub fn convert_crate(
+    defs: &mut Definitions,
+    md: &Spanned<ast::Mod>,
+    cr_type: CrateType,
+) -> Result<()> {
     let root = defs.allocate_defid();
-
-    intrin::IntrinsicDef::register_intrinsics(defs);
     defs.set_current_crate(root);
 
     scan_modules(defs, root, md)?;
@@ -1919,7 +1942,13 @@ pub fn convert_crate(defs: &mut Definitions, md: &Spanned<ast::Mod>) -> Result<(
 
     // TODO: Check if we're actually inside a bin crate
 
-    {
+    let is_no_main = defs
+        .definition(root)
+        .attrs
+        .iter()
+        .any(|x| **x == Attr::NoMain);
+
+    if cr_type == CrateType::Bin && !is_no_main {
         let lccc_main = defs.allocate_defid();
         let (main, main_span) = find_main(defs, root)?;
 

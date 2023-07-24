@@ -34,6 +34,16 @@ use crate::{
     sema::{convert_crate, Definitions},
 };
 
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum CrateType {
+    Bin,
+    RLib,
+    Dylib,
+    CDylib,
+    Staticlib,
+    ProcMacro,
+}
+
 struct RustFrontend {
     filename: Option<String>,
     defs: Option<Definitions>,
@@ -78,7 +88,7 @@ impl XLangFrontend for RustFrontend {
         filter_comments(&mut lexed);
         let parsed = do_mod(&mut lexed.into_iter().peekmore()).unwrap();
         let mut defs = Definitions::new();
-        convert_crate(&mut defs, &parsed).unwrap();
+        convert_crate(&mut defs, &parsed, CrateType::Bin).unwrap();
 
         eprintln!("{}", defs);
         defs.set_current_crate_name(crate_name);
