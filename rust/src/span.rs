@@ -15,7 +15,7 @@ pub struct Pos {
 }
 
 impl Pos {
-    pub fn new(row: u32, col: u32, idx: usize) -> Self {
+    pub const fn new(row: u32, col: u32, idx: usize) -> Self {
         Self { row, col, idx }
     }
 
@@ -25,6 +25,18 @@ impl Pos {
             col: !0,
             idx: !0,
         }
+    }
+
+    pub const fn row(self) -> u32{
+        self.row
+    }
+
+    pub const fn col(self) -> u32{
+        self.col
+    }
+
+    pub const fn index(self) -> usize{
+        self.idx
     }
 }
 
