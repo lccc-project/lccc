@@ -27,15 +27,15 @@ impl Pos {
         }
     }
 
-    pub const fn row(self) -> u32{
+    pub const fn row(self) -> u32 {
         self.row
     }
 
-    pub const fn col(self) -> u32{
+    pub const fn col(self) -> u32 {
         self.col
     }
 
-    pub const fn index(self) -> usize{
+    pub const fn index(self) -> usize {
         self.idx
     }
 }

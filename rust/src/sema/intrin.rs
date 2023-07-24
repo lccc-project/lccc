@@ -216,5 +216,5 @@ def_intrinsics! {
     unsafe intrin __builtin_read_volatile<type>(*const Var<0>) -> Var<0>;
     unsafe intrin __builtin_write<type>(*mut Var<0>,Var<0>) -> ();
     unsafe intrin __builtin_write_volatile<type>(*mut Var<0>, Var<0>) -> ();
-    
+
 }
