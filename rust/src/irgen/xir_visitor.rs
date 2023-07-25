@@ -1,5 +1,5 @@
-use xlang::{abi::vec::Vec, vec};
 use xlang::ir;
+use xlang::{abi::vec::Vec, vec};
 
 use crate::{
     interning::Symbol,
@@ -107,7 +107,12 @@ impl<'a> FunctionDefVisitor for XirFunctionDefVisitor<'a> {
     }
 
     fn visit_fnbody(&mut self) -> Option<Box<dyn FunctionBodyVisitor + '_>> {
-        Some(Box::new(XirFunctionBodyVisitor::new(self.names, self.file, self.name, std::mem::take(&mut self.ty))))
+        Some(Box::new(XirFunctionBodyVisitor::new(
+            self.names,
+            self.file,
+            self.name,
+            std::mem::take(&mut self.ty),
+        )))
     }
 }
 
@@ -203,8 +208,17 @@ pub struct XirFunctionBodyVisitor<'a> {
 
 impl<'a> XirFunctionBodyVisitor<'a> {
     fn new(names: &'a NameMap, file: &'a mut ir::File, name: Symbol, ty: ir::FnType) -> Self {
-        let path = ir::Path { components: vec![ir::PathComponent::Text((&name).into())] };
-        file.root.members.insert(path, ir::ScopeMember { annotations: todo!(), vis: todo!(), member_decl: todo!() });
+        let path = ir::Path {
+            components: vec![ir::PathComponent::Text((&name).into())],
+        };
+        file.root.members.insert(
+            path,
+            ir::ScopeMember {
+                annotations: todo!(),
+                vis: todo!(),
+                member_decl: todo!(),
+            },
+        );
         Self { names, file }
     }
 }
@@ -242,5 +256,3 @@ pub struct XirTerminatorVisitor<'a> {
     names: &'a NameMap,
     file: &'a mut ir::File,
 }
-
-
