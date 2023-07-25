@@ -200,7 +200,7 @@ pub fn visit_basic_block<V: BasicBlockVisitor>(
     visitor.visit_id(bb.id);
 
     for stmt in &bb.stmts {
-        visit_statement(visitor.visit_stat(), stmt, defs);
+        visit_statement(visitor.visit_stmt(), stmt, defs);
     }
 
     visit_terminator(visitor.visit_term(), &bb.term, defs);
@@ -340,7 +340,7 @@ def_visitors! {
 
     pub trait BasicBlockVisitor {
         fn visit_id(&mut self, id: mir::BasicBlockId);
-        fn visit_stat(&mut self) -> Option<Box<dyn StatementVisitor + '_>>;
+        fn visit_stmt(&mut self) -> Option<Box<dyn StatementVisitor + '_>>;
         fn visit_term(&mut self) -> Option<Box<dyn TerminatorVisitor + '_>>;
     }
 
