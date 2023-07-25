@@ -4,9 +4,10 @@ use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
     ast::{
-        Attr, AttrInput, Block, CompoundBlock, Expr, ExternBlock, Function, Item, ItemBody,
-        ItemValue, Literal, LiteralKind, Mod, Param, Path, PathSegment, Pattern, SimplePath,
-        SimplePathSegment, Spanned, Statement, Type, UserType, Visibility,
+        Attr, AttrInput, Block, CompoundBlock, ConstParam, Expr, ExternBlock, Function,
+        GenericBound, GenericParam, GenericParams, Item, ItemBody, ItemValue, Lifetime,
+        LifetimeParam, Literal, LiteralKind, Mod, Param, Path, PathSegment, Pattern, SimplePath,
+        SimplePathSegment, Spanned, Statement, Type, TypeParam, UserType, Visibility,
     },
     interning::Symbol,
     lex::{Group, GroupType, IsEof, Lexeme, LexemeBody, LexemeClass, StringType, Token, TokenType},
@@ -853,6 +854,225 @@ pub fn do_param(
     })
 }
 
+pub fn do_lifetime(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Lifetime>> {
+    let lex = do_lexeme_class(tree, LexemeClass::Lifetime)?;
+
+    let span = lex.span;
+
+    let body = match lex.body {
+        LexemeBody::Token(tok) => match &*tok.body {
+            "'static" => Lifetime::Static,
+            "'_" => Lifetime::Elided,
+            _ => Lifetime::Named(Spanned {
+                body: tok.body,
+                span,
+            }),
+        },
+        _ => unreachable!(),
+    };
+
+    Ok(Spanned { body, span })
+}
+
+pub fn do_type_bound(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<GenericBound>> {
+    let mut tree = tree.into_rewinder();
+    match do_lifetime(&mut tree) {
+        Ok(life) => {
+            let span = life.span;
+            tree.accept();
+            Ok(Spanned {
+                body: GenericBound::LifetimeBound(life),
+                span,
+            })
+        }
+        Err(e) => match do_path(&mut tree) {
+            Ok(bound) => {
+                let span = bound.span;
+                tree.accept();
+                Ok(Spanned {
+                    body: GenericBound::TraitBound(bound),
+                    span,
+                })
+            }
+            Err(d) => Err(e | d),
+        },
+    }
+}
+
+pub fn do_generic_param(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<GenericParam>> {
+    let mut tree = tree.into_rewinder();
+
+    let res = match do_lexeme_classes(
+        &mut tree,
+        &[
+            LexemeClass::Keyword(Symbol::intern("const")),
+            LexemeClass::Identifier,
+            LexemeClass::Lifetime,
+        ],
+    )? {
+        (lex, LexemeClass::Keyword(_)) => {
+            let begin_span = lex.span;
+            let id = do_lexeme_class(&mut tree, LexemeClass::Identifier)?;
+
+            let id = match id.body {
+                LexemeBody::Token(tok) => Spanned {
+                    body: tok.body,
+                    span: id.span,
+                },
+                _ => unreachable!(),
+            };
+
+            do_lexeme_class(&mut tree, LexemeClass::Punctuation(Symbol::intern(":")))?;
+
+            let ty = do_type(&mut tree)?;
+
+            let span = Span::between(begin_span, ty.span);
+
+            tree.accept();
+
+            Spanned {
+                body: GenericParam::Const(ConstParam { name: id, ty }),
+                span,
+            }
+        }
+        (id, LexemeClass::Identifier) => {
+            let beginspan = id.span;
+            let name = match id.body {
+                LexemeBody::Token(tok) => Spanned {
+                    body: tok.body,
+                    span: id.span,
+                },
+                _ => unreachable!(),
+            };
+
+            let mut endspan = beginspan;
+
+            let mut bounds = Vec::new();
+            if let Ok(lex) =
+                do_lexeme_class(&mut tree, LexemeClass::Punctuation(Symbol::intern(":")))
+            {
+                endspan = lex.span;
+                loop {
+                    match do_type_bound(&mut tree) {
+                        Ok(bound) => {
+                            endspan = bound.span;
+                            bounds.push(bound)
+                        }
+                        Err(_) => break,
+                    }
+
+                    match do_lexeme_class(&mut tree, LexemeClass::Punctuation(Symbol::intern("+")))
+                    {
+                        Ok(lex) => {
+                            endspan = lex.span;
+                            continue;
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+            let span = Span::between(beginspan, endspan);
+            tree.accept();
+            Spanned {
+                body: GenericParam::Type(TypeParam { name, bounds }),
+                span,
+            }
+        }
+        (life, LexemeClass::Lifetime) => {
+            let beginspan = life.span;
+            let name = match life.body {
+                LexemeBody::Token(tok) => Spanned {
+                    body: tok.body,
+                    span: beginspan,
+                },
+                _ => unreachable!(),
+            };
+
+            match &**name {
+                "'_" | "'static" => {
+                    return Err(Error {
+                        expected: vec![LexemeClass::Lifetime],
+                        got: LexemeClass::Keyword(*name),
+                        span: name.span,
+                    })
+                }
+                _ => {}
+            }
+
+            let mut endspan = beginspan;
+
+            let mut bounds = Vec::new();
+            if let Ok(lex) =
+                do_lexeme_class(&mut tree, LexemeClass::Punctuation(Symbol::intern(":")))
+            {
+                endspan = lex.span;
+                loop {
+                    match do_lifetime(&mut tree) {
+                        Ok(bound) => {
+                            endspan = bound.span;
+                            bounds.push(bound)
+                        }
+                        Err(_) => break,
+                    }
+
+                    match do_lexeme_class(&mut tree, LexemeClass::Punctuation(Symbol::intern("+")))
+                    {
+                        Ok(lex) => {
+                            endspan = lex.span;
+                            continue;
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+            let span = Span::between(beginspan, endspan);
+            tree.accept();
+            Spanned {
+                body: GenericParam::Lifetime(LifetimeParam { name, bounds }),
+                span,
+            }
+        }
+        _ => unreachable!(),
+    };
+
+    Ok(res)
+}
+
+pub fn do_generic_params(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<GenericParams>> {
+    let mut tree = tree.into_rewinder();
+
+    let lexeme = do_lexeme_class(&mut tree, LexemeClass::Punctuation(Symbol::intern("<")))?;
+
+    let start_span = lexeme.span;
+
+    let mut params = GenericParams { params: Vec::new() };
+
+    let end_span = loop {
+        match do_generic_param(&mut tree) {
+            Ok(val) => params.params.push(val),
+            Err(e) => {
+                match do_lexeme_class(&mut tree, LexemeClass::Punctuation(Symbol::intern(">"))) {
+                    Ok(lexeme) => break lexeme.span,
+                    Err(d) => return Err(e | d),
+                }
+            }
+        }
+    };
+    tree.accept();
+    Ok(Spanned {
+        body: params,
+        span: Span::between(start_span, end_span),
+    })
+}
+
 pub fn do_item_fn(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<ItemBody>> {
@@ -865,6 +1085,9 @@ pub fn do_item_fn(
         body: *name.text().unwrap(),
         span: name.span,
     };
+
+    let generics = do_generic_params(&mut tree).ok();
+
     let (params_group, _) = do_lexeme_group(&mut tree, Some(GroupType::Parens))?;
     // TODO: receiver
     let mut params_tree = params_group.body.into_iter().peekmore();
@@ -904,7 +1127,7 @@ pub fn do_item_fn(
                 constness: None,
                 is_async: None,
                 name,
-                generics: None,
+                generics,
                 receiver: None, // TODO: parse receiver
                 params,
                 varargs: None,
