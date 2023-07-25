@@ -1,14 +1,15 @@
-use xlang::abi::vec::Vec;
+use xlang::{abi::vec::Vec, vec};
 use xlang::ir;
 
 use crate::{
     interning::Symbol,
-    sema::{ty::AbiTag, DefId},
+    sema::{mir::BasicBlockId, ty::AbiTag, DefId},
 };
 
 use super::visitor::{
-    AttrVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, IntTyVisitor,
-    ModVisitor, PointerTyVisitor, TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
+    AttrVisitor, BasicBlockVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor,
+    IntTyVisitor, ModVisitor, PointerTyVisitor, StatementVisitor, TerminatorVisitor,
+    TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
 };
 use super::NameMap;
 
@@ -106,7 +107,7 @@ impl<'a> FunctionDefVisitor for XirFunctionDefVisitor<'a> {
     }
 
     fn visit_fnbody(&mut self) -> Option<Box<dyn FunctionBodyVisitor + '_>> {
-        todo!()
+        Some(Box::new(XirFunctionBodyVisitor::new(self.names, self.file, self.name, std::mem::take(&mut self.ty))))
     }
 }
 
@@ -194,3 +195,52 @@ impl<'a> TupleTyVisitor for XirTupleTyVisitor<'a> {
         )))
     }
 }
+
+pub struct XirFunctionBodyVisitor<'a> {
+    names: &'a NameMap,
+    file: &'a mut ir::File,
+}
+
+impl<'a> XirFunctionBodyVisitor<'a> {
+    fn new(names: &'a NameMap, file: &'a mut ir::File, name: Symbol, ty: ir::FnType) -> Self {
+        let path = ir::Path { components: vec![ir::PathComponent::Text((&name).into())] };
+        file.root.members.insert(path, ir::ScopeMember { annotations: todo!(), vis: todo!(), member_decl: todo!() });
+        Self { names, file }
+    }
+}
+
+impl<'a> FunctionBodyVisitor for XirFunctionBodyVisitor<'a> {
+    fn visit_basic_block(&mut self) -> Option<Box<dyn BasicBlockVisitor + '_>> {
+        Some(Box::new(XirBasicBlockVisitor::new(self.names, self.file)))
+    }
+}
+
+pub struct XirBasicBlockVisitor<'a> {
+    names: &'a NameMap,
+    file: &'a mut ir::File,
+}
+
+impl<'a> XirBasicBlockVisitor<'a> {
+    fn new(names: &'a NameMap, file: &'a mut ir::File) -> Self {
+        Self { names, file }
+    }
+}
+
+impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
+    fn visit_id(&mut self, _: BasicBlockId) {}
+
+    fn visit_stmt(&mut self) -> Option<Box<dyn StatementVisitor + '_>> {
+        todo!()
+    }
+
+    fn visit_term(&mut self) -> Option<Box<dyn TerminatorVisitor + '_>> {
+        todo!()
+    }
+}
+
+pub struct XirTerminatorVisitor<'a> {
+    names: &'a NameMap,
+    file: &'a mut ir::File,
+}
+
+

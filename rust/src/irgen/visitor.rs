@@ -273,6 +273,7 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
         return;
     }
     match ty {
+        ty::Type::Int(int_type) => visitor.visit_int().visit_type(int_type), // oh no i broke paradigm oh no
         ty::Type::Pointer(mutability, ty) => {
             visit_type_pointer(visitor.visit_pointer(), mutability.body, &ty.body, defs);
         }
@@ -375,7 +376,7 @@ def_visitors! {
     }
 
     pub trait IntTyVisitor {
-        fn visit_type(&mut self, int_type: ty::IntType);
+        fn visit_type(&mut self, int_type: &ty::IntType);
     }
 
     pub trait PointerTyVisitor {
