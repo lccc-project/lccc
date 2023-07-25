@@ -168,8 +168,7 @@ pub fn visit_fndef<V: FunctionDefVisitor>(
     visit_fnty(fnty_visit, fnty, defs);
     match body {
         Some(FunctionBody::MirBody(body)) => {
-            let body_visit = visitor.visit_fnbody();
-            visit_fnbody(body_visit, body, defs);
+            visit_fnbody(visitor.visit_fnbody(), body, defs);
         }
         None => {}
         _ => unreachable!(),
@@ -375,6 +374,10 @@ def_visitors! {
         fn visit_cvarargs(&mut self);
     }
 
+    pub trait IntTyVisitor {
+        fn visit_type(&mut self, int_type: ty::IntType);
+    }
+
     pub trait PointerTyVisitor {
         fn visit_mutability(&mut self, mutability: ty::Mutability);
         fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
@@ -385,6 +388,7 @@ def_visitors! {
     }
 
     pub trait TypeVisitor {
+        fn visit_int(&mut self) -> Option<Box<dyn IntTyVisitor + '_>>;
         fn visit_pointer(&mut self) -> Option<Box<dyn PointerTyVisitor + '_>>;
         fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>>;
     }

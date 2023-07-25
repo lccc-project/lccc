@@ -7,8 +7,8 @@ use crate::{
 };
 
 use super::visitor::{
-    AttrVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, ModVisitor,
-    PointerTyVisitor, TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
+    AttrVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, IntTyVisitor,
+    ModVisitor, PointerTyVisitor, TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
 };
 use super::NameMap;
 
@@ -154,6 +154,10 @@ impl<'a> XirTypeVisitor<'a> {
 }
 
 impl<'a> TypeVisitor for XirTypeVisitor<'a> {
+    fn visit_int(&mut self) -> Option<Box<dyn IntTyVisitor + '_>> {
+        todo!()
+    }
+
     fn visit_pointer(&mut self) -> Option<Box<dyn PointerTyVisitor + '_>> {
         todo!()
     }
