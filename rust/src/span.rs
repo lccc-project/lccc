@@ -5,26 +5,21 @@ use core::{
 
 use core::ops::{Deref, DerefMut};
 
-use crate::interning::Symbol;
+use crate::{helpers::FetchIncrement, interning::Symbol};
 
 #[derive(Clone, Copy, Hash, Eq, Default)]
 pub struct Pos {
     pub row: u32,
     pub col: u32,
-    pub idx: usize,
 }
 
 impl Pos {
-    pub const fn new(row: u32, col: u32, idx: usize) -> Self {
-        Self { row, col, idx }
+    pub const fn new(row: u32, col: u32) -> Self {
+        Self { row, col }
     }
 
     pub const fn synthetic() -> Self {
-        Self {
-            row: !0,
-            col: !0,
-            idx: !0,
-        }
+        Self { row: !0, col: !0 }
     }
 
     pub const fn row(self) -> u32 {
@@ -33,10 +28,6 @@ impl Pos {
 
     pub const fn col(self) -> u32 {
         self.col
-    }
-
-    pub const fn index(self) -> usize {
-        self.idx
     }
 }
 
@@ -267,8 +258,10 @@ impl<I: Iterator<Item = char>> Speekerator for I {
 pub struct Speekable<I: Iterator<Item = char>> {
     inner: I,
     peeked: Option<(Pos, char)>,
+    index: usize,
     pos: Pos,
     fname: Symbol,
+    row_map: Vec<usize>,
 }
 
 #[allow(dead_code)]
@@ -276,9 +269,11 @@ impl<I: Iterator<Item = char>> Speekable<I> {
     fn new(inner: I, fname: impl Into<Symbol>) -> Self {
         Self {
             inner,
+            index: 0,
             peeked: None,
-            pos: Pos::new(1, 1, 0),
+            pos: Pos::new(1, 1),
             fname: fname.into(),
+            row_map: vec![0],
         }
     }
 
@@ -286,14 +281,24 @@ impl<I: Iterator<Item = char>> Speekable<I> {
         self.fname
     }
 
+    pub fn row_map(&self) -> &[usize] {
+        &self.row_map
+    }
+
     fn tick(&mut self) {
         if self.peeked.is_none() {
             let c = self.inner.next();
             if let Some(c) = c {
+                let idx = self.index.fetch_increment();
                 let next_pos = match c {
-                    '\n' => Pos::new(self.pos.row + 1, 1, self.pos.idx + 1),
-                    _ => Pos::new(self.pos.row, self.pos.col + 1, self.pos.idx + 1),
+                    '\n' => Pos::new(self.pos.row + 1, 1),
+                    _ => Pos::new(self.pos.row, self.pos.col + 1),
                 };
+
+                if next_pos.row != self.pos.row {
+                    self.row_map.push(idx);
+                }
+
                 self.peeked = Some((self.pos, c));
                 self.pos = next_pos;
             }
