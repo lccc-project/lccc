@@ -286,9 +286,16 @@ impl<I: Iterator<Item = char>> Speekable<I> {
     }
 
     fn tick(&mut self) {
-        if self.peeked.is_none() {
+        let mut expect_newline = false;
+        while self.peeked.is_none() {
             let c = self.inner.next();
-            if let Some(c) = c {
+            if expect_newline && c != Some('\n') {
+                panic!("todo: diag");
+            }
+            if let Some('\r') = c {
+                self.index += 1; // Yeet the carriage return, try again
+                expect_newline = true;
+            } else if let Some(c) = c {
                 let idx = self.index.fetch_increment();
                 let next_pos = match c {
                     '\n' => Pos::new(self.pos.row + 1, 1),
@@ -301,6 +308,8 @@ impl<I: Iterator<Item = char>> Speekable<I> {
 
                 self.peeked = Some((self.pos, c));
                 self.pos = next_pos;
+            } else {
+                break;
             }
         }
     }
