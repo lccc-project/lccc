@@ -7,7 +7,7 @@
 
 pub mod v1 {
     use xlang_abi::{
-        io::{self, Read, Write},
+        io::{self, Read, ReadSeek, Write},
         prelude::v1::*,
         result::Result,
         span::Span,
@@ -55,6 +55,10 @@ pub mod v1 {
         fn set_target(&mut self, targ: &'static TargetProperties<'static>);
     }
 
+    pub trait DriverCallbacks {
+        fn read_relative_file(&mut self, path: StringView) -> io::Result<DynBox<dyn ReadSeek>>;
+    }
+
     pub trait XLangFrontend: XLangPlugin {
         fn file_matches(&self, x: StringView) -> bool;
         fn set_file_path(&mut self, x: StringView);
@@ -63,6 +67,7 @@ pub mod v1 {
         fn required_plugins(&self) -> Vec<String> {
             Vec::new()
         }
+        fn set_callbacks(&mut self, _callbacks: DynBox<dyn DriverCallbacks>) {}
     }
 
     pub trait XLangCodegen: XLangPlugin {
@@ -76,13 +81,13 @@ pub mod v1 {
             result::Result,
             span::Span,
             string::{String, StringView},
-            traits::{AbiSafeTrait, AbiSafeUnsize, DynMut, DynPtrSafe},
+            traits::{AbiSafeTrait, AbiSafeUnsize, DynBox, DynMut, DynPtrSafe},
             vec::Vec,
         };
         use xlang_struct::File;
         use xlang_targets::properties::{MachineProperties, TargetProperties};
 
-        use super::{Error, OutputMode, XLangCodegen, XLangFrontend, XLangPlugin};
+        use super::{DriverCallbacks, Error, OutputMode, XLangCodegen, XLangFrontend, XLangPlugin};
 
         unsafe impl AbiSafeTrait for dyn XLangPlugin {
             type VTable = vtable::XLangPlugin;
@@ -116,12 +121,28 @@ pub mod v1 {
             type VTable = vtable::XLangFrontend;
         }
 
+        unsafe impl AbiSafeTrait for dyn DriverCallbacks {
+            type VTable = vtable::DriverCallbacks;
+        }
+
+        unsafe impl AbiSafeTrait for dyn DriverCallbacks + Send {
+            type VTable = vtable::DriverCallbacks;
+        }
+
+        unsafe impl AbiSafeTrait for dyn DriverCallbacks + Sync {
+            type VTable = vtable::DriverCallbacks;
+        }
+
+        unsafe impl AbiSafeTrait for dyn DriverCallbacks + Send + Sync {
+            type VTable = vtable::DriverCallbacks;
+        }
+
         mod vtable {
             use xlang_abi::{
                 result::Result,
                 span::Span,
                 string::{String, StringView},
-                traits::{AbiSafeVTable, DynMut},
+                traits::{AbiSafeVTable, DynBox, DynMut},
                 vec::Vec,
             };
             use xlang_struct::File;
@@ -169,6 +190,9 @@ pub mod v1 {
                     xlang_host::rustcall!(unsafe extern "rustcall" fn(*mut (), &MachineProperties)),
                 pub required_plugins:
                     xlang_host::rustcall!(unsafe extern "rustcall" fn(*const ()) -> Vec<String>),
+                pub set_callbacks: xlang_host::rustcall!(
+                    unsafe extern "rustcall" fn(*mut (), DynBox<dyn super::super::DriverCallbacks>)
+                ),
             }
 
             unsafe impl AbiSafeVTable<dyn super::super::XLangFrontend> for XLangFrontend {}
@@ -197,6 +221,26 @@ pub mod v1 {
             unsafe impl AbiSafeVTable<dyn super::super::XLangCodegen + Send> for XLangCodegen {}
             unsafe impl AbiSafeVTable<dyn super::super::XLangCodegen + Sync> for XLangCodegen {}
             unsafe impl AbiSafeVTable<dyn super::super::XLangCodegen + Send + Sync> for XLangCodegen {}
+
+            pub struct DriverCallbacks {
+                pub size: usize,
+                pub align: usize,
+                pub dtor: Option<xlang_host::rustcall!(unsafe extern "rustcall" fn(*mut ()))>,
+                pub reserved: Option<xlang_host::rustcall!(unsafe extern "rustcall" fn(*mut ()))>,
+                pub read_relative_file: xlang_host::rustcall!(
+                    unsafe extern "rustcall" fn(
+                        *mut (),
+                        StringView,
+                    ) -> xlang_abi::io::Result<
+                        DynBox<dyn xlang_abi::io::ReadSeek>,
+                    >
+                ),
+            }
+
+            unsafe impl AbiSafeVTable<dyn super::super::DriverCallbacks> for DriverCallbacks {}
+            unsafe impl AbiSafeVTable<dyn super::super::DriverCallbacks + Send> for DriverCallbacks {}
+            unsafe impl AbiSafeVTable<dyn super::super::DriverCallbacks + Sync> for DriverCallbacks {}
+            unsafe impl AbiSafeVTable<dyn super::super::DriverCallbacks + Send + Sync> for DriverCallbacks {}
         }
 
         xlang_host::rustcall! {unsafe extern "rustcall" fn __dtor<T>(x: *mut ()) {
@@ -265,6 +309,18 @@ pub mod v1 {
             }
         }
 
+        xlang_host::rustcall! {
+            unsafe extern "rustcall" fn __read_relative_file<T: DriverCallbacks>(ptr: *mut (), path: StringView) -> xlang_abi::io::Result<DynBox<dyn xlang_abi::io::ReadSeek>>{
+                unsafe{&mut *(ptr.cast::<T>())}.read_relative_file(path)
+            }
+        }
+
+        xlang_host::rustcall! {
+            unsafe extern "rustcall" fn __set_callbacks<T: XLangFrontend>(ptr: *mut (),features: DynBox<dyn DriverCallbacks>){
+                (&mut *(ptr.cast::<T>())).set_callbacks(features);
+            }
+        }
+
         unsafe impl<T: XLangPlugin + 'static> AbiSafeUnsize<T> for dyn XLangPlugin {
             fn construct_vtable_for() -> &'static Self::VTable {
                 &vtable::XLangPlugin {
@@ -294,6 +350,7 @@ pub mod v1 {
                     read_source: __read_source::<T>,
                     set_machine: __set_machine::<T>,
                     required_plugins: __required_plugins::<T>,
+                    set_callbacks: __set_callbacks::<T>,
                 }
             }
         }
@@ -340,6 +397,10 @@ pub mod v1 {
 
             fn required_plugins(&self) -> Vec<String> {
                 unsafe { (self.vtable().required_plugins)(self.as_raw()) }
+            }
+
+            fn set_callbacks(&mut self, callbacks: DynBox<dyn DriverCallbacks>) {
+                unsafe { (self.vtable().set_callbacks)(self.as_raw_mut(), callbacks) }
             }
         }
 
@@ -399,6 +460,27 @@ pub mod v1 {
 
             fn set_features(&mut self, features: Span<StringView>) {
                 unsafe { (self.vtable().set_features)(self.as_raw_mut(), features) }
+            }
+        }
+
+        unsafe impl<T: DriverCallbacks + 'static> AbiSafeUnsize<T> for dyn DriverCallbacks {
+            fn construct_vtable_for() -> &'static Self::VTable {
+                &Self::VTable {
+                    size: core::mem::size_of::<T>(),
+                    align: core::mem::align_of::<T>(),
+                    dtor: Some(__dtor::<T>),
+                    reserved: None,
+                    read_relative_file: __read_relative_file::<T>,
+                }
+            }
+        }
+
+        impl DriverCallbacks for dyn DynPtrSafe<dyn DriverCallbacks> {
+            fn read_relative_file(
+                &mut self,
+                path: StringView,
+            ) -> xlang_abi::io::Result<DynBox<dyn xlang_abi::io::ReadSeek>> {
+                unsafe { (self.vtable().read_relative_file)(self.as_raw_mut()) }
             }
         }
     }
