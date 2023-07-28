@@ -5,13 +5,12 @@ pub mod xir_visitor;
 
 use crate::{
     interning::Symbol,
-    irgen::xir_visitor::XirModVisitor,
+    irgen::xir_visitor::{XirModTypeGatherer, XirModVisitor},
     sema::{DefId, Definitions},
 };
 
-use xlang::abi::collection::HashMap;
 use xlang::ir;
-use xlang::targets::{properties::get_properties, Target};
+use xlang::{abi::collection::HashMap, targets::properties::TargetProperties};
 
 use name_visitor::NameModVisitor;
 
@@ -32,8 +31,8 @@ pub struct IntMangler {
 }
 
 impl IntMangler {
-    fn new(target: &Target) -> Self {
-        let properties = get_properties(target).unwrap().primitives;
+    fn new(properties: &TargetProperties) -> Self {
+        let properties = properties.primitives;
         let x32 = if properties.intbits == 32 {
             b'i'
         } else if properties.longbits == 32 {
@@ -63,10 +62,13 @@ impl IntMangler {
     }
 }
 
-pub fn irgen(defs: &mut Definitions, file: &mut ir::File) {
-    let int_mangler = IntMangler::new(&file.target);
+pub fn irgen(defs: &mut Definitions, file: &mut ir::File, properties: &TargetProperties) {
+    let int_mangler = IntMangler::new(properties);
     let mut names = NameMap::new();
     defs.visit_all_crates(NameModVisitor::new(&mut names, &int_mangler));
-    println!("{:?}", names);
-    defs.visit_all_crates(XirModVisitor::new(&mut names, file));
+    println!("{:?}\n", names);
+    let mut tys = HashMap::new();
+    defs.visit_all_crates(XirModTypeGatherer::new(&names, &mut tys, properties));
+    println!("{:?}\n", tys);
+    defs.visit_all_crates(XirModVisitor::new(&names, &tys, file, properties));
 }

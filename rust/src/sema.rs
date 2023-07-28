@@ -1981,6 +1981,7 @@ pub fn convert_crate(
                     body: mir::MirTerminator::Tailcall(tailcall),
                     span: main_span,
                 },
+                incoming_vars: vec![],
             };
 
             mir::MirFunctionBody {
@@ -2016,6 +2017,7 @@ pub fn convert_crate(
                     body: mir::MirTerminator::Call(call),
                     span: main_span,
                 },
+                incoming_vars: vec![],
             };
 
             // TODO: Call Terminator trait
@@ -2030,6 +2032,7 @@ pub fn convert_crate(
                     }),
                     span: main_span,
                 },
+                incoming_vars: vec![var],
             };
 
             mir::MirFunctionBody {

@@ -44,6 +44,10 @@ pub struct BasicBlockId(pub(crate) u32);
 
 impl BasicBlockId {
     pub const UNUSED: BasicBlockId = BasicBlockId(!0);
+
+    pub const fn id(self) -> u32 {
+        self.0
+    }
 }
 
 impl core::fmt::Display for BasicBlockId {
@@ -60,6 +64,12 @@ impl core::fmt::Debug for BasicBlockId {
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub struct SsaVarId(pub(crate) u32);
+
+impl SsaVarId {
+    pub const fn id(self) -> u32 {
+        self.0
+    }
+}
 
 impl core::fmt::Display for SsaVarId {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
@@ -261,6 +271,7 @@ impl core::fmt::Display for MirJumpInfo {
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct MirBasicBlock {
+    pub incoming_vars: Vec<SsaVarId>,
     pub id: BasicBlockId,
     pub stmts: Vec<Spanned<MirStatement>>,
     pub term: Spanned<MirTerminator>,
@@ -364,6 +375,7 @@ pub enum SsaVarKind {
 pub struct UnbuiltBasicBlock {
     id: BasicBlockId,
     stmts: Vec<Spanned<MirStatement>>,
+    incoming_vars: Vec<SsaVarId>,
 }
 
 impl UnbuiltBasicBlock {
@@ -371,6 +383,7 @@ impl UnbuiltBasicBlock {
         Self {
             id: BasicBlockId(0),
             stmts: vec![],
+            incoming_vars: Vec::new(),
         }
     }
 
@@ -378,6 +391,7 @@ impl UnbuiltBasicBlock {
         Self {
             id: BasicBlockId::UNUSED,
             stmts: vec![],
+            incoming_vars: Vec::new(),
         }
     }
 
@@ -386,6 +400,7 @@ impl UnbuiltBasicBlock {
             id: self.id,
             stmts: self.stmts,
             term,
+            incoming_vars: self.incoming_vars,
         }
     }
 
@@ -768,9 +783,14 @@ impl<'a> MirConverter<'a> {
     fn make_jump(
         &mut self,
         bb_id: BasicBlockId,
-    ) -> (MirJumpInfo, HashMap<HirVarId, HirVarAssignment>) {
+    ) -> (
+        MirJumpInfo,
+        HashMap<HirVarId, HirVarAssignment>,
+        Vec<SsaVarId>,
+    ) {
         let mut assignments = HashMap::new();
         let mut remaps = Vec::new();
+        let mut incoming_vars = Vec::new();
         for Pair(hirvar, hirassign) in &self.var_names {
             if !self.moved_from_locs.get(hirvar).is_some()
                 || hirassign.var_kind == SsaVarKind::Alloca
@@ -793,6 +813,7 @@ impl<'a> MirConverter<'a> {
                 remaps,
             },
             assignments,
+            incoming_vars,
         )
     }
 
@@ -819,7 +840,7 @@ impl<'a> MirConverter<'a> {
             }
             ThirStatement::Block(blk) => {
                 let newbb = BasicBlockId(self.nextbb.fetch_increment());
-                let (jmp, assignments) = self.make_jump(newbb);
+                let (jmp, assignments, incoming) = self.make_jump(newbb);
 
                 match blk.body {
                     super::tyck::ThirBlock::Normal(stmts)
@@ -832,6 +853,7 @@ impl<'a> MirConverter<'a> {
                         });
                         self.basic_blocks.push(bb);
                         self.cur_basic_block.id = newbb;
+                        self.cur_basic_block.incoming_vars = incoming;
                         self.var_names = assignments;
                         for stmt in stmts {
                             self.write_statement(stmt)?;
@@ -842,7 +864,7 @@ impl<'a> MirConverter<'a> {
                         }
 
                         let newbb = BasicBlockId(self.nextbb.fetch_increment());
-                        let (jmp, assignments) = self.make_jump(newbb);
+                        let (jmp, assignments, incoming) = self.make_jump(newbb);
 
                         let term = MirTerminator::Jump(jmp);
 
@@ -853,6 +875,7 @@ impl<'a> MirConverter<'a> {
                         self.basic_blocks.push(bb);
 
                         self.cur_basic_block.id = newbb;
+                        self.cur_basic_block.incoming_vars = incoming;
                         self.var_names = assignments;
                     }
                     super::tyck::ThirBlock::Loop(stmts) => {
@@ -963,9 +986,10 @@ impl<'a> MirConverter<'a> {
                         .map(|s| s.span)
                         .unwrap_or(Span::synthetic());
                     let mut nextbb = BasicBlockId(self.nextbb.fetch_increment());
-                    let (jmp, assignments) = self.make_jump(nextbb);
+                    let (jmp, assignments, mut incoming) = self.make_jump(nextbb);
 
                     let retvar = SsaVarId(self.nextvar.fetch_increment());
+                    incoming.push(retvar);
 
                     let call = MirCallInfo {
                         retplace: Spanned {
@@ -985,6 +1009,7 @@ impl<'a> MirConverter<'a> {
                     });
                     self.basic_blocks.push(bb);
                     self.cur_basic_block.id = nextbb;
+                    self.cur_basic_block.incoming_vars = incoming;
                     self.var_names = assignments;
 
                     if let Some(retplace) = retplace {

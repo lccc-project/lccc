@@ -252,4 +252,8 @@ impl<'a, 'b> TypeVisitor for NameTypeVisitor<'a, 'b> {
     fn visit_pointer(&mut self) -> Option<Box<dyn PointerTyVisitor + '_>> {
         todo!()
     }
+
+    fn visit_never(&mut self) {
+        todo!()
+    }
 }

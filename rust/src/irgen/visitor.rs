@@ -2,7 +2,10 @@ use xlang::abi::pair::Pair;
 
 use crate::{
     interning::Symbol,
-    sema::{mir, ty, Attr, DefId, DefinitionInner, Definitions, FunctionBody},
+    sema::{
+        mir::{self, SsaVarId},
+        ty, Attr, DefId, DefinitionInner, Definitions, FunctionBody,
+    },
 };
 
 macro_rules! def_visitors{
@@ -198,6 +201,7 @@ pub fn visit_basic_block<V: BasicBlockVisitor>(
         return;
     }
     visitor.visit_id(bb.id);
+    visitor.visit_incoming_vars(&bb.incoming_vars);
 
     for stmt in &bb.stmts {
         visit_statement(visitor.visit_stmt(), stmt, defs);
@@ -229,6 +233,8 @@ pub fn visit_terminator<V: TerminatorVisitor>(
     match term {
         mir::MirTerminator::Call(info) => visit_call(visitor.visit_call(), info, defs),
         mir::MirTerminator::Jump(info) => visit_jump(visitor.visit_jump(), info),
+        mir::MirTerminator::Tailcall(info) => visit_tailcall(visitor.visit_tailcall(), info, defs),
+        mir::MirTerminator::Return(expr) => visit_expr(visitor.visit_return(), expr, defs),
         x => todo!("{:?}", x),
     }
 }
@@ -238,7 +244,32 @@ pub fn visit_call<V: CallVisitor>(mut visitor: V, info: &mir::MirCallInfo, defs:
     if visitor.is_none() {
         return;
     }
-    todo!()
+    visitor.visit_retplace(info.retplace.body);
+    visit_fnty(visitor.visit_fnty(), &info.fnty, defs);
+
+    visit_expr(visitor.visit_target(), &info.targ, defs);
+
+    for expr in &info.params {
+        visit_expr(visitor.visit_param(), expr, defs);
+    }
+}
+
+#[allow(unused_variables, unused_mut)]
+pub fn visit_tailcall<V: TailcallVisitor>(
+    mut visitor: V,
+    info: &mir::MirTailcallInfo,
+    defs: &Definitions,
+) {
+    if visitor.is_none() {
+        return;
+    }
+    visit_fnty(visitor.visit_fnty(), &info.fnty, defs);
+
+    visit_expr(visitor.visit_target(), &info.targ, defs);
+
+    for expr in &info.params {
+        visit_expr(visitor.visit_param(), expr, defs);
+    }
 }
 
 pub fn visit_jump<V: JumpVisitor>(mut visitor: V, info: &mir::MirJumpInfo) {
@@ -273,7 +304,7 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
         return;
     }
     match ty {
-        ty::Type::Int(int_type) => visitor.visit_int().visit_type(int_type), // oh no i broke paradigm oh no
+        ty::Type::Int(int_type) => visit_int_type(visitor.visit_int(), int_type), // oh no i broke paradigm oh no
         ty::Type::Pointer(mutability, ty) => {
             visit_type_pointer(visitor.visit_pointer(), mutability.body, &ty.body, defs);
         }
@@ -284,8 +315,18 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
                 defs,
             );
         }
+        ty::Type::Never => {
+            visitor.visit_never();
+        }
         x => todo!("{:?}", x),
     }
+}
+
+pub fn visit_int_type<V: IntTyVisitor>(mut visitor: V, int_ty: &ty::IntType) {
+    if visitor.is_none() {
+        return;
+    }
+    visitor.visit_type(int_ty);
 }
 
 pub fn visit_type_pointer<V: PointerTyVisitor>(
@@ -304,6 +345,36 @@ pub fn visit_type_tuple<V: TupleTyVisitor>(mut visitor: V, tys: &[ty::Type], def
     }
     for ty in tys {
         visit_type(visitor.visit_type(), ty, defs);
+    }
+}
+
+pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &Definitions) {
+    if visitor.is_none() {
+        return;
+    }
+
+    match expr {
+        mir::MirExpr::ConstInt(ity, val) => {
+            let mut visitor = visitor.visit_const_int();
+
+            if visitor.is_none() {
+                return;
+            }
+            visit_int_type(visitor.visit_intty(), ity);
+
+            visitor.visit_value(*val);
+        }
+        mir::MirExpr::Unreachable => visitor.visit_unreachable(),
+        mir::MirExpr::Const(def) => visitor.visit_const(*def),
+
+        mir::MirExpr::Var(_) => todo!(),
+        mir::MirExpr::Read(_) => todo!(),
+        mir::MirExpr::Alloca(_, _, _) => todo!(),
+        mir::MirExpr::ConstString(_, _) => todo!(),
+        mir::MirExpr::Retag(_, _, _) => todo!(),
+        mir::MirExpr::Cast(_, _) => todo!(),
+        mir::MirExpr::Tuple(_) => todo!(),
+        mir::MirExpr::Intrinsic(_) => todo!(),
     }
 }
 
@@ -341,11 +412,21 @@ def_visitors! {
 
     pub trait BasicBlockVisitor {
         fn visit_id(&mut self, id: mir::BasicBlockId);
+        fn visit_incoming_vars(&mut self, incoming: &[SsaVarId]);
         fn visit_stmt(&mut self) -> Option<Box<dyn StatementVisitor + '_>>;
         fn visit_term(&mut self) -> Option<Box<dyn TerminatorVisitor + '_>>;
     }
 
-    pub trait ExprVisitor {}
+    pub trait ExprVisitor {
+        fn visit_unreachable(&mut self);
+        fn visit_const_int(&mut self) -> Option<Box<dyn ConstIntVisitor +'_>>;
+        fn visit_const(&mut self, defid: DefId);
+    }
+
+    pub trait ConstIntVisitor{
+        fn visit_intty(&mut self) -> Option<Box<dyn IntTyVisitor + '_>>;
+        fn visit_value(&mut self, val: u128);
+    }
 
     pub trait StatementVisitor {}
 
@@ -358,6 +439,13 @@ def_visitors! {
         // TODO: visit unwind
     }
 
+    pub trait TailcallVisitor {
+        fn visit_target(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>>;
+        fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        // TODO: visit unwind
+    }
+
     pub trait JumpVisitor {
         fn visit_target_bb(&mut self, targbb: mir::BasicBlockId);
         fn visit_remap(&mut self, src: mir::SsaVarId, targ: mir::SsaVarId);
@@ -366,6 +454,8 @@ def_visitors! {
     pub trait TerminatorVisitor {
         fn visit_call(&mut self) -> Option<Box<dyn CallVisitor + '_>>;
         fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
+        fn visit_tailcall(&mut self) -> Option<Box<dyn TailcallVisitor + '_>>;
+        fn visit_return(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
     }
 
     pub trait FunctionTyVisitor {
@@ -392,5 +482,6 @@ def_visitors! {
         fn visit_int(&mut self) -> Option<Box<dyn IntTyVisitor + '_>>;
         fn visit_pointer(&mut self) -> Option<Box<dyn PointerTyVisitor + '_>>;
         fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>>;
+        fn visit_never(&mut self);
     }
 }

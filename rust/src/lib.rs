@@ -47,7 +47,6 @@ pub enum CrateType {
 struct RustFrontend {
     filename: Option<String>,
     defs: Option<Definitions>,
-    target: Option<Target>,
     props: Option<&'static TargetProperties<'static>>,
 }
 
@@ -57,7 +56,6 @@ impl RustFrontend {
         Self {
             filename: None,
             defs: None,
-            target: None,
             props: None,
         }
     }
@@ -100,15 +98,13 @@ impl XLangFrontend for RustFrontend {
 
 impl XLangPlugin for RustFrontend {
     fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
-        file.target = self.target.clone().unwrap();
-        irgen(self.defs.as_mut().unwrap(), file);
+        irgen(self.defs.as_mut().unwrap(), file, self.props.unwrap());
         println!("{:#?}", file);
         Result::Ok(())
     }
 
     fn set_target(&mut self, target: Target) {
         self.props = Some(get_properties(&target).unwrap());
-        self.target = Some(target);
     }
 }
 
