@@ -480,7 +480,7 @@ pub mod v1 {
                 &mut self,
                 path: StringView,
             ) -> xlang_abi::io::Result<DynBox<dyn xlang_abi::io::ReadSeek>> {
-                unsafe { (self.vtable().read_relative_file)(self.as_raw_mut()) }
+                unsafe { (self.vtable().read_relative_file)(self.as_raw_mut(), path) }
             }
         }
     }
