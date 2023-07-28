@@ -179,6 +179,34 @@ impl<T, E> Result<T, E> {
     }
 }
 
+impl<T, E> Result<T, E>
+where
+    E: Into<core::convert::Infallible>,
+{
+    /// Infallibly unwraps `self` into it's value
+    #[allow(unreachable_code)] // removing the offending `match` fails type checking
+    pub fn into_ok(self) -> T {
+        match self {
+            Ok(val) => val,
+            Err(e) => match Into::into(e) {},
+        }
+    }
+}
+
+impl<T, E> Result<T, E>
+where
+    T: Into<core::convert::Infallible>,
+{
+    /// Infallibly unwraps `self` into it's error
+    #[allow(unreachable_code)] // removing the offending `match` fails type checking
+    pub fn into_err(self) -> E {
+        match self {
+            Err(e) => e,
+            Ok(val) => match Into::into(val) {},
+        }
+    }
+}
+
 impl<T, E> From<std::result::Result<T, E>> for Result<T, E> {
     fn from(f: std::result::Result<T, E>) -> Self {
         match f {

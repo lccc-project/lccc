@@ -1480,7 +1480,7 @@ pub enum BlockItem {
 }
 
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
 pub struct Block {
     pub items: Vec<BlockItem>,
 }
@@ -1500,14 +1500,14 @@ fake_enum::fake_enum! {
 }
 
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
 pub struct FunctionBody {
     pub locals: Vec<Type>,
     pub block: Block,
 }
 
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
 pub struct FunctionDeclaration {
     pub ty: FnType,
     pub body: Option<FunctionBody>,

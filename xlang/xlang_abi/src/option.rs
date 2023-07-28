@@ -79,16 +79,47 @@ impl<T> Option<T> {
         }
     }
 
-    #[allow(clippy::missing_const_for_fn)]
+    /// Unwraps self if it is `None`.
+    ///
+    /// # Panics
+    /// panics if self is `Some(val)`
+
+    #[track_caller]
+    pub fn unwrap_none(self)
+    where
+        T: core::fmt::Debug,
+    {
+        match self {
+            Some(val) => panic!("Called unwrap_none on Some value: {:?}", val),
+            None => (),
+        }
+    }
+
     /// Unwraps self into a value of type `T` if it is `Some`.
     ///
     /// # Panics
-    /// panics if with a message containing `diag` if self is `None`.
+    /// panics  with a message containing `diag` if self is `None`.
     #[track_caller]
     pub fn expect(self, diag: &str) -> T {
         match self {
             Some(val) => val,
             None => panic!("{}", diag),
+        }
+    }
+
+    /// Unwraps self if it is `None`.
+    ///
+    /// # Panics
+    /// panics with a message containing `diag` self is `Some(val)`
+
+    #[track_caller]
+    pub fn expect_none(self, diag: &str)
+    where
+        T: core::fmt::Debug,
+    {
+        match self {
+            Some(val) => panic!("{}: {:?}", diag, val),
+            None => (),
         }
     }
 
@@ -120,6 +151,19 @@ impl<T> Option<T> {
         match self {
             Some(val) => val,
             None => core::hint::unreachable_unchecked(),
+        }
+    }
+
+    /// Unwraps self into a value of type `T`
+    ///
+    /// # Safety
+    /// self must not be `None`.
+    #[allow(clippy::missing_const_for_fn)]
+    #[inline]
+    pub unsafe fn unwrap_none_unchecked(self) {
+        match self {
+            Some(_) => core::hint::unreachable_unchecked(),
+            None => (),
         }
     }
 
@@ -185,6 +229,48 @@ impl<T> Option<T> {
     #[must_use]
     pub fn take(&mut self) -> Self {
         core::mem::take(self)
+    }
+
+    /// Assigns `*self` to `Some(val)`, and returns a mutable reference to the inner value of `self`
+    pub fn insert(&mut self, val: T) -> &mut T {
+        *self = Some(val);
+
+        match self {
+            Some(val) => val,
+            None => unsafe { core::hint::unreachable_unchecked() },
+        }
+    }
+
+    /// Assigns `*self` to `Some(val)` if `*self` is `None`, and returns a mutable reference to the inner value of `self`
+    ///
+    /// `val` is eagerly evaluated, even if `self` is `None`. If constructing or dropping `T` is an expensive operation, consider using [`Self::get_or_insert_with`] instead
+    pub fn get_or_insert(&mut self, val: T) -> &mut T {
+        match self {
+            Some(val) => val,
+            None => {
+                *self = Some(val);
+
+                match self {
+                    Some(val) => val,
+                    None => unsafe { core::hint::unreachable_unchecked() },
+                }
+            }
+        }
+    }
+
+    /// Assigns `*self` to `Some(ctor())` if `*self` is `None`, and returns a mutable reference to the inner value of `self`
+    pub fn get_or_insert_with<F: FnOnce() -> T>(&mut self, ctor: F) -> &mut T {
+        match self {
+            Some(val) => val,
+            None => {
+                *self = Some(ctor());
+
+                match self {
+                    Some(val) => val,
+                    None => unsafe { core::hint::unreachable_unchecked() },
+                }
+            }
+        }
     }
 }
 

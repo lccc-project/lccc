@@ -229,6 +229,27 @@ impl<T, A: Allocator> Vec<T, A> {
         self.len += 1;
     }
 
+    /// Appends a new element to the back of the Vec, reallocating if necessary.
+    /// Returns a mutable reference to the newly inserted elements
+    /// # Panics
+    /// Panics if the new capacity in bytes exceeds [`isize::MAX`]
+    #[inline]
+    #[must_use = "If you do not need the return value, consider using `Vec::push` instead"]
+    pub fn push_mut(&mut self, val: T) -> &mut T {
+        if self.len == self.cap {
+            let ncap = (self.cap + 1).checked_next_power_of_two().unwrap();
+            self.reallocate(ncap);
+        }
+
+        let ptr = self.ptr.as_ptr();
+        unsafe {
+            let ptr = ptr.add(self.len);
+            self.len += 1;
+            ptr.write(val);
+            &mut *ptr
+        }
+    }
+
     /// Removes and returns the last element of the Vec, without reallocating.
     pub fn pop(&mut self) -> Option<T> {
         if self.len == 0 {
