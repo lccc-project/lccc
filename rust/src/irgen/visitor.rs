@@ -252,6 +252,8 @@ pub fn visit_call<V: CallVisitor>(mut visitor: V, info: &mir::MirCallInfo, defs:
     for expr in &info.params {
         visit_expr(visitor.visit_param(), expr, defs);
     }
+
+    visit_jump(visitor.visit_next(), &info.next);
 }
 
 #[allow(unused_variables, unused_mut)]

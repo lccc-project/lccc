@@ -266,7 +266,6 @@ pub struct XirFunctionDefVisitor<'a> {
     names: &'a NameMap,
     deftys: &'a HashMap<DefId, ir::Type>,
     fndef: &'a mut ir::FunctionDeclaration,
-    ty: ir::FnType,
     properties: &'a TargetProperties<'a>,
 }
 
@@ -281,7 +280,6 @@ impl<'a> XirFunctionDefVisitor<'a> {
             names,
             deftys,
             fndef,
-            ty: ir::FnType::default(),
             properties,
         }
     }
@@ -291,7 +289,7 @@ impl<'a> FunctionDefVisitor for XirFunctionDefVisitor<'a> {
     fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>> {
         Some(Box::new(XirFunctionTyVisitor::new(
             self.names,
-            &mut self.ty,
+            &mut self.fndef.ty,
             self.properties,
         )))
     }
@@ -301,7 +299,7 @@ impl<'a> FunctionDefVisitor for XirFunctionDefVisitor<'a> {
             self.names,
             self.properties,
             self.deftys,
-            &mut self.ty,
+            &mut self.fndef.ty,
             self.fndef.body.insert(ir::FunctionBody::default()),
         )))
     }
@@ -871,7 +869,21 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
     }
 
     fn visit_next(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
-        todo!()
+        let fnty = self.fnty.take().expect("visit_fnty must be called first");
+        *self.stack_height -= fnty.params.len() as u32;
+        self.body
+            .block
+            .items
+            .push(ir::BlockItem::Expr(ir::Expr::CallFunction(fnty)));
+
+        Some(Box::new(XirJumpVisitor::new(
+            self.names,
+            self.properties,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.stack_height,
+        )))
     }
 }
 
