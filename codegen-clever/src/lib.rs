@@ -940,7 +940,6 @@ impl CleverFunctionCodegen {
 }
 
 pub struct CleverCodegenPlugin {
-    target: Option<Target>,
     fns: Option<std::collections::HashMap<String, FunctionCodegen<CleverFunctionCodegen>>>,
     strings: Rc<RefCell<StringMap>>,
     properties: Option<&'static TargetProperties<'static>>,
@@ -949,7 +948,7 @@ pub struct CleverCodegenPlugin {
 
 impl CleverCodegenPlugin {
     fn write_output_impl<W: std::io::Write>(&mut self, mut x: W) -> std::io::Result<()> {
-        let fmt = binfmt::def_vec_for(self.target.as_ref().unwrap());
+        let fmt = binfmt::format_by_name(&self.properties.unwrap().link.obj_binfmt).unwrap();
         let mut file = fmt.create_file(FileType::Relocatable);
         let mut text = Section {
             name: String::from(".text"),
@@ -1108,13 +1107,9 @@ impl XLangPlugin for CleverCodegenPlugin {
     }
 
     #[allow(clippy::needless_borrow)] // Incorrect lint
-    fn set_target(&mut self, targ: xlang::targets::Target) {
-        self.target = Some((&targ).into());
-        self.properties = xlang::targets::properties::get_properties(&targ);
-        self.features = get_features_from_properties(
-            self.properties.unwrap(),
-            self.properties.unwrap().arch.default_machine,
-        );
+    fn set_target(&mut self, targ: &'static TargetProperties<'static>) {
+        self.properties = Some(targ);
+        self.features = get_features_from_properties(targ, targ.arch.default_machine);
     }
 }
 
@@ -1143,8 +1138,8 @@ fn get_features_from_properties(
 }
 
 impl XLangCodegen for CleverCodegenPlugin {
-    fn target_matches(&self, x: &xlang::targets::Target) -> bool {
-        let target: target_tuples::Target = x.into();
+    fn target_matches(&self, x: StringView) -> bool {
+        let target: target_tuples::Target = x.parse().unwrap();
 
         matches!(target.arch(), Architecture::Clever)
     }
@@ -1176,7 +1171,6 @@ xlang::host::rustcall! {
 pub extern "rustcall" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
     DynBox::unsize_box(xlang::prelude::v1::Box::new(CleverCodegenPlugin {
         fns: Some(std::collections::HashMap::new()),
-        target: None,
         strings: Rc::new(RefCell::new(StringMap::new())),
         properties: None,
         features: HashSet::new()

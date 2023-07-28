@@ -13,7 +13,7 @@ use xlang::{
     },
     ir::{AccessClass, BinaryOp, FnType, PathComponent, PointerKind, Type, UnaryOp},
     plugin::{OutputMode, XLangCodegen, XLangPlugin},
-    targets::{properties::TargetProperties, Target},
+    targets::properties::TargetProperties,
 };
 
 use crate::{
@@ -547,7 +547,7 @@ pub trait MCWriter {
     fn get_call_conv(
         &self,
         realty: &FnType,
-        targ: &str,
+        targ: &TargetProperties,
         features: Span<StringView>,
     ) -> <Self::Features as MachineFeatures>::CallConv;
     /// Obtains the features from the target
@@ -565,7 +565,6 @@ pub trait MCWriter {
 pub struct MCBackend<W: MCWriter> {
     properties: Option<&'static TargetProperties<'static>>,
     feature: Span<'static, StringView<'static>>,
-    name_targ: Option<String>,
     strings: Rc<RefCell<StringMap>>,
     writer: W,
     functions: HashMap<String, FunctionCodegen<MCFunctionCodegen<W::Features>>>,
@@ -577,7 +576,6 @@ impl<W: MCWriter> MCBackend<W> {
         Self {
             properties: None,
             feature: Span::empty(),
-            name_targ: None,
             strings: Rc::new(RefCell::new(StringMap::new())),
             writer: x,
             functions: HashMap::new(),
@@ -623,7 +621,7 @@ impl<W: MCWriter> XLangPlugin for MCBackend<W> {
                             _strings: self.strings.clone(),
                             callconv: CallConvAdaptor(self.writer.get_call_conv(
                                 &f.ty,
-                                self.name_targ.as_ref().unwrap(),
+                                self.properties.unwrap(),
                                 self.feature,
                             )),
                         };
@@ -648,15 +646,14 @@ impl<W: MCWriter> XLangPlugin for MCBackend<W> {
         XLangOk(())
     }
 
-    fn set_target(&mut self, targ: Target) {
-        self.name_targ = Some(targ.name.to_string());
-        self.properties = Some(xlang::targets::properties::get_properties(&targ).unwrap());
+    fn set_target(&mut self, targ: &'static TargetProperties<'static>) {
+        self.properties = Some(targ);
     }
 }
 
 impl<W: MCWriter> XLangCodegen for MCBackend<W> {
-    fn target_matches(&self, x: &xlang::targets::Target) -> bool {
-        self.writer.target_matches(&x.name)
+    fn target_matches(&self, x: StringView) -> bool {
+        self.writer.target_matches(&x)
     }
 
     fn write_output(
@@ -666,8 +663,8 @@ impl<W: MCWriter> XLangCodegen for MCBackend<W> {
     ) -> xlang::abi::io::Result<()> {
         assert!(matches!(mode, OutputMode::Obj));
         let mut syms = Vec::new();
-        let targ = target_tuples::Target::parse(self.name_targ.as_deref().unwrap());
-        let binfmt = binfmt::def_vec_for(&targ);
+        let props = self.properties.unwrap();
+        let binfmt = binfmt::format_by_name(&props.link.obj_binfmt).unwrap();
 
         let mut binfile = binfmt.create_file(FileType::Relocatable);
 

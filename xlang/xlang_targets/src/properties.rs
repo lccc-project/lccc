@@ -1,7 +1,5 @@
 use xlang_abi::{pair::Pair, span::Span, string::StringView};
 
-use crate::Target;
-
 use self::builtins::BuiltinSignature;
 
 ///
@@ -184,6 +182,12 @@ pub struct LinkProperties<'a> {
     pub available_formats: Span<'a, target_tuples::ObjectFormat>,
     /// The name of the ELF interpreter when producing ELF files.
     pub interp: StringView<'a>,
+    /// The name of the binfmt or bfd vector to use for objects
+    pub obj_binfmt: StringView<'a>,
+    /// The name of the binfmt or bfd vector to use for shared objects
+    pub lib_binfmt: StringView<'a>,
+    /// The name of the binfmt or bfd vector to use for executables
+    pub exec_binfmt: StringView<'a>,
 }
 
 /// Properties about primitive types on the target
@@ -267,9 +271,9 @@ mod x86;
     note = "internal interface that doesn't get linked in via xlang_interface. Use [`get_properties`] or [`xlang_get_properties`] instead"
 )]
 #[must_use]
-pub fn __get_properties(targ: &Target) -> Option<&'static TargetProperties<'static>> {
+pub fn __get_properties(targ: StringView) -> Option<&'static TargetProperties<'static>> {
     target_tuples::match_targets! {
-        match (targ.into()){
+        match (target_tuples::Target::parse(&targ)){
             x86_64-*-linux-gnu => Some(&linux::X86_64_LINUX_GNU),
             x86_64v2-*-linux-gnu => Some(&linux::X86_64_V2_LINUX_GNU),
             x86_64v3-*-linux-gnu => Some(&linux::X86_64_V3_LINUX_GNU),
@@ -302,14 +306,15 @@ extern "C" {
     /// ## SAFETY
     /// This function is always safe to call when xlang_interface is linked.
     /// No undefined behaviour is observed when calling this function
-    pub fn xlang_get_target_properties(targ: &Target)
-        -> Option<&'static TargetProperties<'static>>;
+    pub fn xlang_get_target_properties(
+        targ: StringView,
+    ) -> Option<&'static TargetProperties<'static>>;
 }
 
 #[cfg(any(miri, test))]
 #[allow(deprecated, missing_docs)]
 pub unsafe extern "C" fn xlang_get_target_properties(
-    targ: &Target,
+    targ: StringView,
 ) -> Option<&'static TargetProperties<'static>> {
     __get_properties(targ)
 }
@@ -319,6 +324,6 @@ pub unsafe extern "C" fn xlang_get_target_properties(
 ///
 /// Returns the properties for the given target, or None if the target is not known.
 #[must_use]
-pub fn get_properties(targ: &Target) -> Option<&'static TargetProperties<'static>> {
+pub fn get_properties(targ: StringView) -> Option<&'static TargetProperties<'static>> {
     unsafe { xlang_get_target_properties(targ) }
 }

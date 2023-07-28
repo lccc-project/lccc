@@ -14,7 +14,7 @@ pub mod v1 {
         string::StringView,
     };
     use xlang_struct::File;
-    use xlang_targets::{properties::MachineProperties, Target};
+    use xlang_targets::{properties::MachineProperties, properties::TargetProperties};
 
     fake_enum::fake_enum! {
         #[repr(u32)]
@@ -52,7 +52,7 @@ pub mod v1 {
     #[allow(clippy::module_name_repetitions)]
     pub trait XLangPlugin {
         fn accept_ir(&mut self, ir: &mut File) -> Result<(), Error>;
-        fn set_target(&mut self, targ: Target);
+        fn set_target(&mut self, targ: &'static TargetProperties<'static>);
     }
 
     pub trait XLangFrontend: XLangPlugin {
@@ -66,7 +66,7 @@ pub mod v1 {
     }
 
     pub trait XLangCodegen: XLangPlugin {
-        fn target_matches(&self, x: &xlang_targets::Target) -> bool;
+        fn target_matches(&self, x: StringView) -> bool;
         fn write_output(&mut self, x: DynMut<dyn Write>, mode: OutputMode) -> io::Result<()>;
         fn set_features(&mut self, _features: Span<StringView>) {}
     }
@@ -80,7 +80,7 @@ pub mod v1 {
             vec::Vec,
         };
         use xlang_struct::File;
-        use xlang_targets::{properties::MachineProperties, Target};
+        use xlang_targets::properties::{MachineProperties, TargetProperties};
 
         use super::{Error, OutputMode, XLangCodegen, XLangFrontend, XLangPlugin};
 
@@ -125,7 +125,7 @@ pub mod v1 {
                 vec::Vec,
             };
             use xlang_struct::File;
-            use xlang_targets::{properties::MachineProperties, Target};
+            use xlang_targets::properties::{MachineProperties, TargetProperties};
 
             use crate::plugin::OutputMode;
 
@@ -140,7 +140,9 @@ pub mod v1 {
                 pub accept_ir: xlang_host::rustcall!(
                     unsafe extern "rustcall" fn(*mut (), ir: &mut File) -> Result<(), Error>
                 ),
-                pub set_target: xlang_host::rustcall!(unsafe extern "rustcall" fn(*mut (), Target)),
+                pub set_target: xlang_host::rustcall!(
+                    unsafe extern "rustcall" fn(*mut (), &'static TargetProperties<'static>)
+                ),
             }
 
             unsafe impl AbiSafeVTable<dyn super::XLangPlugin> for XLangPlugin {}
@@ -177,8 +179,9 @@ pub mod v1 {
             #[repr(C)]
             pub struct XLangCodegen {
                 pub plugin_vtable: XLangPlugin,
-                pub target_matches:
-                    xlang_host::rustcall!(unsafe extern "rustcall" fn(*const (), &Target) -> bool),
+                pub target_matches: xlang_host::rustcall!(
+                    unsafe extern "rustcall" fn(*const (), StringView) -> bool
+                ),
                 pub write_output: xlang_host::rustcall!(
                     unsafe extern "rustcall" fn(
                         *mut (),
@@ -218,7 +221,7 @@ pub mod v1 {
             (&mut *(ptr.cast::<T>())).set_file_path(file);
         }}
 
-        xlang_host::rustcall! {unsafe extern "rustcall" fn __set_target<T: XLangPlugin>(ptr: *mut (), target: Target) {
+        xlang_host::rustcall! {unsafe extern "rustcall" fn __set_target<T: XLangPlugin>(ptr: *mut (), target: &'static TargetProperties<'static>) {
             (&mut *(ptr.cast::<T>())).set_target(target);
         }}
 
@@ -239,7 +242,7 @@ pub mod v1 {
 
         xlang_host::rustcall! {unsafe extern "rustcall" fn __target_matches<T: XLangCodegen>(
             ptr: *const (),
-            target: &xlang_targets::Target,
+            target: StringView,
         ) -> bool {
             (&*(ptr.cast::<T>())).target_matches(target)
         }}
@@ -300,7 +303,7 @@ pub mod v1 {
                 unsafe { (self.vtable().accept_ir)(self.as_raw_mut(), ir) }
             }
 
-            fn set_target(&mut self, targ: Target) {
+            fn set_target(&mut self, targ: &'static TargetProperties<'static>) {
                 unsafe { (self.vtable().set_target)(self.as_raw_mut(), targ) }
             }
         }
@@ -310,7 +313,7 @@ pub mod v1 {
                 unsafe { (self.vtable().plugin_vtable.accept_ir)(self.as_raw_mut(), ir) }
             }
 
-            fn set_target(&mut self, targ: Target) {
+            fn set_target(&mut self, targ: &'static TargetProperties<'static>) {
                 unsafe { (self.vtable().plugin_vtable.set_target)(self.as_raw_mut(), targ) }
             }
         }
@@ -377,12 +380,12 @@ pub mod v1 {
             fn accept_ir(&mut self, ir: &mut File) -> Result<(), Error> {
                 unsafe { (self.vtable().plugin_vtable.accept_ir)(self.as_raw_mut(), ir) }
             }
-            fn set_target(&mut self, targ: Target) {
+            fn set_target(&mut self, targ: &'static TargetProperties<'static>) {
                 unsafe { (self.vtable().plugin_vtable.set_target)(self.as_raw_mut(), targ) }
             }
         }
         impl XLangCodegen for dyn DynPtrSafe<dyn XLangCodegen> {
-            fn target_matches(&self, x: &xlang_targets::Target) -> bool {
+            fn target_matches(&self, x: StringView) -> bool {
                 unsafe { (self.vtable().target_matches)(self.as_raw(), x) }
             }
 

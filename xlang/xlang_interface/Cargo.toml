@@ -12,7 +12,7 @@ Minimal cdylib that exposes interfaces to be shared by the xlang environment (ba
 
 [dependencies]
 xlang_abi = {path="../xlang_abi",version="0.2.0"}
-xlang_targets = {path="../xlang_targets",version="0.1.0"}
+xlang_targets = {path="../xlang_targets",version="0.2.0"}
 xlang_host = {path="../xlang_host",version="0.2.0"}
 rand = "0.8.5"
 lazy_static = "1.3"

@@ -7,7 +7,6 @@ use peekmore::{PeekMore as _, PeekMoreIterator};
 use xlang::abi::string::FromUtf8Error;
 use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
 
-use xlang::targets::Target;
 use xlang_struct::{
     Abi, AccessClass, AggregateCtor, AggregateDefinition, AggregateKind, AnnotatedElement,
     AsmConstraint, AsmExpr, AsmOptions, AsmOutput, BinaryOp, Block, BlockItem, BranchCondition,
@@ -1633,26 +1632,11 @@ pub fn parse_member_name<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>
     }
 }
 
-pub fn parse_file<I: Iterator<Item = Token>>(it: I, deftarg: Target) -> File {
+pub fn parse_file<I: Iterator<Item = Token>>(it: I) -> File {
     let mut peekable = it.peekmore();
-    match peekable.peek() {
-        Some(Token::Ident(id)) if id == "target" => {
-            peekable.next();
-            match peekable.next() {
-                Some(Token::StringLiteral(s)) => {
-                    assert_eq!(deftarg, Target::from(target_tuples::Target::parse(&s)));
-                }
-                Some(tok) => panic!("Unexpected Token {:?}", tok),
-                None => panic!("Unexpected End of File"),
-            }
-
-            assert!(peekable.next() == Some(Token::Sigil(';')));
-        }
-        _ => {}
-    }
 
     File {
-        target: deftarg,
+        target: String::new(),
         root: Scope {
             annotations: AnnotatedElement::default(),
             members: core::iter::from_fn(move || parse_scope_member(&mut peekable)).collect(),

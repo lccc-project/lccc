@@ -31,6 +31,9 @@ pub static X86_64_LINUX_GNU_LINK: LinkProperties = LinkProperties {
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
     interp: const_sv!("ld-linux-x86-64.so.2"),
+    obj_binfmt: const_sv!("elf64-x86_64"),
+    lib_binfmt: const_sv!("elf64-x86_64"),
+    exec_binfmt: const_sv!("elf64-x86_64"),
 };
 
 pub static X86_64_LINUX_MUSL_LINK: LinkProperties = LinkProperties {
@@ -40,6 +43,9 @@ pub static X86_64_LINUX_MUSL_LINK: LinkProperties = LinkProperties {
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
     interp: const_sv!("ld-musl-x86-64.so"),
+    obj_binfmt: const_sv!("elf64-x86_64"),
+    lib_binfmt: const_sv!("elf64-x86_64"),
+    exec_binfmt: const_sv!("elf64-x86_64"),
 };
 
 pub static X32_LINUX_GNU_LINK: LinkProperties = LinkProperties {
@@ -49,6 +55,9 @@ pub static X32_LINUX_GNU_LINK: LinkProperties = LinkProperties {
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
     interp: const_sv!("ld-linux-x32.so.2"),
+    obj_binfmt: const_sv!("elf32-x86"),
+    lib_binfmt: const_sv!("elf32-x86"),
+    exec_binfmt: const_sv!("elf32-x86"),
 };
 
 pub static X86_32_LINUX_GNU_LINK: LinkProperties = LinkProperties {
@@ -58,6 +67,9 @@ pub static X86_32_LINUX_GNU_LINK: LinkProperties = LinkProperties {
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
     interp: const_sv!("ld-linux.so.2"),
+    obj_binfmt: const_sv!("elf32-x86_64"),
+    lib_binfmt: const_sv!("elf32-x86_64"),
+    exec_binfmt: const_sv!("elf32-x86_64"),
 };
 
 macro_rules! x86_abis{

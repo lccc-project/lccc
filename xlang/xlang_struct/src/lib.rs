@@ -15,7 +15,6 @@ use std::convert::TryFrom;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
 use xlang_abi::prelude::v1::*;
-use xlang_targets::Target;
 
 #[doc(hidden)]
 pub mod macros;
@@ -1516,6 +1515,6 @@ pub struct FunctionDeclaration {
 #[repr(C)]
 #[derive(Clone, Debug)]
 pub struct File {
-    pub target: Target,
+    pub target: String,
     pub root: Scope,
 }

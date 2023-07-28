@@ -287,9 +287,9 @@ fn main() {
         _ => todo!(),
     }
 
-    let xtarget = xlang::targets::Target::from(&target);
+    let xtarget = StringView::new(target.get_name());
     println!("building for {:?}", xtarget);
-    let properties = xlang::targets::properties::get_properties(&xtarget).unwrap();
+    let properties = xlang::targets::properties::get_properties(xtarget).unwrap();
 
     let arch_mach = match arch_machine {
         Some("generic") | None => properties.arch.default_machine,
@@ -437,7 +437,7 @@ fn main() {
     let mut codegen = None;
 
     for cg in &mut codegens {
-        if cg.target_matches(&xtarget) {
+        if cg.target_matches(xtarget) {
             codegen = Some(cg);
             break;
         }
@@ -446,10 +446,7 @@ fn main() {
     let codegen = if let Some(cg) = codegen {
         cg
     } else {
-        panic!(
-            "couldn't find a backend for target {}",
-            Target::from(&xtarget)
-        )
+        panic!("couldn't find a backend for target {}", xtarget)
     };
 
     for file in &files {
@@ -496,7 +493,7 @@ fn main() {
             };
             file_pairs.push((file.clone(), outputfile.clone()));
             frontend.set_file_path(file_view);
-            frontend.set_target(xtarget.clone());
+            frontend.set_target(properties);
             frontend.set_machine(arch_mach);
             let mut read_adapter =
                 ReadAdapter::new(File::open(&file).expect("can't read input file"));
@@ -504,7 +501,7 @@ fn main() {
                 .read_source(DynMut::unsize_mut(&mut read_adapter))
                 .unwrap();
             let mut file = xlang::ir::File {
-                target: xtarget.clone(),
+                target: xtarget.into(),
                 root: xlang::ir::Scope::default(),
             };
 
@@ -536,17 +533,17 @@ fn main() {
             }
 
             for plugin in &mut required_plugins {
-                plugin.set_target(xtarget.clone());
+                plugin.set_target(properties);
                 plugin.accept_ir(&mut file);
             }
 
             for plugin in &mut userplugins {
-                plugin.set_target(xtarget.clone());
+                plugin.set_target(properties);
                 plugin.accept_ir(&mut file);
             }
 
             if mode >= Mode::Asm {
-                codegen.set_target(xtarget.clone());
+                codegen.set_target(properties);
                 codegen.set_features(Span::new(&features));
                 codegen.accept_ir(&mut file).unwrap();
                 let mut write_adapter =

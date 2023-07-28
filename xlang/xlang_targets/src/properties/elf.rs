@@ -34,6 +34,9 @@ pub static X86_64_ELF_LINK: LinkProperties = LinkProperties {
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
     interp: const_sv!("ld-x86_64.so"),
+    obj_binfmt: const_sv!("elf64-x86_64"),
+    lib_binfmt: const_sv!("elf64-x86_64"),
+    exec_binfmt: const_sv!("elf64-x86_64"),
 };
 
 pub static X32_ELF_LINK: LinkProperties = LinkProperties {
@@ -43,6 +46,9 @@ pub static X32_ELF_LINK: LinkProperties = LinkProperties {
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
     interp: const_sv!("ld-x32.so"),
+    obj_binfmt: const_sv!("elf32-x86_64"),
+    lib_binfmt: const_sv!("elf32-x86_64"),
+    exec_binfmt: const_sv!("elf32-x86_64"),
 };
 
 pub static X86_32_ELF_LINK: LinkProperties = LinkProperties {
@@ -52,6 +58,9 @@ pub static X86_32_ELF_LINK: LinkProperties = LinkProperties {
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
     interp: const_sv!("ld.so"),
+    obj_binfmt: const_sv!("elf32-x86"),
+    lib_binfmt: const_sv!("elf32-x86"),
+    exec_binfmt: const_sv!("elf32-x86"),
 };
 
 pub static X86_16_ELF_LINK: LinkProperties = LinkProperties {
@@ -62,6 +71,9 @@ pub static X86_16_ELF_LINK: LinkProperties = LinkProperties {
 
     available_formats: span![],
     interp: const_sv!(""),
+    obj_binfmt: const_sv!("elf32-x86_16"),
+    lib_binfmt: const_sv!("elf32-x86_16"),
+    exec_binfmt: const_sv!("elf32-x86_16"),
 };
 
 macro_rules! x86_abis{
@@ -254,6 +266,9 @@ pub static CLEVER_ELF_LINK: LinkProperties = LinkProperties {
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
     interp: const_sv!("ld-clever.so"),
+    obj_binfmt: const_sv!("elf64-clever"),
+    lib_binfmt: const_sv!("elf64-clever"),
+    exec_binfmt: const_sv!("elf64-clever"),
 };
 
 pub static CLEVERILP32_ELF_LINK: LinkProperties = LinkProperties {
@@ -263,6 +278,9 @@ pub static CLEVERILP32_ELF_LINK: LinkProperties = LinkProperties {
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
     interp: const_sv!("ld-cleverilp32.so"),
+    obj_binfmt: const_sv!("elf32-clever"),
+    lib_binfmt: const_sv!("elf32-clever"),
+    exec_binfmt: const_sv!("elf32-clever"),
 };
 
 static CLEVER_ABIS: Span<Pair<StringView, &TargetProperties>> = span![
@@ -295,6 +313,9 @@ pub static W65_ELF_LINK: LinkProperties = LinkProperties {
     endfiles: span![const_sv!("crtn.o")],
     available_formats: span![],
     interp: const_sv!(""),
+    obj_binfmt: const_sv!("elf32-w65"),
+    lib_binfmt: const_sv!("elf32-w65"),
+    exec_binfmt: const_sv!("elf32-w65"),
 };
 
 pub static W65_ELF: TargetProperties = TargetProperties {

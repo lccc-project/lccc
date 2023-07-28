@@ -3,7 +3,7 @@
 use std::alloc::Layout;
 
 use xlang_abi::{const_sv, span::Span, string::StringView};
-use xlang_targets::{properties::TargetProperties, Target};
+use xlang_targets::properties::TargetProperties;
 
 #[no_mangle]
 pub extern "C" fn xlang_allocate(size: usize) -> *mut core::ffi::c_void {
@@ -79,7 +79,7 @@ pub extern "C" fn xlang_on_allocation_failure(size: usize, align: usize) -> ! {
 
 #[no_mangle]
 pub extern "C" fn xlang_get_target_properties(
-    targ: &Target,
+    targ: StringView,
 ) -> Option<&'static TargetProperties<'static>> {
     #[allow(deprecated)]
     xlang_targets::properties::__get_properties(targ)

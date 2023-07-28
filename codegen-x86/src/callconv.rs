@@ -1,7 +1,7 @@
 use std::{collections::HashSet, rc::Rc};
 
 use arch_ops::x86::{features::X86Feature, X86Register, X86RegisterClass};
-use target_tuples::Target;
+
 use xlang::{
     prelude::v1::{Pair, Some as XLangSome},
     targets::properties::TargetProperties,
@@ -282,14 +282,9 @@ impl<'a> CallingConvention for dyn X86CallConv + 'a {
 #[allow(clippy::module_name_repetitions)]
 pub fn get_callconv<S: std::hash::BuildHasher + Clone + 'static>(
     _tag: Abi,
-    target: Target,
+    target: &'static TargetProperties<'static>,
     features: HashSet<X86Feature, S>,
     tys: Rc<TypeInformation>,
 ) -> Option<Box<dyn X86CallConv>> {
-    target_tuples::match_targets! {
-        match (target){
-            x86_64-*-linux-gnu => Some(Box::new(SysV64CC(xlang::targets::properties::get_properties(&target.into())?,features,tys))),
-            x86_64-*-linux-gnux32 => Some(Box::new(SysV64CC(xlang::targets::properties::get_properties(&target.into())?,features,tys)))
-        }
-    }
+    Some(Box::new(SysV64CC(target, features, tys)))
 }

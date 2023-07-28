@@ -5,6 +5,7 @@ use xlang::{
     ir::{FunctionDeclaration, Path, PointerType, Scope, Type, Value},
     plugin::XLangPlugin,
     prelude::v1::*,
+    targets::properties::TargetProperties,
 };
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -47,7 +48,7 @@ impl XLangPlugin for TransparentPlugin {
         Ok(())
     }
 
-    fn set_target(&mut self, _: xlang::targets::Target) {}
+    fn set_target(&mut self, _: &'static TargetProperties<'static>) {}
 }
 
 xlang::host::rustcall! {

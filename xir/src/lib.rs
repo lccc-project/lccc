@@ -14,13 +14,13 @@ mod parser;
 mod validate;
 
 use lexer::lex;
-use xlang::targets::Target;
+use xlang::targets::properties::TargetProperties;
 
 use crate::parser::parse_file;
 
 struct XirFrontend {
     filename: Option<String>,
-    target: Option<Target>,
+    target: Option<&'static TargetProperties<'static>>,
     file: Option<File>,
 }
 
@@ -103,7 +103,7 @@ impl XLangFrontend for XirFrontend {
                 _ => panic!("Invalid UTF-8"),
             };
             let lexed = lex(core::iter::once(c).chain(stream)).collect::<Vec<_>>();
-            self.file = Some(parse_file(lexed.into_iter(), self.target.clone().unwrap()));
+            self.file = Some(parse_file(lexed.into_iter()));
         }
 
         Result::Ok(())
@@ -114,11 +114,11 @@ impl XLangPlugin for XirFrontend {
     #[allow(clippy::too_many_lines)]
     fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
         *file = self.file.take().unwrap();
-        validate::tycheck(file);
+        validate::tycheck(file, self.target.unwrap());
         Result::Ok(())
     }
 
-    fn set_target(&mut self, targ: xlang::targets::Target) {
+    fn set_target(&mut self, targ: &'static TargetProperties<'static>) {
         self.target = Some(targ);
     }
 }

@@ -15,6 +15,7 @@ use parse::{
 use xlang::abi::string::StringView;
 use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
+use xlang::targets::properties::TargetProperties;
 
 #[allow(clippy::missing_const_for_fn)] // b/c 1.54.0 doesn't support panic in const fns
 fn diagnostic() -> ! {
@@ -251,7 +252,7 @@ impl XLangPlugin for CFrontend {
         Result::Ok(())
     }
 
-    fn set_target(&mut self, _targ: xlang::targets::Target) {}
+    fn set_target(&mut self, _targ: &'static TargetProperties<'static>) {}
 }
 
 xlang::host::rustcall! {

@@ -12,6 +12,6 @@ ABI Safe structures for representing xlang's intermediate representation
 
 [dependencies]
 xlang_abi = {path="../xlang_abi",version="0.2.0"}
-xlang_targets = {path="../xlang_targets",version="0.1.0"}
+xlang_targets = {path="../xlang_targets",version="0.2.0"}
 bitflags = "1.3"
 fake-enum = "0.1.4"

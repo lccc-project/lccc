@@ -12,15 +12,15 @@ use xlang_struct::{
     UnaryLValueOp, UnaryOp, Value,
 };
 
-struct TypeState {
+struct TypeState<'a> {
     tys: HashMap<Path, Type>,
     aggregate: HashMap<Path, Option<AggregateDefinition>>,
-    target_properties: &'static TargetProperties<'static>,
+    target_properties: &'a TargetProperties<'a>,
     constraint_name_cache: RefCell<HashMap<String, HashSet<AsmScalar>>>,
-    register_aliases: RefCell<HashMap<String, Vec<StringView<'static>>>>,
+    register_aliases: RefCell<HashMap<String, Vec<StringView<'a>>>>,
 }
 
-impl TypeState {
+impl TypeState<'_> {
     pub fn constraint_allowed_for_type(&self, ty: &ScalarType, constraint: &str) -> bool {
         let asm_ty_kind = match ty.kind {
             ScalarTypeKind::Integer { .. }
@@ -1274,8 +1274,7 @@ fn tycheck_block(
     diverged
 }
 
-pub fn tycheck(x: &mut File) {
-    let targ = xlang::targets::properties::get_properties(&x.target).unwrap();
+pub fn tycheck(x: &mut File, targ: &TargetProperties) {
     let mut typestate = TypeState {
         tys: HashMap::new(),
         aggregate: HashMap::new(),

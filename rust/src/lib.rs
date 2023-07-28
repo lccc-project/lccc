@@ -25,7 +25,6 @@ use xlang::abi::string::StringView;
 use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 use xlang::targets::properties::{get_properties, TargetProperties};
-use xlang::targets::Target;
 
 use crate::{
     irgen::irgen,
@@ -103,8 +102,8 @@ impl XLangPlugin for RustFrontend {
         Result::Ok(())
     }
 
-    fn set_target(&mut self, target: Target) {
-        self.props = Some(get_properties(&target).unwrap());
+    fn set_target(&mut self, target: &'static TargetProperties<'static>) {
+        self.props = Some(target);
     }
 }
 
