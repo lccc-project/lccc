@@ -1,6 +1,6 @@
 target/
 autom4te.cache/
-config.toml
+/config.toml
 *.o
 *.a
 a.out

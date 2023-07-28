@@ -1,0 +1,3 @@
+[alias]
+run-lccc = "run --bin lccc -- --intree"
+run-lccc-release = "run --release --bin lccc -- --intree"
