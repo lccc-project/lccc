@@ -1,7 +1,9 @@
+use ty::Spanned;
 use xlang::abi::pair::Pair;
 
 use crate::{
     interning::Symbol,
+    lex::StringType,
     sema::{
         mir::{self, SsaVarId},
         ty, Attr, DefId, DefinitionInner, Definitions, FunctionBody,
@@ -219,7 +221,31 @@ pub fn visit_statement<V: StatementVisitor>(
     if visitor.is_none() {
         return;
     }
-    todo!()
+    match stmt {
+        mir::MirStatement::Declare { var, ty, init } => {
+            visit_let(visitor.visit_let(), **var, ty, init, defs)
+        }
+        mir::MirStatement::Discard(expr) => visit_expr(visitor.visit_discard(), expr, defs),
+        mir::MirStatement::StoreDead(var) => visitor.visit_store_dead(*var),
+        mir::MirStatement::Write(_, _) => todo!("write"),
+        mir::MirStatement::EndRegion(_) => todo!("end region"),
+    }
+}
+
+pub fn visit_let<V: LetStatementVisitor>(
+    mut visitor: V,
+    var: SsaVarId,
+    ty: &ty::Type,
+    init: &mir::MirExpr,
+    defs: &Definitions,
+) {
+    if visitor.is_none() {
+        return;
+    }
+
+    visitor.visit_var(var);
+    visit_type(visitor.visit_var_ty(), ty, defs);
+    visit_expr(visitor.visit_init(), init, defs);
 }
 
 pub fn visit_terminator<V: TerminatorVisitor>(
@@ -368,15 +394,60 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         }
         mir::MirExpr::Unreachable => visitor.visit_unreachable(),
         mir::MirExpr::Const(def) => visitor.visit_const(*def),
-
-        mir::MirExpr::Var(_) => todo!(),
+        mir::MirExpr::Cast(val, asty) => visit_cast(visitor.visit_cast(), val, asty, defs),
+        mir::MirExpr::ConstString(sty, val) => {
+            visit_const_string(visitor.visit_const_string(), *sty, *val, defs)
+        }
+        mir::MirExpr::Var(var) => visitor.visit_var(*var),
+        mir::MirExpr::Tuple(vals) => visit_tuple_expr(visitor.visit_tuple(), vals, defs),
         mir::MirExpr::Read(_) => todo!(),
         mir::MirExpr::Alloca(_, _, _) => todo!(),
-        mir::MirExpr::ConstString(_, _) => todo!(),
+
         mir::MirExpr::Retag(_, _, _) => todo!(),
-        mir::MirExpr::Cast(_, _) => todo!(),
-        mir::MirExpr::Tuple(_) => todo!(),
+
         mir::MirExpr::Intrinsic(_) => todo!(),
+    }
+}
+
+pub fn visit_cast<V: CastVisitor>(
+    mut visitor: V,
+    val: &mir::MirExpr,
+    asty: &ty::Type,
+    defs: &Definitions,
+) {
+    if visitor.is_none() {
+        return;
+    }
+
+    visit_expr(visitor.visit_inner(), val, defs);
+    visit_type(visitor.visit_cast_type(), asty, defs);
+}
+
+pub fn visit_const_string<V: ConstStringVisitor>(
+    mut visitor: V,
+    sty: StringType,
+    val: Symbol,
+    defs: &Definitions,
+) {
+    if visitor.is_none() {
+        return;
+    }
+
+    visitor.visit_string_type(sty);
+    visitor.visit_value(val);
+}
+
+pub fn visit_tuple_expr<V: TupleExprVisitor>(
+    mut visitor: V,
+    vals: &[Spanned<mir::MirExpr>],
+    defs: &Definitions,
+) {
+    if visitor.is_none() {
+        return;
+    }
+
+    for val in vals {
+        visit_expr(visitor.visit_elem(), val, defs);
     }
 }
 
@@ -423,6 +494,14 @@ def_visitors! {
         fn visit_unreachable(&mut self);
         fn visit_const_int(&mut self) -> Option<Box<dyn ConstIntVisitor +'_>>;
         fn visit_const(&mut self, defid: DefId);
+        fn visit_cast(&mut self) -> Option<Box<dyn CastVisitor + '_>>;
+        fn visit_const_string(&mut self) -> Option<Box<dyn ConstStringVisitor + '_>>;
+        fn visit_var(&mut self, var: mir::SsaVarId);
+        fn visit_tuple(&mut self) -> Option<Box<dyn TupleExprVisitor + '_>>;
+    }
+
+    pub trait TupleExprVisitor{
+        fn visit_elem(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
     }
 
     pub trait ConstIntVisitor{
@@ -430,7 +509,27 @@ def_visitors! {
         fn visit_value(&mut self, val: u128);
     }
 
-    pub trait StatementVisitor {}
+    pub trait CastVisitor{
+        fn visit_inner(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_cast_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
+    }
+
+    pub trait ConstStringVisitor {
+        fn visit_string_type(&mut self, st: StringType);
+        fn visit_value(&mut self, val: Symbol);
+    }
+
+    pub trait StatementVisitor {
+        fn visit_let(&mut self) -> Option<Box<dyn LetStatementVisitor + '_>>;
+        fn visit_store_dead(&mut self, var: mir::SsaVarId);
+        fn visit_discard(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+    }
+
+    pub trait LetStatementVisitor{
+        fn visit_var(&mut self, var: mir::SsaVarId);
+        fn visit_var_ty(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
+        fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+    }
 
     pub trait CallVisitor {
         fn visit_retplace(&mut self, retplace: mir::SsaVarId);

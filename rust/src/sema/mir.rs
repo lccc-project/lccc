@@ -50,6 +50,12 @@ impl BasicBlockId {
     }
 }
 
+impl core::borrow::Borrow<u32> for BasicBlockId {
+    fn borrow(&self) -> &u32 {
+        &self.0
+    }
+}
+
 impl core::fmt::Display for BasicBlockId {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.write_fmt(format_args!("@{}", self.0))
