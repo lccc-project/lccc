@@ -1,6 +1,12 @@
 [workspace]
-members = ["xlang","xlang/xlang_abi","xlang/xlang_abi_macro","xlang/xlang_struct", "xlang/xlang_targets","xlang/xlang_host","xlang/xlang_backend",
-    "xlang/xlang_opt","xlangtransparent","lccc","c","xir",
-    "codegen-x86","codegen-clever","codegen-w65", "arch-ops", "binfmt", "rust","rust/rlib","rust/lcrustc","rust/interning-static-syms"]
-
-
+members = [
+    "xlang",
+    "xlang/xlang_abi", "xlang/xlang_abi_macro",
+    "xlang/xlang_struct", "xlang/xlang_targets",
+    "xlang/xlang_host", "xlang/xlang_backend", "xlang/xlang_opt", "xlangtransparent",
+    "lccc", "rust/lcrustc",
+    "c", "xir", "rust", "rust/rlib",
+    "codegen-x86","codegen-clever","codegen-w65",
+    "lc-binutils/arch-ops", "lc-binutils/binfmt",
+    "rust/interning-static-syms",
+]

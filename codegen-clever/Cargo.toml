@@ -8,8 +8,8 @@ license = "BSD-2-Clause-Patent"
 
 
 [dependencies]
-arch-ops = {path="../arch-ops", version="0.1.0", features=["clever"]}
-binfmt = {path="../binfmt", version="0.1.0", features=["all-formats", "clever"]}
+arch-ops = {path="../lc-binutils/arch-ops", version="0.1.0", features=["clever"]}
+binfmt = {path="../lc-binutils/binfmt", version="0.1.0", features=["all-formats", "clever"]}
 xlang = {path="../xlang"}
 xlang_struct = {path="../xlang/xlang_struct"}
 xlang_backend = {path="../xlang/xlang_backend"}

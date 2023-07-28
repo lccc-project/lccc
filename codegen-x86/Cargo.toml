@@ -7,8 +7,8 @@ license = "BSD-2-Clause-Patent"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-arch-ops = {path="../arch-ops", version="0.1.0", features=["x86"]}
-binfmt = {path="../binfmt", version="0.1.0", features=["all-formats", "x86"]}
+arch-ops = {path="../lc-binutils/arch-ops", version="0.1.0", features=["x86"]}
+binfmt = {path="../lc-binutils/binfmt", version="0.1.0", features=["all-formats", "x86"]}
 xlang = {path="../xlang"}
 xlang_struct = {path="../xlang/xlang_struct"}
 xlang_backend = {path="../xlang/xlang_backend"}

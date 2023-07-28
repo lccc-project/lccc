@@ -9,8 +9,8 @@ edition = "2018"
 xlang = {path="../xlang"}
 xlang_backend = {path="../xlang/xlang_backend"}
 xlang_struct =  {path="../xlang/xlang_struct"}
-binfmt = {path="../binfmt",features=["w65","all-formats"]}
-arch-ops = {path="../arch-ops",features=["w65"]}
+binfmt = {path="../lc-binutils/binfmt",features=["w65","all-formats"]}
+arch-ops = {path="../lc-binutils/arch-ops",features=["w65"]}
 target-tuples = "0.5.2"
 
 [lib]

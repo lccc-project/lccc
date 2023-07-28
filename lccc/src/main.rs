@@ -288,7 +288,7 @@ fn main() {
     }
 
     let xtarget = xlang::targets::Target::from(&target);
-
+    println!("building for {:?}", xtarget);
     let properties = xlang::targets::properties::get_properties(&xtarget).unwrap();
 
     let arch_mach = match arch_machine {

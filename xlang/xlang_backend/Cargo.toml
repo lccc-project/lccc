@@ -8,6 +8,6 @@ license = "BSD-2-Clause-Patent"
 
 [dependencies]
 xlang = {path=".."}
-arch-ops = {path="../../arch-ops"}
-binfmt = {path="../../binfmt"}
+arch-ops = {path="../../lc-binutils/arch-ops"}
+binfmt = {path="../../lc-binutils/binfmt"}
 target-tuples = "0.5.7"
