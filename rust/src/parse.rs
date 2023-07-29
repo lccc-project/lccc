@@ -4,10 +4,11 @@ use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
     ast::{
-        Attr, AttrInput, Block, CompoundBlock, ConstParam, Expr, ExternBlock, Function,
-        GenericBound, GenericParam, GenericParams, Item, ItemBody, ItemValue, Lifetime,
+        Attr, AttrInput, Block, CompoundBlock, ConstParam, Constructor, Expr, ExternBlock,
+        Function, GenericBound, GenericParam, GenericParams, Item, ItemBody, ItemValue, Lifetime,
         LifetimeParam, Literal, LiteralKind, Mod, Param, Path, PathSegment, Pattern, SimplePath,
-        SimplePathSegment, Spanned, Statement, Type, TypeParam, UserType, Visibility,
+        SimplePathSegment, Spanned, Statement, StructCtor, StructField, StructKind, TupleCtor,
+        TupleField, Type, TypeParam, UserType, UserTypeBody, Visibility, WhereClause,
     },
     interning::Symbol,
     lex::{Group, GroupType, IsEof, Lexeme, LexemeBody, LexemeClass, StringType, Token, TokenType},
@@ -169,6 +170,22 @@ pub fn do_lexeme_group(
     let lexeme = do_lexeme_class(tree, LexemeClass::Group(expected))?;
     match lexeme.body {
         LexemeBody::Group(x) => Ok((x, lexeme.span)),
+        _ => unreachable!(),
+    }
+}
+
+pub fn do_lexeme_token(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+    expected: LexemeClass,
+) -> Result<(Span, Token)> {
+    if let LexemeClass::Group(_) = expected {
+        panic!("`do_lexeme_token` requires a non-group class")
+    }
+
+    let lexeme = do_lexeme_class(tree, expected)?;
+
+    match lexeme.body {
+        LexemeBody::Token(tok) => Ok((lexeme.span, tok)),
         _ => unreachable!(),
     }
 }
@@ -421,12 +438,219 @@ pub fn do_item_use(
     todo!()
 }
 
+pub fn do_where_clauses(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Vec<Spanned<WhereClause>>>> {
+    let mut tree = tree.into_rewinder();
+    let _kw_where = do_lexeme_class(&mut tree, LexemeClass::Keyword("where".into()))?;
+    todo!()
+}
+
+pub fn do_struct_field(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<StructField>> {
+    let mut tree = tree.into_rewinder();
+    eprintln!("do_struct_field");
+    let vis = do_visibility(&mut tree);
+
+    let name = match do_lexeme_token(&mut tree, LexemeClass::Identifier) {
+        Ok((span, tok)) => Spanned {
+            span,
+            body: tok.body,
+        },
+        Err(e) => match vis {
+            Ok(_) => return Err(e),
+            Err(d) => return Err(d | e),
+        },
+    };
+    let vis = vis.ok();
+
+    let start_span = vis.as_ref().map(|v| v.span).unwrap_or(name.span);
+
+    do_lexeme_class(&mut tree, LexemeClass::Punctuation(":".into()))?;
+
+    let ty = do_type(&mut tree)?;
+
+    tree.accept();
+
+    let span = Span::between(start_span, ty.span);
+    let body = StructField { vis, name, ty };
+    Ok(Spanned { span, body })
+}
+
+pub fn do_tuple_field(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<TupleField>> {
+    let mut tree = tree.into_rewinder();
+    let vis = do_visibility(&mut tree);
+
+    let ty = match do_type(&mut tree) {
+        Ok(ty) => ty,
+        Err(e) => match vis {
+            Ok(_) => return Err(e),
+            Err(d) => return Err(d | e),
+        },
+    };
+
+    let vis = vis.ok();
+
+    tree.accept();
+
+    let span = match &vis {
+        Some(vis) => Span::between(vis.span, ty.span),
+        None => ty.span,
+    };
+
+    let body = TupleField { vis, ty };
+
+    Ok(Spanned { span, body })
+}
+
+pub fn do_constructor(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Constructor>> {
+    let mut tree = tree.into_rewinder();
+    match do_lexeme_group(&mut tree, Some(GroupType::Braces)) {
+        Ok((group, span)) => {
+            let mut inner_tree = group.body.into_iter().peekmore();
+            let mut fields = Vec::new();
+            loop {
+                match do_struct_field(&mut inner_tree) {
+                    Ok(field) => fields.push(field),
+                    Err(e) => match do_lexeme_class(&mut inner_tree, LexemeClass::Eof) {
+                        Ok(_) => break,
+                        Err(d) => return Err(e | d),
+                    },
+                }
+
+                eprintln!("after do_struct_field");
+
+                match do_lexeme_classes(
+                    &mut inner_tree,
+                    &[LexemeClass::Punctuation(",".into()), LexemeClass::Eof],
+                ) {
+                    Ok((_, LexemeClass::Eof)) => break,
+                    Ok(_) => {
+                        eprintln!("got ,");
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            tree.accept();
+            Ok(Spanned {
+                span,
+                body: Constructor::Struct(StructCtor { fields }),
+            })
+        }
+        Err(e) => match do_lexeme_group(&mut tree, Some(GroupType::Parens)) {
+            Ok((group, span)) => {
+                let mut inner_tree = group.body.into_iter().peekmore();
+                let mut fields = Vec::new();
+                loop {
+                    match do_tuple_field(&mut inner_tree) {
+                        Ok(field) => fields.push(field),
+                        Err(e) => match do_lexeme_class(&mut inner_tree, LexemeClass::Eof) {
+                            Ok(_) => break,
+                            Err(_) => return Err(e),
+                        },
+                    }
+
+                    match do_lexeme_classes(
+                        &mut inner_tree,
+                        &[LexemeClass::Punctuation(",".into()), LexemeClass::Eof],
+                    ) {
+                        Ok((_, LexemeClass::Eof)) => break,
+                        Ok(_) => continue,
+                        Err(e) => return Err(e),
+                    }
+                }
+                tree.accept();
+                Ok(Spanned {
+                    span,
+                    body: Constructor::Tuple(TupleCtor { fields }),
+                })
+            }
+            Err(d) => Err(e | d),
+        },
+    }
+}
+
 pub fn do_user_type_struct(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<UserType>> {
     let mut tree = tree.into_rewinder();
-    let _kw_struct = do_lexeme_class(&mut tree, LexemeClass::Keyword("struct".into()))?;
-    todo!()
+    let struct_kind = match do_lexeme_token(&mut tree, LexemeClass::Keyword("struct".into())) {
+        Ok((span, _)) => Spanned {
+            span,
+            body: StructKind::Struct,
+        },
+        Err(e) => match do_lexeme_token(&mut tree, LexemeClass::Keyword("union".into())) {
+            Ok((span, _)) => Spanned {
+                span,
+                body: StructKind::Union,
+            },
+            Err(d) => match do_lexeme_token(&mut tree, LexemeClass::Identifier) {
+                Ok((span, tok)) if tok.body == "union" => Spanned {
+                    span,
+                    body: StructKind::Union,
+                },
+                _ => return Err(e | d),
+            },
+        },
+    };
+    let start_span = struct_kind.span;
+
+    let (span, id) = do_lexeme_token(&mut tree, LexemeClass::Identifier)?;
+
+    let name = Spanned {
+        body: id.body,
+        span,
+    };
+
+    let mut end_span = span;
+
+    let generics = do_generic_params(&mut tree).ok();
+
+    if let Some(generics) = &generics {
+        end_span = generics.span;
+    }
+
+    let where_clauses = do_where_clauses(&mut tree).ok();
+
+    if let Some(where_clauses) = &where_clauses {
+        end_span = where_clauses.span;
+    }
+
+    let ctor = match do_constructor(&mut tree) {
+        Ok(ctor) => match &ctor.body {
+            Constructor::Tuple(_) => {
+                do_lexeme_class(&mut tree, LexemeClass::Punctuation(";".into()))?;
+                ctor
+            }
+            _ => ctor,
+        },
+        Err(e) => match do_lexeme_class(&mut tree, LexemeClass::Punctuation(";".into())) {
+            Ok(lex) => Spanned {
+                body: Constructor::Unit,
+                span: end_span.after(),
+            },
+            Err(d) => return Err(d | e),
+        },
+    };
+
+    let span = Span::between(start_span, ctor.span);
+
+    let body = UserType {
+        name,
+        generics,
+        where_clauses,
+        body: UserTypeBody::Struct(struct_kind, ctor),
+    };
+
+    tree.accept();
+
+    Ok(Spanned { span, body })
 }
 
 pub fn do_user_type_enum(

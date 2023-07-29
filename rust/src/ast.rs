@@ -117,8 +117,8 @@ pub enum StructKind {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Constructor {
-    Struct(Spanned<StructCtor>),
-    Tuple(Spanned<TupleCtor>),
+    Struct(StructCtor),
+    Tuple(TupleCtor),
     Unit,
 }
 
@@ -162,9 +162,9 @@ pub enum UserTypeBody {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct UserType {
     pub name: Spanned<Symbol>,
-    pub generics: Spanned<GenericParams>,
-    pub where_clauses: Option<Vec<Spanned<WhereClause>>>,
-    pub body: Spanned<UserTypeBody>,
+    pub generics: Option<Spanned<GenericParams>>,
+    pub where_clauses: Option<Spanned<Vec<Spanned<WhereClause>>>>,
+    pub body: UserTypeBody,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]

@@ -1251,7 +1251,7 @@ fn collect_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) 
             }
             ast::ItemBody::UserType(uty) => {
                 let defid = defs.allocate_defid();
-                let utys = match &uty.body.body.body {
+                let utys = match &uty.body.body {
                     ast::UserTypeBody::Struct(
                         Spanned {
                             body: ast::StructKind::Struct,

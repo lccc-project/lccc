@@ -94,6 +94,11 @@ impl Span {
         self.start = nstart;
         self
     }
+
+    pub fn after(mut self) -> Self {
+        self.start = self.end;
+        self
+    }
 }
 
 impl fmt::Debug for Span {
