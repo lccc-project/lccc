@@ -5,16 +5,37 @@ use lccc::{LinkOutput, Mode, OptimizeLevel};
 use std::fs::File;
 use std::io::ErrorKind;
 use std::ops::Deref;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use target_tuples::Target;
 use xlang::abi::collection::HashSet;
-use xlang::abi::io::{ReadAdapter, WriteAdapter};
+use xlang::abi::io::{ReadAdapter, ReadSeekAdapter, WriteAdapter};
 use xlang::abi::span::Span;
 use xlang::abi::string::StringView;
-use xlang::plugin::{OutputMode, XLangCodegen, XLangFrontend, XLangPlugin};
+use xlang::plugin::{self, OutputMode, XLangCodegen, XLangFrontend, XLangPlugin};
 use xlang::prelude::v1::*;
 use xlang_host::dso::Handle;
+
+pub struct DriverCallbacks {
+    input_file_dir: PathBuf,
+}
+
+impl plugin::DriverCallbacks for DriverCallbacks {
+    fn read_relative_file(
+        &mut self,
+        path: StringView,
+    ) -> xlang::abi::io::Result<DynBox<dyn xlang::abi::io::ReadSeek>> {
+        let mut abs_path = self.input_file_dir.clone();
+        abs_path.push(path);
+        let file = xlang::abi::try_!(xlang::abi::result::Result::from(
+            std::fs::File::open(abs_path).map_err(xlang::abi::io::Error::from)
+        ));
+
+        let val = xlang::abi::boxed::Box::new(ReadSeekAdapter::new(file));
+
+        xlang::abi::result::Ok(DynBox::unsize_box(val))
+    }
+}
 
 pub enum DumpMode {
     Target,
@@ -450,7 +471,13 @@ fn main() {
     };
 
     for file in &files {
+        let mut file_path = Path::new(file).canonicalize().unwrap();
+        file_path.pop();
+        let callbacks = xlang::abi::boxed::Box::new(DriverCallbacks {
+            input_file_dir: file_path,
+        });
         let file_view = StringView::new(file);
+
         let mut frontend = None;
         for fe in &mut frontends {
             if fe.file_matches(file_view) {
@@ -459,6 +486,7 @@ fn main() {
             }
         }
         if let Some(frontend) = frontend {
+            frontend.set_callbacks(DynBox::unsize_box(callbacks));
             let outputfile = if mode < Mode::Link {
                 if let Some(ref output) = output {
                     output.clone()
