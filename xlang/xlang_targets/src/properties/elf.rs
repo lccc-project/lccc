@@ -178,6 +178,8 @@ pub static X86_64_ELF: TargetProperties = TargetProperties {
     link: &X86_64_ELF_LINK,
     abis: x86_64::ABIS,
     enabled_features: span![],
+    system_tag_name: const_sv!("SysV64"),
+    default_tag_name: const_sv!("SysV64"),
 };
 
 pub static X32_ELF: TargetProperties = TargetProperties {
@@ -187,6 +189,8 @@ pub static X32_ELF: TargetProperties = TargetProperties {
     link: &X32_ELF_LINK,
     abis: x86_64::ABIS,
     enabled_features: span![],
+    system_tag_name: const_sv!("SysV64"),
+    default_tag_name: const_sv!("SysV64"),
 };
 
 pub static I386_ELF: TargetProperties = TargetProperties {
@@ -196,6 +200,8 @@ pub static I386_ELF: TargetProperties = TargetProperties {
     link: &X86_32_ELF_LINK,
     abis: x86_32::ABIS,
     enabled_features: span![],
+    system_tag_name: const_sv!("cdecl"),
+    default_tag_name: const_sv!("cdecl"),
 };
 
 pub static I486_ELF: TargetProperties = TargetProperties {
@@ -205,6 +211,8 @@ pub static I486_ELF: TargetProperties = TargetProperties {
     link: &X86_32_ELF_LINK,
     abis: x86_32::ABIS,
     enabled_features: span![],
+    system_tag_name: const_sv!("cdecl"),
+    default_tag_name: const_sv!("cdecl"),
 };
 pub static I586_ELF: TargetProperties = TargetProperties {
     primitives: &X86_32_PRIMITIVES,
@@ -213,6 +221,8 @@ pub static I586_ELF: TargetProperties = TargetProperties {
     link: &X86_32_ELF_LINK,
     abis: x86_32::ABIS,
     enabled_features: span![],
+    system_tag_name: const_sv!("cdecl"),
+    default_tag_name: const_sv!("cdecl"),
 };
 pub static I686_ELF: TargetProperties = TargetProperties {
     primitives: &X86_32_PRIMITIVES,
@@ -221,6 +231,8 @@ pub static I686_ELF: TargetProperties = TargetProperties {
     link: &X86_32_ELF_LINK,
     abis: x86_32::ABIS,
     enabled_features: span![],
+    system_tag_name: const_sv!("cdecl"),
+    default_tag_name: const_sv!("cdecl"),
 };
 
 pub static I86_NEAR_ELF: TargetProperties = TargetProperties {
@@ -230,6 +242,8 @@ pub static I86_NEAR_ELF: TargetProperties = TargetProperties {
     link: &X86_16_ELF_LINK,
     abis: x86_16_near::ABIS,
     enabled_features: span![],
+    system_tag_name: const_sv!("cdecl"),
+    default_tag_name: const_sv!("cdecl"),
 };
 
 pub static I86_FAR_ELF: TargetProperties = TargetProperties {
@@ -239,6 +253,8 @@ pub static I86_FAR_ELF: TargetProperties = TargetProperties {
     link: &X86_16_ELF_LINK,
     abis: x86_16_far::ABIS,
     enabled_features: span![],
+    system_tag_name: const_sv!("cdecl"),
+    default_tag_name: const_sv!("cdecl"),
 };
 
 pub static I86_NEAR_DATA_FAR_FN_ELF: TargetProperties = TargetProperties {
@@ -248,6 +264,8 @@ pub static I86_NEAR_DATA_FAR_FN_ELF: TargetProperties = TargetProperties {
     link: &X86_16_ELF_LINK,
     abis: x86_16_near_data_far_fn::ABIS,
     enabled_features: span![],
+    system_tag_name: const_sv!("cdecl"),
+    default_tag_name: const_sv!("cdecl"),
 };
 
 pub static I86_FAR_DATA_NEAR_FN_ELF: TargetProperties = TargetProperties {
@@ -257,6 +275,8 @@ pub static I86_FAR_DATA_NEAR_FN_ELF: TargetProperties = TargetProperties {
     link: &X86_16_ELF_LINK,
     abis: x86_16_far_data_near_fn::ABIS,
     enabled_features: span![],
+    system_tag_name: const_sv!("cdecl"),
+    default_tag_name: const_sv!("cdecl"),
 };
 
 pub static CLEVER_ELF_LINK: LinkProperties = LinkProperties {
@@ -295,6 +315,8 @@ pub static CLEVER_ELF: TargetProperties = TargetProperties {
     link: &CLEVER_ELF_LINK,
     abis: CLEVER_ABIS,
     enabled_features: span![],
+    default_tag_name: const_sv!("C"),
+    system_tag_name: const_sv!("C"),
 };
 
 pub static CLEVERILP32_ELF: TargetProperties = TargetProperties {
@@ -304,6 +326,8 @@ pub static CLEVERILP32_ELF: TargetProperties = TargetProperties {
     link: &CLEVERILP32_ELF_LINK,
     abis: CLEVER_ABIS,
     enabled_features: span![],
+    default_tag_name: const_sv!("C"),
+    system_tag_name: const_sv!("C"),
 };
 
 pub static W65_ELF_LINK: LinkProperties = LinkProperties {
@@ -325,4 +349,6 @@ pub static W65_ELF: TargetProperties = TargetProperties {
     link: &W65_ELF_LINK,
     abis: span![],
     enabled_features: span![],
+    default_tag_name: const_sv!("C"),
+    system_tag_name: const_sv!("C"),
 };

@@ -8,7 +8,7 @@ use xlang::{
 };
 use xlang_backend::{callconv::CallingConvention, ty::TypeInformation};
 use xlang_struct::{
-    Abi, AggregateDefinition, FnType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type,
+    AggregateDefinition, FnType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type,
 };
 
 use crate::ValLocation;
@@ -87,7 +87,7 @@ pub trait X86CallConv {
     fn find_parameter(&self, off: u32, ty: &FnType, infn: bool) -> ValLocation;
     fn find_return_val(&self, ty: &Type) -> Option<ValLocation>;
     fn pass_return_place(&self, ty: &Type, frame_size: usize) -> Option<ValLocation>;
-    fn with_tag(&self, tag: Abi) -> Option<Box<dyn X86CallConv>>;
+    fn with_tag(&self, tag: &str) -> Option<Box<dyn X86CallConv>>;
     fn callee_saved(&self) -> &[X86Register];
 }
 
@@ -246,7 +246,7 @@ impl<S: std::hash::BuildHasher + Clone + 'static> X86CallConv for SysV64CC<S> {
         None // For now
     }
 
-    fn with_tag(&self, _: Abi) -> Option<Box<dyn X86CallConv>> {
+    fn with_tag(&self, _: &str) -> Option<Box<dyn X86CallConv>> {
         Some(Box::new((*self).clone()))
     }
 
@@ -281,7 +281,7 @@ impl<'a> CallingConvention for dyn X86CallConv + 'a {
 
 #[allow(clippy::module_name_repetitions)]
 pub fn get_callconv<S: std::hash::BuildHasher + Clone + 'static>(
-    _tag: Abi,
+    _tag: &str,
     target: &'static TargetProperties<'static>,
     features: HashSet<X86Feature, S>,
     tys: Rc<TypeInformation>,

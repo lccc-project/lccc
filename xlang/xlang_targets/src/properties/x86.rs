@@ -491,6 +491,30 @@ pub static X86_64_ASM_PROPERTIES: AsmProperties = AsmProperties {
     classes: classes::x86_64::ASM_CLASSES,
 };
 
+pub const X86_64_TAG_NAMES: Span<StringView> = span![
+    const_sv!("SysV64"),
+    const_sv!("Win64"),
+    const_sv!("vectorcall")
+];
+
+pub const X86_32_TAG_NAMES: Span<StringView> = span![
+    const_sv!("cdecl"),
+    const_sv!("stdcall"),
+    const_sv!("fastcall"),
+    const_sv!("vectorcall"),
+    const_sv!("pascal"),
+    const_sv!("fastcall"),
+    const_sv!("register-borland"),
+    const_sv!("register-watcom"),
+    const_sv!("thiscall")
+];
+
+pub const X86_16_TAG_NAMES: Span<StringView> = span![
+    const_sv!("cdecl"),
+    const_sv!("pascal"),
+    const_sv!("fastcall")
+];
+
 pub static X86_64: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xFF,
     builtins: X86_BUILTINS,
@@ -500,6 +524,8 @@ pub static X86_64: ArchProperties = ArchProperties {
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
     byte_order: super::ByteOrder::LittleEndian,
     asm_propreties: &X86_64_ASM_PROPERTIES,
+    tag_names: X86_64_TAG_NAMES,
+    width: 64,
 };
 
 pub static X86_64_V2: ArchProperties = ArchProperties {
@@ -511,6 +537,8 @@ pub static X86_64_V2: ArchProperties = ArchProperties {
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
     byte_order: super::ByteOrder::LittleEndian,
     asm_propreties: &X86_64_ASM_PROPERTIES,
+    tag_names: X86_64_TAG_NAMES,
+    width: 64,
 };
 
 pub static X86_64_V3: ArchProperties = ArchProperties {
@@ -522,6 +550,8 @@ pub static X86_64_V3: ArchProperties = ArchProperties {
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
     byte_order: super::ByteOrder::LittleEndian,
     asm_propreties: &X86_64_ASM_PROPERTIES,
+    tag_names: X86_64_TAG_NAMES,
+    width: 64,
 };
 
 pub static X86_64_V4: ArchProperties = ArchProperties {
@@ -533,6 +563,8 @@ pub static X86_64_V4: ArchProperties = ArchProperties {
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
     byte_order: super::ByteOrder::LittleEndian,
     asm_propreties: &X86_64_ASM_PROPERTIES,
+    tag_names: X86_64_TAG_NAMES,
+    width: 64,
 };
 
 pub static I386: ArchProperties = ArchProperties {
@@ -544,6 +576,8 @@ pub static I386: ArchProperties = ArchProperties {
     arch_names: span![const_sv!("i386"), const_sv!("x86")],
     byte_order: super::ByteOrder::LittleEndian,
     asm_propreties: &X86_32_ASM_PROPERTIES,
+    tag_names: X86_32_TAG_NAMES,
+    width: 32,
 };
 
 pub static I486: ArchProperties = ArchProperties {
@@ -555,6 +589,8 @@ pub static I486: ArchProperties = ArchProperties {
     arch_names: span![const_sv!("i486"), const_sv!("x86")],
     byte_order: super::ByteOrder::LittleEndian,
     asm_propreties: &X86_32_ASM_PROPERTIES,
+    tag_names: X86_32_TAG_NAMES,
+    width: 32,
 };
 pub static I586: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xF,
@@ -565,6 +601,8 @@ pub static I586: ArchProperties = ArchProperties {
     arch_names: span![const_sv!("i586"), const_sv!("x86")],
     byte_order: super::ByteOrder::LittleEndian,
     asm_propreties: &X86_32_ASM_PROPERTIES,
+    tag_names: X86_32_TAG_NAMES,
+    width: 32,
 };
 
 pub static I686: ArchProperties = ArchProperties {
@@ -576,6 +614,8 @@ pub static I686: ArchProperties = ArchProperties {
     arch_names: span![const_sv!("i686"), const_sv!("x86")],
     byte_order: super::ByteOrder::LittleEndian,
     asm_propreties: &X86_32_ASM_PROPERTIES,
+    tag_names: X86_32_TAG_NAMES,
+    width: 32,
 };
 
 pub static I86: ArchProperties = ArchProperties {
@@ -587,6 +627,8 @@ pub static I86: ArchProperties = ArchProperties {
     arch_names: span![const_sv!("i86"), const_sv!("i8086")],
     byte_order: super::ByteOrder::LittleEndian,
     asm_propreties: &X86_16_ASM_PROPERTIES,
+    tag_names: X86_16_TAG_NAMES,
+    width: 16,
 };
 
 pub static X86_64_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {

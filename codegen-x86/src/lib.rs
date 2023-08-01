@@ -1275,7 +1275,7 @@ impl XLangPlugin for X86CodegenPlugin {
                             name: name.clone(),
                             strings: self.strings.clone(),
                             callconv: callconv::get_callconv(
-                                ty.tag,
+                                &ty.tag,
                                 self.properties.unwrap(),
                                 features.clone(),
                                 tys.clone(),
@@ -1389,10 +1389,5 @@ impl XLangCodegen for X86CodegenPlugin {
 xlang::host::rustcall! {
 #[no_mangle]
 pub extern "rustcall" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
-    DynBox::unsize_box(Box::new(X86CodegenPlugin {
-        fns: Some(std::collections::HashMap::new()),
-        strings: Rc::new(RefCell::new(StringMap::new())),
-        properties: None,
-        features: HashSet::new()
-    }))
+    DynBox::unsize_box(Box::new(xlang_backend::mc::MCBackend::new(mc::new_writer())))
 }}

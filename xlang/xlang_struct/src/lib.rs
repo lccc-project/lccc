@@ -1,4 +1,5 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+
 //! Crate for structural representation of xlang ir
 //! The types in this crate provide a high-level field of XIR that is easily programatically generatable, consummable, and manipulable.
 //!
@@ -7,8 +8,6 @@
 //! * `XID_Start`
 //! * `XID_Part`
 //! * `White_Space`
-//!
-//! It is assumed that, between
 //!
 
 use std::convert::TryFrom;
@@ -270,6 +269,15 @@ impl Default for Visibility {
     }
 }
 
+///
+/// The Member of a scope
+///
+/// This type matches the following ABNF:
+///
+/// ```abnf
+/// scope-member := [*<annotation>] [<visibility>] <member-declaration>
+/// ```
+///
 #[repr(C)]
 #[derive(Clone, Debug, Default)]
 pub struct ScopeMember {
@@ -708,7 +716,7 @@ pub struct FnType {
     pub ret: Type,
     pub params: Vec<Type>,
     pub variadic: bool,
-    pub tag: Abi,
+    pub tag: String,
 }
 
 impl core::fmt::Display for FnType {
@@ -1482,20 +1490,6 @@ pub enum BlockItem {
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
 pub struct Block {
     pub items: Vec<BlockItem>,
-}
-
-fake_enum::fake_enum! {
-    #[repr(u16)]
-    #[derive(Hash,Default)]
-    pub enum struct Abi {
-        C = 0,
-        Cdecl = 1,
-        Fastcall = 2,
-        Stdcall = 3,
-        Vectorcall = 4,
-        Thiscall = 5,
-        SysV = 6,
-    }
 }
 
 #[repr(C)]

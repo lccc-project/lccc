@@ -122,7 +122,6 @@ pub unsafe fn begin_catch_native(p: *mut PanicUnwindInfo) -> *mut dyn Any{
 }
 
 #[cold]
-#[track_caller]
 #[inline(never)]
 #[cfg_attr(define_lang_items, lang = "lcrust_begin_unwind_symbol")]
 pub unsafe fn begin_unwind(o: *mut PanicUnwindInfo) -> !{
@@ -136,4 +135,12 @@ pub unsafe fn catch_unwind_landing_pad(_: *mut dyn FnOnce()->*mut !, p: *mut For
 }
 
 
+#[cfg_attr(define_lang_items, lang = "lcrust_begin_unwind_symbol")]
+#[cfg_attr(define_lang_items, lcrust::weak_def)]
+#[cfg_attr(not(define_lang_items), panic_handler)]
+#[cold]
+#[inline(never)]
+pub fn begin_panic(info: &core::panic::PanicInfo) -> !{
+    let payload = 
+}
 

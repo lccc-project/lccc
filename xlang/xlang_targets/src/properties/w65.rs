@@ -140,6 +140,8 @@ pub static W65: ArchProperties = ArchProperties {
     ],
     byte_order: super::ByteOrder::LittleEndian,
     asm_propreties: &W65_ASSEMBLY,
+    tag_names: span![const_sv!("C"), const_sv!("w65-interrupt")],
+    width: 16,
 };
 
 pub static W65_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {

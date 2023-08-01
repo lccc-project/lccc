@@ -56,13 +56,14 @@ impl XLangFrontend for CFrontend {
 }
 
 impl XLangPlugin for CFrontend {
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, unreachable_code)] // ray can fix passing properties.
     fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
         fn into_xir_type_real(
             char_type: &ir::ScalarType,
             int_type: &ir::ScalarType,
             ty: &Type,
             pointer: Option<&Pointer>,
+            properties: &TargetProperties,
         ) -> ir::Type {
             // const is not currently supported by xir
             let inner = match &ty.base {
@@ -74,12 +75,13 @@ impl XLangPlugin for CFrontend {
                             int_type,
                             &param.inner,
                             param.pointer.as_ref().into(),
+                            properties,
                         ));
                     }
                     ir::Type::FnType(Box::new(ir::FnType {
-                        ret: into_xir_type_real(char_type, int_type, ret, None),
+                        ret: into_xir_type_real(char_type, int_type, ret, None, properties),
                         params: param_types,
-                        tag: ir::Abi::C,
+                        tag: properties.default_tag_name.into(),
                         variadic: false,
                     }))
                 }
@@ -106,12 +108,13 @@ impl XLangPlugin for CFrontend {
             int_type: &ir::ScalarType,
             expr: &Expression,
             block: &mut Vec<ir::BlockItem>,
+            properties: &TargetProperties,
         ) {
             match expr {
                 Expression::FunctionCall { callee, args, .. } => {
-                    codegen_expr_real(char_type, int_type, callee, block);
+                    codegen_expr_real(char_type, int_type, callee, block, properties);
                     for arg in args {
-                        codegen_expr_real(char_type, int_type, arg, block);
+                        codegen_expr_real(char_type, int_type, arg, block, properties);
                     }
                     block.push(ir::BlockItem::Expr(ir::Expr::CallFunction(
                         match into_xir_type_real(
@@ -119,6 +122,7 @@ impl XLangPlugin for CFrontend {
                             int_type,
                             &callee.get_type().unwrap().inner,
                             callee.get_type().unwrap().pointer.as_ref().into(),
+                            properties,
                         ) {
                             ir::Type::FnType(x) => (*x).clone(),
                             x => todo!("{:?}", x),
@@ -136,6 +140,7 @@ impl XLangPlugin for CFrontend {
                                 int_type,
                                 &ty.inner,
                                 ty.pointer.as_ref().into(),
+                                properties,
                             ),
                             item: ir::Path {
                                 components: xlang::vec![ir::PathComponent::Text(String::from(&id))],
@@ -155,6 +160,7 @@ impl XLangPlugin for CFrontend {
                             int_type,
                             &ty.inner,
                             ty.pointer.as_ref().into(),
+                            properties,
                         ),
                         utf8: (&str).into(),
                         encoding: ir::StringEncoding::Utf8,
@@ -188,11 +194,11 @@ impl XLangPlugin for CFrontend {
         };
 
         let into_xir_type = |ty: &Type, pointer: Option<&Pointer>| {
-            into_xir_type_real(&char_type, &int_type, ty, pointer)
+            into_xir_type_real(&char_type, &int_type, ty, pointer, todo!())
         };
 
         let codegen_expr = |expr: &Expression, block: &mut Vec<ir::BlockItem>| {
-            codegen_expr_real(&char_type, &int_type, expr, block);
+            codegen_expr_real(&char_type, &int_type, expr, block, todo!());
         };
 
         for decl in &self.parsed {

@@ -87,6 +87,3 @@ pub unsafe fn __begin_unwind(p: *mut PanicUnwindInfo) -> ! {
 
     crate::panicking::lcrust::abort()
 }
-
-#[track_caller]
-pub unsafe fn __try_personality_routine()

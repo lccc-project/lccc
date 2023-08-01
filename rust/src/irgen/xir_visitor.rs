@@ -330,7 +330,7 @@ impl<'a> XirFunctionTyVisitor<'a> {
 
 impl<'a> FunctionTyVisitor for XirFunctionTyVisitor<'a> {
     fn visit_tag(&mut self, _: AbiTag) {
-        self.fnty.tag = ir::Abi::C; // TODO: handle unwind and fastcall
+        self.fnty.tag = self.properties.default_tag_name.into(); // TODO: fastcall
     }
 
     fn visit_return(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {

@@ -127,6 +127,12 @@ pub struct ArchProperties<'a> {
 
     /// Inline Assembly Properties
     pub asm_propreties: &'a AsmProperties<'a>,
+
+    /// Architecture call ABI names
+    pub tag_names: Span<'a, StringView<'a>>,
+
+    /// Width of the architecture: Used by backends to differentiate between supported targets
+    pub width: u16,
 }
 
 ///
@@ -258,6 +264,11 @@ pub struct TargetProperties<'a> {
     pub enabled_features: Span<'a, Pair<StringView<'a>, bool>>,
     /// Additional abis available
     pub abis: Span<'a, Pair<StringView<'a>, &'a TargetProperties<'a>>>,
+    /// Default C call ABI
+    pub default_tag_name: StringView<'a>,
+
+    /// Default call abi for system apis. Usually not different from `default_tag_name`
+    pub system_tag_name: StringView<'a>,
 }
 
 mod clever;

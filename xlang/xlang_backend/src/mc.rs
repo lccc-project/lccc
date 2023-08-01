@@ -140,6 +140,16 @@ pub enum MCInsn<Loc> {
     CallSym(String),
     /// Cleans up the frame and does a return
     Return,
+    /// Loads the address of a symbol into the given location
+    LoadSym {
+        /// The location in which to place the symbol
+        loc: MaybeResolved<Loc>,
+        /// The symbol to resolve
+        sym: String,
+    },
+
+    /// A Label
+    Label(String),
 }
 
 impl<Loc> Default for MCInsn<Loc> {
@@ -253,7 +263,8 @@ pub struct MCFunctionCodegen<F: MachineFeatures> {
     tys: Rc<TypeInformation>,
     mc_insns: Vec<MCInsn<F::Loc>>,
     callconv: CallConvAdaptor<F::CallConv>,
-    _strings: Rc<RefCell<StringMap>>,
+    strings: Rc<RefCell<StringMap>>,
+    fn_name: String,
 }
 
 #[allow(unused_variables)]
@@ -331,7 +342,7 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
     }
 
     fn write_target(&mut self, target: u32) {
-        todo!()
+        let targ = format!("{}._T{}", self.fn_name, target);
     }
 
     fn call_direct(&mut self, path: &xlang::ir::Path, realty: &xlang::ir::FnType) {
@@ -423,7 +434,13 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
         bytes: xlang::vec::Vec<u8>,
         loc: Self::Loc,
     ) {
-        todo!()
+        let sym = self
+            .strings
+            .borrow_mut()
+            .get_string_symbol(bytes, enc)
+            .to_string();
+
+        self.mc_insns.push(MCInsn::LoadSym { loc, sym });
     }
 
     fn free(&mut self, loc: Self::Loc) {
@@ -473,9 +490,7 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
         todo!()
     }
 
-    fn prepare_call_frame(&mut self, callty: &xlang::ir::FnType, realty: &xlang::ir::FnType) {
-        todo!()
-    }
+    fn prepare_call_frame(&mut self, callty: &xlang::ir::FnType, realty: &xlang::ir::FnType) {}
 
     fn lockfree_use_libatomic(&mut self, size: u64) -> bool {
         todo!()
@@ -537,18 +552,20 @@ pub trait MCWriter {
         callconv: &<Self::Features as MachineFeatures>::CallConv,
     ) -> Self::Clobbers;
     /// Writes the machine code to the given stream
-    fn write_machine_code<I: InsnWrite>(
+    fn write_machine_code<I: InsnWrite, F: FnMut(String, u64)>(
         &self,
         insns: &[MCInsn<<Self::Features as MachineFeatures>::Loc>],
         clobbers: Self::Clobbers,
         out: &mut I,
+        sym_accepter: F,
     ) -> std::io::Result<()>;
     /// Obtains the calling convention for the given `realty`
     fn get_call_conv(
         &self,
         realty: &FnType,
-        targ: &TargetProperties,
+        targ: &'static TargetProperties<'static>,
         features: Span<StringView>,
+        ty_info: Rc<TypeInformation>,
     ) -> <Self::Features as MachineFeatures>::CallConv;
     /// Obtains the features from the target
     fn get_features(
@@ -614,15 +631,17 @@ impl<W: MCWriter> XLangPlugin for MCBackend<W> {
                             [PathComponent::Root, rest @ ..] | [rest @ ..] => features.mangle(rest),
                         };
                         let innercg = MCFunctionCodegen {
+                            fn_name: mangled_name.clone(),
                             inner: features,
                             next_loc_id: 0,
                             tys: tys.clone(),
                             mc_insns: Vec::new(),
-                            _strings: self.strings.clone(),
+                            strings: self.strings.clone(),
                             callconv: CallConvAdaptor(self.writer.get_call_conv(
                                 &f.ty,
                                 self.properties.unwrap(),
                                 self.feature,
+                                Rc::clone(&tys),
                             )),
                         };
                         let mut fncg = FunctionCodegen::new(
@@ -710,7 +729,15 @@ impl<W: MCWriter> XLangCodegen for MCBackend<W> {
 
             try_!(self
                 .writer
-                .write_machine_code(&inner.mc_insns, clobbers, &mut text)
+                .write_machine_code(&inner.mc_insns, clobbers, &mut text, |label, offset| {
+                    syms.push(Symbol::new(
+                        label,
+                        Some(1),
+                        Some(offset as u128),
+                        binfmt::sym::SymbolType::Function,
+                        binfmt::sym::SymbolKind::Local,
+                    ))
+                })
                 .map_err(Into::into));
 
             syms.push(sym);

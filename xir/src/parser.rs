@@ -8,7 +8,7 @@ use xlang::abi::string::FromUtf8Error;
 use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
 
 use xlang_struct::{
-    Abi, AccessClass, AggregateCtor, AggregateDefinition, AggregateKind, AnnotatedElement,
+    AccessClass, AggregateCtor, AggregateDefinition, AggregateKind, AnnotatedElement,
     AsmConstraint, AsmExpr, AsmOptions, AsmOutput, BinaryOp, Block, BlockItem, BranchCondition,
     CharFlags, ConversionStrength, Expr, File, FnType, FunctionBody, FunctionDeclaration,
     HashSwitch, LinearSwitch, MemberDeclaration, OverflowBehaviour, Path, PathComponent,
@@ -65,7 +65,7 @@ pub fn parse_function_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreItera
                             Token::Sigil('>') => FnType {
                                 ret: parse_type(stream).unwrap(),
                                 params,
-                                tag: Abi::C,
+                                tag: "".into(),
                                 variadic,
                             },
                             tok => panic!("Unexpected token {:?}", tok),
@@ -74,7 +74,7 @@ pub fn parse_function_type<I: Iterator<Item = Token>>(stream: &mut PeekMoreItera
                     _ => FnType {
                         ret: Type::Null,
                         params,
-                        tag: Abi::C,
+                        tag: "".into(),
                         variadic,
                     },
                 }
@@ -526,7 +526,7 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
                                     ty: xlang_struct::FnType {
                                         ret,
                                         params,
-                                        tag: Abi::C,
+                                        tag: "".into(),
                                         variadic,
                                     },
                                     body: xlang::abi::option::None,
@@ -567,7 +567,7 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
                                         ty: xlang_struct::FnType {
                                             ret,
                                             params,
-                                            tag: Abi::C,
+                                            tag: "".into(),
                                             variadic,
                                         },
                                         body: xlang::abi::option::Some(FunctionBody {

@@ -266,6 +266,8 @@ pub static CLEVER: ArchProperties = ArchProperties {
     arch_names: span![const_sv!("clever")],
     byte_order: super::ByteOrder::LittleEndian,
     asm_propreties: &CLEVER_ASM,
+    tag_names: span![const_sv!("C")],
+    width: 64,
 };
 
 pub static CLEVER_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
