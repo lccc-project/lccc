@@ -5,7 +5,7 @@ use crate::helpers::{FetchIncrement, TabPrinter};
 use crate::interning::Symbol;
 use crate::span::Span;
 
-use super::ty::{IntType, Type};
+use super::ty::{self, IntType, Type};
 
 use super::{DefId, Spanned};
 
@@ -382,7 +382,38 @@ impl<'a> HirLowerer<'a> {
                     .push(stmt.copy_span(|_| HirStatement::Discard(expr)));
             }
             ast::Statement::ItemDecl(_) => {}
-            ast::Statement::LetStatement(_) => todo!(),
+            ast::Statement::LetStatement(stmt) => {
+                // TODO: handle patterns correctly
+                let (mutability, var) = match stmt.name.body {
+                    ast::Pattern::BareId(id) => (
+                        Spanned {
+                            body: Mutability::Const,
+                            span: Span::synthetic(),
+                        },
+                        id.copy_span(|x| {
+                            let next_id = HirVarId(self.nexthirvarid.fetch_increment());
+                            self.varnames.insert(*x, next_id);
+                            self.vardebugmap.insert(next_id, id);
+                            next_id
+                        }),
+                    ),
+                    _ => todo!(),
+                };
+                let ty = stmt
+                    .ty
+                    .as_ref()
+                    .map(|x| {
+                        x.try_copy_span(|x| {
+                            ty::convert_type(self.defs, self.curmod, self.atitem, x)
+                        })
+                    })
+                    .transpose()?;
+                self.stmts.push(stmt.copy_span(|_| HirStatement::Define {
+                    mutability,
+                    var,
+                    ty,
+                }));
+            }
             ast::Statement::Block(blk) => match &blk.body {
                 ast::CompoundBlock::SimpleBlock(blk) => {
                     let mut lowerer =
