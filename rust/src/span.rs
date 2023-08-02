@@ -79,6 +79,14 @@ impl Span {
         Self::new_simple(Pos::synthetic(), Pos::synthetic(), Symbol::default())
     }
 
+    pub fn is_empty(self) -> bool {
+        self.start == self.end
+    }
+
+    pub fn is_synthetic(self) -> bool {
+        self.is_empty() && self.start == Pos::synthetic()
+    }
+
     pub fn between(start: Self, end: Self) -> Self {
         assert_eq!(start.file, end.file);
         assert_eq!(start.hygiene, end.hygiene);
@@ -103,7 +111,11 @@ impl Span {
 
 impl fmt::Debug for Span {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({:?} - {:?} [{:?}])", self.start, self.end, self.file)
+        if self.is_synthetic() {
+            f.write_str("(synthetic)")
+        } else {
+            write!(f, "({:?} - {:?} [{:?}])", self.start, self.end, self.file)
+        }
     }
 }
 
