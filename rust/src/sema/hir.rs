@@ -427,6 +427,7 @@ impl<'a> HirLowerer<'a> {
                     let mut lowerer =
                         HirLowerer::new(self.defs, self.atitem, self.curmod, self.vardebugmap);
 
+                    lowerer.nexthirvarid = self.nexthirvarid;
                     lowerer.varnames = self.varnames.clone();
 
                     lowerer.desugar_block(ret, blk)?;
@@ -435,6 +436,7 @@ impl<'a> HirLowerer<'a> {
 
                     self.stmts
                         .push(stmt.copy_span(|_| HirStatement::Block(blk.copy_span(|_| block))));
+                    self.nexthirvarid = lowerer.nexthirvarid;
                 }
                 ast::CompoundBlock::If(_) => todo!("if"),
                 ast::CompoundBlock::While(_) => todo!("while"),
@@ -442,6 +444,7 @@ impl<'a> HirLowerer<'a> {
                     let mut lowerer =
                         HirLowerer::new(self.defs, self.atitem, self.curmod, self.vardebugmap);
 
+                    lowerer.nexthirvarid = self.nexthirvarid;
                     lowerer.varnames = self.varnames.clone();
 
                     lowerer.desugar_block(None, blk)?; // handle `break` at some point
@@ -450,11 +453,13 @@ impl<'a> HirLowerer<'a> {
 
                     self.stmts
                         .push(stmt.copy_span(|_| HirStatement::Block(blk.copy_span(|_| block))));
+                    self.nexthirvarid = lowerer.nexthirvarid;
                 }
                 ast::CompoundBlock::Unsafe(blk) => {
                     let mut lowerer =
                         HirLowerer::new(self.defs, self.atitem, self.curmod, self.vardebugmap);
 
+                    lowerer.nexthirvarid = self.nexthirvarid;
                     lowerer.varnames = self.varnames.clone();
 
                     lowerer.desugar_block(ret, blk)?;
@@ -463,6 +468,7 @@ impl<'a> HirLowerer<'a> {
 
                     self.stmts
                         .push(stmt.copy_span(|_| HirStatement::Block(blk.copy_span(|_| block))));
+                    self.nexthirvarid = lowerer.nexthirvarid;
                 }
                 ast::CompoundBlock::For(_) => todo!("for"),
             },

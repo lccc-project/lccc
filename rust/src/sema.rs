@@ -1938,6 +1938,7 @@ pub fn convert_crate(
 
     desugar_values(defs, root)?;
     tycheck_values(defs, root)?;
+    eprintln!("\n{}", defs);
     mir_lower(defs, root)?;
 
     // TODO: Check if we're actually inside a bin crate
