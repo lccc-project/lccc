@@ -475,6 +475,7 @@ pub fn do_struct_field(
 
     let span = Span::between(start_span, ty.span);
     let body = StructField { vis, name, ty };
+    println!("{:?}", body);
     Ok(Spanned { span, body })
 }
 
@@ -622,6 +623,7 @@ pub fn do_user_type_struct(
         end_span = where_clauses.span;
     }
 
+    println!("before do_constructor");
     let ctor = match do_constructor(&mut tree) {
         Ok(ctor) => match &ctor.body {
             Constructor::Tuple(_) => {
@@ -638,6 +640,7 @@ pub fn do_user_type_struct(
             Err(d) => return Err(d | e),
         },
     };
+    println!("after do_constructor");
 
     let span = Span::between(start_span, ctor.span);
 
@@ -673,6 +676,7 @@ pub fn do_item_user_type(
         },
     };
     let span = user_type.span; // copy
+    tree.accept();
     Ok(Spanned {
         body: ItemBody::UserType(user_type),
         span,
