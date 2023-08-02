@@ -479,7 +479,16 @@ pub enum Statement {
     Empty, // everyone forgets about me
     DiscardExpr(Spanned<Expr>),
     ItemDecl(Spanned<Item>),
-    Block(Spanned<CompoundBlock>),
+    Block(Spanned<CompoundBlock>), // todo: should this be a statement or an expression?
+    LetStatement(Spanned<LetStatement>),
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct LetStatement {
+    pub name: Spanned<Pattern>,
+    pub ty: Option<Spanned<Type>>,
+    pub val: Option<Spanned<Expr>>,
+    pub else_block: Option<Spanned<Block>>,
 }
 
 #[allow(dead_code)]

@@ -5,10 +5,11 @@ use peekmore::{PeekMore, PeekMoreIterator};
 use crate::{
     ast::{
         Attr, AttrInput, Block, CompoundBlock, ConstParam, Constructor, Expr, ExternBlock,
-        Function, GenericBound, GenericParam, GenericParams, Item, ItemBody, ItemValue, Lifetime,
-        LifetimeParam, Literal, LiteralKind, Mod, Param, Path, PathSegment, Pattern, SimplePath,
-        SimplePathSegment, Spanned, Statement, StructCtor, StructField, StructKind, TupleCtor,
-        TupleField, Type, TypeParam, UserType, UserTypeBody, Visibility, WhereClause,
+        Function, GenericBound, GenericParam, GenericParams, Item, ItemBody, ItemValue,
+        LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind, Mod, Param, Path, PathSegment,
+        Pattern, SimplePath, SimplePathSegment, Spanned, Statement, StructCtor, StructField,
+        StructKind, TupleCtor, TupleField, Type, TypeParam, UserType, UserTypeBody, Visibility,
+        WhereClause,
     },
     interning::Symbol,
     lex::{Group, GroupType, IsEof, Lexeme, LexemeBody, LexemeClass, StringType, Token, TokenType},
@@ -713,6 +714,29 @@ pub fn do_compound_block(
     })
 }
 
+pub fn do_let_statement(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<LetStatement>> {
+    let mut tree = tree.into_rewinder();
+    let span_start = do_lexeme_class(&mut tree, LexemeClass::Keyword("let".into()))?.span;
+    let name = do_pattern(&mut tree)?;
+    let ty = match do_lexeme_class(&mut tree, LexemeClass::Punctuation(":".into())) {
+        Ok(_) => Some(do_type(&mut tree)?),
+        Err(_) => None,
+    };
+    let val = match do_lexeme_class(&mut tree, LexemeClass::Punctuation("=".into())) {
+        Ok(_) => Some(do_expression(&mut tree)?),
+        Err(_) => None,
+    };
+    // TODO: let-else
+    let span_end = do_lexeme_class(&mut tree, LexemeClass::Punctuation(";".into()))?.span;
+    tree.accept();
+    Ok(Spanned {
+        body: LetStatement { name, ty, val, else_block: None },
+        span: Span::between(span_start, span_end),
+    })
+}
+
 pub fn do_statement(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Statement>> {
@@ -738,29 +762,38 @@ pub fn do_statement(
                         span,
                     })
                 }
-                Err(c) => {
-                    let mut rewinder = tree.into_rewinder();
-                    match do_expression(&mut rewinder) {
-                        Ok(x) => {
-                            let span = x.span;
-                            match do_lexeme_class(
-                                &mut rewinder,
-                                LexemeClass::Punctuation(Symbol::intern(";")),
-                            ) {
-                                Ok(lexeme) => {
-                                    let span = Span::between(span, lexeme.span);
-                                    rewinder.accept();
-                                    Ok(Spanned {
-                                        span,
-                                        body: Statement::DiscardExpr(x),
-                                    })
-                                }
-                                Err(e) => Err(e),
-                            }
-                        }
-                        Err(d) => Err(a | b | c | d),
+                Err(c) => match do_let_statement(tree) {
+                    Ok(x) => {
+                        let span = x.span;
+                        Ok(Spanned {
+                            body: Statement::LetStatement(x),
+                            span,
+                        })
                     }
-                } // TODO: Expr statements
+                    Err(d) => {
+                        let mut rewinder = tree.into_rewinder();
+                        match do_expression(&mut rewinder) {
+                            Ok(x) => {
+                                let span = x.span;
+                                match do_lexeme_class(
+                                    &mut rewinder,
+                                    LexemeClass::Punctuation(Symbol::intern(";")),
+                                ) {
+                                    Ok(lexeme) => {
+                                        let span = Span::between(span, lexeme.span);
+                                        rewinder.accept();
+                                        Ok(Spanned {
+                                            span,
+                                            body: Statement::DiscardExpr(x),
+                                        })
+                                    }
+                                    Err(e) => Err(e),
+                                }
+                            }
+                            Err(e) => Err(a | b | c | d | e),
+                        }
+                    }
+                },
             },
         },
     }

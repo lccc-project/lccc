@@ -382,6 +382,7 @@ impl<'a> HirLowerer<'a> {
                     .push(stmt.copy_span(|_| HirStatement::Discard(expr)));
             }
             ast::Statement::ItemDecl(_) => {}
+            ast::Statement::LetStatement(_) => todo!(),
             ast::Statement::Block(blk) => match &blk.body {
                 ast::CompoundBlock::SimpleBlock(blk) => {
                     let mut lowerer =
