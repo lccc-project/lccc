@@ -413,6 +413,14 @@ impl<'a> HirLowerer<'a> {
                     var,
                     ty,
                 }));
+                if let Some(x) = &stmt.val {
+                    let val = self.desugar_expr(x)?;
+                    self.stmts.push(stmt.copy_span(|_| HirStatement::Assign {
+                        dest: var.copy_span(|x| HirExpr::Var(*x)),
+                        val,
+                        op: None,
+                    }));
+                }
             }
             ast::Statement::Block(blk) => match &blk.body {
                 ast::CompoundBlock::SimpleBlock(blk) => {

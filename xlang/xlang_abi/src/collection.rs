@@ -632,7 +632,7 @@ where
 {
     type Output = V;
     fn index(&self, idx: &'a Q) -> &V {
-        self.get(idx).unwrap()
+        self.get(idx).expect("no entry found for key")
     }
 }
 

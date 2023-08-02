@@ -834,7 +834,9 @@ impl<'a> MirConverter<'a> {
                 let val = self.lower_expr(val)?;
                 self.lower_write(dest, val, op, span)?;
             }
-            ThirStatement::Define { .. } => {}
+            ThirStatement::Define { var, .. } => {
+                self.hir_def_spans.insert(var.body, var.span);
+            }
             ThirStatement::Return(expr) => {
                 let expr = self.lower_expr(expr)?;
 
