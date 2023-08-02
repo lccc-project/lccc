@@ -838,6 +838,9 @@ impl<'a> Inferer<'a> {
     ) -> super::Result<CyclicOperationStatus> {
         let mut status = Complete;
         match stmt {
+            ThirStatement::Assign { ref mut dest, ref mut val, op } => {
+                status &= self.unify_exprs(dest, val)?;
+            }
             ThirStatement::Block(blk) => status &= self.unify_block(&mut blk.body)?,
             ThirStatement::Call {
                 retplace,
