@@ -207,10 +207,10 @@ def_intrinsics! {
     intrin type_id<type>() -> (*const u8, usize);
     intrin type_name<type>() -> &str;
     intrin destroy_at<type>(*mut Var<0>) -> ();
-    intrin discriminant<type,type>(&Var<0>) -> Var<1>;
-    unsafe intrin transmute<type,type>(Var<0>) -> Var<1>;
+    intrin discriminant<type, type>(&Var<0>) -> Var<1>;
+    unsafe intrin transmute<type, type>(Var<0>) -> Var<1>;
     intrin black_box<type>(Var<0>) -> Var<1>;
-    unsafe intrin construct_in_place<type,type,type>(*mut Var<0>,Var<1>,Var<2>) -> ();
+    unsafe intrin construct_in_place<type, type, type>(*mut Var<0>, Var<1>, Var<2>) -> ();
     unsafe intrin __builtin_read<type>(*const Var<0>) -> Var<0>;
     unsafe intrin __builtin_read_freeze<type>(*const Var<0>) -> Var<0>;
     unsafe intrin __builtin_read_volatile<type>(*const Var<0>) -> Var<0>;
