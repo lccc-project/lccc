@@ -14,3 +14,8 @@ impl core::fmt::Display for ConstExpr {
         }
     }
 }
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum ConstEvalError {
+    EvaluatorError,
+}

@@ -51,6 +51,19 @@ pub enum LongDoubleFormat {
     PowerPCDoubleDouble,
 }
 
+impl LongDoubleFormat {
+    /// Obtains the size needed to store the format
+    /// Note: This does not necessarily match `float(long)`, and must be rounded to alignment size
+    pub const fn size(self) -> u16 {
+        match self {
+            LongDoubleFormat::IEEE64 => 8,
+            LongDoubleFormat::IEEE128 => 16,
+            LongDoubleFormat::X87 => 10,
+            LongDoubleFormat::PowerPCDoubleDouble => 16,
+        }
+    }
+}
+
 ///
 /// The types of shared libraries available
 #[repr(i32)]

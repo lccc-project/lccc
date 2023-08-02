@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::convert::TryInto;
+
 use ast::Mutability;
 use ast::Safety;
 use xlang::abi::collection::HashMap;
@@ -26,6 +29,7 @@ use self::intrin::IntrinsicDef;
 use self::ty::FnType;
 use self::ty::SemaLifetime;
 use self::ty::Type;
+use self::ty::TypeLayout;
 use self::tyck::ThirBlock;
 use self::tyck::ThirFunctionBody;
 use self::{hir::HirFunctionBody, tyck::Inferer};
@@ -106,6 +110,7 @@ pub enum ErrorCategory {
     InvalidAttr,
     TycheckError(tyck::TycheckErrorCategory),
     BorrowckError(mir::BorrowckErrorCategory),
+    ConstEvalError(cx::ConstEvalError),
 }
 
 pub mod attr;
@@ -223,10 +228,22 @@ pub struct Definitions {
     visibility_cache: HashSet<(DefId, DefId)>,
     extern_blocks: Vec<DefId>,
     intrinsics: HashMap<intrin::IntrinsicDef, DefId>,
+    layout_cache: RefCell<HashMap<ty::Type, *mut TypeLayout>>,
+    properties: &'static TargetProperties<'static>,
+}
+
+impl Drop for Definitions {
+    fn drop(&mut self) {
+        for Pair(_, layout) in self.layout_cache.get_mut() {
+            unsafe {
+                Box::from_raw(*layout);
+            }
+        }
+    }
 }
 
 impl Definitions {
-    pub fn new() -> Definitions {
+    pub fn new(properties: &'static TargetProperties<'static>) -> Definitions {
         Definitions {
             crates: HashMap::new(),
             curcrate: DefId::ROOT,
@@ -237,6 +254,8 @@ impl Definitions {
             visibility_cache: HashSet::new(),
             extern_blocks: Vec::new(),
             intrinsics: HashMap::new(),
+            layout_cache: RefCell::new(HashMap::new()),
+            properties,
         }
     }
 
@@ -937,6 +956,409 @@ impl Definitions {
         }
 
         Ok(())
+    }
+
+    pub fn layout_of(
+        &self,
+        ty: &ty::Type,
+        at_item: DefId,
+        containing_item: DefId,
+    ) -> &ty::TypeLayout {
+        if let Some(inner) = self.layout_cache.borrow().get(ty) {
+            unsafe { &**inner }
+        } else {
+            let layout = match ty {
+                Type::Bool => ty::TypeLayout {
+                    size: Some(1),
+                    align: Some(1),
+                    enum_discriminant: None,
+                    wide_ptr_metadata: None,
+                    field_offsets: HashMap::new(),
+                    mutable_fields: HashSet::new(),
+                    niches: Some(ty::Niches::Scalar(ty::ScalarNiches {
+                        is_nonzero: false,
+                        max_value: 1,
+                    })),
+                },
+                Type::Int(ity) => {
+                    let width = match ity.width {
+                        ty::IntWidth::Bits(n) => n.get(),
+                        ty::IntWidth::Size => self.properties.primitives.ptrbits,
+                    };
+
+                    let max_align = self.properties.primitives.max_align;
+
+                    let size = width >> 3;
+
+                    let align = size.min(max_align);
+
+                    let size = size as u64;
+                    let align = align as u64;
+
+                    ty::TypeLayout {
+                        size: Some(size),
+                        align: Some(align),
+                        wide_ptr_metadata: None,
+                        enum_discriminant: None,
+                        field_offsets: HashMap::new(),
+                        mutable_fields: HashSet::new(),
+                        niches: None,
+                    }
+                }
+                Type::Float(width) => {
+                    let (size, align) = match width {
+                        ty::FloatWidth::Bits(bits) => {
+                            let max_align = self.properties.primitives.max_align;
+                            let width = bits.get();
+                            let size = width >> 8;
+
+                            let align = size.min(max_align);
+
+                            (size as u64, align as u64)
+                        }
+                        ty::FloatWidth::Long => {
+                            let align = self.properties.primitives.ldbl_align;
+                            let size = self.properties.primitives.ldbl_format.size();
+
+                            let real_size = (size + (align - 1)) & !(align - 1);
+                            (real_size as u64, align as u64)
+                        }
+                    };
+
+                    ty::TypeLayout {
+                        size: Some(size),
+                        align: Some(align),
+                        wide_ptr_metadata: None,
+                        enum_discriminant: None,
+                        field_offsets: HashMap::new(),
+                        mutable_fields: HashSet::new(),
+                        niches: None,
+                    }
+                }
+                Type::Char => ty::TypeLayout {
+                    size: Some(4),
+                    align: Some(self.properties.primitives.max_align.min(4) as u64),
+                    enum_discriminant: None,
+                    wide_ptr_metadata: None,
+                    field_offsets: HashMap::new(),
+                    mutable_fields: HashSet::new(),
+                    niches: Some(ty::Niches::Scalar(ty::ScalarNiches {
+                        is_nonzero: false,
+                        max_value: 0x10FFFF,
+                    })),
+                },
+                Type::Str => ty::TypeLayout {
+                    size: None,
+                    align: Some(1),
+                    wide_ptr_metadata: Some(ty::Type::Int(ty::IntType::usize)),
+                    enum_discriminant: None,
+                    field_offsets: HashMap::new(),
+                    mutable_fields: HashSet::new(),
+                    niches: None,
+                },
+                Type::Never => ty::TypeLayout {
+                    size: Some(0),
+                    align: Some(1),
+                    enum_discriminant: None,
+                    wide_ptr_metadata: None,
+                    field_offsets: HashMap::new(),
+                    mutable_fields: HashSet::new(),
+                    niches: Some(ty::Niches::Uninhabited),
+                },
+                Type::Tuple(fields) => {
+                    let mut ordered_fields = Vec::new();
+
+                    let mut metadata = None;
+
+                    if let Some((back, rest)) = fields.split_last() {
+                        ordered_fields.extend(
+                            rest.iter()
+                                .map(|ty| self.layout_of(ty, at_item, containing_item)),
+                        );
+
+                        ordered_fields.sort_by_key(|layout| layout.align);
+                        let back_layout = self.layout_of(back, at_item, containing_item);
+                        ordered_fields.push(back_layout);
+
+                        metadata = back_layout.wide_ptr_metadata.clone();
+                    }
+
+                    let mut cur_align = 0;
+                    let mut cur_offset = 0;
+
+                    let mut field_offsets = HashMap::new();
+
+                    let mut field_niches = Vec::new();
+
+                    for (field, ty_layout) in ordered_fields.into_iter().enumerate() {
+                        let align = ty_layout.align.unwrap();
+
+                        cur_align = cur_align.max(align);
+                        let offset = (cur_offset + (align - 1)) & !(align - 1);
+
+                        let name =
+                            ty::FieldName::Field(Symbol::intern_by_val(format!("{}", field)));
+
+                        if let Some(niches) = ty_layout.niches.clone() {
+                            field_niches.push((name, niches));
+                        }
+
+                        field_offsets.insert(name, offset);
+
+                        let size = ty_layout.size.unwrap();
+
+                        cur_offset = offset + size;
+                        // TODO: Handle DST tails
+                    }
+
+                    let size = (cur_offset + (cur_align - 1)) & !(cur_align - 1);
+
+                    let align = cur_align;
+
+                    ty::TypeLayout {
+                        size: Some(size),
+                        align: Some(align),
+                        enum_discriminant: None,
+                        wide_ptr_metadata: metadata,
+                        field_offsets,
+                        mutable_fields: HashSet::new(),
+                        niches: if !field_niches.is_empty() {
+                            Some(ty::Niches::Aggregate(field_niches))
+                        } else {
+                            None
+                        },
+                    }
+                }
+                Type::FnPtr(_) => {
+                    let size = self.properties.primitives.fnptrbits >> 3;
+                    let align = self.properties.primitives.ptralign.min(size);
+
+                    ty::TypeLayout {
+                        size: Some(size as u64),
+                        align: Some(align as u64),
+                        enum_discriminant: None,
+                        wide_ptr_metadata: None,
+                        field_offsets: HashMap::new(),
+                        mutable_fields: HashSet::new(),
+                        niches: Some(ty::Niches::NonNullPointer),
+                    }
+                }
+                Type::FnItem(_, _) => ty::TypeLayout {
+                    size: Some(0),
+                    align: Some(1),
+                    enum_discriminant: None,
+                    wide_ptr_metadata: None,
+                    field_offsets: HashMap::new(),
+                    mutable_fields: HashSet::new(),
+                    niches: None,
+                },
+                Type::UserType(_) => todo!("user type"),
+                Type::IncompleteAlias(_) => todo!("incomplete alias held too late"),
+                Type::Pointer(_, pte) => {
+                    let layout = self.layout_of(pte, at_item, containing_item);
+
+                    if let Some(metadata) = &layout.wide_ptr_metadata {
+                        let meta_layout = self.layout_of(metadata, at_item, containing_item);
+
+                        let data_ptr_size = (self.properties.primitives.ptrbits >> 3) as u64;
+                        let data_ptr_align =
+                            data_ptr_size.min(self.properties.primitives.ptralign as u64);
+
+                        let meta_size = meta_layout.size.unwrap();
+                        let meta_align = meta_layout.align.unwrap();
+
+                        let align = data_ptr_align.max(meta_align) as u64;
+
+                        let data_ptr_offset = if meta_align > data_ptr_align {
+                            meta_size
+                        } else {
+                            0
+                        };
+
+                        let meta_offset = if meta_align < data_ptr_align {
+                            data_ptr_size
+                        } else {
+                            0
+                        };
+
+                        let fields_size = data_ptr_size + meta_size;
+
+                        let size = (fields_size + (align - 1)) & !(align - 1);
+
+                        let mut fields = HashMap::new();
+
+                        fields.insert(
+                            ty::FieldName::FatPtrPart(ty::FatPtrPart::Payload),
+                            data_ptr_offset,
+                        );
+                        fields.insert(
+                            ty::FieldName::FatPtrPart(ty::FatPtrPart::Metadata),
+                            meta_offset,
+                        );
+
+                        ty::TypeLayout {
+                            size: Some(size),
+                            align: Some(align),
+                            enum_discriminant: None,
+                            wide_ptr_metadata: None,
+                            field_offsets: fields,
+                            mutable_fields: HashSet::new(),
+                            niches: None,
+                        }
+                    } else {
+                        let size = (self.properties.primitives.ptrbits >> 3) as u64;
+                        let align = size.min(self.properties.primitives.ptralign as u64);
+
+                        ty::TypeLayout {
+                            size: Some(size),
+                            align: Some(align),
+                            enum_discriminant: None,
+                            wide_ptr_metadata: None,
+                            field_offsets: HashMap::new(),
+                            mutable_fields: HashSet::new(),
+                            niches: None,
+                        }
+                    }
+                }
+                Type::Array(ty, elems) => {
+                    let elems = self
+                        .evaluate_as_u64(elems, at_item, containing_item)
+                        .expect("Left over generic parameter or wrong type");
+
+                    let inner_layout = self.layout_of(ty, at_item, containing_item);
+
+                    let size = inner_layout.size.unwrap();
+                    let align = inner_layout.align.unwrap();
+
+                    let array_size = size * elems;
+
+                    ty::TypeLayout {
+                        size: Some(array_size),
+                        align: Some(align),
+                        enum_discriminant: None,
+                        wide_ptr_metadata: None,
+                        field_offsets: HashMap::new(),
+                        mutable_fields: HashSet::new(),
+                        niches: None, // TODO: we need
+                    }
+                }
+                Type::Inferable(_) | Type::InferableInt(_) => {
+                    todo!("Cannot determine properties of an uninferred type")
+                }
+                Type::Reference(_, _, ty) => {
+                    let layout = self.layout_of(ty, at_item, containing_item);
+
+                    if let Some(metadata) = &layout.wide_ptr_metadata {
+                        let meta_layout = self.layout_of(metadata, at_item, containing_item);
+
+                        let data_ptr_size = (self.properties.primitives.ptrbits >> 3) as u64;
+                        let data_ptr_align =
+                            data_ptr_size.min(self.properties.primitives.ptralign as u64);
+
+                        let meta_size = meta_layout.size.unwrap();
+                        let meta_align = meta_layout.align.unwrap();
+
+                        let align = data_ptr_align.max(meta_align) as u64;
+
+                        let data_ptr_offset = if meta_align > data_ptr_align {
+                            meta_size
+                        } else {
+                            0
+                        };
+
+                        let meta_offset = if meta_align < data_ptr_align {
+                            data_ptr_size
+                        } else {
+                            0
+                        };
+
+                        let fields_size = data_ptr_size + meta_size;
+
+                        let size = (fields_size + (align - 1)) & !(align - 1);
+
+                        let mut fields = HashMap::new();
+
+                        fields.insert(
+                            ty::FieldName::FatPtrPart(ty::FatPtrPart::Payload),
+                            data_ptr_offset,
+                        );
+                        fields.insert(
+                            ty::FieldName::FatPtrPart(ty::FatPtrPart::Metadata),
+                            meta_offset,
+                        );
+
+                        let mut field_niches = Vec::new();
+
+                        field_niches.push((
+                            ty::FieldName::FatPtrPart(ty::FatPtrPart::Payload),
+                            ty::Niches::NonNullPointer,
+                        ));
+
+                        ty::TypeLayout {
+                            size: Some(size),
+                            align: Some(align),
+                            enum_discriminant: None,
+                            wide_ptr_metadata: None,
+                            field_offsets: fields,
+                            mutable_fields: HashSet::new(),
+                            niches: Some(ty::Niches::Aggregate(field_niches)),
+                        }
+                    } else {
+                        let size = (self.properties.primitives.ptrbits >> 3) as u64;
+                        let align = size.min(self.properties.primitives.ptralign as u64);
+
+                        ty::TypeLayout {
+                            size: Some(size),
+                            align: Some(align),
+                            enum_discriminant: None,
+                            wide_ptr_metadata: None,
+                            field_offsets: HashMap::new(),
+                            mutable_fields: HashSet::new(),
+                            niches: Some(ty::Niches::NonNullPointer),
+                        }
+                    }
+                }
+                Type::Param(_) => panic!("generics not allowed, monomorphize types first"),
+            };
+
+            let layout = Box::new(layout);
+
+            let ptr = Box::into_raw(layout);
+
+            self.layout_cache.borrow_mut().insert(ty.clone(), ptr);
+
+            unsafe { &*ptr }
+        }
+    }
+
+    pub fn size_of(&self, ty: &ty::Type) -> Option<u64> {
+        self.layout_of(ty, DefId::ROOT, DefId::ROOT).size
+    }
+
+    pub fn align_of(&self, ty: &ty::Type) -> Option<u64> {
+        self.layout_of(ty, DefId::ROOT, DefId::ROOT).align
+    }
+}
+
+impl Definitions {
+    pub fn evaluate_as_u64(
+        &self,
+        cx: &Spanned<cx::ConstExpr>,
+        at_item: DefId,
+        containing_item: DefId,
+    ) -> Result<u64> {
+        match &cx.body {
+            cx::ConstExpr::HirVal(_) => todo!("expand hir"),
+            cx::ConstExpr::IntConst(_, val) => (*val).try_into().map_err(|e| Error {
+                span: cx.span,
+                text: format!("value {} is not in range", val),
+                category: ErrorCategory::ConstEvalError(cx::ConstEvalError::EvaluatorError),
+                at_item,
+                containing_item,
+                relevant_item: at_item,
+                hints: vec![],
+            }),
+        }
     }
 }
 

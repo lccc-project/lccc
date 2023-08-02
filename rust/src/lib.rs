@@ -70,6 +70,7 @@ impl XLangFrontend for RustFrontend {
     }
 
     fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
+        let props = self.props.unwrap();
         let mut file = file.into_chars();
         let filename = self
             .filename
@@ -84,7 +85,7 @@ impl XLangFrontend for RustFrontend {
         let mut lexed = lex(&mut file, &*filename).unwrap();
         filter_comments(&mut lexed);
         let parsed = do_mod(&mut lexed.into_iter().peekmore()).unwrap();
-        let mut defs = Definitions::new();
+        let mut defs = Definitions::new(props);
         convert_crate(&mut defs, &parsed, CrateType::Bin).unwrap();
 
         eprintln!("{}", defs);

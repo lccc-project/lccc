@@ -1,3 +1,5 @@
+use xlang::{abi::collection::HashSet, prelude::v1::HashMap};
+
 pub use crate::ast::{Mutability, Safety, Spanned};
 use crate::{
     ast::{self, PathSegment},
@@ -677,4 +679,42 @@ pub fn convert_type(
             Ok(Type::Tuple(tys))
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum FieldName {
+    EnumDiscrim,
+    Field(Symbol),
+    VariantSubfield(DefId, Symbol),
+    FatPtrPart(FatPtrPart),
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum FatPtrPart {
+    Payload,
+    Metadata,
+}
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ScalarNiches {
+    pub is_nonzero: bool,
+    pub max_value: u128,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Niches {
+    Uninhabited,
+    NonNullPointer,
+    Scalar(ScalarNiches),
+    Aggregate(Vec<(FieldName, Niches)>),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct TypeLayout {
+    pub size: Option<u64>,
+    pub align: Option<u64>,
+    pub enum_discriminant: Option<Type>,
+    pub wide_ptr_metadata: Option<Type>,
+    pub field_offsets: HashMap<FieldName, u64>,
+    pub mutable_fields: HashSet<FieldName>,
+    pub niches: Option<Niches>,
 }
