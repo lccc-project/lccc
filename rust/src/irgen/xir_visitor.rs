@@ -1,4 +1,3 @@
-use std::borrow::BorrowMut;
 use std::convert::TryInto;
 
 use xlang::abi::option::{None as XLangNone, Some as XLangSome};
@@ -527,6 +526,8 @@ pub struct XirFunctionBodyVisitor<'a> {
     cur_fnty: &'a mut ir::FnType,
     fndecl: &'a mut ir::FunctionBody,
     targs: HashMap<BasicBlockId, Vec<ir::StackItem>>,
+    var_heights: HashMap<SsaVarId, u32>,
+    ssa_tys: HashMap<SsaVarId, ir::Type>,
 }
 
 impl<'a> XirFunctionBodyVisitor<'a> {
@@ -544,6 +545,8 @@ impl<'a> XirFunctionBodyVisitor<'a> {
             fndecl,
             cur_fnty,
             targs: HashMap::new(),
+            var_heights: HashMap::new(),
+            ssa_tys: HashMap::new(),
         }
     }
 }
@@ -571,6 +574,8 @@ impl<'a> FunctionBodyVisitor for XirFunctionBodyVisitor<'a> {
             self.cur_fnty,
             self.fndecl,
             &mut self.targs,
+            &mut self.var_heights,
+            &mut self.ssa_tys,
         )))
     }
 }
@@ -582,7 +587,8 @@ pub struct XirBasicBlockVisitor<'a> {
     cur_fnty: &'a mut ir::FnType,
     body: &'a mut ir::FunctionBody,
     targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: HashMap<SsaVarId, u32>,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     stack_height: u32,
 }
 
@@ -594,6 +600,8 @@ impl<'a> XirBasicBlockVisitor<'a> {
         cur_fnty: &'a mut ir::FnType,
         body: &'a mut ir::FunctionBody,
         targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     ) -> Self {
         Self {
             names,
@@ -602,7 +610,8 @@ impl<'a> XirBasicBlockVisitor<'a> {
             cur_fnty,
             body,
             targs,
-            var_heights: HashMap::new(),
+            var_heights,
+            ssa_tys,
             stack_height: 0u32,
         }
     }
@@ -637,6 +646,7 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
             self.body,
             self.targs,
             &mut self.var_heights,
+            &mut self.ssa_tys,
             &mut self.stack_height,
         )))
     }
@@ -650,6 +660,7 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
             self.body,
             self.targs,
             &mut self.var_heights,
+            &mut self.ssa_tys,
             &mut self.stack_height,
         )))
     }
@@ -662,6 +673,7 @@ pub struct XirTerminatorVisitor<'a> {
     cur_fnty: &'a mut ir::FnType,
     body: &'a mut ir::FunctionBody,
     targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     var_heights: &'a mut HashMap<SsaVarId, u32>,
     stack_height: &'a mut u32,
 }
@@ -675,6 +687,7 @@ impl<'a> XirTerminatorVisitor<'a> {
         body: &'a mut ir::FunctionBody,
         targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
         var_heights: &'a mut HashMap<SsaVarId, u32>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
         stack_height: &'a mut u32,
     ) -> Self {
         Self {
@@ -684,6 +697,7 @@ impl<'a> XirTerminatorVisitor<'a> {
             cur_fnty,
             body,
             targs,
+            ssa_tys,
             var_heights,
             stack_height,
         }
@@ -699,6 +713,7 @@ impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
             self.body,
             self.targs,
             self.var_heights,
+            self.ssa_tys,
             self.stack_height,
         )))
     }
@@ -723,6 +738,7 @@ impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
             self.body,
             self.targs,
             self.var_heights,
+            self.ssa_tys,
             self.stack_height,
         )))
     }
@@ -889,6 +905,7 @@ pub struct XirCallVisitor<'a> {
     body: &'a mut ir::FunctionBody,
     targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
     var_heights: &'a mut HashMap<SsaVarId, u32>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     stack_height: &'a mut u32,
     retplace: Option<SsaVarId>,
     fnty: Option<ir::FnType>,
@@ -902,6 +919,7 @@ impl<'a> XirCallVisitor<'a> {
         body: &'a mut ir::FunctionBody,
         targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
         var_heights: &'a mut HashMap<SsaVarId, u32>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
         stack_height: &'a mut u32,
     ) -> Self {
         Self {
@@ -910,6 +928,7 @@ impl<'a> XirCallVisitor<'a> {
             deftys,
             targs,
             var_heights,
+            ssa_tys,
             stack_height,
             retplace: None,
             fnty: None,
@@ -971,6 +990,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
                 self.body,
                 self.targs,
                 self.var_heights,
+                self.ssa_tys,
                 self.stack_height,
             ),
             retty,
@@ -1017,8 +1037,9 @@ pub struct XirJumpVisitor<'a> {
     body: &'a mut ir::FunctionBody,
     targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
     var_heights: &'a mut HashMap<SsaVarId, u32>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     stack_height: &'a mut u32,
-    targ: u32,
+    targ: Option<BasicBlockId>,
 }
 
 impl<'a> XirJumpVisitor<'a> {
@@ -1028,6 +1049,7 @@ impl<'a> XirJumpVisitor<'a> {
         body: &'a mut ir::FunctionBody,
         targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
         var_heights: &'a mut HashMap<SsaVarId, u32>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
         stack_height: &'a mut u32,
     ) -> Self {
         Self {
@@ -1037,18 +1059,27 @@ impl<'a> XirJumpVisitor<'a> {
             targs,
             var_heights,
             stack_height,
-            targ: !0,
+            ssa_tys,
+            targ: None,
         }
     }
 }
 
 impl<'a> JumpVisitor for XirJumpVisitor<'a> {
     fn visit_target_bb(&mut self, targbb: BasicBlockId) {
-        self.targ = targbb.id()
+        self.targ = Some(targbb);
     }
 
-    fn visit_remap(&mut self, src: SsaVarId, _: SsaVarId) {
-        todo!()
+    fn visit_remap(&mut self, src: SsaVarId, dest: SsaVarId) {
+        let targets = self
+            .targs
+            .get_or_insert_with_mut(self.targ.expect("wrong visit order"), |_| Vec::new());
+        targets.push(ir::StackItem {
+            ty: self.ssa_tys[&src].clone(),
+            kind: ir::StackValueKind::RValue,
+        });
+        self.ssa_tys.insert(dest, self.ssa_tys[&src].clone());
+        self.var_heights.insert(dest, self.var_heights[&src]);
     }
 }
 
@@ -1455,6 +1486,7 @@ pub struct XirStatementVisitor<'a> {
     body: &'a mut ir::FunctionBody,
     targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
     var_heights: &'a mut HashMap<SsaVarId, u32>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     stack_height: &'a mut u32,
 }
 
@@ -1467,6 +1499,7 @@ impl<'a> XirStatementVisitor<'a> {
         body: &'a mut ir::FunctionBody,
         targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
         var_heights: &'a mut HashMap<SsaVarId, u32>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
         stack_height: &'a mut u32,
     ) -> Self {
         Self {
@@ -1477,6 +1510,7 @@ impl<'a> XirStatementVisitor<'a> {
             body,
             targs,
             var_heights,
+            ssa_tys,
             stack_height,
         }
     }
@@ -1492,6 +1526,7 @@ impl<'a> StatementVisitor for XirStatementVisitor<'a> {
             self.body,
             self.targs,
             self.var_heights,
+            self.ssa_tys,
             self.stack_height,
         )))
     }
@@ -1563,6 +1598,7 @@ pub struct XirLetVisitor<'a> {
     body: &'a mut ir::FunctionBody,
     targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
     var_heights: &'a mut HashMap<SsaVarId, u32>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     stack_height: &'a mut u32,
     varid: Option<SsaVarId>,
 }
@@ -1576,6 +1612,7 @@ impl<'a> XirLetVisitor<'a> {
         body: &'a mut ir::FunctionBody,
         targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
         var_heights: &'a mut HashMap<SsaVarId, u32>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
         stack_height: &'a mut u32,
     ) -> Self {
         Self {
@@ -1586,6 +1623,7 @@ impl<'a> XirLetVisitor<'a> {
             body,
             targs,
             var_heights,
+            ssa_tys,
             stack_height,
             varid: None,
         }
@@ -1598,7 +1636,7 @@ impl<'a> LetStatementVisitor for XirLetVisitor<'a> {
     }
 
     fn visit_var_ty(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
-        None // TODO: We will need this information for remaps later
+        Some(Box::new(XirTypeVisitor::new(self.names, self.ssa_tys.get_or_insert_mut(self.varid.unwrap(), ir::Type::default()), self.properties)))
     }
 
     fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
