@@ -1062,9 +1062,35 @@ impl core::fmt::Display for AggregateCtor {
 
 ///
 /// An xir expression/instruction
+///
+///
+///
 #[repr(u16)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Expr {
+    /// Sequences surrounding code according to class
+    ///
+    /// ## Stack
+    ///
+    /// Type checking: `[..]=>[..]`
+    ///
+    /// Operands; `[..]=>[..]`
+    ///
+    /// ## Syntax
+    ///
+    /// ```abnf
+    /// expr /= "sequence" <access-class>
+    /// ```
+    ///
+    /// ## Semantics
+    ///
+    /// 1. If `access-class` contains `volatile`, the instruction performs a observable side effect (`[intro.abstract]#6`).
+    /// 2. If `access-class` contains `nontemporal`, hints that subsequent expressions are unlikely to access memory accessed or modified by preceeding expressions.
+    /// 3. If `access-class` contains an atomic access class, the instruction functions the same a fence instruction with that atomic access class, except that the fence does not *synchronize-with* atomic operations or fence instructions performed by another thread of execution.
+    /// 4. [_Note: This is suitable for communicating with signal or interrupt handlers executed on the current thread._]
+    /// 5. [_Note: The `access-class` modifier `freeze` may appear, but is ignored by this expression. ]
+    /// 6. If `access-class` does not contain either `volatile`, `nontemporal`, or an atomic access class, the expression performs no operation.
+    ///
     Sequence(AccessClass),
     /// Pushes a constant value.
     ///
