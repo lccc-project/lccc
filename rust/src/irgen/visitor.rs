@@ -336,6 +336,15 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
         ty::Type::Pointer(mutability, ty) => {
             visit_type_pointer(visitor.visit_pointer(), mutability.body, &ty.body, defs);
         }
+        ty::Type::Reference(lifetime, mutability, ty) => {
+            visit_type_reference(
+                visitor.visit_reference(),
+                lifetime.as_ref().map(|x| &x.body),
+                mutability.body,
+                &ty.body,
+                defs,
+            );
+        }
         ty::Type::Tuple(tys) => {
             visit_type_tuple(
                 visitor.visit_tuple(),
@@ -346,7 +355,7 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
         ty::Type::Never => {
             visitor.visit_never();
         }
-        x => todo!("{:?}", x),
+        x => todo!("{}", x),
     }
 }
 
@@ -363,6 +372,20 @@ pub fn visit_type_pointer<V: PointerTyVisitor>(
     ty: &ty::Type,
     defs: &Definitions,
 ) {
+    visitor.visit_mutability(mutability);
+    visit_type(visitor.visit_type(), ty, defs);
+}
+
+pub fn visit_type_reference<V: ReferenceTyVisitor>(
+    mut visitor: V,
+    lifetime: Option<&ty::SemaLifetime>,
+    mutability: ty::Mutability,
+    ty: &ty::Type,
+    defs: &Definitions,
+) {
+    if let Some(lifetime) = lifetime {
+        visitor.visit_lifetime(lifetime);
+    }
     visitor.visit_mutability(mutability);
     visit_type(visitor.visit_type(), ty, defs);
 }
@@ -575,6 +598,12 @@ def_visitors! {
         fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
     }
 
+    pub trait ReferenceTyVisitor {
+        fn visit_lifetime(&mut self, lifetime: &ty::SemaLifetime);
+        fn visit_mutability(&mut self, mutability: ty::Mutability);
+        fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
+    }
+
     pub trait TupleTyVisitor {
         fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
     }
@@ -582,6 +611,7 @@ def_visitors! {
     pub trait TypeVisitor {
         fn visit_int(&mut self) -> Option<Box<dyn IntTyVisitor + '_>>;
         fn visit_pointer(&mut self) -> Option<Box<dyn PointerTyVisitor + '_>>;
+        fn visit_reference(&mut self) -> Option<Box<dyn ReferenceTyVisitor + '_>>;
         fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>>;
         fn visit_never(&mut self);
     }

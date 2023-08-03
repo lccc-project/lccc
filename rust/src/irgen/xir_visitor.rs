@@ -17,9 +17,9 @@ use crate::{
 use super::visitor::{
     AttrVisitor, BasicBlockVisitor, CallVisitor, CastVisitor, ConstIntVisitor, ConstStringVisitor,
     ExprVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, IntTyVisitor,
-    JumpVisitor, LetStatementVisitor, ModVisitor, PointerTyVisitor, StatementVisitor,
-    TailcallVisitor, TerminatorVisitor, TupleExprVisitor, TupleTyVisitor, TypeDefVisitor,
-    TypeVisitor, ValueDefVisitor,
+    JumpVisitor, LetStatementVisitor, ModVisitor, PointerTyVisitor, ReferenceTyVisitor,
+    StatementVisitor, TailcallVisitor, TerminatorVisitor, TupleExprVisitor, TupleTyVisitor,
+    TypeDefVisitor, TypeVisitor, ValueDefVisitor,
 };
 use super::NameMap;
 
@@ -406,6 +406,19 @@ impl<'a> TypeVisitor for XirTypeVisitor<'a> {
         }
     }
 
+    fn visit_reference(&mut self) -> Option<Box<dyn ReferenceTyVisitor + '_>> {
+        *self.ty = ir::Type::Pointer(ir::PointerType::default());
+        if let ir::Type::Pointer(pty) = self.ty {
+            Some(Box::new(XirReferenceTyVisitor::new(
+                self.names,
+                pty,
+                self.properties,
+            )))
+        } else {
+            unreachable!()
+        }
+    }
+
     fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>> {
         *self.ty = ir::Type::Product(Vec::new());
         // TODO: is there a less-ugly way to do this?
@@ -475,6 +488,47 @@ impl<'a> PointerTyVisitor for XirPointerTyVisitor<'a> {
     fn visit_mutability(&mut self, mutability: ty::Mutability) {
         if mutability == ty::Mutability::Const {
             self.ty.decl |= ir::PointerDeclarationType::CONST;
+        }
+    }
+
+    fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+        Some(Box::new(XirTypeVisitor::new(
+            self.names,
+            &mut self.ty.inner,
+            self.properties,
+        )))
+    }
+}
+
+pub struct XirReferenceTyVisitor<'a> {
+    names: &'a NameMap,
+    ty: &'a mut ir::PointerType,
+    properties: &'a TargetProperties<'a>,
+}
+
+impl<'a> XirReferenceTyVisitor<'a> {
+    fn new(
+        names: &'a NameMap,
+        ty: &'a mut ir::PointerType,
+        properties: &'a TargetProperties<'a>,
+    ) -> Self {
+        Self {
+            names,
+            ty,
+            properties,
+        }
+    }
+}
+
+impl<'a> ReferenceTyVisitor for XirReferenceTyVisitor<'a> {
+    fn visit_lifetime(&mut self, _: &ty::SemaLifetime) {}
+
+    fn visit_mutability(&mut self, mutability: ty::Mutability) {
+        if mutability == ty::Mutability::Const {
+            self.ty.decl |= ir::PointerDeclarationType::CONST;
+            // todo: dereferenceable, align
+        } else {
+            todo!(); // noalias
         }
     }
 
@@ -1636,7 +1690,12 @@ impl<'a> LetStatementVisitor for XirLetVisitor<'a> {
     }
 
     fn visit_var_ty(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
-        Some(Box::new(XirTypeVisitor::new(self.names, self.ssa_tys.get_or_insert_mut(self.varid.unwrap(), ir::Type::default()), self.properties)))
+        Some(Box::new(XirTypeVisitor::new(
+            self.names,
+            self.ssa_tys
+                .get_or_insert_mut(self.varid.unwrap(), ir::Type::default()),
+            self.properties,
+        )))
     }
 
     fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {

@@ -732,7 +732,12 @@ pub fn do_let_statement(
     let span_end = do_lexeme_class(&mut tree, LexemeClass::Punctuation(";".into()))?.span;
     tree.accept();
     Ok(Spanned {
-        body: LetStatement { name, ty, val, else_block: None },
+        body: LetStatement {
+            name,
+            ty,
+            val,
+            else_block: None,
+        },
         span: Span::between(span_start, span_end),
     })
 }
