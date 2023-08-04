@@ -222,6 +222,7 @@ pub mod v1 {
             unsafe impl AbiSafeVTable<dyn super::super::XLangCodegen + Sync> for XLangCodegen {}
             unsafe impl AbiSafeVTable<dyn super::super::XLangCodegen + Send + Sync> for XLangCodegen {}
 
+            #[repr(C)]
             pub struct DriverCallbacks {
                 pub size: usize,
                 pub align: usize,
