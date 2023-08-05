@@ -413,7 +413,13 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
     }
 
     fn compute_global_address(&mut self, path: &xlang::ir::Path, loc: Self::Loc) {
-        todo!()
+        let sym = match &*path.components {
+            [xlang::ir::PathComponent::Root, xlang::ir::PathComponent::Text(text)]
+            | [xlang::ir::PathComponent::Text(text)] => text.to_string(),
+            [xlang::ir::PathComponent::Root, rest @ ..] | [rest @ ..] => self.inner.mangle(rest),
+        };
+
+        self.mc_insns.push(MCInsn::LoadSym { loc, sym });
     }
 
     fn compute_label_address(&mut self, target: u32, loc: Self::Loc) {

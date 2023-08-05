@@ -185,6 +185,29 @@ impl X86Tag {
             X86Tag::RegisterWatcom => &[],
         }
     }
+
+    pub fn saved_regs(&self) -> &[X86Register] {
+        match self {
+            X86Tag::CDecl => todo!(),
+            X86Tag::Stdcall => todo!(),
+            X86Tag::Fastcall => todo!(),
+            X86Tag::Thiscall => todo!(),
+            X86Tag::Vectorcall => todo!(),
+            X86Tag::SysV64 => &[
+                X86Register::Rbx,
+                X86Register::Rsp,
+                X86Register::Rbp,
+                X86Register::R12,
+                X86Register::R13,
+                X86Register::R14,
+                X86Register::R15,
+            ],
+            X86Tag::Win64 => todo!(),
+            X86Tag::Pascal => todo!(),
+            X86Tag::RegisterBorland => todo!(),
+            X86Tag::RegisterWatcom => todo!(),
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -298,7 +321,9 @@ impl MachineFeatures for X86MachineFeatures {
     }
 }
 
-pub struct X86Clobbers {}
+pub struct X86Clobbers {
+    used_regs: HashSet<X86Register>,
+}
 
 pub struct X86MCWriter {}
 
@@ -352,6 +377,87 @@ fn resolve_locations_in(
     }
 }
 
+fn allocate_registers_for(
+    dest: &mut MaybeResolved<X86ValLocation>,
+    clobbers: &mut X86Clobbers,
+    assignments: &mut HashMap<u32, X86ValLocation>,
+    num: u32,
+) -> bool {
+    let iregs = &[
+        X86Register::Rax,
+        X86Register::Rcx,
+        X86Register::Rdx,
+        X86Register::Rbx,
+        X86Register::Rsi,
+        X86Register::Rdi,
+        X86Register::R8,
+        X86Register::R9,
+        X86Register::R10,
+        X86Register::R11,
+        X86Register::R12,
+        X86Register::R13,
+        X86Register::R14,
+        X86Register::R15,
+    ];
+    match dest {
+        MaybeResolved::Unresolved(loc) => {
+            if loc.size() == 0 {
+                let id = loc.id();
+                let loc = X86ValLocation::Null;
+                *dest = MaybeResolved::Resolved(Type::Null, loc.clone());
+                assignments.insert(id, loc);
+                false
+            } else if loc.size() <= 8 {
+                for reg in iregs {
+                    if clobbers.used_regs.contains(reg) {
+                        continue;
+                    } else {
+                        let id = loc.id();
+                        let loc = X86ValLocation::Register(*reg);
+                        *dest = MaybeResolved::Resolved(Type::Null, loc.clone());
+                        assignments.insert(id, loc);
+                        return false;
+                    }
+                }
+                todo!("no available registers")
+            } else {
+                todo!("memory")
+            }
+        }
+        _ => true,
+    }
+}
+
+fn allocate_registers_in(
+    insn: &mut MCInsn<X86ValLocation>,
+    clobbers: &mut X86Clobbers,
+    assignments: &mut HashMap<u32, X86ValLocation>,
+    num: u32,
+) -> bool {
+    match insn {
+        MCInsn::Null => true,
+        MCInsn::Mov { dest, src } => match (&mut *dest, src) {
+            (MaybeResolved::Unresolved(_), MaybeResolved::Unresolved(_)) => {
+                allocate_registers_for(dest, clobbers, assignments, num);
+                false
+            }
+            _ => true,
+        },
+        MCInsn::MovImm { dest, src } => allocate_registers_for(dest, clobbers, assignments, num),
+        MCInsn::StoreIndirect { dest_ptr, src, cl } => true,
+        MCInsn::Trap { kind } => true,
+        MCInsn::Barrier(_) => true,
+        MCInsn::BinaryOpImm { dest, val, op } => true,
+        MCInsn::BinaryOp { dest, src, op } => true,
+        MCInsn::UnaryOp { dest, op } => true,
+        MCInsn::CallSym(_) => true,
+        MCInsn::Return => true,
+        MCInsn::LoadSym { loc, sym } => allocate_registers_for(loc, clobbers, assignments, num),
+        MCInsn::Label(_) => true,
+        _ => true,
+    }
+}
+
 impl MCWriter for X86MCWriter {
     type Features = X86MachineFeatures;
 
@@ -365,45 +471,93 @@ impl MCWriter for X86MCWriter {
         callconv: &<Self::Features as xlang_backend::mc::MachineFeatures>::CallConv,
     ) -> Self::Clobbers {
         let mut curr_assignments = HashMap::new();
+        let mut clobbers = X86Clobbers {
+            used_regs: HashSet::new(),
+        };
+        let iregs = &[
+            X86Register::Rax,
+            X86Register::Rcx,
+            X86Register::Rdx,
+            X86Register::Rbx,
+            X86Register::Rsi,
+            X86Register::Rdi,
+            X86Register::R8,
+            X86Register::R9,
+            X86Register::R10,
+            X86Register::R11,
+            X86Register::R12,
+            X86Register::R13,
+            X86Register::R14,
+            X86Register::R15,
+        ];
 
-        let mut done = false;
-        while !done {
-            done = true;
+        let saved_reg = callconv.tag.saved_regs();
 
-            for insn in insns.iter_mut() {
-                match insn {
-                    xlang_backend::mc::MCInsn::Mov { dest, src } => match (dest, src) {
-                        (MaybeResolved::Resolved(_, reg), MaybeResolved::Unresolved(loc)) => {
-                            curr_assignments.insert(loc.id(), reg.clone());
-                            done = false;
-                        }
-                        (MaybeResolved::Unresolved(loc), MaybeResolved::Resolved(_, reg)) => {
-                            curr_assignments.insert(loc.id(), reg.clone());
-                            done = false;
-                        }
-                        (MaybeResolved::Unresolved(l), MaybeResolved::Unresolved(r)) => {
-                            if let Some(val) = curr_assignments.get(&l.id()) {
-                                let val = val.clone();
-                                curr_assignments.insert(r.id(), val);
-                                done = false;
-                            } else if let Some(val) = curr_assignments.get(&r.id()) {
-                                let val = val.clone();
-                                curr_assignments.insert(r.id(), val);
+        for reg in saved_reg {
+            clobbers.used_regs.insert(*reg).ok();
+        }
+
+        let mut outer_done = false;
+
+        while !outer_done {
+            outer_done = true;
+
+            let mut done = false;
+            while !done {
+                done = true;
+
+                for (insn, addr) in insns.iter_mut().zip(0u32..) {
+                    match insn {
+                        xlang_backend::mc::MCInsn::Mov { dest, src } => match (dest, src) {
+                            (MaybeResolved::Resolved(_, reg), MaybeResolved::Unresolved(loc)) => {
+                                match reg {
+                                    X86ValLocation::Register(reg) => {
+                                        let _ = clobbers.used_regs.insert(*reg);
+                                    }
+                                    _ => {}
+                                }
+                                curr_assignments.insert(loc.id(), reg.clone());
                                 done = false;
                             }
-                        }
+                            (MaybeResolved::Unresolved(loc), MaybeResolved::Resolved(_, reg)) => {
+                                match reg {
+                                    X86ValLocation::Register(reg) => {
+                                        let _ = clobbers.used_regs.insert(*reg);
+                                    }
+                                    _ => {}
+                                }
+                                curr_assignments.insert(loc.id(), reg.clone());
+                                done = false;
+                            }
+                            (MaybeResolved::Unresolved(l), MaybeResolved::Unresolved(r)) => {
+                                if let Some(val) = curr_assignments.get(&l.id()) {
+                                    let val = val.clone();
+                                    curr_assignments.insert(r.id(), val);
+                                    done = false;
+                                } else if let Some(val) = curr_assignments.get(&r.id()) {
+                                    let val = val.clone();
+                                    curr_assignments.insert(r.id(), val);
+                                    done = false;
+                                } else {
+                                }
+                            }
+                            _ => {}
+                        },
                         _ => {}
-                    },
-                    _ => {}
+                    }
+                }
+
+                for insn in insns.iter_mut() {
+                    resolve_locations_in(insn, &curr_assignments);
                 }
             }
 
-            for insn in insns.iter_mut() {
-                resolve_locations_in(insn, &curr_assignments);
+            for (insn, num) in insns.iter_mut().zip(0u32..) {
+                outer_done &=
+                    allocate_registers_in(insn, &mut clobbers, &mut curr_assignments, num);
             }
         }
-
-        X86Clobbers {}
+        clobbers
     }
 
     fn write_machine_code<I: arch_ops::traits::InsnWrite, F: FnMut(String, u64)>(
@@ -417,15 +571,15 @@ impl MCWriter for X86MCWriter {
     ) -> std::io::Result<()> {
         let mut encoder = X86Encoder::new(out, X86Mode::Long);
         let mut frame_size = 0u32;
-        for insn in insns {
+        for insn in insns.iter() {
             match insn {
                 MCInsn::Null => {}
                 MCInsn::Mov { dest, src } => {
-                    if dest == src {
-                        // no-op
-                    } else {
-                        match (dest, src) {
-                            (MaybeResolved::Resolved(_, dest), MaybeResolved::Resolved(_, src)) => {
+                    match (dest, src) {
+                        (MaybeResolved::Resolved(_, dest), MaybeResolved::Resolved(_, src)) => {
+                            if dest == src {
+                                // no-op
+                            } else {
                                 match (dest, src) {
                                     (X86ValLocation::Null, _) | (_, X86ValLocation::Null) => {}
                                     (
@@ -470,8 +624,8 @@ impl MCWriter for X86MCWriter {
                                     _ => todo!(),
                                 }
                             }
-                            _ => panic!("Unresolved locations made it to write_machine_code"),
                         }
+                        _ => panic!("Unresolved locations made it to write_machine_code"),
                     }
                 }
                 MCInsn::MovImm { dest, src } => match dest {

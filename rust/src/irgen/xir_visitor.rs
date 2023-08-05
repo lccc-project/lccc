@@ -1283,12 +1283,13 @@ impl<'a> JumpVisitor for XirJumpVisitor<'a> {
         let targets = self
             .targs
             .get_or_insert_with_mut(self.targ.expect("wrong visit order"), |_| Vec::new());
+        let height = targets.len() as u32;
         targets.push(ir::StackItem {
             ty: self.ssa_tys[&src].clone(),
             kind: ir::StackValueKind::RValue,
         });
         self.ssa_tys.insert(dest, self.ssa_tys[&src].clone());
-        self.var_heights.insert(dest, self.var_heights[&src]);
+        self.var_heights.insert(dest, height);
     }
 }
 
@@ -1440,8 +1441,12 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
 
     fn visit_var(&mut self, var: SsaVarId) {
         let depth = (*self.stack_height) - self.var_heights[&var];
+        eprintln!(
+            "Depth of {}: {} (var_height: {})",
+            var, depth, self.var_heights[&var]
+        );
 
-        if depth == 0 {
+        if depth != 0 {
             self.body
                 .block
                 .items
@@ -1452,7 +1457,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
             .block
             .items
             .push(ir::BlockItem::Expr(ir::Expr::Dup(1)));
-        if depth == 0 {
+        if depth != 0 {
             self.body
                 .block
                 .items
