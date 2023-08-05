@@ -68,7 +68,7 @@ pub fn irgen(defs: &mut Definitions, file: &mut ir::File, properties: &TargetPro
     defs.visit_all_crates(NameModVisitor::new(&mut names, &int_mangler));
     println!("{:?}\n", names);
     let mut tys = HashMap::new();
-    defs.visit_all_crates(XirModTypeGatherer::new(&names, &mut tys, properties));
+    defs.visit_all_crates(XirModTypeGatherer::new(defs, &names, &mut tys, properties));
     println!("{:?}\n", tys);
-    defs.visit_all_crates(XirModVisitor::new(&names, &tys, file, properties));
+    defs.visit_all_crates(XirModVisitor::new(defs, &names, &tys, file, properties));
 }

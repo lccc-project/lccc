@@ -1,29 +1,33 @@
 use std::convert::TryInto;
 
-use xlang::abi::option::{None as XLangNone, Some as XLangSome};
-use xlang::ir::{self, ScalarType, ScalarTypeKind, ScalarValidity};
+use xlang::abi::{
+    self,
+    option::{None as XLangNone, Some as XLangSome},
+};
+use xlang::ir::{self, ScalarTypeKind, ScalarValidity};
 use xlang::prelude::v1::HashMap;
 use xlang::targets::properties::TargetProperties;
 use xlang::{abi::string::String as XLangString, abi::vec::Vec, vec};
 
-use crate::lex::StringType;
-use crate::sema::mir::SsaVarId;
 use crate::sema::ty;
+use crate::sema::{cx, mir::SsaVarId};
 use crate::{
     interning::Symbol,
     sema::{mir::BasicBlockId, ty::AbiTag, DefId},
 };
+use crate::{lex::StringType, sema::Definitions};
 
 use super::visitor::{
-    AttrVisitor, BasicBlockVisitor, CallVisitor, CastVisitor, ConstIntVisitor, ConstStringVisitor,
-    ExprVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, IntTyVisitor,
-    JumpVisitor, LetStatementVisitor, ModVisitor, PointerTyVisitor, ReferenceTyVisitor,
-    StatementVisitor, TailcallVisitor, TerminatorVisitor, TupleExprVisitor, TupleTyVisitor,
-    TypeDefVisitor, TypeVisitor, ValueDefVisitor,
+    ArrayTyVisitor, AttrVisitor, BasicBlockVisitor, CallVisitor, CastVisitor, ConstIntVisitor,
+    ConstStringVisitor, ExprVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor,
+    IntTyVisitor, JumpVisitor, LetStatementVisitor, ModVisitor, PointerTyVisitor,
+    ReferenceTyVisitor, StatementVisitor, TailcallVisitor, TerminatorVisitor, TupleExprVisitor,
+    TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
 };
 use super::NameMap;
 
 pub struct XirModVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     deftys: &'a HashMap<DefId, ir::Type>,
     file: &'a mut ir::File,
@@ -32,12 +36,14 @@ pub struct XirModVisitor<'a> {
 
 impl<'a> XirModVisitor<'a> {
     pub fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         deftys: &'a HashMap<DefId, ir::Type>,
         file: &'a mut ir::File,
         properties: &'a TargetProperties<'a>,
     ) -> Self {
         Self {
+            defs,
             names,
             deftys,
             file,
@@ -59,6 +65,7 @@ impl<'a> ModVisitor for XirModVisitor<'a> {
 
     fn visit_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>> {
         Some(Box::new(XirValueDefVisitor::new(
+            self.defs,
             self.names,
             self.deftys,
             self.file,
@@ -68,6 +75,7 @@ impl<'a> ModVisitor for XirModVisitor<'a> {
 }
 
 pub struct XirModTypeGatherer<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     deftys: &'a mut HashMap<DefId, ir::Type>,
     properties: &'a TargetProperties<'a>,
@@ -75,11 +83,13 @@ pub struct XirModTypeGatherer<'a> {
 
 impl<'a> XirModTypeGatherer<'a> {
     pub fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         deftys: &'a mut HashMap<DefId, ir::Type>,
         properties: &'a TargetProperties<'a>,
     ) -> Self {
         Self {
+            defs,
             names,
             deftys,
             properties,
@@ -100,6 +110,7 @@ impl<'a> ModVisitor for XirModTypeGatherer<'a> {
 
     fn visit_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>> {
         Some(Box::new(XirValueDefTypeGatherer::new(
+            self.defs,
             self.names,
             self.deftys,
             self.properties,
@@ -108,6 +119,7 @@ impl<'a> ModVisitor for XirModTypeGatherer<'a> {
 }
 
 pub struct XirValueDefTypeGatherer<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     deftys: &'a mut HashMap<DefId, ir::Type>,
     properties: &'a TargetProperties<'a>,
@@ -116,11 +128,13 @@ pub struct XirValueDefTypeGatherer<'a> {
 
 impl<'a> XirValueDefTypeGatherer<'a> {
     pub fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         deftys: &'a mut HashMap<DefId, ir::Type>,
         properties: &'a TargetProperties<'a>,
     ) -> Self {
         Self {
+            defs,
             names,
             deftys,
             properties,
@@ -152,6 +166,7 @@ impl<'a> ValueDefVisitor for XirValueDefTypeGatherer<'a> {
 
         match ty {
             ir::Type::FnType(fnty) => Some(Box::new(XirFunctionTypeGatherer::new(
+                self.defs,
                 self.names,
                 fnty,
                 self.properties,
@@ -162,6 +177,7 @@ impl<'a> ValueDefVisitor for XirValueDefTypeGatherer<'a> {
 }
 
 pub struct XirValueDefVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     deftys: &'a HashMap<DefId, ir::Type>,
     file: &'a mut ir::File,
@@ -171,12 +187,14 @@ pub struct XirValueDefVisitor<'a> {
 
 impl<'a> XirValueDefVisitor<'a> {
     pub fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         deftys: &'a HashMap<DefId, ir::Type>,
         file: &'a mut ir::File,
         properties: &'a TargetProperties<'a>,
     ) -> Self {
         Self {
+            defs,
             names,
             deftys,
             file,
@@ -222,6 +240,7 @@ impl<'a> ValueDefVisitor for XirValueDefVisitor<'a> {
         };
 
         Some(Box::new(XirFunctionDefVisitor::new(
+            self.defs,
             self.names,
             self.deftys,
             def,
@@ -231,6 +250,7 @@ impl<'a> ValueDefVisitor for XirValueDefVisitor<'a> {
 }
 
 pub struct XirFunctionTypeGatherer<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     fnty: &'a mut ir::FnType,
     properties: &'a TargetProperties<'a>,
@@ -238,11 +258,13 @@ pub struct XirFunctionTypeGatherer<'a> {
 
 impl<'a> XirFunctionTypeGatherer<'a> {
     fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         fnty: &'a mut ir::FnType,
         properties: &'a TargetProperties<'a>,
     ) -> Self {
         Self {
+            defs,
             names,
             fnty,
             properties,
@@ -253,6 +275,7 @@ impl<'a> XirFunctionTypeGatherer<'a> {
 impl<'a> FunctionDefVisitor for XirFunctionTypeGatherer<'a> {
     fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>> {
         Some(Box::new(XirFunctionTyVisitor::new(
+            self.defs,
             self.names,
             self.fnty,
             self.properties,
@@ -265,6 +288,7 @@ impl<'a> FunctionDefVisitor for XirFunctionTypeGatherer<'a> {
 }
 
 pub struct XirFunctionDefVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     deftys: &'a HashMap<DefId, ir::Type>,
     fndef: &'a mut ir::FunctionDeclaration,
@@ -273,12 +297,14 @@ pub struct XirFunctionDefVisitor<'a> {
 
 impl<'a> XirFunctionDefVisitor<'a> {
     fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         deftys: &'a HashMap<DefId, ir::Type>,
         fndef: &'a mut ir::FunctionDeclaration,
         properties: &'a TargetProperties<'a>,
     ) -> Self {
         Self {
+            defs,
             names,
             deftys,
             fndef,
@@ -290,6 +316,7 @@ impl<'a> XirFunctionDefVisitor<'a> {
 impl<'a> FunctionDefVisitor for XirFunctionDefVisitor<'a> {
     fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>> {
         Some(Box::new(XirFunctionTyVisitor::new(
+            self.defs,
             self.names,
             &mut self.fndef.ty,
             self.properties,
@@ -298,6 +325,7 @@ impl<'a> FunctionDefVisitor for XirFunctionDefVisitor<'a> {
 
     fn visit_fnbody(&mut self) -> Option<Box<dyn FunctionBodyVisitor + '_>> {
         Some(Box::new(XirFunctionBodyVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -308,6 +336,7 @@ impl<'a> FunctionDefVisitor for XirFunctionDefVisitor<'a> {
 }
 
 pub struct XirFunctionTyVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     fnty: &'a mut ir::FnType,
     properties: &'a TargetProperties<'a>,
@@ -315,11 +344,13 @@ pub struct XirFunctionTyVisitor<'a> {
 
 impl<'a> XirFunctionTyVisitor<'a> {
     fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         fnty: &'a mut ir::FnType,
         properties: &'a TargetProperties<'a>,
     ) -> Self {
         Self {
+            defs,
             names,
             fnty,
             properties,
@@ -334,6 +365,7 @@ impl<'a> FunctionTyVisitor for XirFunctionTyVisitor<'a> {
 
     fn visit_return(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
         Some(Box::new(XirTypeVisitor::new(
+            self.defs,
             self.names,
             &mut self.fnty.ret,
             self.properties,
@@ -342,6 +374,7 @@ impl<'a> FunctionTyVisitor for XirFunctionTyVisitor<'a> {
 
     fn visit_param(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
         Some(Box::new(XirTypeVisitor::new(
+            self.defs,
             self.names,
             self.fnty.params.push_mut(ir::Type::Null),
             self.properties,
@@ -354,12 +387,13 @@ impl<'a> FunctionTyVisitor for XirFunctionTyVisitor<'a> {
 }
 
 pub struct XirTypeVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     ty: &'a mut ir::Type,
     properties: &'a TargetProperties<'a>,
 }
 
-const NEVER: ir::Type = ir::Type::Scalar(ScalarType {
+const NEVER: ir::Type = ir::Type::Scalar(ir::ScalarType {
     kind: ScalarTypeKind::Integer {
         signed: false,
         min: XLangNone,
@@ -373,8 +407,14 @@ const NEVER: ir::Type = ir::Type::Scalar(ScalarType {
 });
 
 impl<'a> XirTypeVisitor<'a> {
-    fn new(names: &'a NameMap, ty: &'a mut ir::Type, properties: &'a TargetProperties<'a>) -> Self {
+    fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        ty: &'a mut ir::Type,
+        properties: &'a TargetProperties<'a>,
+    ) -> Self {
         Self {
+            defs,
             names,
             ty,
             properties,
@@ -383,8 +423,25 @@ impl<'a> XirTypeVisitor<'a> {
 }
 
 impl<'a> TypeVisitor for XirTypeVisitor<'a> {
+    fn visit_array(&mut self) -> Option<Box<dyn ArrayTyVisitor + '_>> {
+        *self.ty = ir::Type::Array(abi::boxed::Box::new(ir::ArrayType {
+            ty: ir::Type::default(),
+            len: ir::Value::Invalid(ir::Type::default()),
+        }));
+        if let ir::Type::Array(aty) = self.ty {
+            Some(Box::new(XirArrayTyVisitor::new(
+                self.defs,
+                self.names,
+                aty,
+                self.properties,
+            )))
+        } else {
+            unreachable!()
+        }
+    }
+
     fn visit_int(&mut self) -> Option<Box<dyn IntTyVisitor + '_>> {
-        *self.ty = ir::Type::Scalar(ScalarType::default());
+        *self.ty = ir::Type::Scalar(ir::ScalarType::default());
 
         if let ir::Type::Scalar(sty) = self.ty {
             Some(Box::new(XirIntTyVisitor::new(sty, self.properties)))
@@ -397,6 +454,7 @@ impl<'a> TypeVisitor for XirTypeVisitor<'a> {
         *self.ty = ir::Type::Pointer(ir::PointerType::default());
         if let ir::Type::Pointer(pty) = self.ty {
             Some(Box::new(XirPointerTyVisitor::new(
+                self.defs,
                 self.names,
                 pty,
                 self.properties,
@@ -410,6 +468,7 @@ impl<'a> TypeVisitor for XirTypeVisitor<'a> {
         *self.ty = ir::Type::Pointer(ir::PointerType::default());
         if let ir::Type::Pointer(pty) = self.ty {
             Some(Box::new(XirReferenceTyVisitor::new(
+                self.defs,
                 self.names,
                 pty,
                 self.properties,
@@ -424,6 +483,7 @@ impl<'a> TypeVisitor for XirTypeVisitor<'a> {
         // TODO: is there a less-ugly way to do this?
         if let ir::Type::Product(tuple) = self.ty {
             Some(Box::new(XirTupleTyVisitor::new(
+                self.defs,
                 self.names,
                 tuple,
                 self.properties,
@@ -438,13 +498,69 @@ impl<'a> TypeVisitor for XirTypeVisitor<'a> {
     }
 }
 
+pub struct XirArrayTyVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    aty: &'a mut ir::ArrayType,
+    properties: &'a TargetProperties<'a>,
+}
+
+impl<'a> XirArrayTyVisitor<'a> {
+    fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        aty: &'a mut ir::ArrayType,
+        properties: &'a TargetProperties<'a>,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            aty,
+            properties,
+        }
+    }
+}
+
+impl<'a> ArrayTyVisitor for XirArrayTyVisitor<'a> {
+    fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+        Some(Box::new(XirTypeVisitor::new(
+            self.defs,
+            self.names,
+            &mut self.aty.ty,
+            self.properties,
+        )))
+    }
+
+    fn visit_len(&mut self, expr: &cx::ConstExpr) {
+        let ty = ir::ScalarType {
+            header: ir::ScalarTypeHeader {
+                bitsize: self.properties.primitives.sizebits,
+                vectorsize: XLangNone,
+                validity: ScalarValidity::all(),
+            },
+            kind: ir::ScalarTypeKind::Integer {
+                signed: false,
+                min: XLangNone,
+                max: XLangNone,
+            },
+        };
+        self.aty.len = ir::Value::Integer {
+            ty,
+            val: match expr {
+                cx::ConstExpr::HirVal(_) => todo!(),
+                cx::ConstExpr::IntConst(_, val) => *val,
+            },
+        };
+    }
+}
+
 pub struct XirIntTyVisitor<'a> {
-    ity: &'a mut ScalarType,
+    ity: &'a mut ir::ScalarType,
     properties: &'a TargetProperties<'a>,
 }
 
 impl<'a> XirIntTyVisitor<'a> {
-    fn new(ity: &'a mut ScalarType, properties: &'a TargetProperties<'a>) -> Self {
+    fn new(ity: &'a mut ir::ScalarType, properties: &'a TargetProperties<'a>) -> Self {
         Self { ity, properties }
     }
 }
@@ -465,6 +581,7 @@ impl<'a> IntTyVisitor for XirIntTyVisitor<'a> {
 }
 
 pub struct XirPointerTyVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     ty: &'a mut ir::PointerType,
     properties: &'a TargetProperties<'a>,
@@ -472,11 +589,13 @@ pub struct XirPointerTyVisitor<'a> {
 
 impl<'a> XirPointerTyVisitor<'a> {
     fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         ty: &'a mut ir::PointerType,
         properties: &'a TargetProperties<'a>,
     ) -> Self {
         Self {
+            defs,
             names,
             ty,
             properties,
@@ -493,6 +612,7 @@ impl<'a> PointerTyVisitor for XirPointerTyVisitor<'a> {
 
     fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
         Some(Box::new(XirTypeVisitor::new(
+            self.defs,
             self.names,
             &mut self.ty.inner,
             self.properties,
@@ -501,6 +621,7 @@ impl<'a> PointerTyVisitor for XirPointerTyVisitor<'a> {
 }
 
 pub struct XirReferenceTyVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     ty: &'a mut ir::PointerType,
     properties: &'a TargetProperties<'a>,
@@ -508,11 +629,13 @@ pub struct XirReferenceTyVisitor<'a> {
 
 impl<'a> XirReferenceTyVisitor<'a> {
     fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         ty: &'a mut ir::PointerType,
         properties: &'a TargetProperties<'a>,
     ) -> Self {
         Self {
+            defs,
             names,
             ty,
             properties,
@@ -534,6 +657,7 @@ impl<'a> ReferenceTyVisitor for XirReferenceTyVisitor<'a> {
 
     fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
         Some(Box::new(XirTypeVisitor::new(
+            self.defs,
             self.names,
             &mut self.ty.inner,
             self.properties,
@@ -542,6 +666,7 @@ impl<'a> ReferenceTyVisitor for XirReferenceTyVisitor<'a> {
 }
 
 pub struct XirTupleTyVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     tuple: &'a mut Vec<ir::Type>,
     properties: &'a TargetProperties<'a>,
@@ -549,11 +674,13 @@ pub struct XirTupleTyVisitor<'a> {
 
 impl<'a> XirTupleTyVisitor<'a> {
     fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         tuple: &'a mut Vec<ir::Type>,
         properties: &'a TargetProperties<'a>,
     ) -> Self {
         Self {
+            defs,
             names,
             tuple,
             properties,
@@ -566,6 +693,7 @@ impl<'a> TupleTyVisitor for XirTupleTyVisitor<'a> {
         let index = self.tuple.len();
         self.tuple.push(ir::Type::default());
         Some(Box::new(XirTypeVisitor::new(
+            self.defs,
             self.names,
             &mut self.tuple[index],
             self.properties,
@@ -574,6 +702,7 @@ impl<'a> TupleTyVisitor for XirTupleTyVisitor<'a> {
 }
 
 pub struct XirFunctionBodyVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
@@ -586,6 +715,7 @@ pub struct XirFunctionBodyVisitor<'a> {
 
 impl<'a> XirFunctionBodyVisitor<'a> {
     fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
@@ -593,6 +723,7 @@ impl<'a> XirFunctionBodyVisitor<'a> {
         fndecl: &'a mut ir::FunctionBody,
     ) -> Self {
         Self {
+            defs,
             names,
             properties,
             deftys,
@@ -622,6 +753,7 @@ impl<'a> Drop for XirFunctionBodyVisitor<'a> {
 impl<'a> FunctionBodyVisitor for XirFunctionBodyVisitor<'a> {
     fn visit_basic_block(&mut self) -> Option<Box<dyn BasicBlockVisitor + '_>> {
         Some(Box::new(XirBasicBlockVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -635,6 +767,7 @@ impl<'a> FunctionBodyVisitor for XirFunctionBodyVisitor<'a> {
 }
 
 pub struct XirBasicBlockVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
@@ -648,6 +781,7 @@ pub struct XirBasicBlockVisitor<'a> {
 
 impl<'a> XirBasicBlockVisitor<'a> {
     fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
@@ -658,6 +792,7 @@ impl<'a> XirBasicBlockVisitor<'a> {
         ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     ) -> Self {
         Self {
+            defs,
             names,
             properties,
             deftys,
@@ -693,6 +828,7 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
 
     fn visit_stmt(&mut self) -> Option<Box<dyn StatementVisitor + '_>> {
         Some(Box::new(XirStatementVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -707,6 +843,7 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
 
     fn visit_term(&mut self) -> Option<Box<dyn TerminatorVisitor + '_>> {
         Some(Box::new(XirTerminatorVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -721,6 +858,7 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
 }
 
 pub struct XirTerminatorVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
@@ -734,6 +872,7 @@ pub struct XirTerminatorVisitor<'a> {
 
 impl<'a> XirTerminatorVisitor<'a> {
     pub fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
@@ -745,6 +884,7 @@ impl<'a> XirTerminatorVisitor<'a> {
         stack_height: &'a mut u32,
     ) -> Self {
         Self {
+            defs,
             names,
             properties,
             deftys,
@@ -761,6 +901,7 @@ impl<'a> XirTerminatorVisitor<'a> {
 impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
     fn visit_call(&mut self) -> Option<Box<dyn CallVisitor + '_>> {
         Some(Box::new(XirCallVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -774,6 +915,7 @@ impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
 
     fn visit_tailcall(&mut self) -> Option<Box<dyn TailcallVisitor + '_>> {
         Some(Box::new(XirTailcallVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -798,6 +940,7 @@ impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
     }
     fn visit_return(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
         Some(Box::new(XirReturnVisitor(XirExprVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -852,6 +995,7 @@ impl<'a> Drop for XirReturnVisitor<'a> {
 }
 
 pub struct XirTailcallVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
@@ -865,6 +1009,7 @@ pub struct XirTailcallVisitor<'a> {
 
 impl<'a> XirTailcallVisitor<'a> {
     pub fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
@@ -875,6 +1020,7 @@ impl<'a> XirTailcallVisitor<'a> {
         stack_height: &'a mut u32,
     ) -> Self {
         Self {
+            defs,
             names,
             body,
             deftys,
@@ -891,6 +1037,7 @@ impl<'a> XirTailcallVisitor<'a> {
 impl<'a> TailcallVisitor for XirTailcallVisitor<'a> {
     fn visit_target(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
         Some(Box::new(XirExprVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -903,6 +1050,7 @@ impl<'a> TailcallVisitor for XirTailcallVisitor<'a> {
 
     fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>> {
         Some(Box::new(XirFunctionTyVisitor::new(
+            self.defs,
             self.names,
             self.fnty.insert(ir::FnType::default()),
             self.properties,
@@ -911,6 +1059,7 @@ impl<'a> TailcallVisitor for XirTailcallVisitor<'a> {
 
     fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
         Some(Box::new(XirExprVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -953,6 +1102,7 @@ impl<'a> Drop for XirTailcallVisitor<'a> {
 }
 
 pub struct XirCallVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
@@ -967,6 +1117,7 @@ pub struct XirCallVisitor<'a> {
 
 impl<'a> XirCallVisitor<'a> {
     pub fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
@@ -977,6 +1128,7 @@ impl<'a> XirCallVisitor<'a> {
         stack_height: &'a mut u32,
     ) -> Self {
         Self {
+            defs,
             names,
             body,
             deftys,
@@ -998,6 +1150,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
 
     fn visit_target(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
         Some(Box::new(XirExprVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -1010,6 +1163,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
 
     fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>> {
         Some(Box::new(XirFunctionTyVisitor::new(
+            self.defs,
             self.names,
             self.fnty.insert(ir::FnType::default()),
             self.properties,
@@ -1018,6 +1172,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
 
     fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
         Some(Box::new(XirExprVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -1138,6 +1293,7 @@ impl<'a> JumpVisitor for XirJumpVisitor<'a> {
 }
 
 pub struct XirExprVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
@@ -1155,6 +1311,7 @@ impl<'a> Drop for XirExprVisitor<'a> {
 
 impl<'a> XirExprVisitor<'a> {
     pub fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
@@ -1164,6 +1321,7 @@ impl<'a> XirExprVisitor<'a> {
         stack_height: &'a mut u32,
     ) -> Self {
         Self {
+            defs,
             names,
             properties,
             deftys,
@@ -1191,7 +1349,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
             .block
             .items
             .push_mut(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Integer {
-                ty: ScalarType::default(),
+                ty: ir::ScalarType::default(),
                 val: 0,
             }))) {
             ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Integer { ty, val })) => {
@@ -1230,6 +1388,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
 
     fn visit_cast(&mut self) -> Option<Box<dyn CastVisitor + '_>> {
         Some(Box::new(XirCastVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -1461,6 +1620,7 @@ impl<'a> ConstStringVisitor for XirConstStringVisitor<'a> {
 }
 
 pub struct XirCastVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
@@ -1473,6 +1633,7 @@ pub struct XirCastVisitor<'a> {
 
 impl<'a> XirCastVisitor<'a> {
     pub fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
@@ -1482,6 +1643,7 @@ impl<'a> XirCastVisitor<'a> {
         stack_height: &'a mut u32,
     ) -> Self {
         Self {
+            defs,
             names,
             properties,
             deftys,
@@ -1497,6 +1659,7 @@ impl<'a> XirCastVisitor<'a> {
 impl<'a> CastVisitor for XirCastVisitor<'a> {
     fn visit_inner(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
         Some(Box::new(XirExprVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -1509,6 +1672,7 @@ impl<'a> CastVisitor for XirCastVisitor<'a> {
 
     fn visit_cast_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
         Some(Box::new(XirTypeVisitor::new(
+            self.defs,
             self.names,
             self.as_ty.insert(ir::Type::Null),
             self.properties,
@@ -1533,6 +1697,7 @@ impl<'a> Drop for XirCastVisitor<'a> {
 }
 
 pub struct XirStatementVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
@@ -1546,6 +1711,7 @@ pub struct XirStatementVisitor<'a> {
 
 impl<'a> XirStatementVisitor<'a> {
     pub fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
@@ -1557,6 +1723,7 @@ impl<'a> XirStatementVisitor<'a> {
         stack_height: &'a mut u32,
     ) -> Self {
         Self {
+            defs,
             names,
             properties,
             deftys,
@@ -1573,6 +1740,7 @@ impl<'a> XirStatementVisitor<'a> {
 impl<'a> StatementVisitor for XirStatementVisitor<'a> {
     fn visit_let(&mut self) -> Option<Box<dyn LetStatementVisitor + '_>> {
         Some(Box::new(XirLetVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -1591,6 +1759,7 @@ impl<'a> StatementVisitor for XirStatementVisitor<'a> {
 
     fn visit_discard(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
         Some(Box::new(XirDiscardVisitor(XirExprVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
@@ -1624,10 +1793,12 @@ impl<'a> ExprVisitor for XirDiscardVisitor<'a> {
     fn visit_const_string(&mut self) -> Option<Box<dyn ConstStringVisitor + '_>> {
         self.0.visit_const_string()
     }
+
     fn visit_var(&mut self, var: crate::sema::mir::SsaVarId) {
         // We can honestly no-op, but destructor currently pops *something*
         self.0.visit_var(var)
     }
+
     fn visit_tuple(&mut self) -> Option<Box<dyn super::visitor::TupleExprVisitor + '_>> {
         self.0.visit_tuple()
     }
@@ -1645,6 +1816,7 @@ impl<'a> Drop for XirDiscardVisitor<'a> {
 }
 
 pub struct XirLetVisitor<'a> {
+    defs: &'a Definitions,
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
@@ -1659,6 +1831,7 @@ pub struct XirLetVisitor<'a> {
 
 impl<'a> XirLetVisitor<'a> {
     pub fn new(
+        defs: &'a Definitions,
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
@@ -1670,6 +1843,7 @@ impl<'a> XirLetVisitor<'a> {
         stack_height: &'a mut u32,
     ) -> Self {
         Self {
+            defs,
             names,
             properties,
             deftys,
@@ -1691,6 +1865,7 @@ impl<'a> LetStatementVisitor for XirLetVisitor<'a> {
 
     fn visit_var_ty(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
         Some(Box::new(XirTypeVisitor::new(
+            self.defs,
             self.names,
             self.ssa_tys
                 .get_or_insert_mut(self.varid.unwrap(), ir::Type::default()),
@@ -1700,6 +1875,7 @@ impl<'a> LetStatementVisitor for XirLetVisitor<'a> {
 
     fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
         Some(Box::new(XirExprVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,

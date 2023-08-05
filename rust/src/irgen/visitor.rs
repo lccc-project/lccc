@@ -5,6 +5,7 @@ use crate::{
     interning::Symbol,
     lex::StringType,
     sema::{
+        cx,
         mir::{self, SsaVarId},
         ty, Attr, DefId, DefinitionInner, Definitions, FunctionBody,
     },
@@ -332,7 +333,10 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
         return;
     }
     match ty {
-        ty::Type::Int(int_type) => visit_int_type(visitor.visit_int(), int_type), // oh no i broke paradigm oh no
+        ty::Type::Array(ty, len) => {
+            visit_type_array(visitor.visit_array(), &ty.body, &len.body, defs);
+        }
+        ty::Type::Int(int_type) => visit_type_int(visitor.visit_int(), int_type),
         ty::Type::Pointer(mutability, ty) => {
             visit_type_pointer(visitor.visit_pointer(), mutability.body, &ty.body, defs);
         }
@@ -359,7 +363,20 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
     }
 }
 
-pub fn visit_int_type<V: IntTyVisitor>(mut visitor: V, int_ty: &ty::IntType) {
+pub fn visit_type_array<V: ArrayTyVisitor>(
+    mut visitor: V,
+    ty: &ty::Type,
+    len: &cx::ConstExpr,
+    defs: &Definitions,
+) {
+    if visitor.is_none() {
+        return;
+    }
+    visit_type(visitor.visit_type(), ty, defs);
+    visitor.visit_len(len);
+}
+
+pub fn visit_type_int<V: IntTyVisitor>(mut visitor: V, int_ty: &ty::IntType) {
     if visitor.is_none() {
         return;
     }
@@ -411,7 +428,7 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
             if visitor.is_none() {
                 return;
             }
-            visit_int_type(visitor.visit_intty(), ity);
+            visit_type_int(visitor.visit_intty(), ity);
 
             visitor.visit_value(*val);
         }
@@ -419,7 +436,7 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         mir::MirExpr::Const(def) => visitor.visit_const(*def),
         mir::MirExpr::Cast(val, asty) => visit_cast(visitor.visit_cast(), val, asty, defs),
         mir::MirExpr::ConstString(sty, val) => {
-            visit_const_string(visitor.visit_const_string(), *sty, *val, defs)
+            visit_const_string(visitor.visit_const_string(), *sty, *val)
         }
         mir::MirExpr::Var(var) => visitor.visit_var(*var),
         mir::MirExpr::Tuple(vals) => visit_tuple_expr(visitor.visit_tuple(), vals, defs),
@@ -446,12 +463,7 @@ pub fn visit_cast<V: CastVisitor>(
     visit_type(visitor.visit_cast_type(), asty, defs);
 }
 
-pub fn visit_const_string<V: ConstStringVisitor>(
-    mut visitor: V,
-    sty: StringType,
-    val: Symbol,
-    defs: &Definitions,
-) {
+pub fn visit_const_string<V: ConstStringVisitor>(mut visitor: V, sty: StringType, val: Symbol) {
     if visitor.is_none() {
         return;
     }
@@ -589,6 +601,11 @@ def_visitors! {
         fn visit_cvarargs(&mut self);
     }
 
+    pub trait ArrayTyVisitor {
+        fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
+        fn visit_len(&mut self, expr: &cx::ConstExpr);
+    }
+
     pub trait IntTyVisitor {
         fn visit_type(&mut self, int_type: &ty::IntType);
     }
@@ -609,6 +626,7 @@ def_visitors! {
     }
 
     pub trait TypeVisitor {
+        fn visit_array(&mut self) -> Option<Box<dyn ArrayTyVisitor + '_>>;
         fn visit_int(&mut self) -> Option<Box<dyn IntTyVisitor + '_>>;
         fn visit_pointer(&mut self) -> Option<Box<dyn PointerTyVisitor + '_>>;
         fn visit_reference(&mut self) -> Option<Box<dyn ReferenceTyVisitor + '_>>;

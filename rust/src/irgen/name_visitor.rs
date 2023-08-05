@@ -3,9 +3,9 @@ use crate::sema::{ty::AbiTag, DefId};
 
 use super::{
     visitor::{
-        AttrVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, IntTyVisitor,
-        ModVisitor, PointerTyVisitor, ReferenceTyVisitor, TupleTyVisitor, TypeDefVisitor,
-        TypeVisitor, ValueDefVisitor,
+        ArrayTyVisitor, AttrVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor,
+        IntTyVisitor, ModVisitor, PointerTyVisitor, ReferenceTyVisitor, TupleTyVisitor,
+        TypeDefVisitor, TypeVisitor, ValueDefVisitor,
     },
     NameMap,
 };
@@ -242,6 +242,10 @@ impl<'a, 'b> NameTypeVisitor<'a, 'b> {
 }
 
 impl<'a, 'b> TypeVisitor for NameTypeVisitor<'a, 'b> {
+    fn visit_array(&mut self) -> Option<Box<dyn ArrayTyVisitor + '_>> {
+        todo!()
+    }
+
     fn visit_int(&mut self) -> Option<Box<dyn IntTyVisitor + '_>> {
         todo!()
     }
