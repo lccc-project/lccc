@@ -113,6 +113,70 @@ impl<T, E> Try for Result<T, E> {
     }
 }
 
+impl<T> Try for crate::option::Option<T> {
+    type Output = T;
+    type Residual = crate::option::Option<Empty>;
+
+    fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
+        match self {
+            Self::Some(val) => ControlFlow::Continue(val),
+            Self::None => ControlFlow::Break(crate::option::None),
+        }
+    }
+
+    fn from_output(output: Self::Output) -> Self {
+        Self::Some(output)
+    }
+}
+
+impl<T> Residual<T> for crate::option::Option<Empty> {
+    type Try = crate::option::Option<T>;
+}
+
+impl<T> FromResidual for crate::option::Option<T> {
+    fn from_residual(_: <Self as Try>::Residual) -> Self {
+        Self::None
+    }
+}
+
+impl<T> FromResidual<Option<core::convert::Infallible>> for crate::option::Option<T> {
+    fn from_residual(_: Option<core::convert::Infallible>) -> Self {
+        Self::None
+    }
+}
+
+impl<T> Residual<T> for Option<core::convert::Infallible> {
+    type Try = Option<T>;
+}
+
+impl<T> Try for Option<T> {
+    type Output = T;
+    type Residual = Option<core::convert::Infallible>;
+
+    fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
+        match self {
+            Some(val) => ControlFlow::Continue(val),
+            None => ControlFlow::Break(None),
+        }
+    }
+
+    fn from_output(output: Self::Output) -> Self {
+        Some(output)
+    }
+}
+
+impl<T> FromResidual for Option<T> {
+    fn from_residual(_: <Self as Try>::Residual) -> Self {
+        None
+    }
+}
+
+impl<T> FromResidual<crate::option::Option<Empty>> for Option<T> {
+    fn from_residual(_: crate::option::Option<Empty>) -> Self {
+        None
+    }
+}
+
 /// `?` operator for `xlang_abi` types
 #[macro_export]
 macro_rules! try_ {
