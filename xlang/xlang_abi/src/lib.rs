@@ -28,6 +28,9 @@
 //! * [`hash::XLANG_HASH_SEED`]
 //!
 
+/// Defines an ABI safe equivalent for [`std::sync::Mutex`] and [`std::sync::RwLock`] for all ypes
+pub mod sync;
+
 /// Defines an ABI safe equivalent for [`std::option::Option`] for all types.
 pub mod option;
 
