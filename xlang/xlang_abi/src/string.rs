@@ -362,6 +362,12 @@ impl<S: AsRef<str> + ?Sized> PartialEq<S> for StringView<'_> {
     }
 }
 
+impl<'a> PartialEq<StringView<'a>> for str {
+    fn eq(&self, other: &StringView<'a>) -> bool {
+        self == other.as_str()
+    }
+}
+
 impl Eq for StringView<'_> {}
 
 impl<'a> StringView<'a> {
@@ -439,6 +445,11 @@ impl<'a> StringView<'a> {
                 self.end.as_ptr().offset_from(self.begin.as_ptr()) as usize,
             )
         }
+    }
+
+    /// Obtains a reference to the string slice contained
+    pub fn as_str(&self) -> &str {
+        &**self
     }
 }
 

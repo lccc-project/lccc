@@ -112,3 +112,8 @@ xlang_host::rustcall! {
         hash
     }
 }
+
+#[no_mangle]
+pub extern "C" fn xlang_yield_now() {
+    std::thread::yield_now()
+}

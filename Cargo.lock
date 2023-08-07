@@ -576,6 +576,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "xlang_frontend"
+version = "0.1.0"
+dependencies = [
+ "xlang",
+]
+
+[[package]]
 name = "xlang_host"
 version = "0.2.0"
 dependencies = [
