@@ -177,6 +177,36 @@ impl<T> FromResidual<crate::option::Option<Empty>> for Option<T> {
     }
 }
 
+impl<T, E> FromResidual<Result<core::convert::Infallible, E>> for Option<Result<T, E>> {
+    fn from_residual(res: Result<core::convert::Infallible, E>) -> Self {
+        match res {
+            Err(e) => Some(Err(e)),
+            Ok(val) => match val {},
+        }
+    }
+}
+
+impl<T, E> FromResidual<crate::result::Result<Empty, E>> for Option<Result<T, E>> {
+    fn from_residual(res: crate::result::Result<Empty, E>) -> Self {
+        match res {
+            crate::result::Err(e) => Some(Err(e)),
+            crate::result::Ok(val) => match val {},
+        }
+    }
+}
+
+impl<T, E> FromResidual<Option<core::convert::Infallible>> for Result<Option<T>, E> {
+    fn from_residual(_: Option<core::convert::Infallible>) -> Self {
+        Ok(None)
+    }
+}
+
+impl<T, E> FromResidual<crate::option::Option<Empty>> for Result<Option<T>, E> {
+    fn from_residual(_: crate::option::Option<Empty>) -> Self {
+        Ok(None)
+    }
+}
+
 /// `?` operator for `xlang_abi` types
 #[macro_export]
 macro_rules! try_ {
