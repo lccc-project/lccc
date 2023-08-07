@@ -162,6 +162,18 @@ impl<A: Allocator> String<A> {
     pub unsafe fn from_utf8_unchecked(bytes: crate::vec::Vec<u8, A>) -> Self {
         Self(bytes)
     }
+
+    /// Leaks the string and returns a mutable `str` slice with an unbound lifetime.
+    ///
+    /// This permanently leaks the allocation unless the backing memory of the allocator itself is reclaimed.
+    pub fn leak<'a>(self) -> &'a mut str
+    where
+        A: 'a,
+    {
+        // SAFETY:
+        // We are valid UTF-8 because of the safety-invariant of `String`
+        unsafe { core::str::from_utf8_unchecked_mut(self.0.leak()) }
+    }
 }
 
 impl<A: Allocator, S: AsRef<str>> Add<S> for String<A> {
