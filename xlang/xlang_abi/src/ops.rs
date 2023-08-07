@@ -6,6 +6,12 @@ pub enum ControlFlow<B, C> {
     Break(B),
 }
 
+/// A trait that allows types of residuals
+pub trait Residual<Output>: Sized {
+    /// The canonical `Try` type for the given output
+    type Try: Try<Output = Output> + FromResidual<Self>;
+}
+
 /// Allows construction of types from Residuals
 pub trait FromResidual<Residual = <Self as Try>::Residual> {
     /// Constructs from a residual value
@@ -28,6 +34,10 @@ pub trait Try: FromResidual {
 
 /// An Empty enum, used for residuals
 pub enum Empty {}
+
+impl<T, E> Residual<T> for crate::result::Result<Empty, E> {
+    type Try = crate::result::Result<T, E>;
+}
 
 impl<T, E> FromResidual for crate::result::Result<T, E> {
     fn from_residual(res: crate::result::Result<Empty, E>) -> Self {
@@ -63,8 +73,12 @@ impl<T, E> Try for crate::result::Result<T, E> {
     }
 }
 
+impl<T, E> Residual<T> for Result<core::convert::Infallible, E> {
+    type Try = Result<T, E>;
+}
+
 impl<T, E> FromResidual for Result<T, E> {
-    // use `core:;convert::Infallible` instead of `Empty`
+    // use `core::convert::Infallible` instead of `Empty`
     fn from_residual(x: Result<core::convert::Infallible, E>) -> Self {
         match x {
             Ok(v) => match v {},
@@ -74,7 +88,7 @@ impl<T, E> FromResidual for Result<T, E> {
 }
 
 impl<T, E> FromResidual<crate::result::Result<Empty, E>> for Result<T, E> {
-    // use `core:;convert::Infallible` instead of `Empty`
+    // use `core::convert::Infallible` instead of `Empty`
     fn from_residual(x: crate::result::Result<Empty, E>) -> Self {
         match x {
             crate::result::Ok(v) => match v {},
@@ -111,6 +125,9 @@ macro_rules! try_ {
         }
     }};
 }
+
+/// A type alias that changes the `Output` type of `R` to `T`
+pub type ChangeOutputType<R, T> = <<R as Try>::Residual as Residual<T>>::Try;
 
 #[cfg(test)]
 mod test {
