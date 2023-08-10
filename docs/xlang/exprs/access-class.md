@@ -40,9 +40,17 @@
 
 15. [Note: As long as the above rules are maintained, relaxed atomic loads may be reordered freely, and merged into adjacent relaxed loads.]
 
-## Non-temporal
+## Non-temporal [expr.nontemporal]
 
 `class-option := nontemporal`
 
 1. An access class may contain the `nontemporal` specifier. 
+
+2. An access may not specify both the `nontemporal` access class and an atomic access class.
+
+3. [Note: Fences and sequence instructions may specify both simultaneously]
+
+4. `nontemporal` accesses do not guarantee visibility order with respect to accesses to other memory locations.
+
+5. [Note: Nontemporal accesses are intended to hint to the processor that the program is unlikely to use the data loaded/stored in the future]
 
