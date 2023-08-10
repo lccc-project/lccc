@@ -39,3 +39,10 @@
 14. The implementation should ensure that atomic stores on one thread of execution become visible to a load from the same object on another thread of execution in finite time. 
 
 15. [Note: As long as the above rules are maintained, relaxed atomic loads may be reordered freely, and merged into adjacent relaxed loads.]
+
+## Non-temporal
+
+`class-option := nontemporal`
+
+1. An access class may contain the `nontemporal` specifier. 
+
