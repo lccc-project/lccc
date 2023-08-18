@@ -16,6 +16,7 @@ which = "4.2.4"
 
 [build-dependencies]
 install-dirs = {version="0.2.1", features=["serde"]}
-serde = {version="1",features=["derive"]}
+serde = {version="1, <=1.0.171",features=["derive"]}
+serde_derive = {version="<=1.0.171"}
 toml = "0.5.8"
 target-tuples = "0.5.5"
