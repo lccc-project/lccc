@@ -1,3 +1,6 @@
+#[unstable(feature = "lcrust_siphash_impl")]
+pub mod siphash;
+
 pub trait Hasher {
     fn finish(&self) -> u64;
     fn write_bytes(&mut self, bytes: &[u8]);
@@ -117,5 +120,24 @@ pub trait Hash {
         for v in data {
             v.hash(state)
         }
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct SipHasher(siphash::SipHasher<2, 4>);
+
+impl Default for SipHasher {
+    pub fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SipHasher {
+    pub const fn new() -> Self {
+        Self::new_with_keys(0, 0);
+    }
+
+    pub const fn new_with_keys(k0: u64, k1: u64) -> Self {
+        Self(siphash::SipHasher::new_with_keys(k0, k1))
     }
 }
