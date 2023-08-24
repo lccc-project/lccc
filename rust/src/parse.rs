@@ -4,12 +4,12 @@ use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
     ast::{
-        Attr, AttrInput, Block, CompoundBlock, ConstParam, Constructor, Expr, ExternBlock,
-        Function, GenericBound, GenericParam, GenericParams, Item, ItemBody, ItemValue,
-        LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind, Mod, Param, Path, PathSegment,
-        Pattern, SimplePath, SimplePathSegment, Spanned, Statement, StructCtor, StructField,
-        StructKind, TupleCtor, TupleField, Type, TypeParam, UserType, UserTypeBody, Visibility,
-        WhereClause,
+        Attr, AttrInput, Block, CompoundBlock, ConstParam, Constructor, ConstructorExpr, Expr,
+        ExternBlock, FieldInit, Function, GenericBound, GenericParam, GenericParams, Item,
+        ItemBody, ItemValue, LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind, Mod,
+        Param, Path, PathSegment, Pattern, SimplePath, SimplePathSegment, Spanned, Statement,
+        StructCtor, StructField, StructKind, TupleCtor, TupleField, Type, TypeParam, UnaryOp,
+        UserType, UserTypeBody, Visibility, WhereClause,
     },
     interning::Symbol,
     lex::{Group, GroupType, IsEof, Lexeme, LexemeBody, LexemeClass, StringType, Token, TokenType},
@@ -189,6 +189,55 @@ pub fn do_lexeme_token(
         LexemeBody::Token(tok) => Ok((lexeme.span, tok)),
         _ => unreachable!(),
     }
+}
+
+pub fn do_token_classes(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+    expected: &[LexemeClass],
+) -> Result<(LexemeClass, Span, Token)> {
+    let mut tree = tree.into_rewinder();
+    let mut error = None;
+
+    for &class in expected {
+        match do_lexeme_token(&mut tree, class) {
+            Ok((span, token)) => {
+                tree.accept();
+                return Ok((class, span, token));
+            }
+            Err(e) => {
+                if let Some(err) = error.as_mut() {
+                    *err |= e;
+                } else {
+                    error.insert(e);
+                }
+            }
+        }
+    }
+    Err(error.unwrap())
+}
+
+pub fn do_alternation<R, I: Iterator<Item = Lexeme>>(
+    tree: &mut PeekMoreIterator<I>,
+    alternates: &[fn(&mut PeekMoreIterator<I>) -> Result<Spanned<R>>],
+) -> Result<Spanned<R>> {
+    let mut tree = tree.into_rewinder();
+    let mut err = None;
+    for alt in alternates {
+        match alt(&mut tree) {
+            Ok(val) => {
+                tree.accept();
+                return Ok(val);
+            }
+            Err(e) => {
+                if let Some(err) = err.as_mut() {
+                    *err |= e;
+                } else {
+                    err.insert(e);
+                }
+            }
+        }
+    }
+    Err(err.unwrap())
 }
 
 pub fn do_simple_path_segment(
@@ -838,47 +887,237 @@ pub fn do_literal(
     }
 }
 
-pub fn do_primary_expression(
+pub fn do_literal_expr(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Expr>> {
-    match do_literal(tree) {
-        Ok(x) => {
-            let span = x.span;
+    let lit = do_literal(tree)?;
+
+    let span = lit.span;
+
+    Ok(Spanned {
+        span,
+        body: Expr::Literal(lit),
+    })
+}
+
+pub fn do_id_without_ctor_expr(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Expr>> {
+    let path = do_path(tree)?;
+
+    let span = path.span;
+    Ok(Spanned {
+        span,
+        body: Expr::IdExpr(path),
+    })
+}
+
+pub fn do_id_with_ctor_expr(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Expr>> {
+    let mut tree = tree.into_rewinder();
+    let path = do_path(&mut tree)?;
+
+    let mut fullspan = path.span;
+
+    match do_lexeme_group(&mut tree, Some(GroupType::Braces)) {
+        Ok((g, span)) => {
+            fullspan = Span::between(fullspan, span);
+            let mut ctor = ConstructorExpr {
+                ctor_name: path,
+                fields: vec![],
+                fill: None,
+            };
+
+            let mut inner_tree = g.body.into_iter().peekmore();
+
+            loop {
+                match do_token_classes(
+                    &mut inner_tree,
+                    &[
+                        LexemeClass::Identifier,
+                        LexemeClass::Number,
+                        LexemeClass::Eof,
+                        LexemeClass::Punctuation("..".into()),
+                    ],
+                )? {
+                    (LexemeClass::Identifier, mut span, tok) => {
+                        let name = Spanned {
+                            span,
+                            body: tok.body,
+                        };
+
+                        eprintln!(
+                            "Just parsed {:?}: next token is {:?}",
+                            name,
+                            inner_tree.peek()
+                        );
+
+                        match do_lexeme_class(&mut inner_tree, LexemeClass::Punctuation(":".into()))
+                        {
+                            Ok(_) => {
+                                let val = do_expression(&mut inner_tree)?;
+                                span = Span::between(span, val.span);
+                                match do_lexeme_classes(
+                                    &mut inner_tree,
+                                    &[LexemeClass::Punctuation(",".into()), LexemeClass::Eof],
+                                ) {
+                                    Ok((_, LexemeClass::Eof)) => {
+                                        ctor.fields.push(Spanned {
+                                            span,
+                                            body: FieldInit {
+                                                name,
+                                                val: Some(val),
+                                            },
+                                        });
+                                        break;
+                                    }
+                                    Ok((_, LexemeClass::Punctuation(_))) => {
+                                        ctor.fields.push(Spanned {
+                                            span,
+                                            body: FieldInit {
+                                                name,
+                                                val: Some(val),
+                                            },
+                                        });
+                                        continue;
+                                    }
+                                    Ok(_) => unreachable!(),
+                                    Err(e) => return Err(e),
+                                }
+                            }
+                            Err(e) => match do_lexeme_classes(
+                                &mut inner_tree,
+                                &[LexemeClass::Punctuation(",".into()), LexemeClass::Eof],
+                            ) {
+                                Ok((_, LexemeClass::Eof)) => {
+                                    ctor.fields.push(Spanned {
+                                        span,
+                                        body: FieldInit { name, val: None },
+                                    });
+                                    break;
+                                }
+                                Ok((_, LexemeClass::Punctuation(_))) => {
+                                    ctor.fields.push(Spanned {
+                                        span,
+                                        body: FieldInit { name, val: None },
+                                    });
+                                    continue;
+                                }
+                                Ok(_) => unreachable!(),
+                                Err(d) => return Err(e | d),
+                            },
+                        }
+                    }
+                    (LexemeClass::Number, mut span, tok) => {
+                        let name = Spanned {
+                            span,
+                            body: tok.body,
+                        };
+
+                        do_lexeme_class(&mut inner_tree, LexemeClass::Punctuation(":".into()))?;
+                        let val = do_expression(&mut inner_tree)?;
+                        span = Span::between(span, val.span);
+                        match do_lexeme_classes(
+                            &mut inner_tree,
+                            &[LexemeClass::Punctuation(",".into()), LexemeClass::Eof],
+                        ) {
+                            Ok((_, LexemeClass::Eof)) => {
+                                ctor.fields.push(Spanned {
+                                    span,
+                                    body: FieldInit {
+                                        name,
+                                        val: Some(val),
+                                    },
+                                });
+                                break;
+                            }
+                            Ok((_, LexemeClass::Punctuation(_))) => {
+                                ctor.fields.push(Spanned {
+                                    span,
+                                    body: FieldInit {
+                                        name,
+                                        val: Some(val),
+                                    },
+                                });
+                                continue;
+                            }
+                            Ok(_) => unreachable!(),
+                            Err(e) => return Err(e),
+                        }
+                    }
+                    (LexemeClass::Punctuation(_), _, _) => {
+                        let val = do_expression(&mut inner_tree)?;
+
+                        ctor.fill = Some(Box::new(val));
+
+                        do_lexeme_class(&mut inner_tree, LexemeClass::Eof)?;
+                        break;
+                    }
+                    (LexemeClass::Eof, _, _) => break,
+                    _ => unreachable!(),
+                }
+            }
+            tree.accept();
             Ok(Spanned {
-                body: Expr::Literal(x),
-                span,
+                body: Expr::Constructor(Spanned {
+                    body: ctor,
+                    span: fullspan,
+                }),
+                span: fullspan,
             })
         }
-        Err(a) => match do_path(tree) {
-            Ok(x) => {
-                let span = x.span;
-                Ok(Spanned {
-                    body: Expr::IdExpr(x),
-                    span,
-                })
-            }
-            Err(b) => match do_compound_block(tree) {
-                Ok(x) => {
-                    let span = x.span;
-                    Ok(Spanned {
-                        body: Expr::BlockExpr(x),
-                        span,
-                    })
-                }
-                Err(c) => Err(a | b | c), // TODO: Literally every other kind of useful expression
-            },
-        },
+        Err(e) => {
+            tree.accept();
+            Ok(Spanned {
+                body: Expr::IdExpr(path),
+                span: fullspan,
+            })
+        }
     }
 }
 
-pub fn do_expression(
+pub fn do_block_expr(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Expr>> {
-    let mut lhs = do_primary_expression(tree)?;
-    while let Ok(op) = do_lexeme_classes(
+    let block = do_compound_block(tree)?;
+    let span = block.span;
+    Ok(Spanned {
+        body: Expr::BlockExpr(block),
+        span,
+    })
+}
+
+pub fn do_primary_expression(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+    allow_constructor: bool,
+) -> Result<Spanned<Expr>> {
+    do_alternation(
         tree,
         &[
+            do_literal_expr,
+            if allow_constructor {
+                do_id_with_ctor_expr
+            } else {
+                do_id_without_ctor_expr
+            },
+            do_block_expr,
+        ],
+    )
+}
+
+pub fn do_cast_expression(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+    allow_constructor: bool,
+) -> Result<Spanned<Expr>> {
+    let mut tree = tree.into_rewinder();
+    let mut lhs = do_primary_expression(&mut tree, allow_constructor)?;
+    while let Ok(op) = do_lexeme_classes(
+        &mut tree,
+        &[
             LexemeClass::Group(Some(GroupType::Parens)),
+            LexemeClass::Group(Some(GroupType::Brackets)),
+            LexemeClass::Punctuation(".".into()),
             LexemeClass::Keyword("as".into()),
         ],
     ) {
@@ -914,18 +1153,143 @@ pub fn do_expression(
                     span: new_span,
                 };
             }
+            (
+                Lexeme {
+                    span,
+                    body: LexemeBody::Group(group),
+                },
+                LexemeClass::Group(Some(GroupType::Brackets)),
+            ) => {
+                let mut inner_tree = group.body.into_iter().peekmore();
+
+                let index = do_expression(&mut inner_tree)?;
+
+                do_lexeme_class(&mut inner_tree, LexemeClass::Eof)?;
+
+                let new_span = Span::between(lhs.span, span);
+
+                lhs = Spanned {
+                    body: Expr::Index {
+                        base: Box::new(lhs),
+                        index: Box::new(index),
+                    },
+                    span: new_span,
+                };
+            }
             (_, LexemeClass::Keyword(x)) if x == "as" => {
-                let ty = do_type_no_bounds(tree)?;
+                let ty = do_type_no_bounds(&mut tree)?;
                 let new_span = Span::between(lhs.span, ty.span);
                 lhs = Spanned {
                     body: Expr::AsCast(Box::new(lhs), Box::new(ty)),
                     span: new_span,
                 }
             }
+            (_, LexemeClass::Punctuation(x)) if x == "." => {
+                match do_token_classes(
+                    &mut tree,
+                    &[
+                        LexemeClass::Identifier,
+                        LexemeClass::Number,
+                        LexemeClass::Keyword("await".into()),
+                    ],
+                )? {
+                    (LexemeClass::Identifier, span, tok) => {
+                        let name = Spanned {
+                            body: tok.body,
+                            span,
+                        };
+
+                        match do_lexeme_group(&mut tree, Some(GroupType::Parens)) {
+                            Ok((group, gspan)) => {
+                                let mut args_tree = group.body.into_iter().peekmore();
+                                let mut args = Vec::new();
+                                while !args_tree.peek().is_eof() {
+                                    args.push(do_expression(&mut args_tree)?);
+                                    match do_lexeme_class(
+                                        &mut args_tree,
+                                        LexemeClass::Punctuation(",".into()),
+                                    ) {
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            if !args_tree.peek().is_eof() {
+                                                Err(e)?
+                                            }
+                                        }
+                                    }
+                                }
+                                let new_span = Span::between(lhs.span, gspan);
+                                lhs = Spanned {
+                                    body: Expr::FunctionCall {
+                                        base: Box::new(lhs),
+                                        method_name: Some(name),
+                                        args,
+                                    },
+                                    span: new_span,
+                                };
+                            }
+                            Err(_) => {
+                                let new_span = Span::between(lhs.span, span);
+                                lhs = Spanned {
+                                    body: Expr::MemberAccess(Box::new(lhs), name),
+                                    span: new_span,
+                                }
+                            }
+                        }
+                    }
+                    (LexemeClass::Number, span, tok) => {
+                        let name = Spanned {
+                            body: tok.body,
+                            span,
+                        };
+                        let new_span = Span::between(lhs.span, span);
+                        lhs = Spanned {
+                            body: Expr::MemberAccess(Box::new(lhs), name),
+                            span: new_span,
+                        }
+                    }
+                    (LexemeClass::Keyword(x), span, _) if x == "await" => {
+                        let new_span = Span::between(lhs.span, span);
+                        lhs = Spanned {
+                            body: Expr::Await(Box::new(lhs)),
+                            span: new_span,
+                        };
+                    }
+                    _ => unreachable!(),
+                }
+            }
             _ => unreachable!(),
         }
     }
+    tree.accept();
     Ok(lhs)
+}
+
+pub fn do_unary_expression(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+    allow_constructor: bool,
+) -> Result<Spanned<Expr>> {
+    let mut tree = tree.into_rewinder();
+    let mut inner = do_cast_expression(&mut tree, allow_constructor)?;
+    tree.accept();
+
+    Ok(inner)
+}
+
+pub fn do_binary_expression(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+    allow_constructor: bool,
+) -> Result<Spanned<Expr>> {
+    let mut tree = tree.into_rewinder();
+    let mut inner = do_unary_expression(&mut tree, allow_constructor)?;
+    tree.accept();
+
+    Ok(inner)
+}
+
+pub fn do_expression(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Expr>> {
+    do_binary_expression(tree, true)
 }
 
 pub fn do_block(

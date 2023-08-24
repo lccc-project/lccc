@@ -393,6 +393,21 @@ pub enum LiteralKind {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct ConstructorExpr {
+    pub ctor_name: Spanned<Path>,
+    pub fields: Vec<Spanned<FieldInit>>,
+    pub fill: Option<Box<Spanned<Expr>>>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct FieldInit {
+    pub name: Spanned<Symbol>,
+    pub val: Option<Spanned<Expr>>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Expr {
     IdExpr(Spanned<Path>),
     BinaryExpr(Spanned<BinaryOp>, Box<Spanned<Expr>>, Box<Spanned<Expr>>),
@@ -418,6 +433,9 @@ pub enum Expr {
     AsyncBlock(Spanned<Block>),
     Closure(Spanned<Closure>),
     Yeet(Option<Box<Expr>>),
+    Constructor(Spanned<ConstructorExpr>),
+    Await(Box<Spanned<Expr>>),
+    Try(Box<Spanned<Expr>>),
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -611,8 +629,6 @@ pub enum UnaryOp {
     RangeFrom,
     RangeTo,
     RangeToInclusive,
-    Await,
-    Try,
 }
 
 #[allow(dead_code)]

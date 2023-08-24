@@ -366,6 +366,9 @@ impl<'a> HirLowerer<'a> {
             ast::Expr::AsyncBlock(_) => todo!("async blck"),
             ast::Expr::Closure(_) => todo!("closure"),
             ast::Expr::Yeet(_) => todo!("yeet"),
+            ast::Expr::Constructor(_) => todo!("constructor"),
+            ast::Expr::Await(_) => todo!("await"),
+            ast::Expr::Try(_) => todo!("try"),
         }
     }
 
