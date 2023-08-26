@@ -408,7 +408,7 @@ impl<'a> HirLowerer<'a> {
                 _ => todo!("literal"),
             },
             ast::Expr::Break(_, _) => todo!("break"),
-            ast::Expr::Continue(_, _) => todo!("continue"),
+            ast::Expr::Continue(_) => todo!("continue"),
             ast::Expr::Yield(_) => todo!("yield"),
             ast::Expr::ConstBlock(_) => todo!("const block"),
             ast::Expr::AsyncBlock(_) => todo!("async blck"),
@@ -461,6 +461,11 @@ impl<'a> HirLowerer<'a> {
             }
             ast::Expr::Await(_) => todo!("await"),
             ast::Expr::Try(_) => todo!("try"),
+            ast::Expr::Group(expr) => self.desugar_expr(expr),
+            ast::Expr::Tuple(_) => todo!("tuple"),
+            ast::Expr::Return(_) => todo!("return"),
+            ast::Expr::Array(_) => todo!("array"),
+            ast::Expr::ArrayRepeat { base, len } => todo!("array repeat"),
         }
     }
 

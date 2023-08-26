@@ -427,15 +427,23 @@ pub enum Expr {
     BlockExpr(Spanned<CompoundBlock>),
     Literal(Spanned<Literal>),
     Break(Option<Spanned<Label>>, Option<Box<Spanned<Expr>>>),
-    Continue(Option<Spanned<Label>>, Option<Box<Spanned<Expr>>>),
+    Continue(Option<Spanned<Label>>),
     Yield(Option<Box<Spanned<Expr>>>),
     ConstBlock(Spanned<Block>),
-    AsyncBlock(Spanned<Block>),
+    AsyncBlock(Spanned<AsyncBlock>),
     Closure(Spanned<Closure>),
-    Yeet(Option<Box<Expr>>),
+    Yeet(Option<Box<Spanned<Expr>>>),
     Constructor(Spanned<ConstructorExpr>),
     Await(Box<Spanned<Expr>>),
     Try(Box<Spanned<Expr>>),
+    Group(Box<Spanned<Expr>>),
+    Tuple(Vec<Spanned<Expr>>),
+    Return(Option<Box<Spanned<Expr>>>),
+    Array(Vec<Spanned<Expr>>),
+    ArrayRepeat {
+        base: Box<Spanned<Expr>>,
+        len: Box<Spanned<Expr>>,
+    },
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -443,10 +451,17 @@ pub struct Label {
     pub name: Spanned<Symbol>,
 }
 
+#[allow(dead_code)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct AsyncBlock {
+    pub capture_rule: Option<Spanned<CaptureSpec>>,
+    pub block: Spanned<Block>,
+}
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Closure {
     pub capture_rule: Option<Spanned<CaptureSpec>>,
-    pub params: Vec<Spanned<ClosureParam>>,
+    pub params: Spanned<Vec<Spanned<ClosureParam>>>,
     pub retty: Option<Spanned<Type>>,
     pub body: Box<Spanned<Expr>>,
 }
@@ -558,6 +573,7 @@ pub enum BinaryOp {
     Less,
     Greater,
     Equal,
+    NotEqual,
     LessEqual,
     GreaterEqual,
     Assign,
@@ -595,6 +611,7 @@ impl core::fmt::Display for BinaryOp {
             BinaryOp::Less => f.write_str("<"),
             BinaryOp::Greater => f.write_str(">"),
             BinaryOp::Equal => f.write_str("=="),
+            BinaryOp::NotEqual => f.write_str("!="),
             BinaryOp::LessEqual => f.write_str("<="),
             BinaryOp::GreaterEqual => f.write_str(">="),
             BinaryOp::Assign => f.write_str("="),
