@@ -446,6 +446,9 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         mir::MirExpr::Retag(_, _, _) => todo!(),
 
         mir::MirExpr::Intrinsic(_) => todo!(),
+        mir::MirExpr::FieldProject(_, _) => todo!(),
+        mir::MirExpr::GetSubobject(_, _) => todo!(),
+        mir::MirExpr::Ctor(_) => todo!("ctor"),
     }
 }
 
@@ -552,6 +555,11 @@ def_visitors! {
     pub trait ConstStringVisitor {
         fn visit_string_type(&mut self, st: StringType);
         fn visit_value(&mut self, val: Symbol);
+    }
+
+    pub trait FieldAccessVisitor {
+        fn visit_base(&mut self) -> Option<Box<dyn ExprVisitor +'_>>;
+        fn visit_field(&mut self, field_name: ty::FieldName);
     }
 
     pub trait StatementVisitor {

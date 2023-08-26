@@ -1,4 +1,4 @@
-use xlang::abi::collection::HashMap;
+use xlang::abi::collection::{HashMap, HashSet};
 
 use crate::{
     ast::{self, Mutability, Safety, StringType},
@@ -12,8 +12,8 @@ pub use super::ty::Type;
 use super::{
     cx::ConstExpr,
     hir::HirVarId,
-    ty::{IntType, SemaLifetime},
-    DefId, DefinitionInner, Definitions, Error, ErrorCategory, Result, Spanned,
+    ty::{FieldName, IntType, SemaLifetime},
+    DefId, DefinitionInner, Definitions, Error, ErrorCategory, Result, SemaHint, Spanned,
 };
 
 use CyclicOperationStatus::*;
@@ -23,6 +23,9 @@ pub enum TycheckErrorCategory {
     InferenceFailure,
     NoConversion,
     FailedToUnify,
+    DuplicateField,
+    MissingField,
+    NoSuchField,
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -76,6 +79,41 @@ pub enum ThirExprInner {
     ConstString(StringType, Spanned<Symbol>),
     Cast(Box<Spanned<ThirExpr>>, Spanned<Type>),
     Tuple(Vec<Spanned<ThirExpr>>),
+    Ctor(Spanned<ThirConstructor>),
+    MemberAccess(Box<Spanned<ThirExpr>>, Spanned<FieldName>),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ThirConstructor {
+    pub base: DefId,
+    pub fields: Vec<(Spanned<FieldName>, Spanned<ThirExpr>)>,
+    pub rest_init: Option<Box<Spanned<ThirExpr>>>,
+}
+
+impl core::fmt::Display for ThirConstructor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.base.fmt(f)?;
+        f.write_str("{ ")?;
+
+        let mut sep = "";
+
+        for (field, init) in &self.fields {
+            f.write_str(sep)?;
+            sep = ", ";
+            field.body.fmt(f)?;
+            f.write_str(": (")?;
+            init.body.fmt(f)?;
+            f.write_str(")")?;
+        }
+
+        if let Some(rest_init) = &self.rest_init {
+            f.write_str(sep)?;
+            f.write_str("..(")?;
+            rest_init.body.fmt(f)?;
+            f.write_str(")")?;
+        }
+        f.write_str(" }")
+    }
 }
 
 impl core::fmt::Display for ThirExprInner {
@@ -119,6 +157,13 @@ impl core::fmt::Display for ThirExprInner {
                     f.write_str(",")?;
                 }
                 f.write_str(")")
+            }
+            ThirExprInner::Ctor(ctor) => ctor.body.fmt(f),
+            ThirExprInner::MemberAccess(base, field) => {
+                f.write_str("(")?;
+                base.body.fmt(f)?;
+                f.write_str(").")?;
+                field.body.fmt(f)
             }
         }
     }
@@ -369,6 +414,19 @@ impl<'a> ThirConverter<'a> {
         Ok(ret)
     }
 
+    pub fn convert_lvalue(
+        &mut self,
+        expr: &Spanned<hir::HirExpr>,
+    ) -> super::Result<Spanned<ThirExpr>> {
+        let mut ret = self.convert_expr(expr)?;
+
+        if ret.cat == ValueCategory::Rvalue {
+            todo!("Temporary");
+        }
+
+        Ok(ret)
+    }
+
     pub fn convert_expr(
         &mut self,
         expr: &Spanned<hir::HirExpr>,
@@ -495,6 +553,98 @@ impl<'a> ThirConverter<'a> {
                     cat: ValueCategory::Rvalue,
                     inner,
                 })
+            }
+            hir::HirExpr::Constructor(ctor) => {
+                let defid = ctor.constructor_def;
+
+                let ty = self.defs.type_of_constructor(defid.body);
+
+                let ctor_ty = Type::UserType(ty);
+
+                let fields = self.defs.fields_of(&ctor_ty);
+
+                let mut last_init = HashMap::<_, _>::new();
+
+                let ctor_span = ctor.span;
+                let ctor = ctor.try_copy_span(|ctor| {
+                    let mut thir_ctor = ThirConstructor {
+                        base: defid.body,
+                        fields: Vec::new(),
+                        rest_init: None,
+                    };
+
+                    for (name, expr) in &ctor.fields {
+                        let expr = self.convert_rvalue(expr)?;
+                        let name = name.copy_span(|&sym| FieldName::Field(sym));
+
+                        if let Some(span) = last_init.insert(name.body.clone(), name.span) {
+                            return Err(Error {
+                                span: name.span,
+                                text: format!("field {} already initialized", name.body),
+                                category: ErrorCategory::TycheckError(
+                                    TycheckErrorCategory::DuplicateField,
+                                ),
+                                at_item: self.at_item,
+                                containing_item: self.containing_item,
+                                relevant_item: defid.body,
+                                hints: vec![
+                                    SemaHint {
+                                        text: format!(
+                                            "field {} previously initialized here",
+                                            name.body
+                                        ),
+                                        itemref: self.at_item,
+                                        refspan: span,
+                                    },
+                                    SemaHint {
+                                        text: format!("at this constructor expression"),
+                                        itemref: defid.body,
+                                        refspan: ctor_span,
+                                    },
+                                ],
+                            });
+                        }
+
+                        thir_ctor.fields.push((name, expr));
+                    }
+
+                    if let Some(rest_init) = &ctor.rest_init {
+                        let rest_init = Box::new(self.convert_rvalue(rest_init)?);
+                        thir_ctor.rest_init = Some(rest_init);
+                    }
+
+                    Ok(thir_ctor)
+                })?;
+                let inner = ThirExprInner::Ctor(ctor);
+
+                Ok(ThirExpr {
+                    ty: ctor_ty,
+                    inner,
+                    cat: ValueCategory::Rvalue,
+                })
+            }
+            hir::HirExpr::FieldAccess(inner, name) => {
+                let val = self.convert_lvalue(inner)?;
+
+                let ty = &val.ty;
+
+                let cat = val.cat;
+
+                let fields = self.defs.fields_of(ty);
+
+                let ty = fields
+                    .iter()
+                    .filter(|f| &f.name == &name.body)
+                    .map(|f| f.ty.clone())
+                    .next()
+                    .unwrap_or_else(|| {
+                        let inferid = InferId(self.next_infer.fetch_increment());
+                        Type::Inferable(inferid)
+                    });
+
+                let inner = ThirExprInner::MemberAccess(Box::new(val), name.clone());
+
+                Ok(ThirExpr { ty, cat, inner })
             }
         })
     }
@@ -814,6 +964,40 @@ impl<'a> Inferer<'a> {
                 }
                 _ => {}
             },
+            ThirExprInner::Ctor(ctor) => {
+                let base = ctor.base;
+                let mut ty = Type::UserType(self.defs.type_of_constructor(base));
+                if let Some(rest_init) = ctor.rest_init.as_mut() {
+                    status &= self.unify_typed_expr(rest_init, &mut ty)?;
+                }
+
+                let fields = self.defs.fields_of(&ty);
+
+                let mut field_tys = fields
+                    .iter()
+                    .map(|field| (field.name.clone(), field.ty.clone()))
+                    .collect::<HashMap<_, _>>();
+
+                for (field, val) in &mut ctor.fields {
+                    status &= self.unify_types(
+                        field_tys.get_mut(&field.body).ok_or_else(|| Error {
+                            span: field.span,
+                            text: format!("No such field {}", field.body),
+                            category: ErrorCategory::TycheckError(
+                                TycheckErrorCategory::NoSuchField,
+                            ),
+                            at_item: self.curdef,
+                            containing_item: self.curmod,
+                            relevant_item: base,
+                            hints: vec![],
+                        })?,
+                        &mut ty,
+                    )?;
+                }
+            }
+            ThirExprInner::MemberAccess(expr, field) => {
+                status &= self.unify_single_expr(expr)?;
+            }
         }
 
         Ok(status)
@@ -987,6 +1171,16 @@ impl<'a> Inferer<'a> {
                     status &= self.propagate_expr(expr)?;
                 }
             }
+            ThirExprInner::Ctor(constructor) => {
+                for (_, field) in &mut constructor.fields {
+                    status &= self.propagate_expr(field)?;
+                }
+
+                if let Some(rest_init) = &mut constructor.rest_init {
+                    status &= self.propagate_expr(rest_init)?;
+                }
+            }
+            ThirExprInner::MemberAccess(base, _) => status &= self.propagate_expr(base)?,
             _ => {}
         }
         Ok(status)

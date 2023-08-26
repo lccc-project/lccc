@@ -689,10 +689,34 @@ pub enum FieldName {
     FatPtrPart(FatPtrPart),
 }
 
+impl core::fmt::Display for FieldName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EnumDiscrim => f.write_str("{{discriminant}}"),
+            Self::Field(sym) => f.write_str(sym),
+            Self::VariantSubfield(var, field) => {
+                var.fmt(f)?;
+                f.write_str("::")?;
+                f.write_str(field)
+            }
+            Self::FatPtrPart(part) => part.fmt(f),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum FatPtrPart {
     Payload,
     Metadata,
+}
+
+impl core::fmt::Display for FatPtrPart {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Payload => f.write_str("{{data}}"),
+            Self::Metadata => f.write_str("{{metadata}}"),
+        }
+    }
 }
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ScalarNiches {
@@ -717,4 +741,11 @@ pub struct TypeLayout {
     pub field_offsets: HashMap<FieldName, u64>,
     pub mutable_fields: HashSet<FieldName>,
     pub niches: Option<Niches>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct TypeField {
+    pub name: FieldName,
+    pub ty: Type,
+    pub vis: DefId,
 }

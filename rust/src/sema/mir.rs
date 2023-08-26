@@ -11,7 +11,7 @@ use crate::{
 use super::{
     hir::HirVarId,
     intrin::IntrinsicDef,
-    ty::{FnType, IntType, Type},
+    ty::{FieldName, FnType, IntType, Type},
     tyck::{Movability, ThirExpr, ThirExprInner, ThirStatement},
     DefId, Definitions, SemaHint, Spanned,
 };
@@ -108,6 +108,42 @@ pub enum MirExpr {
     Cast(Box<Spanned<MirExpr>>, Type),
     Tuple(Vec<Spanned<MirExpr>>),
     Intrinsic(IntrinsicDef),
+    FieldProject(Box<Spanned<MirExpr>>, FieldName),
+    GetSubobject(Box<Spanned<MirExpr>>, FieldName),
+    Ctor(MirConstructor),
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct MirConstructor {
+    pub ctor_def: DefId,
+    pub fields: Vec<(FieldName, Spanned<MirExpr>)>,
+    pub rest_init: Option<Box<Spanned<MirExpr>>>,
+}
+
+impl core::fmt::Display for MirConstructor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.ctor_def.fmt(f)?;
+        f.write_str("{ ")?;
+
+        let mut sep = "";
+
+        for (field, init) in &self.fields {
+            f.write_str(sep)?;
+            sep = ", ";
+            field.fmt(f)?;
+            f.write_str(": (")?;
+            init.body.fmt(f)?;
+            f.write_str(")")?;
+        }
+
+        if let Some(rest_init) = &self.rest_init {
+            f.write_str(sep)?;
+            f.write_str("..(")?;
+            rest_init.body.fmt(f)?;
+            f.write_str(")")?;
+        }
+        f.write_str(" }")
+    }
 }
 
 impl core::fmt::Display for MirExpr {
@@ -149,6 +185,13 @@ impl core::fmt::Display for MirExpr {
                 f.write_str(")")
             }
             MirExpr::Intrinsic(intrin) => f.write_str(intrin.name()),
+            MirExpr::FieldProject(base, field) => {
+                f.write_fmt(format_args!("&raw (*{}).{}", base.body, field))
+            }
+            MirExpr::GetSubobject(base, field) => {
+                f.write_fmt(format_args!("({}).{}", base.body, field))
+            }
+            MirExpr::Ctor(ctor) => ctor.fmt(f),
         }
     }
 }
@@ -460,48 +503,32 @@ impl<'a> MirConverter<'a> {
     fn diag_lvalue_kind(val: &ThirExprInner) -> &'static str {
         match val {
             ThirExprInner::Var(_) => "local variable",
+            ThirExprInner::MemberAccess(_, _) => "struct field",
             ThirExprInner::Const(_)
             | ThirExprInner::ConstInt(_, _)
             | ThirExprInner::ConstString(_, _)
             | ThirExprInner::Cast(_, _)
             | ThirExprInner::Tuple(_)
             | ThirExprInner::Read(_)
-            | ThirExprInner::Unreachable => todo!(),
+            | ThirExprInner::Unreachable
+            | ThirExprInner::Ctor(_) => todo!(),
         }
     }
 
-    pub fn lower_read(&mut self, val: Spanned<ThirExpr>) -> super::Result<Spanned<MirExpr>> {
+    fn lower_lvalue_subexpr(
+        &mut self,
+        val: Spanned<ThirExpr>,
+        force_lvalue: bool,
+    ) -> super::Result<(Spanned<MirExpr>, SsaVarKind)> {
         let span = val.span;
         let ty = val.body.ty;
         let (mv, mt) = match val.body.cat {
             super::tyck::ValueCategory::Lvalue(mv, mt) => (mv, mt),
-            _ => panic!("Only lvalues can be read"),
+            _ => panic!("Only lvalues can be accessed"),
         };
 
-        if mv != Movability::Movable && !self.defs.is_copy(&ty) {
-            return Err(super::Error {
-                span,
-                text: format!(
-                    "Cannot move out of `{}`",
-                    Self::diag_lvalue_kind(&val.body.inner)
-                ), // todo: Improve this diagnostis
-                category: super::ErrorCategory::BorrowckError(BorrowckErrorCategory::CannotMove),
-                at_item: self.at_item,
-                containing_item: self.curmod,
-                relevant_item: self.at_item,
-                hints: vec![SemaHint {
-                    text: format!(
-                        "Move occurs because `{}` does not implement the `Copy` trait",
-                        ty
-                    ),
-                    itemref: self.defs.type_defid(&ty),
-                    refspan: span,
-                }],
-            });
-        }
-
         match val.body.inner {
-            super::tyck::ThirExprInner::Var(hirvar) => {
+            ThirExprInner::Var(hirvar) => {
                 if let Some(loc) = self.moved_from_locs.get(&hirvar).copied() {
                     let name = self
                         .hir_var_names
@@ -511,7 +538,7 @@ impl<'a> MirConverter<'a> {
                             Symbol::intern_by_val(format!("{{internal variable {}}}", hirvar))
                         });
                     return Err(super::Error {
-                        span: span,
+                        span,
                         text: format!("Variable `{}` is used after move", name),
                         category: super::ErrorCategory::BorrowckError(
                             BorrowckErrorCategory::MovedFrom,
@@ -540,14 +567,38 @@ impl<'a> MirConverter<'a> {
                         body: MirExpr::Var(var_name.cur_var),
                         span,
                     };
-
-                    if var_name.var_kind == SsaVarKind::Alloca {
-                        Ok(Spanned {
-                            body: MirExpr::Read(Box::new(inner)),
+                    if force_lvalue && var_name.var_kind == SsaVarKind::Register {
+                        let alloca = Spanned {
+                            body: MirExpr::Alloca(mt, ty.clone(), Box::new(inner)),
                             span,
-                        })
+                        };
+                        let newvarid = SsaVarId(self.nextvar.fetch_increment());
+                        let init_stat = Spanned {
+                            body: MirStatement::Declare {
+                                var: Spanned {
+                                    body: newvarid,
+                                    span,
+                                },
+                                ty: Spanned { body: ty, span },
+                                init: alloca,
+                            },
+                            span,
+                        };
+                        self.cur_basic_block.stmts.push(init_stat);
+                        let assign = HirVarAssignment {
+                            cur_var: newvarid,
+                            var_kind: SsaVarKind::Alloca,
+                        };
+
+                        *self.var_names.get_mut(&hirvar).unwrap() = assign;
+
+                        let inner = Spanned {
+                            body: MirExpr::Var(newvarid),
+                            span,
+                        };
+                        Ok((inner, SsaVarKind::Alloca))
                     } else {
-                        Ok(inner)
+                        Ok((inner, var_name.var_kind))
                     }
                 } else {
                     let name = self
@@ -575,13 +626,77 @@ impl<'a> MirConverter<'a> {
                     })
                 }
             }
-            super::tyck::ThirExprInner::Read(_)
-            | super::tyck::ThirExprInner::Unreachable
-            | super::tyck::ThirExprInner::Const(_)
-            | super::tyck::ThirExprInner::ConstInt(_, _)
-            | super::tyck::ThirExprInner::ConstString(_, _)
-            | super::tyck::ThirExprInner::Cast(_, _)
-            | super::tyck::ThirExprInner::Tuple(_) => unreachable!(),
+            ThirExprInner::MemberAccess(inner, mem) => {
+                let (inner, kind) = self.lower_lvalue_subexpr(*inner, force_lvalue)?;
+                let span = val.span;
+                match kind {
+                    SsaVarKind::Register => Ok((
+                        Spanned {
+                            span,
+                            body: MirExpr::GetSubobject(Box::new(inner), *mem),
+                        },
+                        SsaVarKind::Register,
+                    )),
+                    SsaVarKind::Alloca => Ok((
+                        Spanned {
+                            span,
+                            body: MirExpr::FieldProject(Box::new(inner), *mem),
+                        },
+                        SsaVarKind::Alloca,
+                    )),
+                }
+            }
+            ThirExprInner::Read(_)
+            | ThirExprInner::Unreachable
+            | ThirExprInner::Const(_)
+            | ThirExprInner::ConstInt(_, _)
+            | ThirExprInner::ConstString(_, _)
+            | ThirExprInner::Cast(_, _)
+            | ThirExprInner::Tuple(_)
+            | ThirExprInner::Ctor(_) => unreachable!("cannot access"),
+        }
+    }
+
+    pub fn lower_read(&mut self, val: Spanned<ThirExpr>) -> super::Result<Spanned<MirExpr>> {
+        let span = val.span;
+        let ty = val.ty.clone();
+        let (mv, mt) = match val.body.cat {
+            super::tyck::ValueCategory::Lvalue(mv, mt) => (mv, mt),
+            _ => panic!("Only lvalues can be read"),
+        };
+
+        if mv != Movability::Movable && !self.defs.is_copy(&ty) {
+            return Err(super::Error {
+                span,
+                text: format!(
+                    "Cannot move out of `{}`",
+                    Self::diag_lvalue_kind(&val.body.inner)
+                ), // todo: Improve this diagnostis
+                category: super::ErrorCategory::BorrowckError(BorrowckErrorCategory::CannotMove),
+                at_item: self.at_item,
+                containing_item: self.curmod,
+                relevant_item: self.at_item,
+                hints: vec![SemaHint {
+                    text: format!(
+                        "Move occurs because `{}` does not implement the `Copy` trait",
+                        ty
+                    ),
+                    itemref: self.defs.type_defid(&ty),
+                    refspan: span,
+                }],
+            });
+        }
+        eprint!("Lowered {} ->", val.body);
+        let (expr, kind) = self.lower_lvalue_subexpr(val, false)?;
+
+        eprintln!("{}: {:?}", expr.body, kind);
+
+        match kind {
+            SsaVarKind::Alloca => Ok(Spanned {
+                body: MirExpr::Read(Box::new(expr)),
+                span,
+            }),
+            SsaVarKind::Register => Ok(expr),
         }
     }
 
@@ -643,6 +758,35 @@ impl<'a> MirConverter<'a> {
                     span,
                     body: MirExpr::Tuple(vals),
                 })
+            }
+            super::tyck::ThirExprInner::Ctor(ctor) => {
+                let fields = ctor
+                    .body
+                    .fields
+                    .into_iter()
+                    .map(|(fname, expr)| Ok((fname.body, self.lower_expr(expr)?)))
+                    .collect::<super::Result<Vec<_>>>()?;
+
+                let rest_init = ctor
+                    .body
+                    .rest_init
+                    .map(|expr| self.lower_expr(*expr))
+                    .transpose()?
+                    .map(Box::new);
+
+                let ctor_def = ctor.body.base;
+
+                Ok(Spanned {
+                    span,
+                    body: MirExpr::Ctor(MirConstructor {
+                        ctor_def,
+                        fields,
+                        rest_init,
+                    }),
+                })
+            }
+            super::tyck::ThirExprInner::MemberAccess(_, _) => {
+                panic!("only top level rvalues get lowered by `lower_expr`")
             }
         }
     }
@@ -773,6 +917,17 @@ impl<'a> MirConverter<'a> {
                     });
                 }
             }
+            ThirExprInner::MemberAccess(inner, field) => {
+                let (inner, _) = self.lower_lvalue_subexpr(*inner, true)?;
+                let proj = MirExpr::FieldProject(Box::new(inner), field.body);
+
+                let stat = MirStatement::Write(Spanned { body: proj, span }, val);
+
+                self.cur_basic_block.stmts.push(Spanned {
+                    body: stat,
+                    span: stat_span,
+                });
+            }
 
             ThirExprInner::Read(_)
             | ThirExprInner::Unreachable
@@ -780,7 +935,8 @@ impl<'a> MirConverter<'a> {
             | ThirExprInner::ConstInt(_, _)
             | ThirExprInner::ConstString(_, _)
             | ThirExprInner::Cast(_, _)
-            | ThirExprInner::Tuple(_) => unreachable!(),
+            | ThirExprInner::Tuple(_)
+            | ThirExprInner::Ctor(_) => unreachable!(),
         }
 
         Ok(())

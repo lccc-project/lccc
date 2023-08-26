@@ -5,7 +5,7 @@ use crate::helpers::{FetchIncrement, TabPrinter};
 use crate::interning::Symbol;
 use crate::span::Span;
 
-use super::ty::{self, IntType, Type};
+use super::ty::{self, FieldName, IntType, Type};
 
 use super::{DefId, Spanned};
 
@@ -25,6 +25,37 @@ impl core::fmt::Debug for HirVarId {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct HirConstructor {
+    pub constructor_def: Spanned<DefId>,
+    pub fields: Vec<(Spanned<Symbol>, Spanned<HirExpr>)>,
+    pub rest_init: Option<Box<Spanned<HirExpr>>>,
+}
+
+impl core::fmt::Display for HirConstructor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.constructor_def.body.fmt(f)?;
+        f.write_str("{ ")?;
+
+        let mut sep = "";
+
+        for (field, init) in &self.fields {
+            f.write_str(sep)?;
+            sep = ", ";
+            f.write_str(field)?;
+            f.write_str(": ")?;
+            init.body.fmt(f)?;
+        }
+
+        if let Some(rest_init) = &self.rest_init {
+            f.write_str(sep)?;
+            f.write_str("..")?;
+            rest_init.body.fmt(f)?;
+        }
+        f.write_str(" }")
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum HirExpr {
     Var(HirVarId),
     ConstInt(Option<Spanned<IntType>>, u128),
@@ -33,6 +64,8 @@ pub enum HirExpr {
     Unreachable,
     Cast(Box<Spanned<HirExpr>>, Spanned<Type>),
     Tuple(Vec<Spanned<HirExpr>>),
+    Constructor(Spanned<HirConstructor>),
+    FieldAccess(Box<Spanned<HirExpr>>, Spanned<FieldName>),
 }
 
 impl core::fmt::Display for HirExpr {
@@ -72,6 +105,12 @@ impl core::fmt::Display for HirExpr {
                     f.write_str(",")?;
                 }
                 f.write_str(")")
+            }
+            HirExpr::Constructor(ctor) => ctor.fmt(f),
+            HirExpr::FieldAccess(expr, name) => {
+                expr.body.fmt(f)?;
+                f.write_str(".")?;
+                name.body.fmt(f)
             }
         }
     }
@@ -320,7 +359,16 @@ impl<'a> HirLowerer<'a> {
 
                 Ok(expr.copy_span(|_| HirExpr::Var(*hirvar)))
             }
-            ast::Expr::MemberAccess(_, _) => todo!("member access"),
+            ast::Expr::MemberAccess(inner, field) => {
+                let base = self.desugar_expr(inner)?;
+
+                Ok(expr.copy_span(|_| {
+                    HirExpr::FieldAccess(
+                        Box::new(base),
+                        field.copy_span(|name| FieldName::Field(*name)),
+                    )
+                }))
+            }
             ast::Expr::Index { base, index } => todo!("index"),
             ast::Expr::AsCast(inner, ty) => {
                 let inner = self.desugar_expr(inner)?;
@@ -366,7 +414,51 @@ impl<'a> HirLowerer<'a> {
             ast::Expr::AsyncBlock(_) => todo!("async blck"),
             ast::Expr::Closure(_) => todo!("closure"),
             ast::Expr::Yeet(_) => todo!("yeet"),
-            ast::Expr::Constructor(_) => todo!("constructor"),
+            ast::Expr::Constructor(ctor) => {
+                let ctor = ctor.try_copy_span(|ctor| {
+                    let constructor_def = Spanned {
+                        body: self.defs.find_constructor(
+                            self.curmod,
+                            &ctor.ctor_name,
+                            self.atitem,
+                        )?,
+                        span: ctor.ctor_name.span,
+                    };
+                    let mut fields = Vec::new();
+
+                    for field in &ctor.fields {
+                        let id = field.name;
+                        let init = if let Some(val) = &field.val {
+                            self.desugar_expr(val)?
+                        } else {
+                            if let Some(hirvar) = self.varnames.get(&id.body) {
+                                id.copy_span(|_| HirExpr::Var(*hirvar))
+                            } else {
+                                self.defs
+                                    .find_value_in_mod(self.curmod, self.curmod, id, self.atitem)
+                                    .map(|def| id.copy_span(|_| HirExpr::Const(def)))?
+                            }
+                        };
+
+                        fields.push((id, init));
+                    }
+
+                    let rest_init = ctor
+                        .fill
+                        .as_ref()
+                        .map(|s| self.desugar_expr(s))
+                        .transpose()?
+                        .map(Box::new);
+
+                    Ok(HirConstructor {
+                        constructor_def,
+                        fields,
+                        rest_init,
+                    })
+                })?;
+
+                Ok(expr.copy_span(|_| HirExpr::Constructor(ctor)))
+            }
             ast::Expr::Await(_) => todo!("await"),
             ast::Expr::Try(_) => todo!("try"),
         }

@@ -186,8 +186,66 @@ pub enum UserTypeKind {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct TupleField {
+    pub attrs: Vec<Attr>,
+    pub visible_from: DefId,
+    pub ty: ty::Type,
+}
+
+impl core::fmt::Display for TupleField {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        for attr in &self.attrs {
+            attr.fmt(f)?;
+            f.write_str(" ")?;
+        }
+
+        f.write_str("pub(in ")?;
+        self.visible_from.fmt(f)?;
+        f.write_str(") ")?;
+        self.ty.fmt(f)
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct StructField {
+    pub attrs: Vec<Attr>,
+    pub visible_from: DefId,
+    pub name: Spanned<Symbol>,
+    pub ty: Spanned<ty::Type>,
+}
+
+impl core::fmt::Display for StructField {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        for attr in &self.attrs {
+            attr.fmt(f)?;
+            f.write_str(" ")?;
+        }
+
+        f.write_str("pub(in ")?;
+        self.visible_from.fmt(f)?;
+        f.write_str(") ")?;
+        self.name.body.fmt(f)?;
+        f.write_str(": ")?;
+        self.ty.body.fmt(f)
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Constructor {
+    Unit,
+    Tuple(Vec<Spanned<TupleField>>),
+    Struct(Vec<Spanned<StructField>>),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct StructDefinition {
+    pub ctor: Spanned<Constructor>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum UserType {
     Incomplete(UserTypeKind),
+    Struct(UserTypeKind, StructDefinition),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -229,6 +287,7 @@ pub struct Definitions {
     extern_blocks: Vec<DefId>,
     intrinsics: HashMap<intrin::IntrinsicDef, DefId>,
     layout_cache: RefCell<HashMap<ty::Type, *mut TypeLayout>>,
+    fields_cache: RefCell<HashMap<ty::Type, *mut Vec<ty::TypeField>>>,
     properties: &'static TargetProperties<'static>,
 }
 
@@ -237,6 +296,12 @@ impl Drop for Definitions {
         for Pair(_, layout) in self.layout_cache.get_mut() {
             unsafe {
                 Box::from_raw(*layout);
+            }
+        }
+
+        for Pair(_, fields) in self.fields_cache.get_mut() {
+            unsafe {
+                Box::from_raw(*fields);
             }
         }
     }
@@ -255,6 +320,7 @@ impl Definitions {
             extern_blocks: Vec::new(),
             intrinsics: HashMap::new(),
             layout_cache: RefCell::new(HashMap::new()),
+            fields_cache: RefCell::new(HashMap::new()),
             properties,
         }
     }
@@ -664,6 +730,15 @@ impl Definitions {
         }
     }
 
+    pub fn find_constructor(
+        &self,
+        curmod: DefId,
+        path: &ast::Path,
+        at_item: DefId,
+    ) -> Result<DefId> {
+        self.find_type(curmod, path, at_item)
+    }
+
     pub fn find_type(&self, curmod: DefId, path: &ast::Path, at_item: DefId) -> Result<DefId> {
         let mut resolve_mod = None;
 
@@ -956,6 +1031,13 @@ impl Definitions {
         }
 
         Ok(())
+    }
+
+    pub fn type_of_constructor(&self, ctor_def: DefId) -> DefId {
+        match &self.definition(ctor_def).inner.body {
+            DefinitionInner::UserType(_) => ctor_def,
+            _ => panic!("Not a struct or variant {}", ctor_def),
+        }
     }
 
     pub fn layout_of(
@@ -1338,6 +1420,107 @@ impl Definitions {
     pub fn align_of(&self, ty: &ty::Type) -> Option<u64> {
         self.layout_of(ty, DefId::ROOT, DefId::ROOT).align
     }
+
+    pub fn field_visibility(&self, ty: &ty::Type, fname: &ty::FieldName) -> Option<DefId> {
+        self.fields_of(ty)
+            .iter()
+            .filter(|field| &field.name == fname)
+            .map(|field| field.vis)
+            .next()
+    }
+
+    pub fn field_type(&self, ty: &ty::Type, fname: &ty::FieldName) -> Option<&ty::Type> {
+        self.fields_of(ty)
+            .iter()
+            .filter(|field| &field.name == fname)
+            .map(|field: &ty::TypeField| &field.ty)
+            .next()
+    }
+
+    pub fn fields_of(&self, ty: &ty::Type) -> &Vec<ty::TypeField> {
+        let mut borrow = self.fields_cache.borrow_mut();
+        if let Some(ty) = borrow.get(ty) {
+            unsafe { &**ty }
+        } else {
+            let fields = match ty {
+                Type::Bool
+                | Type::Int(_)
+                | Type::Float(_)
+                | Type::Char
+                | Type::Str
+                | Type::Never
+                | Type::FnPtr(_)
+                | Type::FnItem(_, _)
+                | Type::Param(_)
+                | Type::Reference(_, _, _)
+                | Type::Pointer(_, _)
+                | Type::Array(_, _) => Vec::new(),
+                Type::Tuple(elems) => {
+                    let mut fields = Vec::new();
+
+                    for (field, ty) in elems.iter().enumerate() {
+                        let tyfield = ty::TypeField {
+                            name: ty::FieldName::Field(Symbol::intern_by_val(field.to_string())),
+                            ty: ty.body.clone(),
+                            vis: DefId::ROOT,
+                        };
+                        fields.push(tyfield);
+                    }
+
+                    fields
+                }
+                Type::UserType(defid) => {
+                    let def = self.definition(*defid);
+
+                    match &def.inner.body {
+                        DefinitionInner::UserType(ty) => match ty {
+                            UserType::Incomplete(_) => unreachable!("late incomplete type"),
+                            UserType::Struct(_, ctor) => {
+                                let mut fields = Vec::new();
+                                match &ctor.ctor.body {
+                                    Constructor::Unit => {}
+                                    Constructor::Tuple(elems) => {
+                                        for (name, field) in elems.iter().enumerate() {
+                                            let name = Symbol::intern_by_val(name.to_string());
+                                            let tyfield = ty::TypeField {
+                                                name: ty::FieldName::Field(name),
+                                                ty: field.ty.clone(),
+                                                vis: field.visible_from,
+                                            };
+                                            fields.push(tyfield);
+                                        }
+                                    }
+                                    Constructor::Struct(elems) => {
+                                        for field in elems {
+                                            let name = field.name.body;
+                                            let tyfield = ty::TypeField {
+                                                name: ty::FieldName::Field(name),
+                                                ty: field.ty.body.clone(),
+                                                vis: field.visible_from,
+                                            };
+                                            fields.push(tyfield);
+                                        }
+                                    }
+                                }
+                                fields
+                            }
+                        },
+                        _ => panic!("Not a user type"),
+                    }
+                }
+                Type::IncompleteAlias(_) => unreachable!("late incomplete alias"),
+
+                Type::Inferable(_) => Vec::new(),
+                Type::InferableInt(_) => Vec::new(),
+            };
+
+            let fields = Box::into_raw(Box::new(fields));
+
+            borrow.insert(ty.clone(), fields);
+
+            unsafe { &*fields }
+        }
+    }
 }
 
 impl Definitions {
@@ -1419,12 +1602,49 @@ impl Definitions {
                 fmt.write_str(item_name)?;
                 fmt.write_str(" /*")?;
                 id.fmt(fmt)?;
-                fmt.write_str("*/{")?;
+                fmt.write_str("*/{\n")?;
                 let nested = tabs.nest();
                 nested.fmt(fmt)?;
                 fmt.write_str("/*incomplete*/\n")?;
                 tabs.fmt(fmt)?;
                 fmt.write_str("}\n")
+            }
+            DefinitionInner::UserType(UserType::Struct(kind, ctor)) => {
+                match kind {
+                    UserTypeKind::Enum => fmt.write_str("enum ")?,
+                    UserTypeKind::Struct => fmt.write_str("struct ")?,
+                    UserTypeKind::Union => fmt.write_str("union ")?,
+                }
+                fmt.write_str(item_name)?;
+                fmt.write_str(" /*")?;
+                id.fmt(fmt)?;
+                fmt.write_str("*/")?;
+                match &ctor.ctor.body {
+                    Constructor::Unit => fmt.write_str(";\n"),
+                    Constructor::Tuple(fields) => {
+                        fmt.write_str("(")?;
+                        let mut sep = "";
+
+                        for field in fields {
+                            fmt.write_str(sep)?;
+                            sep = ", ";
+
+                            field.body.fmt(fmt)?;
+                        }
+                        fmt.write_str(");\n")
+                    }
+                    Constructor::Struct(fields) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        for field in fields {
+                            nested.fmt(fmt)?;
+                            field.body.fmt(fmt)?;
+                            fmt.write_str(",\n")?;
+                        }
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                }
             }
             DefinitionInner::IncompletAlias => {
                 fmt.write_str("type ")?;
@@ -2075,6 +2295,71 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
     Ok(())
 }
 
+pub fn convert_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) -> Result<()> {
+    for item in &md.items {
+        match &item.item.body {
+            ast::ItemBody::Mod(md) => {
+                let defid = defs.find_type_in_mod(curmod, curmod, md.name, curmod)?;
+                convert_types(defs, defid, md.content.as_ref().unwrap())?;
+            }
+            ast::ItemBody::UserType(uty) => {
+                let defid = defs.find_type_in_mod(curmod, curmod, uty.name, curmod)?;
+                match &uty.body.body {
+                    ast::UserTypeBody::Struct(ty, ctor) => {
+                        let utykind = match ty.body {
+                            ast::StructKind::Union => UserTypeKind::Union,
+                            ast::StructKind::Struct => UserTypeKind::Struct,
+                        };
+
+                        let ctor = ctor.try_copy_span(|ctor| match ctor {
+                            ast::Constructor::Struct(ctor) => {
+                                let mut fields = Vec::new();
+                                for field in &ctor.fields {
+                                    fields.push(field.try_copy_span(|field| {
+                                        let attrs = Vec::new();
+                                        let visible_from =
+                                            convert_visibility(defs, curmod, field.vis.as_ref())?
+                                                .unwrap_or(curmod);
+                                        let name = field.name;
+                                        let ty = field.ty.try_copy_span(|ty| {
+                                            ty::convert_type(defs, curmod, defid, ty)
+                                        })?;
+                                        Ok(StructField {
+                                            attrs,
+                                            visible_from,
+                                            name,
+                                            ty,
+                                        })
+                                    })?);
+                                }
+
+                                Ok(Constructor::Struct(fields))
+                            }
+                            ast::Constructor::Tuple(_) => todo!(),
+                            ast::Constructor::Unit => Ok(Constructor::Unit),
+                        })?;
+
+                        defs.definition_mut(defid).inner.body = DefinitionInner::UserType(
+                            UserType::Struct(utykind, StructDefinition { ctor }),
+                        );
+                    }
+                    ast::UserTypeBody::Enum(_) => todo!("enum"),
+                }
+            }
+            ast::ItemBody::Value(_) => {}
+            ast::ItemBody::ExternCrate { craten, asname } => {}
+            ast::ItemBody::Use(_) => {}
+            ast::ItemBody::Function(_) => {}
+            ast::ItemBody::ExternBlock(_) => {}
+            ast::ItemBody::MacroRules(_) => {
+                unreachable!("macros are expanded before semantic analysis")
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn convert_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) -> Result<()> {
     for item in &md.items {
         match &item.item.body {
@@ -2355,10 +2640,11 @@ pub fn convert_crate(
     scan_modules(defs, root, md)?;
     collect_types(defs, root, md)?;
     collect_values(defs, root, md)?;
-    /* TODO: Convert types */
+    convert_types(defs, root, md)?;
     convert_values(defs, root, md)?;
 
     desugar_values(defs, root)?;
+    eprintln!("\n{}", defs);
     tycheck_values(defs, root)?;
     eprintln!("\n{}", defs);
     mir_lower(defs, root)?;
