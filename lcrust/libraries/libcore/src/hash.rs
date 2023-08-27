@@ -141,3 +141,59 @@ impl SipHasher {
         Self(siphash::SipHasher::new_with_keys(k0, k1))
     }
 }
+
+impl Hasher for SipHasher {
+    #[inline]
+    fn write(&mut self, x: &[u8]) {
+        self.0.write(x)
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0.finish()
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct SipHasher13(siphash::SipHasher<1, 3>);
+
+impl Default for SipHasher13 {
+    pub fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SipHasher13 {
+    pub const fn new() -> Self {
+        Self::new_with_keys(0, 0);
+    }
+
+    pub const fn new_with_keys(k0: u64, k1: u64) -> Self {
+        Self(siphash::SipHasher::new_with_keys(k0, k1))
+    }
+}
+
+impl Hasher for SipHasher13 {
+    #[inline]
+    fn write(&mut self, x: &[u8]) {
+        self.0.write(x)
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0.finish()
+    }
+}
+
+#[unstable(feature = "lcrust_abi_symbols")]
+pub mod lcrust {
+    #[inline]
+    #[lcrust::force_export]
+    #[lang = "lcrust_hash_str_symbol"]
+    pub fn hash_str(x: &str, k0: u64, k1: u64) -> u64 {
+        let mut hasher = super::siphash::SipHash::<2, 4>::new_with_keys(k0, k1);
+        hasher.write(x);
+
+        hasher.finish()
+    }
+}

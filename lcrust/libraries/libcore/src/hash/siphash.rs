@@ -25,8 +25,21 @@ impl<const C: usize, const D: usize> SipHasher<C, D> {
 }
 
 impl<const C: usize, const D: usize> Hasher for SipHasher<C, D> {
+    #[inline]
     fn write(&mut self, mut s: &[u8]) {
 
+        if ntail > 0{
+            let required = s.len().min(8-ntail);
+            let (l,r) = s.split_at(required);
+
+            crate::mem::transmute(&self.tail)[ntail..][..required].copy_from_slice(l);
+
+            s = r;
+            if required+ntail==8{
+                self.update(self.tail.to_le());
+                self.ntail = 0;
+            }
+        }
 
         let chunks_exact = s.chunks_exact(8);
         let remainder = chunks_exact.remainder();
@@ -38,14 +51,30 @@ impl<const C: usize, const D: usize> Hasher for SipHasher<C, D> {
 
         if !remainder.is_empty() {
             let mut bytes = [0u8; 8];
-            bytes[..remainder.len()].copy_from_slice(remainder);
-            let word = u64::from_ne_bytes(bytes);
-            self.update(word);
+            self.ntail = remainder.len();
+            bytes[..self.ntail].copy_from_slice(remainder);
+            self.tail = u64::from_ne_bytes(bytes);
+            
         }
     }
 
+    #[inline]
     fn finish(&self) -> u64 {
         let mut state = self.0;
+
+        if self.ntail >= 0{
+            let mut val = self.tail.to_le();
+
+            if cfg!(target_endian = "big"){
+                val >>= ((8-ntail)<<3);
+            }
+
+            state.update_before_rounds(word);
+            for _ in 0..C {
+                state.round();
+            }
+            state.update_after_rounds(word);
+        }
 
         state.update_before_final();
 
