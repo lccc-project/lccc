@@ -753,6 +753,13 @@ impl MCWriter for X86MCWriter {
                 MCInsn::Label(label) => {
                     sym_accepter(label.clone(), encoder.offset() as u64);
                 }
+                MCInsn::UnconditionalBranch(label) => encoder.write_insn(X86Instruction::new(
+                    X86Opcode::Jmp,
+                    vec![X86Operand::RelAddr(Address::Symbol {
+                        name: label.clone(),
+                        disp: 0,
+                    })],
+                ))?,
                 _ => todo!(),
             }
         }

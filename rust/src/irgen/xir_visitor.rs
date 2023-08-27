@@ -1293,6 +1293,18 @@ impl<'a> JumpVisitor for XirJumpVisitor<'a> {
     }
 }
 
+impl<'a> Drop for XirJumpVisitor<'a> {
+    fn drop(&mut self) {
+        self.body
+            .block
+            .items
+            .push(ir::BlockItem::Expr(ir::Expr::Branch {
+                cond: ir::BranchCondition::Always,
+                target: self.targ.unwrap().id(),
+            }))
+    }
+}
+
 pub struct XirExprVisitor<'a> {
     defs: &'a Definitions,
     names: &'a NameMap,

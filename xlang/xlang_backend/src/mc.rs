@@ -150,6 +150,8 @@ pub enum MCInsn<Loc> {
 
     /// A Label
     Label(String),
+    /// Unconditional Branch
+    UnconditionalBranch(String),
 }
 
 impl<Loc> Default for MCInsn<Loc> {
@@ -343,6 +345,7 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
 
     fn write_target(&mut self, target: u32) {
         let targ = format!("{}._T{}", self.fn_name, target);
+        self.mc_insns.push(MCInsn::Label(targ));
     }
 
     fn call_direct(&mut self, path: &xlang::ir::Path, realty: &xlang::ir::FnType) {
@@ -405,7 +408,8 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
     }
 
     fn branch_unconditional(&mut self, target: u32) {
-        todo!()
+        let targ = format!("{}._T{}", self.fn_name, target);
+        self.mc_insns.push(MCInsn::UnconditionalBranch(targ));
     }
 
     fn branch_indirect(&mut self, target: Self::Loc) {
