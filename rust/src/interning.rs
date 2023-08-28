@@ -6,6 +6,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use fxhash::FxHashMap;
 use parking_lot::RwLock;
+use xlang::abi::string::StringView;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]
@@ -120,6 +121,12 @@ interning_static_syms::gen_sym_map! {
     SelfTy: Self;
 }
 
+impl From<StringView<'_>> for Symbol {
+    fn from(x: StringView) -> Self {
+        Self::intern(&x)
+    }
+}
+
 impl From<&'_ str> for Symbol {
     fn from(x: &str) -> Self {
         Self::intern(x)
@@ -135,6 +142,12 @@ impl From<String> for Symbol {
 impl From<xlang::abi::string::String> for Symbol {
     fn from(x: xlang::abi::string::String) -> Self {
         Self::intern(&*x)
+    }
+}
+
+impl<S: AsRef<str>> From<&S> for Symbol {
+    fn from(x: &S) -> Self {
+        Self::intern(x.as_ref())
     }
 }
 
