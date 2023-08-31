@@ -14,7 +14,7 @@ impl core::fmt::Display for MacroDefId {
 }
 
 pub struct Macros {
-    nextdefid: MacroDefId,
+    nextdefid: u64,
 }
 
 pub mod decl;

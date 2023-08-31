@@ -4,7 +4,7 @@ use crate::{
     ast::{AttrInput, Literal, LiteralKind, SimplePath, SimplePathSegment},
     interning::Symbol,
     lang::LangItem,
-    lex::{self, Lexeme, LexemeClass},
+    lex::{self, punct, Lexeme, LexemeClass},
     parse::{self, do_lexeme_class, do_lexeme_group, do_literal, IntoRewinder},
     span::Span,
 };
@@ -193,13 +193,7 @@ fn do_meta_content<I: Iterator<Item = Lexeme>>(
 
                 built.push(inner);
 
-                match parse::do_lexeme_classes(
-                    &mut inner_tree,
-                    &[
-                        LexemeClass::Punctuation(Symbol::intern(",")),
-                        LexemeClass::Eof,
-                    ],
-                )? {
+                match parse::do_lexeme_classes(&mut inner_tree, &[punct!(,), LexemeClass::Eof])? {
                     (_, LexemeClass::Eof) => break,
                     _ => continue,
                 }
@@ -216,24 +210,22 @@ fn do_meta_content<I: Iterator<Item = Lexeme>>(
                 ),
             })
         }
-        Err(_) => {
-            match do_lexeme_class(&mut rewinder, LexemeClass::Punctuation(Symbol::intern("="))) {
-                Ok(_) => {
-                    rewinder.accept();
+        Err(_) => match do_lexeme_class(&mut rewinder, punct!(=)) {
+            Ok(_) => {
+                rewinder.accept();
 
-                    let lit = do_literal(tree)?;
+                let lit = do_literal(tree)?;
 
-                    Ok(Spanned {
-                        span: Span::between(idspan, lit.span),
-                        body: MetaContent::MetaKeyValue(id, lit),
-                    })
-                }
-                Err(_) => Ok(Spanned {
-                    span: idspan,
-                    body: MetaContent::MetaPath(id),
-                }),
+                Ok(Spanned {
+                    span: Span::between(idspan, lit.span),
+                    body: MetaContent::MetaKeyValue(id, lit),
+                })
             }
-        }
+            Err(_) => Ok(Spanned {
+                span: idspan,
+                body: MetaContent::MetaPath(id),
+            }),
+        },
     }
 }
 
@@ -265,13 +257,8 @@ fn into_meta_content(m: &Spanned<ast::Attr>) -> parse::Result<Spanned<MetaConten
 
                     built.push(inner);
 
-                    match parse::do_lexeme_classes(
-                        &mut inner_tree,
-                        &[
-                            LexemeClass::Punctuation(Symbol::intern(",")),
-                            LexemeClass::Eof,
-                        ],
-                    )? {
+                    match parse::do_lexeme_classes(&mut inner_tree, &[punct!(,), LexemeClass::Eof])?
+                    {
                         (_, LexemeClass::Eof) => break,
                         _ => continue,
                     }

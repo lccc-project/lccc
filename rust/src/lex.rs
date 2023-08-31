@@ -197,16 +197,208 @@ impl fmt::Debug for LexemeBody {
     }
 }
 
+macro_rules! punctuation{
+    {
+        $($tok:tt => $name:ident),* $(,)?
+    } => {
+        #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+        pub enum Punctuation{
+            $($name),*
+        }
+
+        impl Punctuation{
+            pub fn from_token(x: &str) -> Self{
+                match x{
+                    $(::core::stringify!($tok) => Self::$name,)*
+                    _ =>  panic!("Not a punctuation token: {}", x)
+                }
+            }
+
+            pub const fn symbol(&self) -> &'static str{
+                match self{
+                    $(Self::$name => ::core::stringify!($tok)),*
+                }
+            }
+        }
+
+        #[macro_export]
+        macro_rules! punct{
+            $(
+                [
+                    $tok
+                ] => {
+                    $crate::lex::LexemeClass::Punctuation($crate::lex::Punctuation::$name)
+                };
+            )*
+
+            [$tt:tt] => {
+                {::core::compile_error!(::core::concat!("Not a punctuation token: ", ::core::stringify!($tt)))}
+            };
+        }
+
+        pub use punct;
+    }
+}
+
+macro_rules! keywords{
+    {
+        $($tok:tt => $name:ident),* $(,)?
+    } => {
+        #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+        pub enum Keyword{
+            $($name),*
+        }
+
+        impl Keyword{
+            pub fn from_token(x: &str) -> Self{
+                match x{
+                    $(::core::stringify!($tok) => Self::$name,)*
+                    _ =>  panic!("Not a keyword: {}", x)
+                }
+            }
+
+            pub const fn symbol(&self) -> &'static str{
+                match self{
+                    $(Self::$name => ::core::stringify!($tok)),*
+                }
+            }
+        }
+
+        #[macro_export]
+        macro_rules! keyword{
+            $(
+                [
+                    $tok
+                ] => {
+                    $crate::lex::LexemeClass::Keyword($crate::lex::Keyword::$name)
+                };
+            )*
+
+            [$tt:tt] => {
+                {::core::compile_error!(::core::concat!("Not a keyword: ", ::core::stringify!($tt)))}
+            };
+        }
+
+        pub use keyword;
+    }
+}
+
+punctuation! {
+    + => Add,
+    += => AddAssign,
+    - => Sub,
+    -= => SubAssign,
+    * => Mul,
+    *= => MulAssign,
+    / => Div,
+    /= => DivAssign,
+    % => Rem,
+    %= => RemAssign,
+    & => BitAnd,
+    &= => BitAndAssign,
+    | => BitOr,
+    |= => BItOrAsign,
+    ^ => BitXor,
+    ^= => BitXorAssign,
+    << => RightShift,
+    <<= => RightShiftAssign,
+    >> => LeftShift,
+    >>= => LeftShiftAssign,
+    ! => Not,
+    && => BoolAnd,
+    || => BoolOr,
+    = => Assign,
+    == => Equal,
+    != => NotEqual,
+    <= => LessEqual,
+    >= => GreaterEqual,
+    < => Less,
+    > => Greater,
+    $ => Dollar,
+    # => Hash,
+    : => Colon,
+    ; => Semi,
+    ? => Question,
+    , => Comma,
+    . => Dot,
+    -> => ThinArrow,
+    => => Recursive,
+    .. => DotDot,
+    ..= => DotDotEquals,
+    ... => Cursed,
+    ~ => Tilde,
+    :: => Path,
+}
+
+keywords! {
+    abstract => Abstract,
+    as => As,
+    async => Async,
+    await => Await,
+    become => Become,
+    box => Box,
+    break => Break,
+    const => Const,
+    continue => Continue,
+    crate => Crate,
+    do => Do,
+    dyn => Dyn,
+    else => Else,
+    enum => Enum,
+    extern => Extern,
+    false => False,
+    final => Final,
+    fn => Fn,
+    for => For,
+    if => If,
+    impl => Impl,
+    in => In,
+    let => Let,
+    loop => Loop,
+    macro => Macro,
+    match => Match,
+    mod => Mod,
+    move => Move,
+    mut => Mut,
+    override => Override,
+    priv => Priv,
+    pub => Pub,
+    raw => Raw,
+    ref => Ref,
+    return => Return,
+    self => SelfPat,
+    Self => SelfTy,
+    static => Static,
+    struct => Struct,
+    super => Super,
+    trait => Trait,
+    true => True,
+    try => Try,
+    type => Type,
+    typeof => Typeof,
+    unsafe => Unsafe,
+    use => Use,
+    virtual => Virtual,
+    where => Where,
+    while => While,
+    yield => Yield,
+    yeet => Yeet,
+    union => Union,
+    macro_rules => MacroRules,
+    'static => StaticLife,
+    '_ => WildcardLife,
+}
+
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum LexemeClass {
     Character,
     Eof,
     Group(Option<GroupType>),
-    Keyword(Symbol),
+    Keyword(Keyword),
     Identifier,
     Lifetime,
     Number,
-    Punctuation(Symbol),
+    Punctuation(Punctuation),
     String,
 }
 
@@ -228,12 +420,12 @@ impl LexemeClass {
             }) => match token.ty {
                 TokenType::Character => Self::Character,
                 TokenType::Identifier(ty) => match ty {
-                    IdentifierType::Keyword => Self::Keyword(token.body),
+                    IdentifierType::Keyword => Self::Keyword(Keyword::from_token(&token.body)),
                     _ => Self::Identifier,
                 },
                 TokenType::Lifetime => Self::Lifetime,
                 TokenType::Number => Self::Number,
-                TokenType::Punctuation => Self::Punctuation(token.body),
+                TokenType::Punctuation => Self::Punctuation(Punctuation::from_token(&token.body)),
                 TokenType::String(_) => Self::String,
                 _ => unreachable!(), // Comments should be removed by now
             },
