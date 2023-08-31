@@ -4,3 +4,6 @@
 [submodule "rust-target-tuples"]
 	path = rust-target-tuples
 	url = https://github.com/chorman0773/rust-target-tuples.git
+[submodule "rtlibs"]
+	path = rtlibs
+	url = https://github.com/lccc-project/rtlibs.git
