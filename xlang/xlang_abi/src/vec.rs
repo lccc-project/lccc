@@ -415,6 +415,102 @@ impl<T, A: Allocator> Vec<T, A> {
             }
         }
     }
+
+    /// Inserts `val` into `pos`, shifting all elements after `pos` to the right
+    pub fn insert(&mut self, val: T, pos: usize) {
+        if pos > self.len {
+            panic!(
+                "Cannot insert into pos {} for vec with length {}",
+                pos, self.len
+            );
+        }
+
+        if self.len == self.cap {
+            self.reallocate(self.cap << 2);
+        }
+
+        if core::mem::size_of::<T>() != 0 {
+            let rest = self.len - pos;
+
+            let loc = unsafe { self.ptr.as_ptr().add(pos) };
+
+            unsafe {
+                core::ptr::copy(loc, loc.offset(1), rest);
+            }
+            unsafe {
+                core::ptr::write(loc, val);
+            }
+        } else {
+            core::mem::forget(val)
+        }
+
+        self.len += 1;
+    }
+
+    /// Inserts `val` into the `Vec` at a position such that the list is sorted in ascending order and returns that position.
+    ///
+    /// If an element that compares equal to `val` is already present in the list, the position relative to any such element is unspecified
+    ///
+    /// If `self` is not already properly sorted, or the `Ord` impl of `T` is not transitive and total, then the position is unspecified.
+    /// Regardless, no element already preent in the list will be reordered relative to any other element
+    pub fn insert_sorted(&mut self, val: T) -> usize
+    where
+        T: Ord,
+    {
+        self.insert_sorted_by(val, Ord::cmp)
+    }
+
+    /// Inserts `val` into the `Vec` at a position such that the list is sorted in ascending order by the keys returned by `map` and returns that position.
+    ///
+    /// If an element that compares equal to `val` is already present in the list, the position relative to any such element is unspecified
+    ///
+    /// If `self` is not already properly sorted, or the `Ord` impl of `U` is not transitive and total, then the position is unspecified.
+    /// Regardless, no element already preent in the list will be reordered relative to any other element
+    pub fn insert_sorted_by_key<U: Ord, F: Fn(&T) -> U>(&mut self, val: T, map: F) -> usize {
+        self.insert_sorted_by(val, |a, b| map(a).cmp(&map(b)))
+    }
+
+    /// Inserts `val` into the `Vec` at a position such that the list is sorted in ascending order according to `cmp` and returns that position.
+    ///
+    /// If an element that compares equal to `val` is already present in the list, the position relative to any such element is unspecified
+    ///
+    /// If `self` is not already properly sorted according to `cmp`, or if `F` is not transitive and total, then the position is unspecified.
+    /// Regardless, no element already preent in the list will be reordered relative to any other element
+    pub fn insert_sorted_by<F: Fn(&T, &T) -> core::cmp::Ordering>(
+        &mut self,
+        val: T,
+        cmp: F,
+    ) -> usize {
+        let mut begin = 0;
+        let mut end = self.len;
+
+        loop {
+            if end == begin {
+                self.insert(val, begin);
+                break end;
+            }
+            let pos = (end + begin) / 2;
+
+            if let Some(old) = self.get(pos) {
+                match cmp(old, &val) {
+                    core::cmp::Ordering::Less => {
+                        end = pos;
+                        continue;
+                    }
+                    core::cmp::Ordering::Greater => {
+                        begin = pos;
+                        continue;
+                    }
+                    core::cmp::Ordering::Equal => {
+                        self.insert(val, pos);
+                        break pos;
+                    }
+                }
+            } else {
+                panic!()
+            }
+        }
+    }
 }
 
 impl<T, A: Allocator + Default> FromIterator<T> for Vec<T, A> {
