@@ -128,6 +128,9 @@ fn generate_init(ts: &mut TokenStream, val: &str, id: u64, span: Span) {
     let mut call_params = TokenStream::new();
 
     let blob = TokenTree::Ident(Ident::new("blob", span));
+    let comma = TokenTree::Punct(Punct::new(',', Spacing::Alone));
+
+    call_params.extend([blob, comma]);
 
     let strtok = TokenTree::Literal(Literal::string(val));
     let comma = TokenTree::Punct(Punct::new(',', Spacing::Alone));
@@ -178,6 +181,7 @@ pub fn gen_sym_map(ts: TokenStream) -> TokenStream {
     while let Some(tt) = iter.next() {
         let span = tt.span();
         if let TokenTree::Ident(id) = tt {
+            keys.push(id.clone());
             match iter.peek() {
                 Some(TokenTree::Punct(p)) if p.as_char() == ':' => {
                     let spacing = p.spacing();
@@ -237,9 +241,10 @@ pub fn gen_sym_map(ts: TokenStream) -> TokenStream {
                             break;
                         }
                     };
+
+                    map.insert(id.to_string(), val);
                 }
                 _ => {
-                    keys.push(id.clone());
                     let str = id.to_string();
                     map.insert(id.to_string(), str);
                 }

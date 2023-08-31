@@ -102,23 +102,15 @@ type InitBlob = (
 
 // Do not remove
 #[allow(dead_code)]
-fn insert_static_symbol(
-    _map: &mut (
-        FxHashMap<&'static str, NonZeroU64>,
-        FxHashMap<NonZeroU64, &'static str>,
-    ),
-    x: &'static str,
-    key: NonZeroU64,
-) {
-    let mut g = MAP.write();
-
-    g.0.insert(x, key);
-    g.1.insert(key, x);
+fn insert_static_symbol(map: &mut InitBlob, x: &'static str, key: NonZeroU64) {
+    map.0.insert(x, key);
+    map.1.insert(key, x);
 }
 
 // Form: Each line is either `$id:ident;` or `$id:ident: $tt:tt;` where `$tt` is a lifetime, punctuation, identifier, or literal
 interning_static_syms::gen_sym_map! {
-    SelfTy: Self;
+    STD: std;
+    SELF_TY: Self;
 }
 
 impl From<StringView<'_>> for Symbol {
