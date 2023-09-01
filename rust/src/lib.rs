@@ -99,7 +99,7 @@ impl XLangFrontend for RustFrontend {
 impl XLangPlugin for RustFrontend {
     fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
         irgen(self.defs.as_mut().unwrap(), file, self.props.unwrap());
-        println!("{:#?}", file);
+        println!("{}", file);
         Result::Ok(())
     }
 

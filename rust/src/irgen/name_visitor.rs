@@ -323,4 +323,8 @@ impl<'a, 'b> TypeVisitor for NameTypeVisitor<'a, 'b> {
     fn visit_never(&mut self) {
         todo!()
     }
+
+    fn visit_user_type(&mut self, defid: DefId) {
+        todo!()
+    }
 }

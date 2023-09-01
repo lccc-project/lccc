@@ -415,6 +415,9 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
         ty::Type::Never => {
             visitor.visit_never();
         }
+        ty::Type::UserType(ty) => {
+            visitor.visit_user_type(*ty);
+        }
         x => todo!("{}", x),
     }
 }
@@ -765,5 +768,6 @@ def_visitors! {
         fn visit_reference(&mut self) -> Option<Box<dyn ReferenceTyVisitor + '_>>;
         fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>>;
         fn visit_never(&mut self);
+        fn visit_user_type(&mut self, defid: DefId);
     }
 }

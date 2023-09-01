@@ -704,6 +704,10 @@ impl<'a> TypeVisitor for XirTypeVisitor<'a> {
     fn visit_never(&mut self) {
         *self.ty = NEVER;
     }
+
+    fn visit_user_type(&mut self, defid: DefId) {
+        *self.ty = ir::Type::Named(into_path(self.names[&defid]));
+    }
 }
 
 pub struct XirArrayTyVisitor<'a> {
@@ -1024,14 +1028,13 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
     }
 
     fn visit_incoming_vars(&mut self, incoming: &[SsaVarId]) {
+        let mut height = 0;
         for (depth, &var) in incoming.iter().enumerate() {
             self.var_heights.insert(var, depth as u32);
+            height = depth;
         }
 
-        self.stack_height = incoming
-            .len()
-            .try_into()
-            .expect("Cannot have more than u32::MAX vars, what?");
+        self.stack_height = height as u32;
     }
 
     fn visit_stmt(&mut self) -> Option<Box<dyn StatementVisitor + '_>> {
@@ -1672,7 +1675,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
     }
 
     fn visit_var(&mut self, var: SsaVarId) {
-        let depth = (*self.stack_height) - self.var_heights[&var];
+        let depth = *self.stack_height - self.var_heights[&var];
         eprintln!(
             "Depth of {}: {} (var_height: {})",
             var, depth, self.var_heights[&var]
@@ -1732,7 +1735,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
             self.targs,
             self.var_heights,
             self.stack_height,
-            ir::Expr::MemberIndirect,
+            ir::Expr::Member,
         )))
     }
 
@@ -1746,7 +1749,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
             self.targs,
             self.var_heights,
             self.stack_height,
-            ir::Expr::Member,
+            ir::Expr::MemberIndirect,
         )))
     }
 }
@@ -2245,20 +2248,23 @@ impl<'a> StatementVisitor for XirStatementVisitor<'a> {
     }
 
     fn visit_discard(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        Some(Box::new(XirDiscardVisitor(XirExprVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        ))))
+        Some(Box::new(XirDiscardVisitor(
+            XirExprVisitor::new(
+                self.defs,
+                self.names,
+                self.properties,
+                self.deftys,
+                self.body,
+                self.targs,
+                self.var_heights,
+                self.stack_height,
+            ),
+            true,
+        )))
     }
 }
 
-pub struct XirDiscardVisitor<'a>(XirExprVisitor<'a>);
+pub struct XirDiscardVisitor<'a>(XirExprVisitor<'a>, bool);
 
 impl<'a> ExprVisitor for XirDiscardVisitor<'a> {
     fn visit_unreachable(&mut self) {
@@ -2283,7 +2289,7 @@ impl<'a> ExprVisitor for XirDiscardVisitor<'a> {
 
     fn visit_var(&mut self, var: crate::sema::mir::SsaVarId) {
         // We can honestly no-op, but destructor currently pops *something*
-        self.0.visit_var(var)
+        self.1 = false;
     }
 
     fn visit_tuple(&mut self) -> Option<Box<dyn super::visitor::TupleExprVisitor + '_>> {
@@ -2305,12 +2311,14 @@ impl<'a> ExprVisitor for XirDiscardVisitor<'a> {
 
 impl<'a> Drop for XirDiscardVisitor<'a> {
     fn drop(&mut self) {
-        *self.0.stack_height -= 1;
-        self.0
-            .body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::Pop(1)));
+        if self.1 {
+            *self.0.stack_height -= 1;
+            self.0
+                .body
+                .block
+                .items
+                .push(ir::BlockItem::Expr(ir::Expr::Pop(1)));
+        }
     }
 }
 

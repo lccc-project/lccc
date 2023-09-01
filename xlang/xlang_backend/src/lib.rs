@@ -402,7 +402,14 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             VStackValue::OpaqueScalar(_, loc2) => self.inner.move_val(loc2, loc),
             VStackValue::AggregatePieced(ty, fields) => {
                 if self.tys.type_size(&ty) != StdSome(0) {
-                    todo!("aggregate pieced {:?}", fields)
+                    let fields = fields.iter().collect::<Vec<_>>();
+
+                    if fields.len() == 1 {
+                        self.move_val(fields[0].1.clone(), loc);
+                    } else if fields.len() == 0 {
+                    } else {
+                        todo!("pieced aggregate")
+                    }
                 }
             }
             VStackValue::OpaqueAggregate(_, loc2) => self.inner.move_val(loc2, loc),
@@ -475,7 +482,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             Type::TaggedType(_, ty) => self.opaque_value(ty, loc),
             Type::Product(_) | Type::Aggregate(_) => VStackValue::OpaqueAggregate(ty.clone(), loc),
             Type::Aligned(_, ty) => self.opaque_value(ty, loc),
-            Type::Named(path) => todo!("named type {:?}", path),
+            Type::Named(_) => VStackValue::OpaqueAggregate(ty.clone(), loc),
         }
     }
 
@@ -1594,6 +1601,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         if self.diverged {
             return;
         }
+        eprintln!("{:?}", expr);
         self.print_vstack();
         match expr {
             Expr::Const(v) => self.push_value(VStackValue::Constant(v.clone())),
@@ -1726,6 +1734,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 self.push_values(values);
             }
             Expr::Pivot(n, m) => {
+                eprintln!("pivot {} {}", n, m);
                 let vals1 = self.pop_values((*m).try_into().unwrap()).unwrap();
                 let vals2 = self.pop_values((*n).try_into().unwrap()).unwrap();
                 self.push_values(vals1);
@@ -1752,6 +1761,17 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                                 LValue::Field(ty, Box::new(lval), m.clone()),
                             )),
                             _ => panic!("Cannot get member {} of {}", m, ty),
+                        }
+                    }
+                    VStackValue::OpaqueAggregate(ty, loc) => {
+                        let layout = self.tys.aggregate_layout(&ty).unwrap();
+                        let inner_ty = layout.fields.get(&m.to_string()).unwrap();
+
+                        if (inner_ty.0 == 0) && layout.fields.iter().count() == 1 {
+                            let val = self.opaque_value(&inner_ty.1, loc);
+                            self.push_value(val);
+                        } else {
+                            todo!("opaque aggregate")
                         }
                     }
                     val => panic!("cannot get member {} of {}", m, val),
