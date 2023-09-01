@@ -18,6 +18,8 @@ use xlang_abi::prelude::v1::*;
 #[doc(hidden)]
 pub mod macros;
 
+pub mod fmt;
+
 ///
 /// A component of a [`Path`], the name of a global object in xlang.
 ///
@@ -241,6 +243,16 @@ pub struct AnnotatedElement {
     pub annotations: Vec<Annotation>,
 }
 
+impl core::fmt::Display for AnnotatedElement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for anno in &self.annotations {
+            anno.fmt(f)?;
+            f.write_str(" ")?;
+        }
+        Ok(())
+    }
+}
+
 /// The visibility of a definition/declaration
 ///
 /// Matches the BNF:
@@ -266,6 +278,18 @@ pub enum Visibility {
 impl Default for Visibility {
     fn default() -> Self {
         Self::Public
+    }
+}
+
+impl core::fmt::Display for Visibility {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Visibility::Public => f.write_str("public "),
+            Visibility::Origin => f.write_str("origin "),
+            Visibility::Module => f.write_str("module "),
+            Visibility::Private => f.write_str("private "),
+            Visibility::None => Ok(()),
+        }
     }
 }
 
@@ -510,7 +534,10 @@ impl core::fmt::Display for Type {
 
                 f.write_str(")")
             }
-            Self::FnType(fnty) => fnty.fmt(f),
+            Self::FnType(fnty) => {
+                f.write_str("function")?;
+                fnty.fmt(f)
+            }
             Self::Pointer(pty) => pty.fmt(f),
             Self::Array(arrty) => {
                 f.write_str("[")?;
@@ -721,7 +748,7 @@ pub struct FnType {
 
 impl core::fmt::Display for FnType {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        f.write_str("function(")?;
+        f.write_str("(")?;
 
         let mut params = self.params.iter();
 
@@ -1512,6 +1539,25 @@ pub enum BlockItem {
     Target { num: u32, stack: Vec<StackItem> },
 }
 
+impl core::fmt::Display for BlockItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Expr(expr) => expr.fmt(f),
+            Self::Target { num, stack } => {
+                f.write_fmt(format_args!("target @{} [", num))?;
+                let mut sep = "";
+
+                for item in stack {
+                    f.write_str(sep)?;
+                    sep = ", ";
+                    item.fmt(f)?;
+                }
+                f.write_str("]")
+            }
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
 pub struct Block {
@@ -1537,4 +1583,18 @@ pub struct FunctionDeclaration {
 pub struct File {
     pub target: String,
     pub root: Scope,
+}
+
+impl core::fmt::Display for File {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut wrapper = fmt::IrFormatter::new(f);
+
+        wrapper.write_fmt(format_args!("target {};", self.target))?;
+        let tabs = fmt::Tabs::new();
+
+        for Pair(p, mem) in &self.root.members {
+            wrapper.fmt_scope_member(mem, p, tabs)?;
+        }
+        Ok(())
+    }
 }
