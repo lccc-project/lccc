@@ -218,7 +218,14 @@ pub fn gen_sym_map(ts: TokenStream) -> TokenStream {
                             }
                             val
                         }
-                        Some(TokenTree::Literal(lit)) => lit.to_string(),
+                        Some(TokenTree::Literal(lit)) => {
+                            let mut str = lit.to_string();
+
+                            if let Some(prefix) = str.strip_suffix("\"") {
+                                str = prefix.strip_prefix("\"").unwrap().to_string();
+                            }
+                            str
+                        }
                         Some(tt) => {
                             generate_compile_error(
                                 &mut output_stream,
