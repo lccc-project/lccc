@@ -1,3 +1,9 @@
 [alias]
+autobuild = ["run", "--package","autobuild","--release","--"]
+configure = "autobuild configure"
+build-lccc = "autobuild build"
 run-lccc = "run --bin lccc -- --intree"
 run-lccc-release = "run --release --bin lccc -- --intree"
+
+[env]
+AUTOBUILD_DIR={relative=true, value="autobuild"}

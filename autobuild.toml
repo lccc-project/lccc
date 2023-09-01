@@ -1,13 +1,39 @@
+[package]
+name = "lccc"
+version = "0.1"
+
 [dirs]
-lcccdir = "$libdir/lccc"
-xlangdir = "$lcccdir/xlang"
-sysrootdir = "$lcccdir/sysroot"
+lcccdir = "{libdir}/lccc"
+xlangdir = "{lcccdir}/xlang"
+sysrootdir = "{lcccdir}/sysroot"
+libsrcdir = "{lcccdir}/libsrc"
 
 [programs.RUSTC]
-type = "rustc"
-target = "$host"
+type="rustc"
+target="{host}"
 
 [programs.RUSTC_FOR_BUILD]
-type = "rustc"
-target = "$build"
+type="rustc"
+target="{build}"
 
+
+[target.groups.frontends]
+members=["rust","c"]
+
+[target.groups.backends]
+path-specifier="codegen-{}"
+members=["clever","x86","w65"]
+
+[target.xlang]
+subdir="xlang"
+
+[target.lccc]
+subdir="lccc"
+
+
+[stages.host]
+build=["xlang","frontends","backends","lccc"]
+
+
+[stages]
+order=["host"]

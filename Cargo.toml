@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "autobuild",
     "xlang",
     "xlang/xlang_abi", "xlang/xlang_abi_macro",
     "xlang/xlang_struct", "xlang/xlang_targets",
