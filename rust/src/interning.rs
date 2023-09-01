@@ -109,6 +109,7 @@ fn insert_static_symbol(map: &mut InitBlob, x: &'static str, key: NonZeroU64) {
 
 // Form: Each line is either `$id:ident;` or `$id:ident: $tt:tt;` where `$tt` is a lifetime, punctuation, identifier, or literal
 interning_static_syms::gen_sym_map! {
+    SYNTHETIC: "<synthetic symbol>";
     STD: std;
     SELF_TY: Self;
 }

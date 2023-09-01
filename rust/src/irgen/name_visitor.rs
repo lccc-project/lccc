@@ -1,6 +1,10 @@
 use crate::interning::Symbol;
+use crate::sema::UserTypeKind;
 use crate::sema::{ty::AbiTag, DefId};
 
+use self::mangler::MangleEngine;
+
+use super::visitor::ConstructorDefVisitor;
 use super::{
     visitor::{
         ArrayTyVisitor, AttrVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor,
@@ -13,6 +17,8 @@ use super::{
 use xlang::abi::{string::String, vec::Vec};
 
 use super::IntMangler;
+
+pub mod mangler;
 
 pub struct NameModVisitor<'a> {
     names: &'a mut NameMap,
@@ -32,8 +38,11 @@ impl<'a> ModVisitor for NameModVisitor<'a> {
         Some(Box::new(NameModVisitor::new(self.names, self.int_mangler)))
     }
 
-    fn visit_type(&mut self) -> Option<Box<dyn TypeDefVisitor>> {
-        todo!()
+    fn visit_type(&mut self) -> Option<Box<dyn TypeDefVisitor + '_>> {
+        Some(Box::new(NameTypeDefVisitor::new(
+            self.names,
+            self.int_mangler,
+        )))
     }
 
     fn visit_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>> {
@@ -41,6 +50,55 @@ impl<'a> ModVisitor for NameModVisitor<'a> {
             self.names,
             self.int_mangler,
         )))
+    }
+}
+
+struct NameTypeDefVisitor<'a> {
+    names: &'a mut NameMap,
+    int_mangler: &'a IntMangler,
+    defid: Option<DefId>,
+    name: Vec<Symbol>,
+}
+impl<'a> NameTypeDefVisitor<'a> {
+    fn new(names: &'a mut NameMap, int_mangler: &'a IntMangler) -> Self {
+        Self {
+            names,
+            int_mangler,
+            defid: None,
+            name: Vec::new(),
+        }
+    }
+}
+
+impl<'a> TypeDefVisitor for NameTypeDefVisitor<'a> {
+    fn visit_defid(&mut self, defid: DefId) {
+        self.defid = Some(defid);
+    }
+
+    fn visit_name(&mut self, name: &[Symbol]) {
+        self.name.extend_from_slice(name)
+    }
+
+    fn visit_attr(&mut self) -> Option<Box<dyn AttrVisitor + '_>> {
+        None
+    }
+
+    fn visit_struct(&mut self) -> Option<Box<dyn ConstructorDefVisitor + '_>> {
+        None
+    }
+
+    fn visit_kind(&mut self, kind: UserTypeKind) {}
+}
+
+impl<'a> Drop for NameTypeDefVisitor<'a> {
+    fn drop(&mut self) {
+        let mut name = std::string::String::new();
+        let mut engine = MangleEngine::new();
+        let _ = engine.mangle(&self.name, &mut name);
+
+        let sym = Symbol::intern_by_val(name);
+
+        self.names.insert(self.defid.unwrap(), sym);
     }
 }
 

@@ -946,7 +946,7 @@ pub fn do_id_with_ctor_expr<const ALLOW_CONSTRUCTOR: bool>(
                                     match do_lexeme_classes(
                                         &mut inner_tree,
                                         &[
-                                            LexemeClass::Punctuation(Punctuation::Colon),
+                                            LexemeClass::Punctuation(Punctuation::Comma),
                                             LexemeClass::Eof,
                                         ],
                                     ) {
@@ -1849,6 +1849,8 @@ pub fn do_cast_expression<const ALLOW_CONSTRUCTOR: bool>(
             Err(_) => break,
         }
     }
+
+    tree.accept();
 
     Ok(lhs)
 }

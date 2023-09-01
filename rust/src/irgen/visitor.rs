@@ -7,7 +7,7 @@ use crate::{
     sema::{
         cx,
         mir::{self, SsaVarId},
-        ty, Attr, DefId, DefinitionInner, Definitions, FunctionBody,
+        ty, Attr, Constructor, DefId, DefinitionInner, Definitions, FunctionBody, UserTypeKind,
     },
 };
 
@@ -126,7 +126,63 @@ pub fn visit_type_def<V: TypeDefVisitor>(
         return;
     }
     visit.visit_defid(def);
-    todo!()
+    visit.visit_name(names);
+
+    let def = defs.definition(def);
+    for attr in &def.attrs {
+        visit_attr(visit.visit_attr(), &attr.body);
+    }
+    match &def.inner.body {
+        DefinitionInner::UserType(ty) => match ty {
+            crate::sema::UserType::Struct(uty, def) => {
+                visit.visit_kind(*uty);
+                visit_ctor_def(visit.visit_struct(), &def.ctor, defs)
+            }
+            _ => todo!("user type"),
+        },
+        x => panic!("Invalid definition: {:?}", x),
+    }
+}
+
+pub fn visit_ctor_def<V: ConstructorDefVisitor>(
+    mut visit: V,
+    ctor: &Constructor,
+    defs: &Definitions,
+) {
+    if visit.is_none() {
+        return;
+    }
+
+    match ctor {
+        Constructor::Unit => {}
+        Constructor::Tuple(v) => {
+            for (n, field) in v.iter().enumerate() {
+                let ty = &field.ty;
+                let mut field = visit.visit_field();
+                if field.is_none() {
+                    break;
+                }
+                let name = Symbol::intern_by_val(n.to_string());
+                let name = ty::FieldName::Field(name);
+
+                field.visit_name(&name);
+                visit_type(field.visit_ty(), ty, defs);
+            }
+        }
+        Constructor::Struct(v) => {
+            for field in v {
+                let ty = &field.ty;
+                let name = ty::FieldName::Field(*field.name);
+                let mut field = visit.visit_field();
+                if field.is_none() {
+                    break;
+                }
+
+                field.visit_name(&name);
+                visit_type(field.visit_ty(), ty, defs);
+            }
+        }
+    }
 }
 
 pub fn visit_value_def<V: ValueDefVisitor>(
@@ -446,9 +502,51 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         mir::MirExpr::Retag(_, _, _) => todo!(),
 
         mir::MirExpr::Intrinsic(_) => todo!(),
-        mir::MirExpr::FieldProject(_, _) => todo!(),
-        mir::MirExpr::GetSubobject(_, _) => todo!(),
-        mir::MirExpr::Ctor(_) => todo!("ctor"),
+        mir::MirExpr::FieldProject(expr, name) => {
+            visit_field_access(visitor.visit_field_project(), expr, name, defs)
+        }
+        mir::MirExpr::GetSubobject(expr, name) => {
+            visit_field_access(visitor.visit_field_subobject(), expr, name, defs)
+        }
+        mir::MirExpr::Ctor(ctor) => visit_constructor(visitor.visit_ctor(), ctor, defs),
+    }
+}
+
+pub fn visit_field_access<V: FieldAccessVisitor>(
+    mut visitor: V,
+    base: &mir::MirExpr,
+    field_name: &ty::FieldName,
+    defs: &Definitions,
+) {
+    if visitor.is_none() {
+        return;
+    }
+    visitor.visit_field(field_name);
+    visit_expr(visitor.visit_base(), base, defs);
+}
+
+pub fn visit_constructor<V: ConstructorVisitor>(
+    mut visitor: V,
+    ctor: &mir::MirConstructor,
+    defs: &Definitions,
+) {
+    if visitor.is_none() {
+        return;
+    }
+
+    visitor.visit_ctor_def(ctor.ctor_def);
+
+    for (field, val) in &ctor.fields {
+        let mut visitor = visitor.visit_field();
+        if visitor.is_none() {
+            break;
+        }
+        visitor.visit_field(field);
+        visit_expr(visitor.visit_value(), val, defs);
+    }
+
+    if let Some(rest_init) = &ctor.rest_init {
+        visit_expr(visitor.visit_init(), rest_init, defs);
     }
 }
 
@@ -499,6 +597,19 @@ def_visitors! {
 
     pub trait TypeDefVisitor {
         fn visit_defid(&mut self, defid: DefId);
+        fn visit_name(&mut self, name: &[Symbol]);
+        fn visit_attr(&mut self) -> Option<Box<dyn AttrVisitor + '_>>;
+        fn visit_kind(&mut self, kind: UserTypeKind);
+        fn visit_struct(&mut self) -> Option<Box<dyn ConstructorDefVisitor + '_>>;
+    }
+
+    pub trait ConstructorDefVisitor{
+        fn visit_field(&mut self) -> Option<Box<dyn FieldVisitor + '_>>;
+    }
+
+    pub trait FieldVisitor{
+        fn visit_name(&mut self, name: &ty::FieldName);
+        fn visit_ty(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
     }
 
     pub trait AttrVisitor {
@@ -536,6 +647,9 @@ def_visitors! {
         fn visit_const_string(&mut self) -> Option<Box<dyn ConstStringVisitor + '_>>;
         fn visit_var(&mut self, var: mir::SsaVarId);
         fn visit_tuple(&mut self) -> Option<Box<dyn TupleExprVisitor + '_>>;
+        fn visit_ctor(&mut self) -> Option<Box<dyn ConstructorVisitor + '_>>;
+        fn visit_field_subobject(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>>;
+        fn visit_field_project(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>>;
     }
 
     pub trait TupleExprVisitor{
@@ -559,7 +673,18 @@ def_visitors! {
 
     pub trait FieldAccessVisitor {
         fn visit_base(&mut self) -> Option<Box<dyn ExprVisitor +'_>>;
-        fn visit_field(&mut self, field_name: ty::FieldName);
+        fn visit_field(&mut self, field_name: &ty::FieldName);
+    }
+
+    pub trait ConstructorVisitor {
+        fn visit_ctor_def(&mut self, defid: DefId);
+        fn visit_field(&mut self) -> Option<Box<dyn FieldInitVisitor + '_>>;
+        fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+    }
+
+    pub trait FieldInitVisitor {
+        fn visit_field(&mut self, field_name: &ty::FieldName);
+        fn visit_value(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
     }
 
     pub trait StatementVisitor {

@@ -1,16 +1,20 @@
-use std::convert::TryInto;
+use core::convert::TryInto;
+use core::fmt::Write;
 
-use xlang::abi::{
-    self,
-    option::{None as XLangNone, Some as XLangSome},
-};
-use xlang::ir::{self, ScalarTypeKind, ScalarValidity};
-use xlang::prelude::v1::HashMap;
+use xlang::ir::{self, AggregateCtor, ScalarTypeKind, ScalarValidity};
+use xlang::prelude::v1::{HashMap, Pair};
 use xlang::targets::properties::TargetProperties;
 use xlang::{abi::string::String as XLangString, abi::vec::Vec, vec};
+use xlang::{
+    abi::{
+        self,
+        option::{None as XLangNone, Some as XLangSome},
+    },
+    ir::PathComponent,
+};
 
-use crate::sema::ty;
 use crate::sema::{cx, mir::SsaVarId};
+use crate::sema::{ty, UserTypeKind};
 use crate::{
     interning::Symbol,
     sema::{mir::BasicBlockId, ty::AbiTag, DefId},
@@ -19,12 +23,19 @@ use crate::{lex::StringType, sema::Definitions};
 
 use super::visitor::{
     ArrayTyVisitor, AttrVisitor, BasicBlockVisitor, CallVisitor, CastVisitor, ConstIntVisitor,
-    ConstStringVisitor, ExprVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor,
+    ConstStringVisitor, ConstructorDefVisitor, ConstructorVisitor, ExprVisitor, FieldAccessVisitor,
+    FieldInitVisitor, FieldVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor,
     IntTyVisitor, JumpVisitor, LetStatementVisitor, ModVisitor, PointerTyVisitor,
     ReferenceTyVisitor, StatementVisitor, TailcallVisitor, TerminatorVisitor, TupleExprVisitor,
     TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
 };
 use super::NameMap;
+
+pub fn into_path(name: Symbol) -> ir::Path {
+    ir::Path {
+        components: vec![PathComponent::Text((&name).into())],
+    }
+}
 
 pub struct XirModVisitor<'a> {
     defs: &'a Definitions,
@@ -56,11 +67,17 @@ impl<'a> ModVisitor for XirModVisitor<'a> {
     fn visit_defid(&mut self, _: DefId) {}
 
     fn visit_submodule(&mut self) -> Option<Box<dyn ModVisitor + '_>> {
-        todo!()
+        Some(Box::new(self))
     }
 
     fn visit_type(&mut self) -> Option<Box<dyn TypeDefVisitor + '_>> {
-        todo!()
+        Some(Box::new(XirTypeDefVisitor::new(
+            self.defs,
+            self.names,
+            self.deftys,
+            &mut self.file.root,
+            self.properties,
+        )))
     }
 
     fn visit_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>> {
@@ -101,11 +118,16 @@ impl<'a> ModVisitor for XirModTypeGatherer<'a> {
     fn visit_defid(&mut self, _: DefId) {}
 
     fn visit_submodule(&mut self) -> Option<Box<dyn ModVisitor + '_>> {
-        todo!()
+        Some(Box::new(XirModTypeGatherer::new(
+            self.defs,
+            self.names,
+            self.deftys,
+            self.properties,
+        )))
     }
 
     fn visit_type(&mut self) -> Option<Box<dyn TypeDefVisitor + '_>> {
-        todo!()
+        None
     }
 
     fn visit_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>> {
@@ -159,7 +181,7 @@ impl<'a> ValueDefVisitor for XirValueDefTypeGatherer<'a> {
     fn visit_function(&mut self) -> Option<Box<dyn FunctionDefVisitor + '_>> {
         let defid = self.defid.expect("Must have already visited the defid");
 
-        let mut ty = self.deftys.get_or_insert_mut(
+        let ty = self.deftys.get_or_insert_mut(
             defid,
             ir::Type::FnType(xlang::abi::boxed::Box::new(ir::FnType::default())),
         );
@@ -284,6 +306,192 @@ impl<'a> FunctionDefVisitor for XirFunctionTypeGatherer<'a> {
 
     fn visit_fnbody(&mut self) -> Option<Box<dyn FunctionBodyVisitor + '_>> {
         None
+    }
+}
+
+pub struct XirTypeDefVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    scopedef: &'a mut ir::Scope,
+    properties: &'a TargetProperties<'a>,
+    defid: DefId,
+    kind: ir::AggregateKind,
+}
+
+impl<'a> XirTypeDefVisitor<'a> {
+    pub fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        scopedef: &'a mut ir::Scope,
+        properties: &'a TargetProperties<'a>,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            deftys,
+            scopedef,
+            properties,
+            defid: DefId::ROOT,
+            kind: ir::AggregateKind::Struct,
+        }
+    }
+}
+
+impl<'a> TypeDefVisitor for XirTypeDefVisitor<'a> {
+    fn visit_defid(&mut self, defid: DefId) {
+        self.defid = defid;
+    }
+
+    fn visit_name(&mut self, name: &[Symbol]) {}
+
+    fn visit_attr(&mut self) -> Option<Box<dyn AttrVisitor + '_>> {
+        None
+    }
+
+    fn visit_struct(&mut self) -> Option<Box<dyn ConstructorDefVisitor + '_>> {
+        let def = self.scopedef.members.get_or_insert_mut(
+            into_path(self.names[&self.defid]),
+            ir::ScopeMember {
+                vis: ir::Visibility::Public,
+                member_decl: ir::MemberDeclaration::AggregateDefinition(ir::AggregateDefinition {
+                    annotations: Default::default(),
+                    kind: self.kind,
+                    fields: Vec::new(),
+                }),
+                ..Default::default()
+            },
+        );
+
+        match &mut def.member_decl {
+            ir::MemberDeclaration::AggregateDefinition(def) => {
+                Some(Box::new(XirStructDefVisitor::new(
+                    self.defs,
+                    self.names,
+                    self.deftys,
+                    self.properties,
+                    self.defid,
+                    def,
+                )))
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_kind(&mut self, kind: UserTypeKind) {
+        if let UserTypeKind::Union = kind {
+            self.kind = ir::AggregateKind::Union;
+        }
+    }
+}
+
+pub struct XirStructDefVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    properties: &'a TargetProperties<'a>,
+    def: &'a mut ir::AggregateDefinition,
+    defid: DefId,
+    fields: Vec<(Option<ty::FieldName>, ir::Type)>,
+}
+
+impl<'a> XirStructDefVisitor<'a> {
+    pub fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        properties: &'a TargetProperties<'a>,
+        defid: DefId,
+        def: &'a mut ir::AggregateDefinition,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            deftys,
+            properties,
+            def,
+            defid,
+            fields: Vec::new(),
+        }
+    }
+}
+
+impl<'a> Drop for XirStructDefVisitor<'a> {
+    fn drop(&mut self) {
+        let layout = self
+            .defs
+            .layout_of(&ty::Type::UserType(self.defid), self.defid, self.defid);
+        let mut fields = Vec::new();
+        let mut offsets = Vec::new();
+
+        for (field, ty) in core::mem::take(&mut self.fields) {
+            let field = field.unwrap();
+            let name = xlang::abi::format!("{}", field);
+
+            let pos = offsets.insert_sorted(layout.field_offsets[&field]);
+            fields.insert(Pair(name, ty), pos);
+        }
+
+        self.def.fields = fields;
+    }
+}
+
+impl<'a> ConstructorDefVisitor for XirStructDefVisitor<'a> {
+    fn visit_field(&mut self) -> Option<Box<dyn FieldVisitor + '_>> {
+        let (name, ty) = self.fields.push_mut((None, ir::Type::Null));
+        Some(Box::new(XirConstructorDefFieldVisitor::new(
+            self.defs,
+            self.names,
+            self.deftys,
+            self.properties,
+            name,
+            ty,
+        )))
+    }
+}
+
+pub struct XirConstructorDefFieldVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    properties: &'a TargetProperties<'a>,
+    name: &'a mut Option<ty::FieldName>,
+    ty: &'a mut ir::Type,
+}
+
+impl<'a> XirConstructorDefFieldVisitor<'a> {
+    pub fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        properties: &'a TargetProperties<'a>,
+        name: &'a mut Option<ty::FieldName>,
+        ty: &'a mut ir::Type,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            deftys,
+            properties,
+            name,
+            ty,
+        }
+    }
+}
+
+impl<'a> FieldVisitor for XirConstructorDefFieldVisitor<'a> {
+    fn visit_name(&mut self, name: &ty::FieldName) {
+        *self.name = Some(*name);
+    }
+
+    fn visit_ty(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+        Some(Box::new(XirTypeVisitor::new(
+            self.defs,
+            self.names,
+            self.ty,
+            self.properties,
+        )))
     }
 }
 
@@ -982,6 +1190,18 @@ impl<'a> ExprVisitor for XirReturnVisitor<'a> {
     fn visit_tuple(&mut self) -> Option<Box<dyn super::visitor::TupleExprVisitor + '_>> {
         self.0.visit_tuple()
     }
+
+    fn visit_ctor(&mut self) -> Option<Box<dyn ConstructorVisitor + '_>> {
+        self.0.visit_ctor()
+    }
+
+    fn visit_field_subobject(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
+        self.0.visit_field_subobject()
+    }
+
+    fn visit_field_project(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
+        self.0.visit_field_project()
+    }
 }
 
 impl<'a> Drop for XirReturnVisitor<'a> {
@@ -1488,6 +1708,256 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
             self.stack_height,
         )))
     }
+
+    fn visit_ctor(&mut self) -> Option<Box<dyn ConstructorVisitor + '_>> {
+        Some(Box::new(XirConstructorExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.stack_height,
+        )))
+    }
+
+    fn visit_field_subobject(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
+        Some(Box::new(XirFieldAccessVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.stack_height,
+            ir::Expr::MemberIndirect,
+        )))
+    }
+
+    fn visit_field_project(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
+        Some(Box::new(XirFieldAccessVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.stack_height,
+            ir::Expr::Member,
+        )))
+    }
+}
+
+pub struct XirConstructorExprVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    body: &'a mut ir::FunctionBody,
+    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    stack_height: &'a mut u32,
+    fields: Vec<XLangString>,
+    ctor_ty: DefId,
+}
+
+impl<'a> XirConstructorExprVisitor<'a> {
+    pub fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        body: &'a mut ir::FunctionBody,
+        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        stack_height: &'a mut u32,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            body,
+            targs,
+            var_heights,
+            stack_height,
+            fields: Vec::new(),
+            ctor_ty: DefId::ROOT,
+        }
+    }
+}
+
+impl<'a> Drop for XirConstructorExprVisitor<'a> {
+    fn drop(&mut self) {
+        *self.stack_height -= self.fields.len() as u32;
+        let ty = ir::Type::Named(into_path(self.names[&self.ctor_ty]));
+
+        self.body
+            .block
+            .items
+            .push(ir::BlockItem::Expr(ir::Expr::Aggregate(
+                ir::AggregateCtor {
+                    ty,
+                    fields: core::mem::take(&mut self.fields),
+                },
+            )));
+    }
+}
+
+impl<'a> ConstructorVisitor for XirConstructorExprVisitor<'a> {
+    fn visit_ctor_def(&mut self, defid: DefId) {
+        self.ctor_ty = defid;
+        // TODO: Handle Enum constructors, which need to be nested.
+    }
+
+    fn visit_field(&mut self) -> Option<Box<dyn FieldInitVisitor + '_>> {
+        let field = self.fields.push_mut(XLangString::new());
+        Some(Box::new(XirConstructorFieldVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.stack_height,
+            field,
+        )))
+    }
+
+    fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        todo!()
+    }
+}
+
+pub struct XirConstructorFieldVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    body: &'a mut ir::FunctionBody,
+    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    stack_height: &'a mut u32,
+    field: &'a mut XLangString,
+}
+
+impl<'a> XirConstructorFieldVisitor<'a> {
+    pub fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        body: &'a mut ir::FunctionBody,
+        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        stack_height: &'a mut u32,
+        field: &'a mut XLangString,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            body,
+            targs,
+            var_heights,
+            stack_height,
+            field,
+        }
+    }
+}
+
+impl<'a> FieldInitVisitor for XirConstructorFieldVisitor<'a> {
+    fn visit_field(&mut self, field_name: &ty::FieldName) {
+        let _ = write!(self.field, "{}", field_name);
+    }
+
+    fn visit_value(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        Some(Box::new(XirExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.stack_height,
+        )))
+    }
+}
+
+pub struct XirFieldAccessVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    body: &'a mut ir::FunctionBody,
+    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    stack_height: &'a mut u32,
+    ctor: fn(XLangString) -> ir::Expr,
+    field: XLangString,
+}
+
+impl<'a> XirFieldAccessVisitor<'a> {
+    pub fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        body: &'a mut ir::FunctionBody,
+        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        stack_height: &'a mut u32,
+        ctor: fn(XLangString) -> ir::Expr,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            body,
+            targs,
+            var_heights,
+            stack_height,
+            ctor,
+            field: XLangString::new(),
+        }
+    }
+}
+impl<'a> Drop for XirFieldAccessVisitor<'a> {
+    fn drop(&mut self) {
+        *self.stack_height -= 1;
+        self.body
+            .block
+            .items
+            .push(ir::BlockItem::Expr((self.ctor)(core::mem::take(
+                &mut self.field,
+            ))))
+    }
+}
+
+impl<'a> FieldAccessVisitor for XirFieldAccessVisitor<'a> {
+    fn visit_base(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        Some(Box::new(XirExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.stack_height,
+        )))
+    }
+    fn visit_field(&mut self, field_name: &ty::FieldName) {
+        // TODO: variant fields
+        let _ = write!(self.field, "{}", field_name);
+    }
 }
 
 pub struct XirTupleExprVisitor<'a> {
@@ -1818,6 +2288,18 @@ impl<'a> ExprVisitor for XirDiscardVisitor<'a> {
 
     fn visit_tuple(&mut self) -> Option<Box<dyn super::visitor::TupleExprVisitor + '_>> {
         self.0.visit_tuple()
+    }
+
+    fn visit_ctor(&mut self) -> Option<Box<dyn ConstructorVisitor + '_>> {
+        self.0.visit_ctor()
+    }
+
+    fn visit_field_subobject(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
+        self.0.visit_field_subobject()
+    }
+
+    fn visit_field_project(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
+        self.0.visit_field_project()
     }
 }
 

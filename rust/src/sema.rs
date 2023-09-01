@@ -1046,9 +1046,11 @@ impl Definitions {
         at_item: DefId,
         containing_item: DefId,
     ) -> &ty::TypeLayout {
-        if let Some(inner) = self.layout_cache.borrow().get(ty) {
+        let cache = self.layout_cache.borrow();
+        if let Some(inner) = cache.get(ty) {
             unsafe { &**inner }
         } else {
+            drop(cache);
             let layout = match ty {
                 Type::Bool => ty::TypeLayout {
                     size: Some(1),
@@ -1234,7 +1236,129 @@ impl Definitions {
                     mutable_fields: HashSet::new(),
                     niches: None,
                 },
-                Type::UserType(_) => todo!("user type"),
+                Type::UserType(def) => {
+                    let def = self.definition(*def);
+
+                    let repr = def
+                        .attrs
+                        .iter()
+                        .find_map(|f| match &f.body {
+                            Attr::Repr(x) => Some(x.body),
+                            _ => None,
+                        })
+                        .unwrap_or(attr::Repr::RUST);
+
+                    match &def.inner.body {
+                        DefinitionInner::UserType(UserType::Struct(kind, def)) => {
+                            let mut field_layouts = Vec::new();
+
+                            match &def.ctor.body {
+                                Constructor::Unit => {}
+                                Constructor::Tuple(fields) => {
+                                    for (n, field) in fields.iter().enumerate() {
+                                        let name = Symbol::intern_by_val(format!("{}", n));
+                                        let name = ty::FieldName::Field(name);
+                                        let layout =
+                                            self.layout_of(&field.ty, at_item, containing_item);
+                                        field_layouts.push((name, layout));
+                                    }
+                                }
+                                Constructor::Struct(fields) => {
+                                    for field in fields {
+                                        let name = ty::FieldName::Field(field.name.body);
+                                        let layout =
+                                            self.layout_of(&field.ty, at_item, containing_item);
+                                        field_layouts.push((name, layout));
+                                    }
+                                }
+                            }
+
+                            match &repr.base.body {
+                                attr::ReprBase::Rust | attr::ReprBase::LCRust(None | Some(0)) => {
+                                    field_layouts
+                                        .sort_by_key(|(_, layout)| layout.align.unwrap_or(!0));
+                                }
+                                _ => {}
+                            }
+
+                            let mut field_offsets = HashMap::new();
+                            let mut field_niches = Vec::new();
+
+                            let mut curr_offset = 0;
+                            let mut is_unaligned = false;
+                            let mut is_unsized = false;
+                            let mut wide_ptr_metadata = None;
+                            let max_interfield_align = match repr.alignment {
+                                Some(Spanned {
+                                    body: attr::AlignmentSpec::Packed(a),
+                                    ..
+                                }) => a,
+                                _ => !0,
+                            };
+                            let mut struct_align = match repr.alignment {
+                                Some(Spanned {
+                                    body: attr::AlignmentSpec::Aligned(a),
+                                    ..
+                                }) => a,
+                                _ => 1,
+                            };
+
+                            for (field, layout) in field_layouts {
+                                let align = if let Some(align) = layout.align {
+                                    align.min(max_interfield_align)
+                                } else {
+                                    wide_ptr_metadata.clone_from(&layout.wide_ptr_metadata);
+                                    is_unaligned = true;
+                                    is_unsized = true;
+                                    break;
+                                };
+
+                                struct_align = align.max(struct_align);
+
+                                curr_offset = (curr_offset + (align - 1)) & (align - 1);
+
+                                field_offsets.insert(field, curr_offset);
+
+                                if let Some(niches) = layout.niches.clone() {
+                                    field_niches.push((field, niches))
+                                }
+
+                                if let Some(size) = layout.size {
+                                    curr_offset += size;
+                                } else {
+                                    wide_ptr_metadata.clone_from(&layout.wide_ptr_metadata);
+                                    is_unsized = false;
+                                    break;
+                                }
+                            }
+
+                            let niches = if field_niches.is_empty() {
+                                None
+                            } else {
+                                Some(ty::Niches::Aggregate(field_niches))
+                            };
+
+                            let size = if is_unsized { None } else { Some(curr_offset) };
+
+                            let align = if is_unaligned {
+                                None
+                            } else {
+                                Some(struct_align)
+                            };
+
+                            ty::TypeLayout {
+                                size,
+                                align,
+                                enum_discriminant: None,
+                                wide_ptr_metadata,
+                                field_offsets,
+                                mutable_fields: HashSet::new(),
+                                niches,
+                            }
+                        }
+                        _ => panic!("Bad type ref"),
+                    }
+                }
                 Type::IncompleteAlias(_) => todo!("incomplete alias held too late"),
                 Type::Pointer(_, pte) => {
                     let layout = self.layout_of(pte, at_item, containing_item);

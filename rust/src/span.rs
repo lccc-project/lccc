@@ -5,7 +5,10 @@ use core::{
 
 use core::ops::{Deref, DerefMut};
 
-use crate::{helpers::FetchIncrement, interning::Symbol};
+use crate::{
+    helpers::FetchIncrement,
+    interning::{self, Symbol},
+};
 
 #[derive(Clone, Copy, Hash, Eq, Default)]
 pub struct Pos {
@@ -75,8 +78,13 @@ impl Span {
         Self::new_simple(Pos::default(), Pos::default(), Symbol::default())
     }
 
-    pub fn synthetic() -> Self {
-        Self::new_simple(Pos::synthetic(), Pos::synthetic(), Symbol::default())
+    pub const fn synthetic() -> Self {
+        Self {
+            start: Pos::synthetic(),
+            end: Pos::synthetic(),
+            file: interning::SYNTHETIC,
+            hygiene: HygieneRef::synthetic(),
+        }
     }
 
     pub fn is_empty(self) -> bool {
@@ -178,6 +186,10 @@ impl Default for HygieneRef {
 }
 
 impl HygieneRef {
+    pub const fn synthetic() -> Self {
+        Self::new(0xFFFFFFFFFFFF, HygieneMode::DefSite, RustEdition::Rust2021)
+    }
+
     pub const fn simple_with_edition(edition: RustEdition) -> Self {
         Self::new(0, HygieneMode::CallSite, edition)
     }

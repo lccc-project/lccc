@@ -34,6 +34,16 @@ pub struct Repr {
     pub alignment: Option<Spanned<AlignmentSpec>>,
 }
 
+impl Repr {
+    pub const RUST: Repr = Repr {
+        base: Spanned {
+            body: ReprBase::Rust,
+            span: Span::synthetic(),
+        },
+        alignment: None,
+    };
+}
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ReprBase {
     Transparent,
