@@ -426,7 +426,11 @@ impl<T, A: Allocator> Vec<T, A> {
         }
 
         if self.len == self.cap {
-            self.reallocate(self.cap << 2);
+            if self.cap == 0 {
+                self.reallocate(16)
+            } else {
+                self.reallocate(self.cap << 2)
+            }
         }
 
         if core::mem::size_of::<T>() != 0 {
