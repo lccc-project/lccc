@@ -2451,8 +2451,8 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
 
     /// Writes the body of a function to the codegen
     pub fn write_function_body(&mut self, body: &FunctionBody) {
-        let fnty = self.fnty.clone();
-        self.locals.reserve(fnty.params.len());
+        let fnty: FnType = self.fnty.clone();
+        self.vstack.reserve(fnty.params.len());
 
         for (i, ty) in fnty.params.iter().enumerate() {
             let loc =
@@ -2460,7 +2460,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     .get_callconv()
                     .find_param(&fnty, &fnty, u32::try_from(i).unwrap(), true);
             let val = self.opaque_value(ty, loc);
-            self.locals.push((val, ty.clone()));
+            self.push_value(val);
         }
 
         self.locals.reserve(body.locals.len());

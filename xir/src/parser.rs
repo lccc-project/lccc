@@ -467,16 +467,6 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
                     let mut variadic = false;
                     loop {
                         match peekable.peek() {
-                            Some(Token::Ident(id)) if id.starts_with('_') => {
-                                // do validation later
-                                peekable.next();
-                                match peekable.next().unwrap() {
-                                    Token::Sigil(':') => {}
-                                    tok => panic!("Unexpected token {:?}", tok),
-                                }
-
-                                params.push(parse_type(&mut peekable).unwrap());
-                            }
                             Some(Token::Sigil('.')) => {
                                 peekable.next();
                                 match peekable.next().unwrap() {

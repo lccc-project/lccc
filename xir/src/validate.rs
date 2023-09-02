@@ -164,14 +164,17 @@ fn tycheck_function(x: &mut FunctionDeclaration, tys: &TypeState) {
         body: XLangSome(body),
     } = x
     {
-        let local_tys = ty
+        let local_tys = body.locals.clone();
+        let incoming_stack = ty
             .params
             .iter()
-            .cloned()
-            .chain(body.locals.iter().cloned())
+            .map(|t| StackItem {
+                ty: t.clone(),
+                kind: StackValueKind::RValue,
+            })
             .collect::<Vec<_>>();
         let mut ret = None;
-        if !tycheck_block(&mut body.block, tys, &local_tys, &mut ret) {
+        if !tycheck_block(&mut body.block, tys, &local_tys, &mut ret, incoming_stack) {
             let ret = ret.unwrap_or_default();
             if ty.ret == Type::Void {
                 assert_eq!(ret.len(), 0);
@@ -1237,9 +1240,8 @@ fn tycheck_block(
     tys: &TypeState,
     locals: &[Type],
     exit: &mut Option<Vec<StackItem>>,
+    mut vstack: Vec<StackItem>,
 ) -> bool {
-    let mut vstack = Vec::new();
-
     let mut targets = HashMap::<_, _>::new();
     let mut diverged = false;
 
