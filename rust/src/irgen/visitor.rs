@@ -501,9 +501,7 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         mir::MirExpr::Tuple(vals) => visit_tuple_expr(visitor.visit_tuple(), vals, defs),
         mir::MirExpr::Read(_) => todo!(),
         mir::MirExpr::Alloca(_, _, _) => todo!(),
-
         mir::MirExpr::Retag(_, _, _) => todo!(),
-
         mir::MirExpr::Intrinsic(_) => todo!(),
         mir::MirExpr::FieldProject(expr, name) => {
             visit_field_access(visitor.visit_field_project(), expr, name, defs)
@@ -512,6 +510,7 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
             visit_field_access(visitor.visit_field_subobject(), expr, name, defs)
         }
         mir::MirExpr::Ctor(ctor) => visit_constructor(visitor.visit_ctor(), ctor, defs),
+        mir::MirExpr::BinaryExpr(_, _, _) => todo!(),
     }
 }
 

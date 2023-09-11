@@ -111,6 +111,11 @@ pub enum MirExpr {
     FieldProject(Box<Spanned<MirExpr>>, FieldName),
     GetSubobject(Box<Spanned<MirExpr>>, FieldName),
     Ctor(MirConstructor),
+    BinaryExpr(
+        Spanned<BinaryOp>,
+        Box<Spanned<MirExpr>>,
+        Box<Spanned<MirExpr>>,
+    ),
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
@@ -192,6 +197,9 @@ impl core::fmt::Display for MirExpr {
                 f.write_fmt(format_args!("({}).{}", base.body, field))
             }
             MirExpr::Ctor(ctor) => ctor.fmt(f),
+            MirExpr::BinaryExpr(op, lhs, rhs) => {
+                f.write_fmt(format_args!("{} {} {}", lhs.body, op.body, rhs.body))
+            }
         }
     }
 }
@@ -511,7 +519,8 @@ impl<'a> MirConverter<'a> {
             | ThirExprInner::Tuple(_)
             | ThirExprInner::Read(_)
             | ThirExprInner::Unreachable
-            | ThirExprInner::Ctor(_) => todo!(),
+            | ThirExprInner::Ctor(_)
+            | ThirExprInner::BinaryExpr(_, _, _) => todo!(),
         }
     }
 
@@ -653,7 +662,8 @@ impl<'a> MirConverter<'a> {
             | ThirExprInner::ConstString(_, _)
             | ThirExprInner::Cast(_, _)
             | ThirExprInner::Tuple(_)
-            | ThirExprInner::Ctor(_) => unreachable!("cannot access"),
+            | ThirExprInner::Ctor(_)
+            | ThirExprInner::BinaryExpr(_, _, _) => unreachable!("cannot access"),
         }
     }
 
@@ -785,6 +795,14 @@ impl<'a> MirConverter<'a> {
                     }),
                 })
             }
+            super::tyck::ThirExprInner::BinaryExpr(op, lhs, rhs) => Ok(Spanned {
+                span,
+                body: MirExpr::BinaryExpr(
+                    op,
+                    Box::new(self.lower_expr(*lhs)?),
+                    Box::new(self.lower_expr(*rhs)?),
+                ),
+            }),
             super::tyck::ThirExprInner::MemberAccess(_, _) => {
                 panic!("only top level rvalues get lowered by `lower_expr`")
             }
@@ -936,7 +954,8 @@ impl<'a> MirConverter<'a> {
             | ThirExprInner::ConstString(_, _)
             | ThirExprInner::Cast(_, _)
             | ThirExprInner::Tuple(_)
-            | ThirExprInner::Ctor(_) => unreachable!(),
+            | ThirExprInner::Ctor(_)
+            | ThirExprInner::BinaryExpr(_, _, _) => unreachable!(),
         }
 
         Ok(())

@@ -7,6 +7,7 @@ use crate::{
     span::Span,
 };
 
+pub use super::hir::BinaryOp;
 pub use super::ty::Type;
 
 use super::{
@@ -81,6 +82,11 @@ pub enum ThirExprInner {
     Tuple(Vec<Spanned<ThirExpr>>),
     Ctor(Spanned<ThirConstructor>),
     MemberAccess(Box<Spanned<ThirExpr>>, Spanned<FieldName>),
+    BinaryExpr(
+        Spanned<BinaryOp>,
+        Box<Spanned<ThirExpr>>,
+        Box<Spanned<ThirExpr>>,
+    ),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -164,6 +170,9 @@ impl core::fmt::Display for ThirExprInner {
                 base.body.fmt(f)?;
                 f.write_str(").")?;
                 field.body.fmt(f)
+            }
+            ThirExprInner::BinaryExpr(op, lhs, rhs) => {
+                write!(f, "{} {} {}", lhs.body, op.body, rhs.body)
             }
         }
     }
@@ -454,7 +463,7 @@ impl<'a> ThirConverter<'a> {
                 let inner = ThirExprInner::ConstInt(ity, val);
 
                 let ty = ity.map(|ity| ity.body).map(Type::Int).unwrap_or_else(|| {
-                    let id = InferId(self.next_infer);
+                    let id = InferId(self.next_infer.fetch_increment());
                     Type::InferableInt(id)
                 });
 
@@ -645,6 +654,21 @@ impl<'a> ThirConverter<'a> {
                 let inner = ThirExprInner::MemberAccess(Box::new(val), name.clone());
 
                 Ok(ThirExpr { ty, cat, inner })
+            }
+            hir::HirExpr::BinaryExpr(op, lhs, rhs) => {
+                let lhs = self.convert_rvalue(lhs)?;
+                let rhs = self.convert_rvalue(rhs)?;
+                let ty = match (&lhs.ty, &rhs.ty) {
+                    (Type::Int(x), y) if Type::Int(*x) == *y => Type::Int(*x),
+                    (Type::Float(x), y) if Type::Float(*x) == *y => Type::Float(*x),
+                    (Type::InferableInt(x), Type::InferableInt(_)) => Type::InferableInt(*x),
+                    _ => Type::Inferable(InferId(self.next_infer.fetch_increment())),
+                };
+                Ok(ThirExpr {
+                    ty,
+                    cat: ValueCategory::Rvalue,
+                    inner: ThirExprInner::BinaryExpr(*op, Box::new(lhs), Box::new(rhs)),
+                })
             }
         })
     }
@@ -997,6 +1021,9 @@ impl<'a> Inferer<'a> {
             }
             ThirExprInner::MemberAccess(expr, field) => {
                 status &= self.unify_single_expr(expr)?;
+            }
+            ThirExprInner::BinaryExpr(op, lhs, rhs) => {
+                status &= self.unify_types(&mut lhs.ty, &mut rhs.ty)?;
             }
         }
 

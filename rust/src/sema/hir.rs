@@ -9,6 +9,8 @@ use super::ty::{self, FieldName, IntType, Type};
 
 use super::{DefId, Spanned};
 
+pub use crate::ast::BinaryOp;
+
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub struct HirVarId(u32);
 
@@ -66,6 +68,11 @@ pub enum HirExpr {
     Tuple(Vec<Spanned<HirExpr>>),
     Constructor(Spanned<HirConstructor>),
     FieldAccess(Box<Spanned<HirExpr>>, Spanned<FieldName>),
+    BinaryExpr(
+        Spanned<BinaryOp>,
+        Box<Spanned<HirExpr>>,
+        Box<Spanned<HirExpr>>,
+    ),
 }
 
 impl core::fmt::Display for HirExpr {
@@ -111,6 +118,9 @@ impl core::fmt::Display for HirExpr {
                 expr.body.fmt(f)?;
                 f.write_str(".")?;
                 name.body.fmt(f)
+            }
+            HirExpr::BinaryExpr(op, lhs, rhs) => {
+                write!(f, "{} {} {}", lhs.body, op.body, rhs.body)
             }
         }
     }
@@ -331,7 +341,13 @@ impl<'a> HirLowerer<'a> {
                     todo!("complicated path")
                 }
             }
-            ast::Expr::BinaryExpr(_, _, _) => todo!("binary expr"),
+            ast::Expr::BinaryExpr(op, lhs, rhs) => expr.try_copy_span(|_| {
+                Ok(HirExpr::BinaryExpr(
+                    *op,
+                    Box::new(self.desugar_expr(lhs)?),
+                    Box::new(self.desugar_expr(rhs)?),
+                ))
+            }),
             ast::Expr::UnaryExpr(_, _) => todo!("unary expr"),
             ast::Expr::RangeFull => todo!("range"),
             ast::Expr::FunctionCall {
