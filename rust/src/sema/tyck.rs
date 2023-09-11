@@ -928,6 +928,18 @@ impl<'a> Inferer<'a> {
                 }
                 Ok(CyclicOperationStatus::Incomplete)
             }
+            (ty @ Type::Int(_), Type::InferableInt(r)) => {
+                let r = *r;
+                if let Some(gty) = self.inference_set.get_mut(&r) {
+                    let mut gty = core::mem::replace(ty, Type::Never);
+
+                    self.unify_types(&mut gty, ty)?;
+                    self.inference_set.insert(r, gty);
+                } else {
+                    self.inference_set.insert(r, ty.clone());
+                }
+                Ok(CyclicOperationStatus::Incomplete)
+            }
             (ty, Type::Inferable(r)) => {
                 let r = *r;
 
@@ -1022,8 +1034,11 @@ impl<'a> Inferer<'a> {
             ThirExprInner::MemberAccess(expr, field) => {
                 status &= self.unify_single_expr(expr)?;
             }
-            ThirExprInner::BinaryExpr(op, lhs, rhs) => {
+            ThirExprInner::BinaryExpr(_, lhs, rhs) => {
+                status &= self.unify_types(&mut left.ty, &mut lhs.ty)?;
                 status &= self.unify_types(&mut lhs.ty, &mut rhs.ty)?;
+                status &= self.unify_single_expr(lhs)?;
+                status &= self.unify_single_expr(rhs)?;
             }
         }
 
@@ -1208,6 +1223,10 @@ impl<'a> Inferer<'a> {
                 }
             }
             ThirExprInner::MemberAccess(base, _) => status &= self.propagate_expr(base)?,
+            ThirExprInner::BinaryExpr(_, lhs, rhs) => {
+                status &= self.propagate_expr(lhs)?;
+                status &= self.propagate_expr(rhs)?;
+            }
             _ => {}
         }
         Ok(status)
