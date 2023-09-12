@@ -120,7 +120,7 @@ impl core::fmt::Display for HirExpr {
                 name.body.fmt(f)
             }
             HirExpr::BinaryExpr(op, lhs, rhs) => {
-                write!(f, "{} {} {}", lhs.body, op.body, rhs.body)
+                write!(f, "({} {} {})", lhs.body, op.body, rhs.body)
             }
         }
     }

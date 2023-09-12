@@ -13,7 +13,7 @@ use xlang::{
     ir::PathComponent,
 };
 
-use crate::sema::{cx, mir::SsaVarId};
+use crate::sema::{cx, hir::BinaryOp, mir::SsaVarId};
 use crate::sema::{ty, UserTypeKind};
 use crate::{
     interning::Symbol,
@@ -22,12 +22,12 @@ use crate::{
 use crate::{lex::StringType, sema::Definitions};
 
 use super::visitor::{
-    ArrayTyVisitor, AttrVisitor, BasicBlockVisitor, CallVisitor, CastVisitor, ConstIntVisitor,
-    ConstStringVisitor, ConstructorDefVisitor, ConstructorVisitor, ExprVisitor, FieldAccessVisitor,
-    FieldInitVisitor, FieldVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor,
-    IntTyVisitor, JumpVisitor, LetStatementVisitor, ModVisitor, PointerTyVisitor,
-    ReferenceTyVisitor, StatementVisitor, TailcallVisitor, TerminatorVisitor, TupleExprVisitor,
-    TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
+    ArrayTyVisitor, AttrVisitor, BasicBlockVisitor, BinaryExprVisitor, CallVisitor, CastVisitor,
+    ConstIntVisitor, ConstStringVisitor, ConstructorDefVisitor, ConstructorVisitor, ExprVisitor,
+    FieldAccessVisitor, FieldInitVisitor, FieldVisitor, FunctionBodyVisitor, FunctionDefVisitor,
+    FunctionTyVisitor, IntTyVisitor, JumpVisitor, LetStatementVisitor, ModVisitor,
+    PointerTyVisitor, ReferenceTyVisitor, StatementVisitor, TailcallVisitor, TerminatorVisitor,
+    TupleExprVisitor, TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
 };
 use super::NameMap;
 
@@ -1205,6 +1205,10 @@ impl<'a> ExprVisitor for XirReturnVisitor<'a> {
     fn visit_field_project(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
         self.0.visit_field_project()
     }
+
+    fn visit_binary_expr(&mut self) -> Option<Box<dyn BinaryExprVisitor + '_>> {
+        self.0.visit_binary_expr()
+    }
 }
 
 impl<'a> Drop for XirReturnVisitor<'a> {
@@ -1752,6 +1756,19 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
             ir::Expr::MemberIndirect,
         )))
     }
+
+    fn visit_binary_expr(&mut self) -> Option<Box<dyn BinaryExprVisitor + '_>> {
+        Some(Box::new(XirBinaryExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.stack_height,
+        )))
+    }
 }
 
 pub struct XirConstructorExprVisitor<'a> {
@@ -1932,6 +1949,7 @@ impl<'a> XirFieldAccessVisitor<'a> {
         }
     }
 }
+
 impl<'a> Drop for XirFieldAccessVisitor<'a> {
     fn drop(&mut self) {
         *self.stack_height -= 1;
@@ -1960,6 +1978,124 @@ impl<'a> FieldAccessVisitor for XirFieldAccessVisitor<'a> {
     fn visit_field(&mut self, field_name: &ty::FieldName) {
         // TODO: variant fields
         let _ = write!(self.field, "{}", field_name);
+    }
+}
+
+pub struct XirBinaryExprVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    body: &'a mut ir::FunctionBody,
+    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    stack_height: &'a mut u32,
+    op: Option<BinaryOp>,
+}
+
+impl<'a> XirBinaryExprVisitor<'a> {
+    fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        body: &'a mut ir::FunctionBody,
+        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        stack_height: &'a mut u32,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            body,
+            targs,
+            var_heights,
+            stack_height,
+            op: None,
+        }
+    }
+}
+
+impl<'a> BinaryExprVisitor for XirBinaryExprVisitor<'a> {
+    fn visit_op(&mut self, op: BinaryOp) {
+        self.op = Some(op);
+    }
+
+    fn visit_lhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        Some(Box::new(XirExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.stack_height,
+        )))
+    }
+
+    fn visit_rhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        Some(Box::new(XirExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.stack_height,
+        )))
+    }
+}
+
+impl<'a> Drop for XirBinaryExprVisitor<'a> {
+    fn drop(&mut self) {
+        match self.op {
+            Some(BinaryOp::Add) => {
+                *self.stack_height -= 1;
+                self.body
+                    .block
+                    .items
+                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
+                        ir::BinaryOp::Add,
+                        ir::OverflowBehaviour::Wrap,
+                    )))
+            }
+            Some(BinaryOp::Sub) => {
+                *self.stack_height -= 1;
+                self.body
+                    .block
+                    .items
+                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
+                        ir::BinaryOp::Sub,
+                        ir::OverflowBehaviour::Wrap,
+                    )))
+            }
+            Some(BinaryOp::Mul) => {
+                *self.stack_height -= 1;
+                self.body
+                    .block
+                    .items
+                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
+                        ir::BinaryOp::Mul,
+                        ir::OverflowBehaviour::Wrap,
+                    )))
+            }
+            Some(BinaryOp::Div) => {
+                *self.stack_height -= 1;
+                self.body
+                    .block
+                    .items
+                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
+                        ir::BinaryOp::Div,
+                        ir::OverflowBehaviour::Wrap,
+                    )))
+            }
+            None => panic!("operator wasn't set"),
+            x => todo!("{:?}", x),
+        }
     }
 }
 
@@ -2306,6 +2442,10 @@ impl<'a> ExprVisitor for XirDiscardVisitor<'a> {
 
     fn visit_field_project(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
         self.0.visit_field_project()
+    }
+
+    fn visit_binary_expr(&mut self) -> Option<Box<dyn BinaryExprVisitor + '_>> {
+        self.0.visit_binary_expr()
     }
 }
 

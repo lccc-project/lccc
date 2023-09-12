@@ -172,7 +172,7 @@ impl core::fmt::Display for ThirExprInner {
                 field.body.fmt(f)
             }
             ThirExprInner::BinaryExpr(op, lhs, rhs) => {
-                write!(f, "{} {} {}", lhs.body, op.body, rhs.body)
+                write!(f, "({} {} {})", lhs.body, op.body, rhs.body)
             }
         }
     }

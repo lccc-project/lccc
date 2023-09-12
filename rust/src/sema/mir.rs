@@ -1,7 +1,7 @@
 use xlang::abi::{collection::HashMap, pair::Pair};
 
 use crate::{
-    ast::{BinaryOp, Mutability, StringType},
+    ast::{Mutability, StringType},
     helpers::{FetchIncrement, TabPrinter},
     interning::Symbol,
     lex::Error,
@@ -15,6 +15,8 @@ use super::{
     tyck::{Movability, ThirExpr, ThirExprInner, ThirStatement},
     DefId, Definitions, SemaHint, Spanned,
 };
+
+pub use crate::sema::hir::BinaryOp;
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub enum BorrowckErrorCategory {
@@ -198,7 +200,7 @@ impl core::fmt::Display for MirExpr {
             }
             MirExpr::Ctor(ctor) => ctor.fmt(f),
             MirExpr::BinaryExpr(op, lhs, rhs) => {
-                f.write_fmt(format_args!("{} {} {}", lhs.body, op.body, rhs.body))
+                f.write_fmt(format_args!("({} {} {})", lhs.body, op.body, rhs.body))
             }
         }
     }
