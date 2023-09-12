@@ -1857,37 +1857,37 @@ pub fn do_cast_expression<const ALLOW_CONSTRUCTOR: bool>(
 
 fn binary_ops(x: Punctuation) -> (BinaryOp, u32, u32) {
     match LexemeClass::Punctuation(x) {
-        punct!(=) => (BinaryOp::Assign, 0, 1),
-        punct!(+=) => (BinaryOp::AddAssign, 0, 1),
-        punct!(-=) => (BinaryOp::SubAssign, 0, 1),
-        punct!(*=) => (BinaryOp::MulAssign, 0, 1),
-        punct!(/=) => (BinaryOp::DivAssign, 0, 1),
-        punct!(%=) => (BinaryOp::RemAssign, 0, 1),
-        punct!(&=) => (BinaryOp::BitAndAssign, 0, 1),
-        punct!(|=) => (BinaryOp::BitOrAssign, 0, 1),
-        punct!(^=) => (BinaryOp::BitXorAssign, 0, 1),
-        punct!(<<=) => (BinaryOp::LeftShiftAssign, 0, 1),
-        punct!(>>=) => (BinaryOp::RightShiftAssign, 0, 1),
-        punct!(..) => (BinaryOp::Range, 2, 3),
-        punct!(..=) => (BinaryOp::RangeInclusive, 2, 3),
-        punct!(||) => (BinaryOp::BoolOr, 5, 4),
-        punct!(&&) => (BinaryOp::BoolAndAssign, 5, 4),
-        punct!(==) => (BinaryOp::Equal, 6, 7),
-        punct!(!=) => (BinaryOp::NotEqual, 6, 7),
-        punct!(<) => (BinaryOp::Less, 6, 7),
-        punct!(>) => (BinaryOp::Greater, 6, 7),
-        punct!(<=) => (BinaryOp::LessEqual, 6, 7),
-        punct!(>=) => (BinaryOp::GreaterEqual, 6, 7),
-        punct!(|) => (BinaryOp::BitOr, 9, 8),
-        punct!(^) => (BinaryOp::BitXor, 11, 10),
-        punct!(&) => (BinaryOp::BitAnd, 13, 12),
-        punct!(<<) => (BinaryOp::LeftShift, 15, 14),
-        punct!(>>) => (BinaryOp::RightShift, 15, 14),
-        punct!(+) => (BinaryOp::Add, 17, 16),
-        punct!(-) => (BinaryOp::Sub, 17, 16),
-        punct!(*) => (BinaryOp::Mul, 19, 18),
-        punct!(/) => (BinaryOp::Div, 19, 18),
-        punct!(%) => (BinaryOp::Rem, 19, 18),
+        punct!(=) => (BinaryOp::Assign, 1, 0),
+        punct!(+=) => (BinaryOp::AddAssign, 1, 0),
+        punct!(-=) => (BinaryOp::SubAssign, 1, 0),
+        punct!(*=) => (BinaryOp::MulAssign, 1, 0),
+        punct!(/=) => (BinaryOp::DivAssign, 1, 0),
+        punct!(%=) => (BinaryOp::RemAssign, 1, 0),
+        punct!(&=) => (BinaryOp::BitAndAssign, 1, 0),
+        punct!(|=) => (BinaryOp::BitOrAssign, 1, 0),
+        punct!(^=) => (BinaryOp::BitXorAssign, 1, 0),
+        punct!(<<=) => (BinaryOp::LeftShiftAssign, 1, 0),
+        punct!(>>=) => (BinaryOp::RightShiftAssign, 1, 0),
+        punct!(..) => (BinaryOp::Range, 2, 3), // TODO: special-case to require parens
+        punct!(..=) => (BinaryOp::RangeInclusive, 2, 3), // TODO: ^
+        punct!(||) => (BinaryOp::BoolOr, 4, 5),
+        punct!(&&) => (BinaryOp::BoolAnd, 6, 7),
+        punct!(==) => (BinaryOp::Equal, 8, 9), // TODO: special-case to require parens
+        punct!(!=) => (BinaryOp::NotEqual, 8, 9), // TODO: ^
+        punct!(<) => (BinaryOp::Less, 8, 9),   // TODO: ^
+        punct!(>) => (BinaryOp::Greater, 8, 9), // TODO: ^
+        punct!(<=) => (BinaryOp::LessEqual, 8, 9), // TODO: ^
+        punct!(>=) => (BinaryOp::GreaterEqual, 8, 9), // TODO: ^
+        punct!(|) => (BinaryOp::BitOr, 10, 11),
+        punct!(^) => (BinaryOp::BitXor, 12, 13),
+        punct!(&) => (BinaryOp::BitAnd, 14, 15),
+        punct!(<<) => (BinaryOp::LeftShift, 16, 17),
+        punct!(>>) => (BinaryOp::RightShift, 16, 17),
+        punct!(+) => (BinaryOp::Add, 18, 19),
+        punct!(-) => (BinaryOp::Sub, 18, 19),
+        punct!(*) => (BinaryOp::Mul, 20, 21),
+        punct!(/) => (BinaryOp::Div, 20, 21),
+        punct!(%) => (BinaryOp::Rem, 20, 21),
         x => panic!("Not a binary operator {:?}", x),
     }
 }
