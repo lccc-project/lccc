@@ -9,35 +9,35 @@ pub enum LangItemTarget {
     ImplBlock,
 }
 
-macro_rules! define_lang_items{
+macro_rules! define_lang_items {
     {
         $($enum:ident: $name:ident @ $target:ident),* $(,)?
     } => {
         #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
         #[repr(u32)]
-        pub enum LangItem{
+        pub enum LangItem {
             $(
                 $enum
             ),*
         }
 
-        impl LangItem{
-            pub fn from_name(x: &str) -> Option<Self>{
-                match x{
-                    $(::core::stringify!($name) => Some(Self:: $enum),)*
+        impl LangItem {
+            pub fn from_name(x: &str) -> Option<Self> {
+                match x {
+                    $(::core::stringify!($name) => Some(Self::$enum),)*
                     _ => None
                 }
             }
 
-            pub const fn name(&self) -> &'static str{
-                match self{
-                    $(Self:: $enum => ::core::stringify!($name)),*
+            pub const fn name(&self) -> &'static str {
+                match self {
+                    $(Self::$enum => ::core::stringify!($name)),*
                 }
             }
 
-            pub const fn target(&self) -> LangItemTarget{
-                match self{
-                    $(Self:: $enum => LangItemTarget:: $target),*
+            pub const fn target(&self) -> LangItemTarget {
+                match self {
+                    $(Self::$enum => LangItemTarget::$target),*
                 }
             }
         }
@@ -60,11 +60,11 @@ define_lang_items! {
     Tuple: tuple @ ImplBlock,
     Slice: slice @ ImplBlock,
     Array: array @ ImplBlock,
-    I8: i8 @ ImplBlock,
-    I16: i16 @ ImplBlock,
-    I32: i32 @ ImplBlock,
-    I64: i64 @ ImplBlock,
-    I128: i128 @ ImplBlock,
+    I8:    i8 @ ImplBlock,
+    I16:   i16 @ ImplBlock,
+    I32:   i32 @ ImplBlock,
+    I64:   i64 @ ImplBlock,
+    I128:  i128 @ ImplBlock,
     ISize: isize @ ImplBlock,
     U8:    u8 @ ImplBlock,
     U16:   u16 @ ImplBlock,

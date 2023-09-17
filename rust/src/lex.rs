@@ -204,32 +204,32 @@ impl fmt::Debug for LexemeBody {
     }
 }
 
-macro_rules! punctuation{
+macro_rules! punctuation {
     {
         $($tok:tt => $name:ident),* $(,)?
     } => {
         #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-        pub enum Punctuation{
+        pub enum Punctuation {
             $($name),*
         }
 
         impl Punctuation{
-            pub fn from_token(x: &str) -> Self{
-                match x{
+            pub fn from_token(x: &str) -> Self {
+                match x {
                     $(::core::stringify!($tok) => Self::$name,)*
-                    _ =>  panic!("Not a punctuation token: {}", x)
+                    _ => panic!("Not a punctuation token: {}", x),
                 }
             }
 
-            pub const fn symbol(&self) -> &'static str{
-                match self{
+            pub const fn symbol(&self) -> &'static str {
+                match self {
                     $(Self::$name => ::core::stringify!($tok)),*
                 }
             }
         }
 
         #[macro_export]
-        macro_rules! punct{
+        macro_rules! punct {
             $(
                 [
                     $tok
@@ -239,7 +239,9 @@ macro_rules! punctuation{
             )*
 
             [$tt:tt] => {
-                {::core::compile_error!(::core::concat!("Not a punctuation token: ", ::core::stringify!($tt)))}
+                {
+                    ::core::compile_error!(::core::concat!("Not a punctuation token: ", ::core::stringify!($tt)))
+                }
             };
         }
 
@@ -252,27 +254,27 @@ macro_rules! keywords{
         $($tok:tt => $name:ident),* $(,)?
     } => {
         #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-        pub enum Keyword{
+        pub enum Keyword {
             $($name),*
         }
 
-        impl Keyword{
-            pub fn from_token(x: &str) -> Self{
-                match x{
+        impl Keyword {
+            pub fn from_token(x: &str) -> Self {
+                match x {
                     $(::core::stringify!($tok) => Self::$name,)*
-                    _ =>  panic!("Not a keyword: {}", x)
+                    _ => panic!("Not a keyword: {}", x),
                 }
             }
 
-            pub const fn symbol(&self) -> &'static str{
-                match self{
+            pub const fn symbol(&self) -> &'static str {
+                match self {
                     $(Self::$name => ::core::stringify!($tok)),*
                 }
             }
         }
 
         #[macro_export]
-        macro_rules! keyword{
+        macro_rules! keyword {
             $(
                 [
                     $tok
@@ -282,7 +284,9 @@ macro_rules! keywords{
             )*
 
             [$tt:tt] => {
-                {::core::compile_error!(::core::concat!("Not a keyword: ", ::core::stringify!($tt)))}
+                {
+                    ::core::compile_error!(::core::concat!("Not a keyword: ", ::core::stringify!($tt)))
+                }
             };
         }
 

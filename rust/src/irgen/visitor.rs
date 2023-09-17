@@ -11,7 +11,7 @@ use crate::{
     },
 };
 
-macro_rules! def_visitors{
+macro_rules! def_visitors {
     (
         $(
             $vis:vis trait $trait:ident {
@@ -614,11 +614,11 @@ def_visitors! {
         fn visit_struct(&mut self) -> Option<Box<dyn ConstructorDefVisitor + '_>>;
     }
 
-    pub trait ConstructorDefVisitor{
+    pub trait ConstructorDefVisitor {
         fn visit_field(&mut self) -> Option<Box<dyn FieldVisitor + '_>>;
     }
 
-    pub trait FieldVisitor{
+    pub trait FieldVisitor {
         fn visit_name(&mut self, name: &ty::FieldName);
         fn visit_ty(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
     }
@@ -664,16 +664,16 @@ def_visitors! {
         fn visit_binary_expr(&mut self) -> Option<Box<dyn BinaryExprVisitor + '_>>;
     }
 
-    pub trait TupleExprVisitor{
+    pub trait TupleExprVisitor {
         fn visit_elem(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
     }
 
-    pub trait ConstIntVisitor{
+    pub trait ConstIntVisitor {
         fn visit_intty(&mut self) -> Option<Box<dyn IntTyVisitor + '_>>;
         fn visit_value(&mut self, val: u128);
     }
 
-    pub trait CastVisitor{
+    pub trait CastVisitor {
         fn visit_inner(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
         fn visit_cast_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
     }

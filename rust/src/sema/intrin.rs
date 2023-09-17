@@ -82,7 +82,7 @@ macro_rules! parse_cvarargs {
     };
 }
 
-macro_rules! parse_type_inner{
+macro_rules! parse_type_inner {
     (($inner:ty)) => {
         parse_type!($inner)
     };
@@ -111,7 +111,7 @@ macro_rules! parse_type_inner{
         Type::Never
     };
     ($(unsafe $(@$_vol:tt)?)? $(extern $lit:literal)? fn($($param:ty),* $(, $(... $(@$_vol2:tt)?)?)?) -> $ret:ty) => {
-        Type::FnType{
+        Type::FnType {
             safety: spanned!(parse_safety!($(unsafe $($_vol)?)?)),
             constness: spanned!(Mutability::Const),
             asyncness: spanned!(ty::AsyncType::Normal),
@@ -123,15 +123,15 @@ macro_rules! parse_type_inner{
     };
 }
 
-macro_rules! parse_type{
+macro_rules! parse_type {
     ($inner:ty) => {
         {::defile::defile!({parse_type_inner!(@$inner)})}
     };
 }
 
-macro_rules! parse_intrinsic_signature{
+macro_rules! parse_intrinsic_signature {
     ($(unsafe $(@$_vol:tt)?)? fn($($param:ty),* $(,)?) -> $retty:ty) => {
-        ty::FnType{
+        ty::FnType {
             safety: spanned!(parse_safety!($(unsafe $($_vol)?)?)),
             constness: spanned!(Mutability::Const),
             asyncness: spanned!(ty::AsyncType::Normal),
@@ -152,44 +152,44 @@ macro_rules! parse_intrinsic_generic {
     };
 }
 
-macro_rules! parse_intrinsic_generics{
+macro_rules! parse_intrinsic_generics {
     ($($param:ident),* $(,)?) => {
         &[$(parse_intrinsic_generic!($param)),*]
     }
 }
 
-macro_rules! def_intrinsics{
+macro_rules! def_intrinsics {
     {
         $($(unsafe $(@$_vol:tt)?)? intrin $name:ident $(<$($gen_param:ident),* $(,)?>)?($($param:ty),* $(,)?) -> $retty:ty;)*
     } => {
         #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
         #[allow(non_camel_case_types)]
-        pub enum IntrinsicDef{
+        pub enum IntrinsicDef {
             $($name),*
         }
 
-        impl IntrinsicDef{
-            pub fn from_name(s: &str) -> Option<IntrinsicDef>{
+        impl IntrinsicDef {
+            pub fn from_name(s: &str) -> Option<IntrinsicDef> {
                 match s{
                     $(::core::stringify!($name) => Some(Self::$name),)*
                     _ => None
                 }
             }
 
-            pub fn name(&self) -> &'static str{
+            pub fn name(&self) -> &'static str {
                 match self{
                     $(Self::$name => ::core::stringify!($name)),*
                 }
             }
 
-            pub fn signature(&self) -> ty::FnType{
+            pub fn signature(&self) -> ty::FnType {
                 match self{
                     $(Self::$name => parse_intrinsic_signature!($(unsafe $($_vol)?)? fn($($param),*) -> $retty)),*
                 }
             }
 
             #[allow(dead_code)]
-            pub fn generic_params(&self) -> &'static [IntrinsicGenericParam]{
+            pub fn generic_params(&self) -> &'static [IntrinsicGenericParam] {
                 match self{
                     $(Self::$name => parse_intrinsic_generics!($($($gen_param),*)?)),*
                 }
@@ -218,7 +218,6 @@ def_intrinsics! {
     unsafe intrin __builtin_read_volatile<type>(*const Var<0>) -> Var<0>;
     unsafe intrin __builtin_write<type>(*mut Var<0>,Var<0>) -> ();
     unsafe intrin __builtin_write_volatile<type>(*mut Var<0>, Var<0>) -> ();
-
 
     intrin __builtin_size_of<type>() -> usize;
     intrin __builtin_align_of<type>() -> usize;
