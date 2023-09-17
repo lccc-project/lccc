@@ -84,6 +84,7 @@ impl XLangFrontend for RustFrontend {
 
         let mut lexed = lex(&mut file, &*filename).unwrap();
         filter_comments(&mut lexed);
+        println!("{:?}", lexed);
         let parsed = do_mod(&mut lexed.into_iter().peekmore()).unwrap();
         let mut defs = Definitions::new(props);
         convert_crate(&mut defs, &parsed, CrateType::Bin).unwrap();

@@ -60,9 +60,16 @@ pub enum StringType {
     RawByte(u8), // see above
 }
 
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum CharType {
+    Default,
+    Byte,
+}
+
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum TokenType {
-    Character,
+    Character(CharType),
     CommentMulti,
     CommentSingle,
     Identifier(IdentifierType),
@@ -418,7 +425,7 @@ impl LexemeClass {
                 body: LexemeBody::Token(token),
                 ..
             }) => match token.ty {
-                TokenType::Character => Self::Character,
+                TokenType::Character(_) => Self::Character,
                 TokenType::Identifier(ty) => match ty {
                     IdentifierType::Keyword => Self::Keyword(Keyword::from_token(&token.body)),
                     _ => Self::Identifier,
@@ -508,6 +515,68 @@ impl IsEof for Option<&Lexeme> {
                 ..
             })
         )
+    }
+}
+
+fn do_char(file: &mut Speekable<impl Iterator<Item = char>>, start: Pos) -> Result<Lexeme> {
+    match file.snext() {
+        Some((pos, '\\')) => {
+            let mut token = String::from("'\\");
+            let mut end = pos;
+            loop {
+                match file.snext() {
+                    Some((pos, '\'')) => {
+                        token.push('\'');
+                        end = pos;
+                        break;
+                    }
+                    Some((pos, '\n')) => Err(Error::UnrecognizedChar('\n', pos))?,
+                    Some((pos, x)) => {
+                        token.push(x);
+                        end = pos;
+                    }
+                    None => Err(Error::UnexpectedEof(end))?,
+                }
+            }
+            Ok(Token::new(TokenType::Character(CharType::Default), token)
+                .with_span(Span::new_simple(start, end, file.file_name())))
+        }
+        Some((pos, x)) => {
+            let mut token = String::from("'");
+            token.push(x);
+            match file.speek() {
+                Some(&(end, '\'')) => {
+                    file.next();
+                    token.push('\'');
+                    Ok(Token::new(TokenType::Character(CharType::Default), token)
+                        .with_span(Span::new_simple(start, end, file.file_name())))
+                }
+                Some((_, x)) if !x.is_xid_continue() => {
+                    Ok(Token::new(TokenType::Lifetime, token)
+                        .with_span(Span::new_simple(start, pos, file.file_name())))
+                }
+                None => {
+                    Ok(Token::new(TokenType::Lifetime, token)
+                        .with_span(Span::new_simple(start, pos, file.file_name())))
+                }
+                Some(&(pos, x)) => {
+                    file.next();
+                    token.push(x);
+                    let mut end = pos;
+                    while let Some(&(pos, x)) = file.speek() {
+                        if !x.is_xid_continue() {
+                            break;
+                        }
+                        file.next();
+                        end = pos;
+                        token.push(x);
+                    }
+                    Ok(Token::new(TokenType::Lifetime, token)
+                        .with_span(Span::new_simple(start, end, file.file_name())))
+                }
+            }
+        }
+        None => Err(Error::UnexpectedEof(start))?,
     }
 }
 
@@ -609,6 +678,19 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                             let (str, end) = do_str(file)?;
                             break Ok(Token::new(TokenType::String(StringType::Byte), id + &str)
                                 .with_span(Span::new_simple(start, end, file.file_name())));
+                        } else if file.peek() == Some(&'\'') {
+                            file.next();
+                            let mut result = do_char(file, start)?;
+                            match &mut result.body {
+                                LexemeBody::Token(Token { ty: TokenType::Character(ref mut char_ty), .. }) => {
+                                    *char_ty = CharType::Byte;
+                                },
+                                LexemeBody::Token(_) => {
+                                    todo!("validation error for \"byte lifetimes\"");
+                                }
+                                _ => unreachable!("do_char returns a Token always"),
+                            }
+                            break Ok(result);
                         }
                     }
                     break Ok(Token::new(ty, id).with_span(Span::new_simple(
@@ -659,65 +741,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                         file.file_name(),
                     )));
                 }
-                '\'' => match file.snext() {
-                    Some((pos, '\\')) => {
-                        let mut token = String::from("'\\");
-                        let mut end = pos;
-                        loop {
-                            match file.snext() {
-                                Some((pos, '\'')) => {
-                                    token.push('\'');
-                                    end = pos;
-                                    break;
-                                }
-                                Some((pos, '\n')) => Err(Error::UnrecognizedChar('\n', pos))?,
-                                Some((pos, x)) => {
-                                    token.push(x);
-                                    end = pos;
-                                }
-                                None => Err(Error::UnexpectedEof(end))?,
-                            }
-                        }
-                        break Ok(Token::new(TokenType::Character, token)
-                            .with_span(Span::new_simple(start, end, file.file_name())));
-                    }
-                    Some((pos, x)) => {
-                        let mut token = String::from("'");
-                        token.push(x);
-                        match file.speek() {
-                            Some(&(end, '\'')) => {
-                                file.next();
-                                token.push('\'');
-                                break Ok(Token::new(TokenType::Character, token)
-                                    .with_span(Span::new_simple(start, end, file.file_name())));
-                            }
-                            Some((_, x)) if !x.is_xid_continue() => {
-                                break Ok(Token::new(TokenType::Lifetime, token)
-                                    .with_span(Span::new_simple(start, pos, file.file_name())));
-                            }
-                            None => {
-                                break Ok(Token::new(TokenType::Lifetime, token)
-                                    .with_span(Span::new_simple(start, pos, file.file_name())));
-                            }
-                            Some(&(pos, x)) => {
-                                file.next();
-                                token.push(x);
-                                let mut end = pos;
-                                while let Some(&(pos, x)) = file.speek() {
-                                    if !x.is_xid_continue() {
-                                        break;
-                                    }
-                                    file.next();
-                                    end = pos;
-                                    token.push(x);
-                                }
-                                break Ok(Token::new(TokenType::Lifetime, token)
-                                    .with_span(Span::new_simple(start, end, file.file_name())));
-                            }
-                        }
-                    }
-                    None => Err(Error::UnexpectedEof(start))?,
-                },
+                '\'' => break do_char(file, start),
                 '.' => {
                     let (punct, end) = match file.speek() {
                         Some(&(end, '.')) => {
@@ -914,10 +938,10 @@ pub fn do_lexeme_str(token: &str, span: Span) -> Result<Lexeme> {
             // Lifetime or char
             match iter.next() {
                 Some(x) if x.is_xid_start() || x == '_' => match iter.next() {
-                    Some('\'') => TokenType::Character,
+                    Some('\'') => TokenType::Character(CharType::Default),
                     _ => TokenType::Lifetime,
                 },
-                _ => TokenType::Character,
+                _ => TokenType::Character(CharType::Default),
             }
         }
         Some(x) if x.is_xid_start() || x.is_xid_continue() => {
