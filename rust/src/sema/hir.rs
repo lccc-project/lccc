@@ -73,6 +73,8 @@ pub enum HirExpr {
         Box<Spanned<HirExpr>>,
         Box<Spanned<HirExpr>>,
     ),
+    Array(Vec<Spanned<HirExpr>>),
+    Index(Box<Spanned<HirExpr>>, Box<Spanned<HirExpr>>),
 }
 
 impl core::fmt::Display for HirExpr {
@@ -121,6 +123,18 @@ impl core::fmt::Display for HirExpr {
             }
             HirExpr::BinaryExpr(op, lhs, rhs) => {
                 write!(f, "({} {} {})", lhs.body, op.body, rhs.body)
+            }
+            HirExpr::Array(elements) => {
+                write!(f, "[")?;
+                let mut sep = "";
+                for el in elements {
+                    write!(f, "{}{}", sep, el.body)?;
+                    sep = ", ";
+                }
+                write!(f, "]")
+            }
+            HirExpr::Index(base, index) => {
+                write!(f, "{}[{}]", base.body, index.body)
             }
         }
     }
@@ -385,7 +399,12 @@ impl<'a> HirLowerer<'a> {
                     )
                 }))
             }
-            ast::Expr::Index { base, index } => todo!("index"),
+            ast::Expr::Index { base, index } => expr.try_copy_span(|_| {
+                Ok(HirExpr::Index(
+                    Box::new(self.desugar_expr(base)?),
+                    Box::new(self.desugar_expr(index)?),
+                ))
+            }),
             ast::Expr::AsCast(inner, ty) => {
                 let inner = self.desugar_expr(inner)?;
 
@@ -480,7 +499,14 @@ impl<'a> HirLowerer<'a> {
             ast::Expr::Group(expr) => self.desugar_expr(expr),
             ast::Expr::Tuple(_) => todo!("tuple"),
             ast::Expr::Return(_) => todo!("return"),
-            ast::Expr::Array(_) => todo!("array"),
+            ast::Expr::Array(elements) => expr.try_copy_span(|_| {
+                Ok(HirExpr::Array(
+                    elements
+                        .iter()
+                        .map(|x| self.desugar_expr(x))
+                        .collect::<Result<_, _>>()?,
+                ))
+            }),
             ast::Expr::ArrayRepeat { base, len } => todo!("array repeat"),
         }
     }

@@ -670,6 +670,8 @@ impl<'a> ThirConverter<'a> {
                     inner: ThirExprInner::BinaryExpr(*op, Box::new(lhs), Box::new(rhs)),
                 })
             }
+            hir::HirExpr::Array(_) => todo!("array"),
+            hir::HirExpr::Index(_, _) => todo!("index"),
         })
     }
 
