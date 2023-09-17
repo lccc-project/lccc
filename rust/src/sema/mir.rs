@@ -522,7 +522,9 @@ impl<'a> MirConverter<'a> {
             | ThirExprInner::Read(_)
             | ThirExprInner::Unreachable
             | ThirExprInner::Ctor(_)
-            | ThirExprInner::BinaryExpr(_, _, _) => todo!(),
+            | ThirExprInner::BinaryExpr(_, _, _)
+            | ThirExprInner::Array(_)
+            | ThirExprInner::Index(_, _) => todo!(),
         }
     }
 
@@ -665,7 +667,8 @@ impl<'a> MirConverter<'a> {
             | ThirExprInner::Cast(_, _)
             | ThirExprInner::Tuple(_)
             | ThirExprInner::Ctor(_)
-            | ThirExprInner::BinaryExpr(_, _, _) => unreachable!("cannot access"),
+            | ThirExprInner::BinaryExpr(_, _, _)
+            | ThirExprInner::Array(_) | ThirExprInner::Index(_, _) => unreachable!("cannot access"),
         }
     }
 
@@ -805,6 +808,8 @@ impl<'a> MirConverter<'a> {
                     Box::new(self.lower_expr(*rhs)?),
                 ),
             }),
+            super::tyck::ThirExprInner::Array(_) => todo!("array"),
+            super::tyck::ThirExprInner::Index(_, _) => todo!("index"),
             super::tyck::ThirExprInner::MemberAccess(_, _) => {
                 panic!("only top level rvalues get lowered by `lower_expr`")
             }
@@ -957,7 +962,9 @@ impl<'a> MirConverter<'a> {
             | ThirExprInner::Cast(_, _)
             | ThirExprInner::Tuple(_)
             | ThirExprInner::Ctor(_)
-            | ThirExprInner::BinaryExpr(_, _, _) => unreachable!(),
+            | ThirExprInner::BinaryExpr(_, _, _)
+            | ThirExprInner::Array(_)
+            | ThirExprInner::Index(_, _) => unreachable!(),
         }
 
         Ok(())

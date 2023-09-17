@@ -87,6 +87,8 @@ pub enum ThirExprInner {
         Box<Spanned<ThirExpr>>,
         Box<Spanned<ThirExpr>>,
     ),
+    Array(Vec<Spanned<ThirExpr>>),
+    Index(Box<Spanned<ThirExpr>>, Box<Spanned<ThirExpr>>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -173,6 +175,18 @@ impl core::fmt::Display for ThirExprInner {
             }
             ThirExprInner::BinaryExpr(op, lhs, rhs) => {
                 write!(f, "({} {} {})", lhs.body, op.body, rhs.body)
+            }
+            ThirExprInner::Array(elements) => {
+                write!(f, "[")?;
+                let mut sep = "";
+                for element in elements {
+                    write!(f, "{}{}", sep, element.body)?;
+                    sep = ", ";
+                }
+                write!(f, "]")
+            }
+            ThirExprInner::Index(base, index) => {
+                write!(f, "{}[{}]", base.body, index.body)
             }
         }
     }
@@ -670,8 +684,39 @@ impl<'a> ThirConverter<'a> {
                     inner: ThirExprInner::BinaryExpr(*op, Box::new(lhs), Box::new(rhs)),
                 })
             }
-            hir::HirExpr::Array(_) => todo!("array"),
-            hir::HirExpr::Index(_, _) => todo!("index"),
+            hir::HirExpr::Array(elements) => {
+                let elements = elements
+                    .iter()
+                    .map(|x| self.convert_rvalue(x))
+                    .collect::<Result<Vec<_>>>()?;
+                if elements.len() == 0 {
+                    Ok(ThirExpr {
+                        ty: Type::Inferable(InferId(self.next_infer.fetch_increment())),
+                        cat: ValueCategory::Rvalue,
+                        inner: ThirExprInner::Array(elements),
+                    })
+                } else {
+                    Ok(ThirExpr {
+                        ty: elements[0].ty.clone(),
+                        cat: ValueCategory::Rvalue,
+                        inner: ThirExprInner::Array(elements),
+                    })
+                }
+            }
+            hir::HirExpr::Index(base, index) => {
+                let base = self.convert_rvalue(base)?;
+                Ok(ThirExpr {
+                    ty: match &base.ty {
+                        Type::Array(ty, _) => ty.body.clone(),
+                        _ => Type::Inferable(InferId(self.next_infer.fetch_increment())),
+                    },
+                    cat: ValueCategory::Rvalue,
+                    inner: ThirExprInner::Index(
+                        Box::new(base),
+                        Box::new(self.convert_rvalue(index)?),
+                    ),
+                })
+            }
         })
     }
 
@@ -1041,6 +1086,12 @@ impl<'a> Inferer<'a> {
                 status &= self.unify_types(&mut lhs.ty, &mut rhs.ty)?;
                 status &= self.unify_single_expr(lhs)?;
                 status &= self.unify_single_expr(rhs)?;
+            }
+            ThirExprInner::Array(_elements) => {
+                todo!("array")
+            }
+            ThirExprInner::Index(base, index) => {
+                todo!("index")
             }
         }
 
