@@ -4,9 +4,9 @@ use std::{ops::Deref, rc::Rc, str::FromStr};
 use arch_ops::{
     traits::{Address, InsnWrite},
     x86::{
+        codegen::{X86CodegenOpcode, X86Encoder, X86Instruction, X86MemoryOperand, X86Operand},
         features::X86Feature,
-        insn::{X86Encoder, X86Instruction, X86Mode, X86Opcode, X86Operand},
-        X86Register, X86RegisterClass,
+        X86Mode, X86Register, X86RegisterClass,
     },
 };
 use target_tuples::Architecture;
@@ -588,20 +588,12 @@ impl MCWriter for X86MCWriter {
                                     ) if destreg.class() == srcreg.class() => match destreg.class()
                                     {
                                         arch_ops::x86::X86RegisterClass::Byte
-                                        | arch_ops::x86::X86RegisterClass::ByteRex => {
-                                            encoder.write_insn(X86Instruction::new(
-                                                X86Opcode::MovMR8,
-                                                vec![
-                                                    X86Operand::Register(*destreg),
-                                                    X86Operand::Register(*srcreg),
-                                                ],
-                                            ))?;
-                                        }
-                                        arch_ops::x86::X86RegisterClass::Word
+                                        | arch_ops::x86::X86RegisterClass::ByteRex
+                                        | arch_ops::x86::X86RegisterClass::Word
                                         | arch_ops::x86::X86RegisterClass::Double
                                         | arch_ops::x86::X86RegisterClass::Quad => {
                                             encoder.write_insn(X86Instruction::new(
-                                                X86Opcode::MovMR,
+                                                X86CodegenOpcode::Mov,
                                                 vec![
                                                     X86Operand::Register(*destreg),
                                                     X86Operand::Register(*srcreg),
@@ -633,31 +625,13 @@ impl MCWriter for X86MCWriter {
                         X86ValLocation::Null => {}
                         X86ValLocation::Register(reg) => match reg.class() {
                             arch_ops::x86::X86RegisterClass::Byte
-                            | arch_ops::x86::X86RegisterClass::ByteRex => {
-                                if *src == 0 {
-                                    encoder.write_insn(X86Instruction::new(
-                                        X86Opcode::XorMR8,
-                                        vec![
-                                            X86Operand::Register(*reg),
-                                            X86Operand::Register(*reg),
-                                        ],
-                                    ))?;
-                                } else {
-                                    encoder.write_insn(X86Instruction::new(
-                                        X86Opcode::MovImm8,
-                                        vec![
-                                            X86Operand::Register(*reg),
-                                            X86Operand::Immediate(*src as u64),
-                                        ],
-                                    ))?;
-                                }
-                            }
-                            arch_ops::x86::X86RegisterClass::Word
+                            | arch_ops::x86::X86RegisterClass::ByteRex
+                            | arch_ops::x86::X86RegisterClass::Word
                             | arch_ops::x86::X86RegisterClass::Double
                             | arch_ops::x86::X86RegisterClass::Quad => {
                                 if *src == 0 {
                                     encoder.write_insn(X86Instruction::new(
-                                        X86Opcode::XorMR,
+                                        X86CodegenOpcode::Xor,
                                         vec![
                                             X86Operand::Register(*reg),
                                             X86Operand::Register(*reg),
@@ -665,10 +639,10 @@ impl MCWriter for X86MCWriter {
                                     ))?;
                                 } else {
                                     encoder.write_insn(X86Instruction::new(
-                                        X86Opcode::MovImm,
+                                        X86CodegenOpcode::Mov,
                                         vec![
                                             X86Operand::Register(*reg),
-                                            X86Operand::Immediate(*src as u64),
+                                            X86Operand::Immediate(*src as i64),
                                         ],
                                     ))?;
                                 }
@@ -707,30 +681,30 @@ impl MCWriter for X86MCWriter {
                         frame_size += disp;
 
                         encoder.write_insn(X86Instruction::new(
-                            X86Opcode::SubImm,
+                            X86CodegenOpcode::Sub,
                             vec![
                                 X86Operand::Register(X86Register::Rsp),
-                                X86Operand::Immediate(disp as u64),
+                                X86Operand::Immediate(disp as i64),
                             ],
                         ))?;
                     }
 
                     encoder.write_insn(X86Instruction::new(
-                        X86Opcode::Call,
-                        vec![X86Operand::RelAddr(Address::PltSym { name: sym.clone() })],
+                        X86CodegenOpcode::Call,
+                        vec![X86Operand::RelOffset(Address::PltSym { name: sym.clone() })],
                     ))?;
                 }
                 MCInsn::Return => {
                     if frame_size > 0 {
                         encoder.write_insn(X86Instruction::new(
-                            X86Opcode::AddImm,
+                            X86CodegenOpcode::Add,
                             vec![
                                 X86Operand::Register(X86Register::Rsp),
-                                X86Operand::Immediate(frame_size as u64),
+                                X86Operand::Immediate(frame_size as i64),
                             ],
                         ))?;
                     }
-                    encoder.write_insn(X86Instruction::Retn)?;
+                    encoder.write_insn(X86Instruction::Ret)?;
                 }
                 MCInsn::LoadSym { loc, sym } => match loc {
                     MaybeResolved::Resolved(_, loc) => match loc {
@@ -738,10 +712,16 @@ impl MCWriter for X86MCWriter {
                             X86RegisterClass::Word
                             | X86RegisterClass::Double
                             | X86RegisterClass::Quad => encoder.write_insn(X86Instruction::new(
-                                X86Opcode::Lea,
+                                X86CodegenOpcode::Lea,
                                 vec![
                                     X86Operand::Register(*reg),
-                                    X86Operand::RelAddr(Address::PltSym { name: sym.clone() }),
+                                    X86Operand::Memory(
+                                        reg.class(),
+                                        None,
+                                        X86MemoryOperand::RelAddr(Address::PltSym {
+                                            name: sym.to_string(),
+                                        }),
+                                    ),
                                 ],
                             ))?,
                             _ => todo!(),
@@ -754,8 +734,8 @@ impl MCWriter for X86MCWriter {
                     sym_accepter(label.clone(), encoder.offset() as u64);
                 }
                 MCInsn::UnconditionalBranch(label) => encoder.write_insn(X86Instruction::new(
-                    X86Opcode::Jmp,
-                    vec![X86Operand::RelAddr(Address::Symbol {
+                    X86CodegenOpcode::Jmp,
+                    vec![X86Operand::RelOffset(Address::Symbol {
                         name: label.clone(),
                         disp: 0,
                     })],
