@@ -64,7 +64,7 @@ impl<'de> Deserialize<'de> for FileHash {
                                 hi @ (b'0'..=b'9' | b'A'..=b'F' | b'a'..=b'f'),
                                 lo @ (b'0'..=b'9' | b'A'..=b'F' | b'a'..=b'f'),
                             ) => {
-                                let mut mask = (hi << 5) & 0xF0 | (lo << 1) & 0xF;
+                                let mut mask = (hi << 1) & 0xF0 | (lo >> 3) & 0xF;
 
                                 mask |= mask >> 1;
                                 mask |= mask >> 2;

@@ -7,3 +7,9 @@ run-lccc-release = "run --release --bin lccc -- --intree"
 
 [env]
 AUTOBUILD_DIR={relative=true, value="autobuild"}
+
+# [source.crates-io]
+# replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

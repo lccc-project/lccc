@@ -79,6 +79,7 @@ pub struct ConfigData {
     pub env: HashMap<String, String>,
     pub programs: HashMap<String, ConfigFoundProgram>,
     pub targets: ConfigTargets,
+    pub config_files: HashMap<String, FileHash>,
     pub dep_files: HashMap<String, FileHash>,
 }
 
