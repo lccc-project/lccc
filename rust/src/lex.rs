@@ -346,6 +346,7 @@ keywords! {
     as => As,
     async => Async,
     await => Await,
+    auto => Auto,
     become => Become,
     box => Box,
     break => Break,
@@ -441,6 +442,58 @@ impl LexemeClass {
                 _ => unreachable!(), // Comments should be removed by now
             },
             _ => todo!(),
+        }
+    }
+
+    pub fn matches(&self, tok: Option<&Lexeme>) -> bool {
+        match (self, tok) {
+            (
+                Self::Eof,
+                None
+                | Some(Lexeme {
+                    body: LexemeBody::Eof,
+                    ..
+                }),
+            ) => true,
+            (
+                Self::Group(None),
+                Some(Lexeme {
+                    body: LexemeBody::Group(_),
+                    ..
+                }),
+            ) => true,
+            (
+                Self::Group(Some(gty)),
+                Some(Lexeme {
+                    body: LexemeBody::Group(g),
+                    ..
+                }),
+            ) => gty == &g.ty,
+            (
+                cl,
+                Some(Lexeme {
+                    body: LexemeBody::Token(token),
+                    ..
+                }),
+            ) => match (cl, token.ty) {
+                (Self::Character, TokenType::Character(_)) => true,
+                (Self::Lifetime, TokenType::Lifetime) => true,
+                (Self::Number, TokenType::Number) => true,
+                (Self::String, TokenType::String(_)) => true,
+                (Self::Punctuation(punct), TokenType::Punctuation) => {
+                    Punctuation::from_token(&token.body) == *punct
+                }
+                (
+                    Self::Keyword(kw),
+                    TokenType::Identifier(IdentifierType::Default | IdentifierType::Keyword),
+                ) => &token.body == kw.symbol(),
+                (
+                    Self::Identifier,
+                    TokenType::Identifier(IdentifierType::Default | IdentifierType::Raw),
+                ) => true,
+                _ => false,
+            },
+            _ => false,
         }
     }
 
@@ -555,14 +608,15 @@ fn do_char(file: &mut Speekable<impl Iterator<Item = char>>, start: Pos) -> Resu
                     Ok(Token::new(TokenType::Character(CharType::Default), token)
                         .with_span(Span::new_simple(start, end, file.file_name())))
                 }
-                Some((_, x)) if !x.is_xid_continue() => {
-                    Ok(Token::new(TokenType::Lifetime, token)
-                        .with_span(Span::new_simple(start, pos, file.file_name())))
-                }
-                None => {
-                    Ok(Token::new(TokenType::Lifetime, token)
-                        .with_span(Span::new_simple(start, pos, file.file_name())))
-                }
+                Some((_, x)) if !x.is_xid_continue() => Ok(Token::new(TokenType::Lifetime, token)
+                    .with_span(Span::new_simple(start, pos, file.file_name()))),
+                None => Ok(
+                    Token::new(TokenType::Lifetime, token).with_span(Span::new_simple(
+                        start,
+                        pos,
+                        file.file_name(),
+                    )),
+                ),
                 Some(&(pos, x)) => {
                     file.next();
                     token.push(x);
@@ -575,8 +629,13 @@ fn do_char(file: &mut Speekable<impl Iterator<Item = char>>, start: Pos) -> Resu
                         end = pos;
                         token.push(x);
                     }
-                    Ok(Token::new(TokenType::Lifetime, token)
-                        .with_span(Span::new_simple(start, end, file.file_name())))
+                    Ok(
+                        Token::new(TokenType::Lifetime, token).with_span(Span::new_simple(
+                            start,
+                            end,
+                            file.file_name(),
+                        )),
+                    )
                 }
             }
         }
@@ -608,324 +667,327 @@ fn do_str(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<(String, P
 fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme> {
     loop {
         match file.snext() {
-            Some((start, c)) => match c {
-                ' ' | '\n' => {}
-                '(' | '[' | '{' => {
-                    let ty = GroupType::from_start_char(c);
-                    let (body, end) = do_group(file, Some(ty.end_char()))?;
-                    break Ok(Group { ty, body }.with_span(Span::new_simple(
-                        start,
-                        end,
-                        file.file_name(),
-                    )));
-                }
-                '"' => {
-                    let (str, end) = do_str(file)?;
-                    break Ok(Token::new(TokenType::String(StringType::Default), str)
-                        .with_span(Span::new_simple(start, end, file.file_name())));
-                }
-                '0'..='9' => {
-                    let mut id = String::from(c);
-                    let mut end = start;
-                    while let Some(&(pos, c)) = file.speek() {
-                        if !c.is_xid_continue() {
-                            break;
-                        } else {
-                            id.push(c);
-                            end = pos;
-                            file.next();
-                        }
-                    }
-                    break Ok(
-                        Token::new(TokenType::Number, id).with_span(Span::new_simple(
+            Some((start, c)) => {
+                match c {
+                    ' ' | '\n' => {}
+                    '(' | '[' | '{' => {
+                        let ty = GroupType::from_start_char(c);
+                        let (body, end) = do_group(file, Some(ty.end_char()))?;
+                        break Ok(Group { ty, body }.with_span(Span::new_simple(
                             start,
                             end,
                             file.file_name(),
-                        )),
-                    );
-                }
-                x if x.is_xid_start() || x == '_' => {
-                    let mut id = String::from(x);
-                    let mut end = start;
-                    let mut ty = TokenType::Identifier(IdentifierType::Default);
-                    while let Some(&(pos, c)) = file.speek() {
-                        if !c.is_xid_continue() {
-                            break;
-                        } else {
-                            id.push(c);
-                            end = pos;
-                            file.next();
-                        }
+                        )));
                     }
-                    if id == "r" || id == "rb" {
-                        match file.peek() {
-                            Some('#') => {
-                                id.push('#');
+                    '"' => {
+                        let (str, end) = do_str(file)?;
+                        break Ok(Token::new(TokenType::String(StringType::Default), str)
+                            .with_span(Span::new_simple(start, end, file.file_name())));
+                    }
+                    '0'..='9' => {
+                        let mut id = String::from(c);
+                        let mut end = start;
+                        while let Some(&(pos, c)) = file.speek() {
+                            if !c.is_xid_continue() {
+                                break;
+                            } else {
+                                id.push(c);
+                                end = pos;
                                 file.next();
-                                while let Some(&(pos, c)) = file.speek() {
-                                    if !c.is_xid_continue() {
-                                        break;
-                                    } else {
-                                        id.push(c);
-                                        end = pos;
-                                        file.next();
-                                    }
-                                }
-                                ty = TokenType::Identifier(IdentifierType::Raw);
                             }
-                            Some('"') => todo!(),
-                            _ => {}
                         }
-                    } else if id == "b" {
-                        if file.peek() == Some(&'"') {
-                            file.next();
-                            let (str, end) = do_str(file)?;
-                            break Ok(Token::new(TokenType::String(StringType::Byte), id + &str)
-                                .with_span(Span::new_simple(start, end, file.file_name())));
-                        } else if file.peek() == Some(&'\'') {
-                            file.next();
-                            let mut result = do_char(file, start)?;
-                            match &mut result.body {
-                                LexemeBody::Token(Token { ty: TokenType::Character(ref mut char_ty), .. }) => {
-                                    *char_ty = CharType::Byte;
-                                },
-                                LexemeBody::Token(_) => {
-                                    todo!("validation error for \"byte lifetimes\"");
-                                }
-                                _ => unreachable!("do_char returns a Token always"),
-                            }
-                            break Ok(result);
-                        }
+                        break Ok(
+                            Token::new(TokenType::Number, id).with_span(Span::new_simple(
+                                start,
+                                end,
+                                file.file_name(),
+                            )),
+                        );
                     }
-                    break Ok(Token::new(ty, id).with_span(Span::new_simple(
-                        start,
-                        end,
-                        file.file_name(),
-                    )));
-                }
-                '/' => {
-                    let (tok, end, ty) = match file.speek() {
-                        Some(&(pos, '/')) => {
-                            file.next();
-                            let mut tok = String::from("//");
-                            let mut end = pos;
-                            while let Some((pos, c)) = file.snext() {
-                                if c == '\n' {
-                                    break;
-                                }
-                                tok.push(c);
+                    x if x.is_xid_start() || x == '_' => {
+                        let mut id = String::from(x);
+                        let mut end = start;
+                        let mut ty = TokenType::Identifier(IdentifierType::Default);
+                        while let Some(&(pos, c)) = file.speek() {
+                            if !c.is_xid_continue() {
+                                break;
+                            } else {
+                                id.push(c);
                                 end = pos;
+                                file.next();
                             }
-                            (tok, end, TokenType::CommentSingle)
                         }
-                        Some(&(pos, '*')) => {
-                            file.next();
-                            let mut tok = String::from("/*");
-                            let mut end = pos;
-                            let mut star = false;
-                            while let Some((pos, c)) = file.snext() {
-                                tok.push(c);
-                                end = pos;
-                                if c == '/' && star {
-                                    break;
-                                }
-                                star = c == '*';
-                            }
-                            (tok, end, TokenType::CommentMulti)
-                        }
-                        Some(&(end, '=')) => {
-                            file.next();
-                            ("/=".into(), end, TokenType::Punctuation)
-                        }
-                        _ => ("/".into(), start, TokenType::Punctuation),
-                    };
-                    break Ok(Token::new(ty, tok).with_span(Span::new_simple(
-                        start,
-                        end,
-                        file.file_name(),
-                    )));
-                }
-                '\'' => break do_char(file, start),
-                '.' => {
-                    let (punct, end) = match file.speek() {
-                        Some(&(end, '.')) => {
-                            file.next();
-                            match file.speek() {
-                                Some(&(end, '.')) => {
+                        if id == "r" || id == "rb" {
+                            match file.peek() {
+                                Some('#') => {
+                                    id.push('#');
                                     file.next();
-                                    ("...", end)
+                                    while let Some(&(pos, c)) = file.speek() {
+                                        if !c.is_xid_continue() {
+                                            break;
+                                        } else {
+                                            id.push(c);
+                                            end = pos;
+                                            file.next();
+                                        }
+                                    }
+                                    ty = TokenType::Identifier(IdentifierType::Raw);
                                 }
-                                Some(&(end, '=')) => {
-                                    file.next();
-                                    ("..=", end)
+                                Some('"') => todo!(),
+                                _ => {}
+                            }
+                        } else if id == "b" {
+                            if file.peek() == Some(&'"') {
+                                file.next();
+                                let (str, end) = do_str(file)?;
+                                break Ok(Token::new(
+                                    TokenType::String(StringType::Byte),
+                                    id + &str,
+                                )
+                                .with_span(Span::new_simple(start, end, file.file_name())));
+                            } else if file.peek() == Some(&'\'') {
+                                file.next();
+                                let mut result = do_char(file, start)?;
+                                match &mut result.body {
+                                    LexemeBody::Token(Token {
+                                        ty: TokenType::Character(ref mut char_ty),
+                                        ..
+                                    }) => {
+                                        *char_ty = CharType::Byte;
+                                    }
+                                    LexemeBody::Token(_) => {
+                                        todo!("validation error for \"byte lifetimes\"");
+                                    }
+                                    _ => unreachable!("do_char returns a Token always"),
                                 }
-                                _ => ("..", end),
+                                break Ok(result);
                             }
                         }
-                        _ => (".", start),
-                    };
-                    break Ok(Token::punct(punct).with_span(Span::new_simple(
-                        start,
-                        end,
-                        file.file_name(),
-                    )));
-                }
-                '<' => {
-                    let (punct, end) = match file.speek() {
-                        Some(&(end, '<')) => {
-                            file.next();
-                            match file.speek() {
-                                Some(&(end, '=')) => {
-                                    file.next();
-                                    ("<<=", end)
-                                }
-                                _ => ("<<", end),
-                            }
-                        }
-                        Some(&(end, '=')) => {
-                            file.next();
-                            ("<=", end)
-                        }
-                        _ => ("<", start),
-                    };
-                    break Ok(Token::punct(punct).with_span(Span::new_simple(
-                        start,
-                        end,
-                        file.file_name(),
-                    )));
-                }
-                '>' => {
-                    let (punct, end) = match file.speek() {
-                        Some(&(end, '>')) => {
-                            file.next();
-                            match file.speek() {
-                                Some(&(end, '=')) => {
-                                    file.next();
-                                    (">>=", end)
-                                }
-                                _ => (">>", end),
-                            }
-                        }
-                        Some(&(end, '=')) => {
-                            file.next();
-                            (">=", end)
-                        }
-                        _ => (">", start),
-                    };
-                    break Ok(Token::punct(punct).with_span(Span::new_simple(
-                        start,
-                        end,
-                        file.file_name(),
-                    )));
-                }
-                '|' => {
-                    let (punct, end) = match file.speek() {
-                        Some(&(end, '|')) => ("||", end),
-                        Some(&(end, '=')) => {
-                            file.next();
-                            ("|=", end)
-                        }
-                        _ => ("|", start),
-                    };
-                    break Ok(Token::punct(punct).with_span(Span::new_simple(
-                        start,
-                        end,
-                        file.file_name(),
-                    )));
-                }
-                ':' => {
-                    let (punct, end) = match file.speek() {
-                        Some(&(end, ':')) => {
-                            file.next();
-                            ("::", end)
-                        }
-                        _ => (":", start),
-                    };
-                    break Ok(Token::punct(punct).with_span(Span::new_simple(
-                        start,
-                        end,
-                        file.file_name(),
-                    )));
-                }
-                '=' => {
-                    let (punct, end) = match file.speek() {
-                        Some(&(end, '=')) => {
-                            file.next();
-                            ("==", end)
-                        }
-                        Some(&(end, '>')) => {
-                            file.next();
-                            ("=>", end)
-                        }
-                        _ => ("=", start),
-                    };
-                    break Ok(Token::punct(punct).with_span(Span::new_simple(
-                        start,
-                        end,
-                        file.file_name(),
-                    )));
-                }
-                '&' => {
-                    let (punct, end) = match file.speek() {
-                        Some(&(end, '=')) => {
-                            file.next();
-                            ("&=", end)
-                        }
-                        Some(&(end, '&')) => {
-                            file.next();
-                            ("&&", end)
-                        }
-                        _ => ("&", start),
-                    };
-                    break Ok(Token::punct(punct).with_span(Span::new_simple(
-                        start,
-                        end,
-                        file.file_name(),
-                    )));
-                }
-                '+' | '*' | '!' => {
-                    let (punct, end) = match file.speek() {
-                        Some(&(end, '=')) => {
-                            file.next();
-                            ("=", end)
-                        }
-                        _ => ("", start),
-                    };
-                    break Ok(
-                        Token::punct(String::from(c) + punct).with_span(Span::new_simple(
+                        break Ok(Token::new(ty, id).with_span(Span::new_simple(
                             start,
                             end,
                             file.file_name(),
-                        )),
-                    );
+                        )));
+                    }
+                    '/' => {
+                        let (tok, end, ty) = match file.speek() {
+                            Some(&(pos, '/')) => {
+                                file.next();
+                                let mut tok = String::from("//");
+                                let mut end = pos;
+                                while let Some((pos, c)) = file.snext() {
+                                    if c == '\n' {
+                                        break;
+                                    }
+                                    tok.push(c);
+                                    end = pos;
+                                }
+                                (tok, end, TokenType::CommentSingle)
+                            }
+                            Some(&(pos, '*')) => {
+                                file.next();
+                                let mut tok = String::from("/*");
+                                let mut end = pos;
+                                let mut star = false;
+                                while let Some((pos, c)) = file.snext() {
+                                    tok.push(c);
+                                    end = pos;
+                                    if c == '/' && star {
+                                        break;
+                                    }
+                                    star = c == '*';
+                                }
+                                (tok, end, TokenType::CommentMulti)
+                            }
+                            Some(&(end, '=')) => {
+                                file.next();
+                                ("/=".into(), end, TokenType::Punctuation)
+                            }
+                            _ => ("/".into(), start, TokenType::Punctuation),
+                        };
+                        break Ok(Token::new(ty, tok).with_span(Span::new_simple(
+                            start,
+                            end,
+                            file.file_name(),
+                        )));
+                    }
+                    '\'' => break do_char(file, start),
+                    '.' => {
+                        let (punct, end) = match file.speek() {
+                            Some(&(end, '.')) => {
+                                file.next();
+                                match file.speek() {
+                                    Some(&(end, '.')) => {
+                                        file.next();
+                                        ("...", end)
+                                    }
+                                    Some(&(end, '=')) => {
+                                        file.next();
+                                        ("..=", end)
+                                    }
+                                    _ => ("..", end),
+                                }
+                            }
+                            _ => (".", start),
+                        };
+                        break Ok(Token::punct(punct).with_span(Span::new_simple(
+                            start,
+                            end,
+                            file.file_name(),
+                        )));
+                    }
+                    '<' => {
+                        let (punct, end) = match file.speek() {
+                            Some(&(end, '<')) => {
+                                file.next();
+                                match file.speek() {
+                                    Some(&(end, '=')) => {
+                                        file.next();
+                                        ("<<=", end)
+                                    }
+                                    _ => ("<<", end),
+                                }
+                            }
+                            Some(&(end, '=')) => {
+                                file.next();
+                                ("<=", end)
+                            }
+                            _ => ("<", start),
+                        };
+                        break Ok(Token::punct(punct).with_span(Span::new_simple(
+                            start,
+                            end,
+                            file.file_name(),
+                        )));
+                    }
+                    '>' => {
+                        let (punct, end) = match file.speek() {
+                            Some(&(end, '>')) => {
+                                file.next();
+                                match file.speek() {
+                                    Some(&(end, '=')) => {
+                                        file.next();
+                                        (">>=", end)
+                                    }
+                                    _ => (">>", end),
+                                }
+                            }
+                            Some(&(end, '=')) => {
+                                file.next();
+                                (">=", end)
+                            }
+                            _ => (">", start),
+                        };
+                        break Ok(Token::punct(punct).with_span(Span::new_simple(
+                            start,
+                            end,
+                            file.file_name(),
+                        )));
+                    }
+                    '|' => {
+                        let (punct, end) = match file.speek() {
+                            Some(&(end, '|')) => ("||", end),
+                            Some(&(end, '=')) => {
+                                file.next();
+                                ("|=", end)
+                            }
+                            _ => ("|", start),
+                        };
+                        break Ok(Token::punct(punct).with_span(Span::new_simple(
+                            start,
+                            end,
+                            file.file_name(),
+                        )));
+                    }
+                    ':' => {
+                        let (punct, end) = match file.speek() {
+                            Some(&(end, ':')) => {
+                                file.next();
+                                ("::", end)
+                            }
+                            _ => (":", start),
+                        };
+                        break Ok(Token::punct(punct).with_span(Span::new_simple(
+                            start,
+                            end,
+                            file.file_name(),
+                        )));
+                    }
+                    '=' => {
+                        let (punct, end) = match file.speek() {
+                            Some(&(end, '=')) => {
+                                file.next();
+                                ("==", end)
+                            }
+                            Some(&(end, '>')) => {
+                                file.next();
+                                ("=>", end)
+                            }
+                            _ => ("=", start),
+                        };
+                        break Ok(Token::punct(punct).with_span(Span::new_simple(
+                            start,
+                            end,
+                            file.file_name(),
+                        )));
+                    }
+                    '&' => {
+                        let (punct, end) = match file.speek() {
+                            Some(&(end, '=')) => {
+                                file.next();
+                                ("&=", end)
+                            }
+                            Some(&(end, '&')) => {
+                                file.next();
+                                ("&&", end)
+                            }
+                            _ => ("&", start),
+                        };
+                        break Ok(Token::punct(punct).with_span(Span::new_simple(
+                            start,
+                            end,
+                            file.file_name(),
+                        )));
+                    }
+                    '+' | '*' | '!' => {
+                        let (punct, end) = match file.speek() {
+                            Some(&(end, '=')) => {
+                                file.next();
+                                ("=", end)
+                            }
+                            _ => ("", start),
+                        };
+                        break Ok(Token::punct(String::from(c) + punct)
+                            .with_span(Span::new_simple(start, end, file.file_name())));
+                    }
+                    '-' => {
+                        let (punct, end) = match file.speek() {
+                            Some(&(end, '>')) => {
+                                file.next();
+                                ("->", end)
+                            }
+                            Some(&(end, '=')) => {
+                                file.next();
+                                ("-=", end)
+                            }
+                            _ => ("-", start),
+                        };
+                        break Ok(Token::punct(punct).with_span(Span::new_simple(
+                            start,
+                            end,
+                            file.file_name(),
+                        )));
+                    }
+                    ';' | '#' | ',' | '@' => {
+                        break Ok(Token::punct(String::from(c)).with_span(Span::new_simple(
+                            start,
+                            start,
+                            file.file_name(),
+                        )));
+                    }
+                    x => Err(Error::UnrecognizedChar(x, start))?,
                 }
-                '-' => {
-                    let (punct, end) = match file.speek() {
-                        Some(&(end, '>')) => {
-                            file.next();
-                            ("->", end)
-                        }
-                        Some(&(end, '=')) => {
-                            file.next();
-                            ("-=", end)
-                        }
-                        _ => ("-", start),
-                    };
-                    break Ok(Token::punct(punct).with_span(Span::new_simple(
-                        start,
-                        end,
-                        file.file_name(),
-                    )));
-                }
-                ';' | '#' | ',' | '@' => {
-                    break Ok(Token::punct(String::from(c)).with_span(Span::new_simple(
-                        start,
-                        start,
-                        file.file_name(),
-                    )));
-                }
-                x => Err(Error::UnrecognizedChar(x, start))?,
-            },
+            }
             None => Err(Error::UnexpectedEof(file.last_pos()))?,
         }
     }

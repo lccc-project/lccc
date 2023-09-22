@@ -63,6 +63,21 @@ pub enum ItemBody {
     Function(Spanned<Function>),
     ExternBlock(Spanned<ExternBlock>),
     MacroRules(Spanned<MacroRules>),
+    Trait(Spanned<TraitDef>),
+}
+
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub struct Auto;
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct TraitDef {
+    pub safety: Option<Spanned<Safety>>,
+    pub auto: Option<Spanned<Auto>>,
+    pub name: Spanned<Symbol>,
+    pub generics: Option<Spanned<GenericParams>>,
+    pub supertraits: Option<Vec<Spanned<GenericBound>>>,
+    pub where_clauses: Option<Spanned<Vec<Spanned<WhereClause>>>>,
+    pub body: Vec<Spanned<Item>>,
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]

@@ -4,13 +4,13 @@ use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
     ast::{
-        AsyncBlock, Attr, AttrInput, BinaryOp, Block, CaptureSpec, Closure, ClosureParam,
+        AsyncBlock, Attr, AttrInput, Auto, BinaryOp, Block, CaptureSpec, Closure, ClosureParam,
         CompoundBlock, ConstParam, Constructor, ConstructorExpr, Expr, ExternBlock, FieldInit,
         Function, GenericBound, GenericParam, GenericParams, Item, ItemBody, ItemValue, Label,
         LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind, Mod, Param, Path, PathSegment,
-        Pattern, SimplePath, SimplePathSegment, Spanned, Statement, StructCtor, StructField,
-        StructKind, TupleCtor, TupleField, Type, TypeParam, UnaryOp, UserType, UserTypeBody,
-        Visibility, WhereClause,
+        Pattern, Safety, SimplePath, SimplePathSegment, Spanned, Statement, StructCtor,
+        StructField, StructKind, TraitDef, TupleCtor, TupleField, Type, TypeParam, UnaryOp,
+        UserType, UserTypeBody, Visibility, WhereClause,
     },
     interning::Symbol,
     lex::{
@@ -123,14 +123,23 @@ impl<'a, T: Iterator<Item = Lexeme>> IntoRewinder<'a> for &'a mut PeekMoreIterat
     }
 }
 
+pub fn expect(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+    expected: &[LexemeClass],
+) -> Result<()> {
+    // Note: Intentionally forgetting this
+    let mut tree = tree.into_rewinder();
+    do_lexeme_classes(&mut tree, expected).map(drop)
+}
+
 pub fn do_lexeme_class(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
     expected: LexemeClass,
 ) -> Result<Lexeme> {
     let mut tree = tree.into_rewinder();
     let lexeme = tree.peek();
-    let got = LexemeClass::of(lexeme);
-    if got.is(&expected) {
+
+    if expected.matches(lexeme) {
         let result = lexeme.unwrap().clone();
         tree.advance_cursor();
         tree.accept();
@@ -142,7 +151,7 @@ pub fn do_lexeme_class(
         );
         Err(Error {
             expected: vec![expected],
-            got,
+            got: LexemeClass::of(lexeme),
             span,
         })
     }
@@ -220,6 +229,17 @@ pub fn do_token_classes(
         }
     }
     Err(error.unwrap())
+}
+
+pub fn do_identifier<I: Iterator<Item = Lexeme>>(
+    tree: &mut PeekMoreIterator<I>,
+) -> Result<Spanned<Symbol>> {
+    let (span, tok) = do_lexeme_token(tree, LexemeClass::Identifier)?;
+
+    Ok(Spanned {
+        span,
+        body: tok.body,
+    })
 }
 
 pub fn do_alternation<R, I: Iterator<Item = Lexeme>>(
@@ -2549,41 +2569,155 @@ pub fn do_item_extern_block(
     })
 }
 
-pub fn do_item(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<Item>> {
+pub fn do_item_trait(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<ItemBody>> {
     let mut tree = tree.into_rewinder();
-    let vis = do_visibility(&mut tree).ok();
-    let item = match do_item_mod(&mut tree) {
-        Ok(body) => body,
-        Err(a) => match do_item_value(&mut tree) {
-            Ok(body) => body,
-            Err(b) => match do_item_extern_crate(&mut tree) {
-                Ok(body) => body,
-                Err(c) => match do_item_use(&mut tree) {
-                    Ok(body) => body,
-                    Err(d) => match do_item_user_type(&mut tree) {
-                        Ok(body) => body,
-                        Err(e) => match do_item_fn(&mut tree) {
-                            Ok(body) => body,
-                            Err(f) => match do_item_extern_block(&mut tree) {
-                                Ok(body) => body,
-                                Err(g) => Err(a | b | c | d | e | f | g)?,
-                            },
-                        },
-                    },
-                },
-            },
-        },
+    expect(
+        &mut tree,
+        &[keyword!(unsafe), keyword!(auto), keyword!(trait)],
+    )?;
+    let mut startspan = None;
+
+    let safety = match do_lexeme_class(&mut tree, keyword!(unsafe)) {
+        Ok(tok) => {
+            startspan.get_or_insert(tok.span);
+            Some(Spanned {
+                body: Safety::Unsafe,
+                span: tok.span,
+            })
+        }
+        Err(_) => None,
     };
+
+    let auto = match do_lexeme_class(&mut tree, keyword!(auto)) {
+        Ok(tok) => {
+            startspan.get_or_insert(tok.span);
+            Some(Spanned {
+                body: Auto,
+                span: tok.span,
+            })
+        }
+        Err(_) => None,
+    };
+
+    do_lexeme_class(&mut tree, keyword!(trait))?;
+
+    let name = do_identifier(&mut tree)?;
+
+    let startspan = startspan.unwrap_or(name.span);
+
+    let generics = do_generic_params(&mut tree).ok();
+
+    let supertraits = match do_lexeme_token(&mut tree, punct!(:)) {
+        Ok(_) => {
+            let mut bounds_list = Vec::new();
+            loop {
+                match do_type_bound(&mut tree) {
+                    Ok(bound) => bounds_list.push(bound),
+                    Err(e) => break,
+                }
+
+                match do_lexeme_classes(&mut tree, &[punct!(+)]) {
+                    Ok(_) => continue,
+                    Err(e) => break,
+                }
+            }
+            Some(bounds_list)
+        }
+        Err(_) => None,
+    };
+
+    let where_clauses = do_where_clauses(&mut tree).ok();
+
+    let mut body = Vec::new();
+
+    let (group, gspan) = do_lexeme_group(&mut tree, Some(GroupType::Braces))?;
+
+    let mut inner_tree = group.body.into_iter().peekmore();
+
+    loop {
+        match do_item_in_trait(&mut inner_tree) {
+            Ok(item) => body.push(item),
+            Err(e) => match do_lexeme_class(&mut inner_tree, LexemeClass::Eof) {
+                Ok(_) => break,
+                Err(d) => return Err(e | d),
+            },
+        }
+    }
+
+    let body = TraitDef {
+        safety,
+        auto,
+        name,
+        generics,
+        supertraits,
+        where_clauses,
+        body,
+    };
+
+    let span = Span::between(startspan, gspan);
+
+    tree.accept();
+
+    Ok(Spanned {
+        body: ItemBody::Trait(Spanned { span, body }),
+        span,
+    })
+}
+
+pub fn do_item_in_trait(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Item>> {
+    let mut tree = tree.into_rewinder();
+    let mut attrs = Vec::new();
+    loop {
+        match do_external_attr(&mut tree) {
+            Ok(attr) => attrs.push(attr),
+            Err(_) => break,
+        }
+    }
+    let vis = do_visibility(&mut tree).ok();
+    let item = do_alternation(&mut tree, &[do_item_fn, do_item_value])?;
     let span = vis.as_ref().map_or(item.span, |Spanned { span, .. }| {
         Span::between(*span, item.span)
     });
     tree.accept();
     Ok(Spanned {
-        body: Item {
-            vis,
-            attrs: vec![],
-            item,
-        },
+        body: Item { vis, attrs, item },
+        span,
+    })
+}
+
+pub fn do_item(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Result<Spanned<Item>> {
+    let mut tree = tree.into_rewinder();
+    let mut attrs = Vec::new();
+    loop {
+        match do_external_attr(&mut tree) {
+            Ok(attr) => attrs.push(attr),
+            Err(_) => break,
+        }
+    }
+    let vis = do_visibility(&mut tree).ok();
+    let item = do_alternation(
+        &mut tree,
+        &[
+            do_item_mod,
+            do_item_extern_block,
+            do_item_extern_crate,
+            do_item_fn,
+            do_item_value,
+            do_item_use,
+            do_item_user_type,
+            do_item_trait,
+        ],
+    )?;
+    let span = vis.as_ref().map_or(item.span, |Spanned { span, .. }| {
+        Span::between(*span, item.span)
+    });
+    tree.accept();
+    Ok(Spanned {
+        body: Item { vis, attrs, item },
         span,
     })
 }
@@ -2599,15 +2733,12 @@ pub fn do_mod(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Resu
         tree.truncate_iterator_to_cursor();
         match do_internal_attr(tree) {
             Ok(attr) => attrs.push(attr),
-            Err(x) => match do_external_attr(tree) {
-                Ok(attr) => external_attrs.push(attr),
-                Err(y) => match do_item(tree) {
-                    Ok(mut item) => {
-                        item.attrs.append(&mut external_attrs);
-                        items.push(item);
-                    }
-                    Err(z) => Err(x | y | z)?,
-                },
+            Err(x) => match do_item(tree) {
+                Ok(mut item) => {
+                    item.attrs.append(&mut external_attrs);
+                    items.push(item);
+                }
+                Err(z) => Err(x | z)?,
             },
         }
     }

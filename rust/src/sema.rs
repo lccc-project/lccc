@@ -2065,6 +2065,7 @@ fn collect_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) 
             ast::ItemBody::MacroRules(_) => {
                 unreachable!("macros are expanded before semantic analysis")
             }
+            ast::ItemBody::Trait(_) => todo!("trait"),
         }
     }
 
@@ -2413,6 +2414,7 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
             ast::ItemBody::MacroRules(_) => {
                 unreachable!("macros are expanded before semantic analysis")
             }
+            ast::ItemBody::Trait(_) => todo!("trait"),
         }
     }
 
@@ -2478,6 +2480,7 @@ pub fn convert_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mo
             ast::ItemBody::MacroRules(_) => {
                 unreachable!("macros are expanded before semantic analysis")
             }
+            ast::ItemBody::Trait(_) => todo!("trait"),
         }
     }
 
@@ -2541,6 +2544,7 @@ pub fn convert_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::M
             | ast::ItemBody::ExternCrate { .. }
             | ast::ItemBody::ExternBlock(_) => {}
             ast::ItemBody::MacroRules(_) => unreachable!(),
+            ast::ItemBody::Trait(_) => todo!("trait"),
         }
     }
 
