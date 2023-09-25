@@ -7,6 +7,7 @@ use std::io::ErrorKind;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 use target_tuples::Target;
 use xlang::abi::collection::HashSet;
 use xlang::abi::io::{ReadAdapter, ReadSeekAdapter, WriteAdapter};
@@ -50,6 +51,19 @@ pub enum DumpMode {
 
 #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 fn main() {
+    let time = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    let seed = std::env::var("LCCC_SEED")
+        .ok()
+        .map(|x| x.parse::<u64>().ok())
+        .flatten()
+        .unwrap_or(time);
+
+    lccc::init_rng(seed); // we have to call this before initializing a hashtable
+
     let mut target = target_tuples::from_env!("default_target");
     let mut output = None;
 

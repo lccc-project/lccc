@@ -14,8 +14,9 @@ Minimal cdylib that exposes interfaces to be shared by the xlang environment (ba
 xlang_abi = {path="../xlang_abi",version="0.2.0"}
 xlang_targets = {path="../xlang_targets",version="0.2.0"}
 xlang_host = {path="../xlang_host",version="0.2.0"}
-rand = "0.8.5"
+lccc-siphash = "0.1"
 lazy_static = "1.3"
+
 
 [lib]
 crate-type=["cdylib"]

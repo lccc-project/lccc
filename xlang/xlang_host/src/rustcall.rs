@@ -124,7 +124,8 @@ cfg_match! {
             ($(#[$meta:meta])*  $vis:vis unsafe extern "rustcall" fn $($tt:tt)*) => {
                 $(#[$meta])* $vis unsafe extern "C" fn $($tt)*
             };
-            (extern "rustcall" { $($item:item)*}) => {
+            ($(#[$meta:meta])* extern "rustcall" { $($item:item)*}) => {
+                $(#[$meta])*
                 extern "C" {
                     $($item)*
                 }

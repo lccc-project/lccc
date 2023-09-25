@@ -1,6 +1,8 @@
 //! Helper library for the lccc driver, and other driver clis (such as lcrust)
 //!
 
+pub mod exports;
+
 pub mod argparse;
 
 use std::{
@@ -54,6 +56,10 @@ pub enum OptimizeLevel {
     Zize,
     Fast,
     Extra,
+}
+
+pub fn init_rng(x: u64) {
+    unsafe { exports::__xlang_driver_init_rng(x) }
 }
 
 pub fn find_libraries<K: Borrow<str> + Eq + Hash, V: AsRef<Path>, H: BuildHasher, A: Allocator>(

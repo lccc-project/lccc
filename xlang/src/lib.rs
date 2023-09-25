@@ -73,6 +73,12 @@ impl<'a> core::fmt::Display for XLangVersion<'a> {
 }
 
 #[must_use]
+pub fn gen_rand() -> u64 {
+    // SAFETY: xlang_gen_rand prescribes no undefined behaviour
+    unsafe { exports::xlang_gen_rand() }
+}
+
+#[must_use]
 pub fn version() -> XLangVersion<'static> {
     // SAFETY: xlang_get_version has no undefined behaviour
     XLangVersion::from_string(unsafe { exports::xlang_get_version() })
