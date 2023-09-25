@@ -6,11 +6,11 @@ use crate::{
     ast::{
         AsyncBlock, Attr, AttrInput, Auto, BinaryOp, Block, CaptureSpec, Closure, ClosureParam,
         CompoundBlock, ConstParam, Constructor, ConstructorExpr, Expr, ExternBlock, FieldInit,
-        Function, GenericBound, GenericParam, GenericParams, Item, ItemBody, ItemValue, Label,
-        LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind, Mod, Param, Path, PathSegment,
-        Pattern, Safety, SimplePath, SimplePathSegment, Spanned, Statement, StructCtor,
-        StructField, StructKind, TraitDef, TupleCtor, TupleField, Type, TypeParam, UnaryOp,
-        UserType, UserTypeBody, Visibility, WhereClause,
+        Function, GenericBound, GenericParam, GenericParams, ImplBlock, Item, ItemBody, ItemValue,
+        Label, LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind, Mod, Param, Path,
+        PathSegment, Pattern, Safety, SimplePath, SimplePathSegment, Spanned, Statement,
+        StructCtor, StructField, StructKind, TraitDef, TupleCtor, TupleField, Type, TypeParam,
+        UnaryOp, UserType, UserTypeBody, Visibility, WhereClause,
     },
     interning::Symbol,
     lex::{
@@ -2569,6 +2569,91 @@ pub fn do_item_extern_block(
     })
 }
 
+pub fn do_item_impl(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<ItemBody>> {
+    let mut tree = tree.into_rewinder();
+    expect(&mut tree, &[keyword!(unsafe), keyword!(impl)])?;
+
+    let mut startspan = None;
+
+    let safety = match do_lexeme_class(&mut tree, keyword!(unsafe)) {
+        Ok(tok) => {
+            startspan = Some(tok.span);
+            Some(Spanned {
+                body: Safety::Unsafe,
+                span: tok.span,
+            })
+        }
+        Err(_) => None,
+    };
+
+    let startspan = startspan.unwrap_or(do_lexeme_class(&mut tree, keyword!(impl))?.span);
+
+    let generics = do_generic_params(&mut tree).ok();
+
+    let tr = {
+        let mut tree = (&mut tree).into_rewinder();
+
+        match do_path(&mut tree) {
+            Ok(path) => match do_lexeme_class(&mut tree, keyword!(for)) {
+                Ok(_) => {
+                    tree.accept();
+                    Some(path)
+                }
+                Err(_) => None,
+            },
+            Err(_) => None,
+        }
+    };
+
+    let ty = do_type(&mut tree)?;
+
+    let id_span = Span::between(startspan, ty.span);
+
+    let where_clauses = do_where_clauses(&mut tree).ok();
+
+    let mut body = Vec::new();
+
+    let (group, gspan) = do_lexeme_group(&mut tree, Some(GroupType::Braces))?;
+
+    let mut inner_tree = group.body.into_iter().peekmore();
+
+    loop {
+        match do_item_in_trait(&mut inner_tree) {
+            Ok(item) => body.push(item),
+            Err(e) => match do_lexeme_class(&mut inner_tree, LexemeClass::Eof) {
+                Ok(_) => break,
+                Err(d) => return Err(e | d),
+            },
+        }
+    }
+
+    let impl_id = Spanned {
+        span: id_span,
+        body: xlang::gen_rand(),
+    };
+
+    let body = ImplBlock {
+        safety,
+        tr,
+        ty,
+        generics,
+        where_clauses,
+        body,
+        impl_id,
+    };
+
+    let span = Span::between(startspan, gspan);
+
+    tree.accept();
+
+    Ok(Spanned {
+        body: ItemBody::ImplBlock(Spanned { span, body }),
+        span,
+    })
+}
+
 pub fn do_item_trait(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<ItemBody>> {
@@ -2710,6 +2795,7 @@ pub fn do_item(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Res
             do_item_use,
             do_item_user_type,
             do_item_trait,
+            do_item_impl,
         ],
     )?;
     let span = vis.as_ref().map_or(item.span, |Spanned { span, .. }| {

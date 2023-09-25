@@ -494,6 +494,7 @@ pub enum Type {
         Box<Spanned<Type>>,
     ),
     Param(u32),
+    TraitSelf(DefId),
 }
 
 impl Type {
@@ -596,6 +597,7 @@ impl core::fmt::Display for Type {
                 ty.body.fmt(f)
             }
             Self::Param(var) => f.write_fmt(format_args!("%{}", var)),
+            Self::TraitSelf(tr) => f.write_fmt(format_args!("Self(impl #{})", tr)),
         }
     }
 }
@@ -748,4 +750,19 @@ pub struct TypeField {
     pub name: FieldName,
     pub ty: Type,
     pub vis: DefId,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum SemaTypeBound {
+    Trait(DefId),
+    Life(SemaLifetime),
+}
+
+impl core::fmt::Display for SemaTypeBound {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Self::Trait(tr) => tr.fmt(f),
+            Self::Life(life) => life.fmt(f),
+        }
+    }
 }

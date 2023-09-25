@@ -8,6 +8,7 @@ use xlang::abi::collection::HashSet;
 use xlang::abi::pair::Pair;
 use xlang::targets::properties::TargetProperties;
 
+use crate::ast::SelfParam;
 use crate::lang::LangItemTarget;
 use crate::CrateType;
 use crate::{
@@ -26,6 +27,7 @@ use crate::sema::ty::AsyncType;
 use crate::span::Span;
 
 use self::intrin::IntrinsicDef;
+use self::ty::convert_type;
 use self::ty::FnType;
 use self::ty::SemaLifetime;
 use self::ty::Type;
@@ -108,6 +110,7 @@ pub enum ErrorCategory {
     InvalidFunction,
     InvalidExpression,
     InvalidAttr,
+    BasicCoherenceError,
     TycheckError(tyck::TycheckErrorCategory),
     BorrowckError(mir::BorrowckErrorCategory),
     ConstEvalError(cx::ConstEvalError),
@@ -250,10 +253,27 @@ pub enum UserType {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ImplBlock {
-    pub trait_def: Option<DefId>,
-    pub ty: ty::Type,
+    pub safety: Safety,
+    pub trait_def: Option<Spanned<DefId>>,
+    pub ty: Spanned<ty::Type>,
+    pub provides: HashMap<DefId, DefId>,
     pub assoc_types: HashMap<Symbol, DefId>,
     pub values: HashMap<Symbol, DefId>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct TraitDef {
+    pub auto: bool,
+    pub safety: Safety,
+    pub supertraits: Vec<ty::SemaTypeBound>,
+    pub assoc_types: HashMap<Symbol, DefId>,
+    pub values: HashMap<Symbol, DefId>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct TraitFnSignature {
+    pub fnty: FnType,
+    pub has_reciever: bool,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -263,6 +283,10 @@ pub enum DefinitionInner {
     UserType(UserType),
     IncompletAlias,
     Function(FnType, Option<FunctionBody>),
+    TraitFunction(TraitFnSignature, Option<FunctionBody>),
+    ImplFunction(TraitFnSignature, Option<DefId>, Option<FunctionBody>),
+    Trait(TraitDef),
+    Impl(ImplBlock),
     UseName(DefId),
     UseWildcard(DefId),
     ExternBlock,
@@ -272,7 +296,7 @@ pub enum DefinitionInner {
 pub struct Module {
     pub types: HashMap<Symbol, DefId>,
     pub values: HashMap<Symbol, DefId>,
-    pub impls: Vec<DefId>,
+    pub impls: HashMap<u64, DefId>,
     pub wildcard_imports: Vec<DefId>,
 }
 
@@ -398,6 +422,26 @@ impl Definitions {
         self.defs
             .get_mut(&defid)
             .expect("Sharing DefId's between `Definitions` is not permitted") // This is an ICE, not a user-facing error
+    }
+
+    pub fn insert_impl(&mut self, curmod: DefId, impl_id: u64, item: DefId) -> Result<()> {
+        if let Definition {
+            inner:
+                Spanned {
+                    body: DefinitionInner::Module(md),
+                    ..
+                },
+            ..
+        } = self.definition_mut(curmod)
+        {
+            if let Some(existing) = md.impls.insert(impl_id, item) {
+                panic!("ICE: impl block with id {} duplicated. This can happen extraordinarily rarely - try recompiling (if you set `LCCC_SEED` in the environment, set it to a different value, or unset it). If this message persists, file a bug report.", impl_id)
+            } else {
+                Ok(())
+            }
+        } else {
+            panic!("Expected defid {} to be a module", curmod)
+        }
     }
 
     pub fn insert_type(&mut self, curmod: DefId, name: Spanned<Symbol>, item: DefId) -> Result<()> {
@@ -529,6 +573,28 @@ impl Definitions {
             } else {
                 self.owning_crate(parent)
             }
+        }
+    }
+
+    pub fn find_impl_in_mod(
+        &self,
+        curmod: DefId,
+        searchmod: DefId,
+        impl_id: Spanned<u64>,
+        at_item: DefId,
+    ) -> Result<DefId> {
+        if let Definition {
+            inner:
+                Spanned {
+                    body: DefinitionInner::Module(md),
+                    ..
+                },
+            ..
+        } = self.definition(searchmod)
+        {
+            Ok(md.impls[&impl_id.body])
+        } else {
+            panic!("Expected a module for item {}", searchmod); // TODO handle Ty::ASSOC_TYPE
         }
     }
 
@@ -955,7 +1021,8 @@ impl Definitions {
             ty::Type::InferableInt(_) | ty::Type::Inferable(_) => {
                 panic!("Cannot determine copyability of an uninfered type")
             }
-            ty::Type::Param(_) => false, // for now
+            ty::Type::TraitSelf(_) => false, // for now
+            ty::Type::Param(_) => false,     // for now
         }
     }
 
@@ -972,6 +1039,7 @@ impl Definitions {
                 panic!("Canot determine owning definition of an uninfered type")
             }
             ty::Type::Param(_) => DefId::ROOT,
+            ty::Type::TraitSelf(defid) => *defid,
             prim => prim
                 .as_lang_item()
                 .and_then(|lang| self.get_lang_item(lang))
@@ -1525,6 +1593,7 @@ impl Definitions {
                     }
                 }
                 Type::Param(_) => panic!("generics not allowed, monomorphize types first"),
+                Type::TraitSelf(_) => todo!("generics not allowed, monomorphize types first"),
             };
 
             let layout = Box::new(layout);
@@ -1578,7 +1647,8 @@ impl Definitions {
                 | Type::Param(_)
                 | Type::Reference(_, _, _)
                 | Type::Pointer(_, _)
-                | Type::Array(_, _) => Vec::new(),
+                | Type::Array(_, _)
+                | Type::TraitSelf(_) => Vec::new(),
                 Type::Tuple(elems) => {
                     let mut fields = Vec::new();
 
@@ -1709,6 +1779,10 @@ impl Definitions {
                 }
 
                 for &Pair(name, def) in &md.types {
+                    self.display_item(fmt, def, &name, nested)?;
+                }
+                for &Pair(impl_id, def) in &md.impls {
+                    let name = format!("impl {:016X}", impl_id);
                     self.display_item(fmt, def, &name, nested)?;
                 }
                 for &Pair(name, def) in &md.values {
@@ -1865,6 +1939,191 @@ impl Definitions {
                     }
                 }
             }
+            DefinitionInner::TraitFunction(TraitFnSignature { fnty, has_reciever }, body) => {
+                if let Mutability::Const = fnty.constness.body {
+                    fmt.write_str("const ")?;
+                }
+
+                if let AsyncType::Async = fnty.asyncness.body {
+                    fmt.write_str("async ")?;
+                }
+
+                if let Safety::Unsafe = fnty.safety.body {
+                    fmt.write_str("unsafe ")?;
+                }
+
+                fnty.tag.body.fmt(fmt)?;
+
+                fmt.write_str(" fn ")?;
+
+                fmt.write_str(item_name)?;
+
+                fmt.write_str(" /*")?;
+                id.fmt(fmt)?;
+                fmt.write_str("*/(")?;
+
+                let mut n = 0;
+                let mut sep = if *has_reciever { "self: " } else { "" };
+
+                for ty in &fnty.paramtys {
+                    fmt.write_str(sep)?;
+                    sep = ", ";
+                    fmt.write_fmt(format_args!("_{}: {}", n.fetch_increment(), &ty.body))?;
+                }
+
+                if *fnty.iscvarargs {
+                    fmt.write_str(sep)?;
+                    fmt.write_fmt(format_args!("_{}: ...", n))?;
+                }
+
+                fmt.write_str(") -> ")?;
+                fnty.retty.body.fmt(fmt)?;
+                match body {
+                    None => fmt.write_str(";\n"),
+                    Some(FunctionBody::Incomplete) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        nested.fmt(fmt)?;
+                        fmt.write_str("/*incomplete*/\n")?;
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                    Some(FunctionBody::AstBody(stmts)) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        for stmt in &stmts.stmts {
+                            fmt.write_fmt(format_args!("{}{:?}\n", nested, stmt.body))?;
+                        }
+                        if let Some(tail) = &stmts.tail_expr {
+                            fmt.write_fmt(format_args!("{}{:?}\n", nested, tail.body))?;
+                        }
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                    Some(FunctionBody::HirBody(body)) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        body.display_body(fmt, nested)?;
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                    Some(FunctionBody::ThirBody(body)) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        body.display_body(fmt, nested)?;
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                    Some(FunctionBody::MirBody(body)) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        body.display_body(fmt, nested)?;
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                    Some(FunctionBody::Intrinsic(intrin)) => {
+                        fmt.write_str(" = ")?;
+                        fmt.write_str(intrin.name())?;
+                        fmt.write_str(";\n")
+                    }
+                }
+            }
+            DefinitionInner::ImplFunction(TraitFnSignature { fnty, has_reciever }, base, body) => {
+                if let Mutability::Const = fnty.constness.body {
+                    fmt.write_str("const ")?;
+                }
+
+                if let AsyncType::Async = fnty.asyncness.body {
+                    fmt.write_str("async ")?;
+                }
+
+                if let Safety::Unsafe = fnty.safety.body {
+                    fmt.write_str("unsafe ")?;
+                }
+
+                fnty.tag.body.fmt(fmt)?;
+
+                fmt.write_str(" fn ")?;
+
+                fmt.write_str(item_name)?;
+
+                fmt.write_str(" /*")?;
+                id.fmt(fmt)?;
+
+                if let &Some(base) = base {
+                    fmt.write_str(" impl(")?;
+                    base.fmt(fmt)?;
+                    fmt.write_str(")")?;
+                }
+
+                fmt.write_str("*/(")?;
+
+                let mut n = 0;
+                let mut sep = if *has_reciever { "self: " } else { "" };
+
+                for ty in &fnty.paramtys {
+                    fmt.write_str(sep)?;
+                    sep = ", ";
+                    fmt.write_fmt(format_args!("_{}: {}", n.fetch_increment(), &ty.body))?;
+                }
+
+                if *fnty.iscvarargs {
+                    fmt.write_str(sep)?;
+                    fmt.write_fmt(format_args!("_{}: ...", n))?;
+                }
+
+                fmt.write_str(") -> ")?;
+                fnty.retty.body.fmt(fmt)?;
+                match body {
+                    None => fmt.write_str(";\n"),
+                    Some(FunctionBody::Incomplete) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        nested.fmt(fmt)?;
+                        fmt.write_str("/*incomplete*/\n")?;
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                    Some(FunctionBody::AstBody(stmts)) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        for stmt in &stmts.stmts {
+                            fmt.write_fmt(format_args!("{}{:?}\n", nested, stmt.body))?;
+                        }
+                        if let Some(tail) = &stmts.tail_expr {
+                            fmt.write_fmt(format_args!("{}{:?}\n", nested, tail.body))?;
+                        }
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                    Some(FunctionBody::HirBody(body)) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        body.display_body(fmt, nested)?;
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                    Some(FunctionBody::ThirBody(body)) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        body.display_body(fmt, nested)?;
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                    Some(FunctionBody::MirBody(body)) => {
+                        fmt.write_str("{\n")?;
+                        let nested = tabs.nest();
+                        body.display_body(fmt, nested)?;
+                        tabs.fmt(fmt)?;
+                        fmt.write_str("}\n")
+                    }
+                    Some(FunctionBody::Intrinsic(intrin)) => {
+                        fmt.write_str(" = ")?;
+                        fmt.write_str(intrin.name())?;
+                        fmt.write_str(";\n")
+                    }
+                }
+            }
             DefinitionInner::UseName(item) => {
                 fmt.write_str("use ")?;
                 item.fmt(fmt)?;
@@ -1872,9 +2131,80 @@ impl Definitions {
                 fmt.write_str(item_name)?;
                 fmt.write_str(" /*")?;
                 id.fmt(fmt)?;
-                fmt.write_str("*/\n")
+                fmt.write_str("*/;\n")
             }
             DefinitionInner::UseWildcard(_) => unreachable!("This should never happen"),
+            DefinitionInner::Trait(tr) => {
+                tabs.fmt(fmt)?;
+                match tr.safety {
+                    Safety::Unsafe => fmt.write_str("unsafe ")?,
+                    Safety::Safe => {}
+                }
+
+                if tr.auto {
+                    fmt.write_str("auto ")?;
+                }
+
+                fmt.write_str("trait ")?;
+
+                item_name.fmt(fmt)?;
+                fmt.write_str(" /*")?;
+                id.fmt(fmt)?;
+                fmt.write_str("*/")?;
+
+                let mut sep = ": ";
+                for bound in &tr.supertraits {
+                    fmt.write_str(sep)?;
+                    sep = " + ";
+                    bound.fmt(fmt)?;
+                }
+
+                fmt.write_str("{\n")?;
+
+                let nested = tabs.nest();
+
+                for &Pair(name, id) in &tr.assoc_types {
+                    self.display_item(fmt, id, &name, nested)?;
+                }
+
+                for &Pair(name, id) in &tr.values {
+                    self.display_item(fmt, id, &name, nested)?;
+                }
+
+                tabs.fmt(fmt)?;
+                fmt.write_str("}\n")
+            }
+            DefinitionInner::Impl(blk) => {
+                tabs.fmt(fmt)?;
+                if let Safety::Unsafe = blk.safety {
+                    fmt.write_str("unsafe ")?;
+                }
+
+                fmt.write_str("impl ")?;
+                if let Some(trdef) = blk.trait_def {
+                    trdef.fmt(fmt)?;
+                    fmt.write_str(" for ")?;
+                }
+
+                blk.ty.fmt(fmt)?;
+                fmt.write_str(" /*")?;
+                fmt.write_str(item_name)?;
+                fmt.write_str(" (")?;
+                id.fmt(fmt)?;
+                fmt.write_str(")*/ {\n")?;
+                let nested = tabs.nest();
+
+                for &Pair(name, id) in &blk.assoc_types {
+                    self.display_item(fmt, id, &name, nested)?;
+                }
+
+                for &Pair(name, id) in &blk.values {
+                    self.display_item(fmt, id, &name, nested)?;
+                }
+
+                tabs.fmt(fmt)?;
+                fmt.write_str("}\n")
+            }
         }
     }
 }
@@ -1921,6 +2251,10 @@ impl core::fmt::Display for Definitions {
             for &Pair(name, def) in &md.types {
                 self.display_item(f, def, &name, tabs)?;
             }
+            for &Pair(impl_id, def) in &md.impls {
+                let name = format!("impl {:016X}", impl_id);
+                self.display_item(f, def, &name, tabs)?;
+            }
             for &Pair(name, def) in &md.values {
                 self.display_item(f, def, &name, tabs)?;
             }
@@ -1937,7 +2271,7 @@ fn scan_modules(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) -
         types: HashMap::new(),
         values: HashMap::new(),
         wildcard_imports: Vec::new(),
-        impls: Vec::new(),
+        impls: HashMap::new(),
     };
     for item in &md.items {
         let span = item.span;
@@ -2042,14 +2376,6 @@ fn collect_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) 
                     .map(|attr| attr::parse_meta(attr, defid, curmod))
                     .collect::<Result<_>>()?;
 
-                // for attr in &def.attrs{
-                //     match &attr.body{
-                //         Attr::Lang(lang) => {
-                //             if lang.
-                //         },
-                //     }
-                // }
-
                 def.parent = curmod;
                 def.inner = uty.copy_span(|_| DefinitionInner::UserType(utys));
                 def.visible_from = visible_from;
@@ -2065,7 +2391,42 @@ fn collect_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) 
             ast::ItemBody::MacroRules(_) => {
                 unreachable!("macros are expanded before semantic analysis")
             }
-            ast::ItemBody::Trait(_) => todo!("trait"),
+            ast::ItemBody::Trait(tr) => {
+                let defid = defs.allocate_defid();
+                let mut trbody = TraitDef {
+                    auto: tr.auto.is_some(),
+                    safety: tr.safety.map(|s| s.body).unwrap_or(Safety::Safe),
+                    supertraits: vec![],
+                    assoc_types: HashMap::new(),
+                    values: HashMap::new(),
+                };
+
+                let def = defs.definition_mut(defid);
+                def.attrs = item
+                    .attrs
+                    .iter()
+                    .map(|attr| attr::parse_meta(attr, defid, curmod))
+                    .collect::<Result<_>>()?;
+
+                def.parent = curmod;
+
+                for item in &tr.body.body {
+                    match &item.body.item.body {
+                        ast::ItemBody::Value(_) | ast::ItemBody::Function(_) => {}
+                        item => unreachable!(
+                            "{:?} Bad item. This should be filtered during ast validation",
+                            item
+                        ),
+                    }
+                }
+
+                def.inner = tr.copy_span(|_| DefinitionInner::Trait(trbody));
+                def.visible_from = visible_from;
+
+                defs.insert_type(curmod, tr.name, defid)?;
+                defs.collect_lang_items(defid, &[LangItemTarget::Trait])?;
+            }
+            ast::ItemBody::ImplBlock(_) => {}
         }
     }
 
@@ -2081,6 +2442,7 @@ fn collect_function(
     outer_safety: Option<Spanned<Safety>>,
     outer_span: Option<Span>,
     outer_defid: Option<DefId>,
+    self_ty: Option<Spanned<ty::Type>>,
 ) -> Result<DefinitionInner> {
     let actual_tag = itemfn
         .abi
@@ -2176,7 +2538,7 @@ fn collect_function(
         })?;
     }
 
-    let paramtys = itemfn
+    let mut paramtys = itemfn
         .params
         .iter()
         .map(|param| &param.ty)
@@ -2332,7 +2694,8 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
             ast::ItemBody::Value(_) => todo!("value"),
             ast::ItemBody::Function(itemfn) => {
                 let defid = defs.allocate_defid();
-                let inner = collect_function(defs, curmod, defid, itemfn, None, None, None, None)?;
+                let inner =
+                    collect_function(defs, curmod, defid, itemfn, None, None, None, None, None)?;
 
                 let def = defs.definition_mut(defid);
                 def.attrs = item
@@ -2380,7 +2743,7 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                     let defid = defs.allocate_defid();
                     match &item.item.body{
                         ast::ItemBody::Function(itemfn) => {
-                            let inner = collect_function(defs, curmod, defid, itemfn, Some(tag), Some(Spanned{body: Safety::Unsafe, span: Span::empty()}), Some(blk.span),Some(extern_defid))?;
+                            let inner = collect_function(defs, curmod, defid, itemfn, Some(tag), Some(Spanned{body: Safety::Unsafe, span: Span::empty()}), Some(blk.span),Some(extern_defid),None)?;
 
                             let def = defs.definition_mut(defid);
                             def.attrs = item.attrs.iter().map(|attr|attr::parse_meta(attr, defid, defid))
@@ -2414,7 +2777,64 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
             ast::ItemBody::MacroRules(_) => {
                 unreachable!("macros are expanded before semantic analysis")
             }
-            ast::ItemBody::Trait(_) => todo!("trait"),
+            ast::ItemBody::Trait(tr) => {
+                let defid = defs.find_type_in_mod(curmod, curmod, tr.name, curmod)?;
+                for item in &tr.body.body {
+                    match &item.body.item.body {
+                        ast::ItemBody::Value(_) | ast::ItemBody::Function(_) => {
+                            todo!("item in trait")
+                        }
+                        item => unreachable!(
+                            "{:?} Bad item. This should be filtered during ast validation",
+                            item
+                        ),
+                    }
+                }
+            }
+            ast::ItemBody::ImplBlock(blk) => {
+                let defid = defs.allocate_defid();
+                let mut trbody = ImplBlock {
+                    safety: blk.safety.map(|s| s.body).unwrap_or(Safety::Safe),
+                    trait_def: blk
+                        .tr
+                        .as_ref()
+                        .map(|p| p.try_copy_span(|p| defs.find_type(curmod, p, defid)))
+                        .transpose()?,
+                    assoc_types: HashMap::new(),
+                    values: HashMap::new(),
+                    ty: blk
+                        .ty
+                        .try_copy_span(|ty| convert_type(defs, curmod, defid, ty))?,
+                    provides: HashMap::new(),
+                };
+
+                let def = defs.definition_mut(defid);
+                def.attrs = item
+                    .attrs
+                    .iter()
+                    .map(|attr| attr::parse_meta(attr, defid, curmod))
+                    .collect::<Result<_>>()?;
+
+                def.parent = curmod;
+
+                for item in &blk.body.body {
+                    match &item.body.item.body {
+                        ast::ItemBody::Value(_) | ast::ItemBody::Function(_) => {
+                            todo!("item in trait")
+                        }
+                        item => unreachable!(
+                            "{:?} Bad item. This should be filtered during ast validation",
+                            item
+                        ),
+                    }
+                }
+
+                def.inner = blk.copy_span(|_| DefinitionInner::Impl(trbody));
+                def.visible_from = visible_from;
+
+                defs.insert_impl(curmod, blk.impl_id.body, defid)?;
+                defs.collect_lang_items(defid, &[LangItemTarget::ImplBlock])?;
+            }
         }
     }
 
@@ -2480,7 +2900,71 @@ pub fn convert_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mo
             ast::ItemBody::MacroRules(_) => {
                 unreachable!("macros are expanded before semantic analysis")
             }
-            ast::ItemBody::Trait(_) => todo!("trait"),
+            ast::ItemBody::Trait(_) => {}
+            ast::ItemBody::ImplBlock(blk) => {
+                let defid = defs.find_impl_in_mod(curmod, curmod, blk.impl_id, curmod)?;
+
+                let mut impl_blk = core::mem::replace(
+                    &mut defs.definition_mut(defid).inner.body,
+                    DefinitionInner::Placeholder,
+                );
+
+                match &mut impl_blk {
+                    DefinitionInner::Impl(impl_blk) => {
+                        let cr = defs.owning_crate(defs.type_defid(&impl_blk.ty));
+
+                        if let Some(tr) = impl_blk.trait_def {
+                            let tr_cr = defs.owning_crate(tr.body);
+
+                            if defs.curcrate != tr_cr && defs.curcrate != cr {
+                                return Err(Error {
+                                    span: blk.impl_id.span,
+                                    text: format!(
+                                        "Attempt to implement foreign trait {:?} for foreign type {:?}",
+                                        blk.tr.as_ref().unwrap().body,
+                                        blk.ty.body
+                                    ),
+                                    category: ErrorCategory::BasicCoherenceError,
+                                    at_item: defid,
+                                    containing_item: curmod,
+                                    relevant_item: tr.body,
+                                    hints: vec![],
+                                });
+                            }
+                        } else {
+                            // TODO: Support `#[lang = "f32_std"]`/`#[lang = "f64_std"]`
+                            if defs.curcrate != cr {
+                                return Err(Error {
+                                    span: blk.impl_id.span,
+                                    text: format!(
+                                        "Attempt to define inherent impl for foreign type {:?}",
+                                        blk.ty.body
+                                    ),
+                                    category: ErrorCategory::BasicCoherenceError,
+                                    at_item: defid,
+                                    containing_item: curmod,
+                                    relevant_item: cr,
+                                    hints: vec![],
+                                });
+                            }
+                        }
+                        for item in &blk.body.body {
+                            match &item.body.item.body {
+                                ast::ItemBody::Value(_) | ast::ItemBody::Function(_) => {
+                                    todo!("item in trait")
+                                }
+                                item => unreachable!(
+                                    "{:?} Bad item. This should be filtered during ast validation",
+                                    item
+                                ),
+                            }
+                        }
+                    }
+                    _ => panic!("Not an impl but we have an impl"),
+                }
+
+                defs.definition_mut(defid).inner.body = impl_blk;
+            }
         }
     }
 
@@ -2544,7 +3028,8 @@ pub fn convert_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::M
             | ast::ItemBody::ExternCrate { .. }
             | ast::ItemBody::ExternBlock(_) => {}
             ast::ItemBody::MacroRules(_) => unreachable!(),
-            ast::ItemBody::Trait(_) => todo!("trait"),
+            ast::ItemBody::Trait(_) => {}
+            ast::ItemBody::ImplBlock(_) => {}
         }
     }
 

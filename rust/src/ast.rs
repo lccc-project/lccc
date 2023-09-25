@@ -64,6 +64,7 @@ pub enum ItemBody {
     ExternBlock(Spanned<ExternBlock>),
     MacroRules(Spanned<MacroRules>),
     Trait(Spanned<TraitDef>),
+    ImplBlock(Spanned<ImplBlock>),
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -78,6 +79,17 @@ pub struct TraitDef {
     pub supertraits: Option<Vec<Spanned<GenericBound>>>,
     pub where_clauses: Option<Spanned<Vec<Spanned<WhereClause>>>>,
     pub body: Vec<Spanned<Item>>,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct ImplBlock {
+    pub safety: Option<Spanned<Safety>>,
+    pub tr: Option<Spanned<Path>>,
+    pub ty: Spanned<Type>,
+    pub generics: Option<Spanned<GenericParams>>,
+    pub where_clauses: Option<Spanned<Vec<Spanned<WhereClause>>>>,
+    pub body: Vec<Spanned<Item>>,
+    pub impl_id: Spanned<u64>,
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]

@@ -6,8 +6,9 @@ use crate::{
     lex::StringType,
     sema::{
         cx,
+        hir::BinaryOp,
         mir::{self, SsaVarId},
-        ty, Attr, Constructor, DefId, DefinitionInner, Definitions, FunctionBody, UserTypeKind, hir::BinaryOp,
+        ty, Attr, Constructor, DefId, DefinitionInner, Definitions, FunctionBody, UserTypeKind,
     },
 };
 
@@ -140,6 +141,7 @@ pub fn visit_type_def<V: TypeDefVisitor>(
             }
             _ => todo!("user type"),
         },
+        DefinitionInner::Trait(_) => {}
         x => panic!("Invalid definition: {:?}", x),
     }
 }
@@ -510,7 +512,9 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
             visit_field_access(visitor.visit_field_subobject(), expr, name, defs)
         }
         mir::MirExpr::Ctor(ctor) => visit_constructor(visitor.visit_ctor(), ctor, defs),
-        mir::MirExpr::BinaryExpr(op, lhs, rhs) => visit_binary_expr(visitor.visit_binary_expr(), op, lhs, rhs, defs),
+        mir::MirExpr::BinaryExpr(op, lhs, rhs) => {
+            visit_binary_expr(visitor.visit_binary_expr(), op, lhs, rhs, defs)
+        }
     }
 }
 
@@ -527,7 +531,13 @@ pub fn visit_field_access<V: FieldAccessVisitor>(
     visit_expr(visitor.visit_base(), base, defs);
 }
 
-pub fn visit_binary_expr<V: BinaryExprVisitor>(mut visitor: V, op: &mir::BinaryOp, lhs: &mir::MirExpr, rhs: &mir::MirExpr, defs: &Definitions) {
+pub fn visit_binary_expr<V: BinaryExprVisitor>(
+    mut visitor: V,
+    op: &mir::BinaryOp,
+    lhs: &mir::MirExpr,
+    rhs: &mir::MirExpr,
+    defs: &Definitions,
+) {
     if visitor.is_none() {
         return;
     }
