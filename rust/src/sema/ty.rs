@@ -453,7 +453,7 @@ impl core::fmt::Display for FnType {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum SemaLifetime {
-    Bound(Spanned<Symbol>),
+    Bound(Spanned<u32>),
     Region(RegionId),
     Static,
 }
@@ -461,10 +461,7 @@ pub enum SemaLifetime {
 impl core::fmt::Display for SemaLifetime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Bound(sym) => {
-                f.write_str("'")?;
-                f.write_str(sym)
-            }
+            Self::Bound(sym) => f.write_fmt(format_args!("'%{}", sym.body)),
             Self::Region(reg) => reg.fmt(f),
             Self::Static => f.write_str("'static"),
         }

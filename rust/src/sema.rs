@@ -144,15 +144,9 @@ impl core::fmt::Debug for DefId {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum TypeConstraint {
-    Trait(DefId),
-    Lifetime(SemaLifetime),
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum GenericParamInfo {
     Lifetime(Vec<SemaLifetime>),
-    Type(Vec<TypeConstraint>),
+    Type(Vec<ty::SemaTypeBound>),
     Const(Type),
 }
 
@@ -160,6 +154,43 @@ pub enum GenericParamInfo {
 pub struct GenericParams {
     pub params: Vec<GenericParamInfo>,
     pub by_name: HashMap<Spanned<Symbol>, u32>,
+}
+
+impl core::fmt::Display for GenericParams {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_str("<")?;
+        let mut sep = "";
+        for (n, param) in self.params.iter().enumerate() {
+            f.write_str(sep)?;
+            sep = ", ";
+            match param {
+                GenericParamInfo::Lifetime(bounds) => {
+                    f.write_fmt(format_args!("'%{}", n))?;
+                    let mut sep = ": ";
+
+                    for bound in bounds {
+                        f.write_str(sep)?;
+                        sep = ", ";
+                        bound.fmt(f)?;
+                    }
+                }
+                GenericParamInfo::Type(bounds) => {
+                    f.write_fmt(format_args!("%{}", n))?;
+                    let mut sep = ": ";
+
+                    for bound in bounds {
+                        f.write_str(sep)?;
+                        sep = ", ";
+                        bound.fmt(f)?;
+                    }
+                }
+                GenericParamInfo::Const(ty) => {
+                    f.write_fmt(format_args!("const %{}: %{}", n, ty))?
+                }
+            }
+        }
+        f.write_str(">")
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -1798,6 +1829,7 @@ impl Definitions {
                     UserTypeKind::Union => fmt.write_str("union ")?,
                 }
                 fmt.write_str(item_name)?;
+                def.generics.fmt(fmt)?;
                 fmt.write_str(" /*")?;
                 id.fmt(fmt)?;
                 fmt.write_str("*/{\n")?;
@@ -1814,6 +1846,7 @@ impl Definitions {
                     UserTypeKind::Union => fmt.write_str("union ")?,
                 }
                 fmt.write_str(item_name)?;
+                def.generics.fmt(fmt)?;
                 fmt.write_str(" /*")?;
                 id.fmt(fmt)?;
                 fmt.write_str("*/")?;
@@ -1848,6 +1881,7 @@ impl Definitions {
                 fmt.write_str("type ")?;
                 fmt.write_str(" /*")?;
                 id.fmt(fmt)?;
+                def.generics.fmt(fmt)?;
                 fmt.write_str("*/ = /*incomplete*/;\n")
             }
             DefinitionInner::Function(fnty, body) => {
@@ -1868,6 +1902,7 @@ impl Definitions {
                 fmt.write_str(" fn ")?;
 
                 fmt.write_str(item_name)?;
+                def.generics.fmt(fmt)?;
 
                 fmt.write_str(" /*")?;
                 id.fmt(fmt)?;
@@ -1957,6 +1992,7 @@ impl Definitions {
                 fmt.write_str(" fn ")?;
 
                 fmt.write_str(item_name)?;
+                def.generics.fmt(fmt)?;
 
                 fmt.write_str(" /*")?;
                 id.fmt(fmt)?;
@@ -2046,6 +2082,7 @@ impl Definitions {
                 fmt.write_str(" fn ")?;
 
                 fmt.write_str(item_name)?;
+                def.generics.fmt(fmt)?;
 
                 fmt.write_str(" /*")?;
                 id.fmt(fmt)?;
@@ -2148,6 +2185,7 @@ impl Definitions {
                 fmt.write_str("trait ")?;
 
                 item_name.fmt(fmt)?;
+                def.generics.fmt(fmt)?;
                 fmt.write_str(" /*")?;
                 id.fmt(fmt)?;
                 fmt.write_str("*/")?;
@@ -2180,7 +2218,9 @@ impl Definitions {
                     fmt.write_str("unsafe ")?;
                 }
 
-                fmt.write_str("impl ")?;
+                fmt.write_str("impl")?;
+                def.generics.fmt(fmt)?;
+                fmt.write_str(" ")?;
                 if let Some(trdef) = blk.trait_def {
                     trdef.fmt(fmt)?;
                     fmt.write_str(" for ")?;
