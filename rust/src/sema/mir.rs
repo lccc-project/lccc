@@ -668,7 +668,8 @@ impl<'a> MirConverter<'a> {
             | ThirExprInner::Tuple(_)
             | ThirExprInner::Ctor(_)
             | ThirExprInner::BinaryExpr(_, _, _)
-            | ThirExprInner::Array(_) | ThirExprInner::Index(_, _) => unreachable!("cannot access"),
+            | ThirExprInner::Array(_)
+            | ThirExprInner::Index(_, _) => unreachable!("cannot access"),
         }
     }
 

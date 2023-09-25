@@ -67,24 +67,30 @@ mod abi {
             unsafe impl<'a, A, R> AbiSafeVTable<dyn 'a + $tr<A, Output = R>> for $vtable<A, R> {}
             unsafe impl<'a, A, R> AbiSafeVTable<dyn 'a + Send + $tr<A, Output = R>>
                 for $vtable<A, R>
-            {}
+            {
+            }
             unsafe impl<'a, A, R> AbiSafeVTable<dyn 'a + Sync + $tr<A, Output = R>>
                 for $vtable<A, R>
-            {}
+            {
+            }
             unsafe impl<'a, A, R> AbiSafeVTable<dyn 'a + Send + Sync + $tr<A, Output = R>>
                 for $vtable<A, R>
-            {}
+            {
+            }
 
             unsafe impl<'a, A, R> TrustedVTable<dyn 'a + $tr<A, Output = R>> for $vtable<A, R> {}
             unsafe impl<'a, A, R> TrustedVTable<dyn 'a + Send + $tr<A, Output = R>>
                 for $vtable<A, R>
-            {}
+            {
+            }
             unsafe impl<'a, A, R> TrustedVTable<dyn 'a + Sync + $tr<A, Output = R>>
                 for $vtable<A, R>
-            {}
+            {
+            }
             unsafe impl<'a, A, R> TrustedVTable<dyn 'a + Send + Sync + $tr<A, Output = R>>
                 for $vtable<A, R>
-            {}
+            {
+            }
 
             unsafe impl<'a, A: 'static, R: 'static> AbiSafeTrait for dyn 'a + $tr<A, Output = R> {
                 type VTable = $vtable<A, R>;

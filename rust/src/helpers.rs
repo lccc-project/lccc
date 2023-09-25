@@ -41,17 +41,15 @@ impl core::fmt::Display for TabPrinter {
 }
 
 macro_rules! nzu16 {
-    ($val:expr) => {
-        {
-            const __VAL: ::core::num::NonZeroU16 = {
-                const __LIT: u16 = $val;
-                [()][(__LIT == 0) as usize];
+    ($val:expr) => {{
+        const __VAL: ::core::num::NonZeroU16 = {
+            const __LIT: u16 = $val;
+            [()][(__LIT == 0) as usize];
 
-                unsafe { ::core::num::NonZeroU16::new_unchecked(__LIT) }
-            };
-            __VAL
-        }
-    };
+            unsafe { ::core::num::NonZeroU16::new_unchecked(__LIT) }
+        };
+        __VAL
+    }};
 }
 
 pub(crate) use nzu16;
