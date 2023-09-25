@@ -1,13 +1,10 @@
-
-use core::panic::Location;
 use core::fmt::FormatArgs;
+use core::panic::Location;
 
-extern "lcrust-v0"{
-    #[link_name = "_ZNSt9panicking5lcrust7abort_fmtERK_ZNSt5panic8LocationE_ZNSt3fmt10FormatArgsE"]
-    #[lcrust::unsafe_import]
+extern "lcrust-v0" {
+    #[lcrust::mangled_import]
     pub fn abort_fmt(panic_origin: &Location, args: FormatArgs) -> !;
-    #[link_name = "_ZNSt9panicking5lcrust14abort_no_messagev"]
-    #[]
+    #[lcrust::mangled_import]
     pub fn abort_no_message() -> !;
 }
 
@@ -23,12 +20,15 @@ impl core::fmt::Display for PrintOrDefault<'_> {
     }
 }
 
-pub extern "lcrust-v0" fn abort(panic_origin: &Location, msg: Option<&str>) -> !{
-
+pub extern "lcrust-v0" fn abort(panic_origin: &Location, msg: Option<&str>) -> ! {
     // SAFETY: std::panicking::lcrust::abort_fmt is a safe function
-    unsafe{abort_fmt(panic_origin, format_args!("{}",PrintOrDefault(msg,"Explicit Panic")))}
+    unsafe {
+        abort_fmt(
+            panic_origin,
+            format_args!("{}", PrintOrDefault(msg, "Explicit Panic")),
+        )
+    }
 }
 
-
-#[cfg(feature="unwind")]
+#[cfg(feature = "unwind")]
 include!("unwind.rs");

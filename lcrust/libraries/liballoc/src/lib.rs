@@ -33,5 +33,6 @@ extern crate self as alloc;
 
 pub mod alloc;
 pub mod boxed;
+pub mod collection;
 pub mod rc;
 pub mod vec;

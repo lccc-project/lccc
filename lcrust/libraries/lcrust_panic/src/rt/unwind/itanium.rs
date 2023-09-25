@@ -12,11 +12,11 @@ const _URC_CONTINUE_UNWIND: _UnwindReasonCode = 8;
 
 // Opaque
 #[repr(C)]
-pub struct _UnwindContet([(); 0]);
+pub struct _UnwindContext([(); 0]);
 
 pub const EXCEPT_CLASS: u64 = u64::from_le_bytes(*b"LCRSLCCC");
 
-#[repr(C)]
+#[repr(C, align(8))]
 pub struct _UnwindException {
     pub cl: u64,
     pub exception_cleanup: Option<unsafe extern "C" fn(_UnwindReasonCode, *mut _UnwindException)>,
@@ -55,9 +55,16 @@ unsafe extern "C" fn cleanup_exception(x: _UnwindReasonCode, except: *mut _Unwin
 
 pub type ForeignExceptionType = _UnwindException;
 
+pub const FOREIGN_EXCEPTION_INIT: ForeignExceptionType = _UnwindException {
+    cl: EXCEPT_CLASS,
+    exception_cleanup: None,
+    private1: 0,
+    private2: 0,
+};
+
 #[repr(C)]
 pub struct PanicUnwindInfo {
-    pub except: _UnwindException,
+    pub foreign: _UnwindException,
     pub abi_ver: u64,
     pub panic_origin: Location<'static>,
     pub message: Option<String>,

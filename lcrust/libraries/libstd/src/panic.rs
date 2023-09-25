@@ -1,5 +1,7 @@
 pub use core::panic::*;
 
+
+
 fn box_erased<T>(x: T) -> *mut ! {
     Box::into_raw(Box::new(x)) as *mut !
 }
@@ -33,3 +35,8 @@ fn catch_unwind_erased(f: *mut dyn FnOnce() -> *mut !, _: *mut !) -> Result<*mut
     Ok(FnOnce::call_once_unsized(f, ()))
 }
 
+
+#[track_caller]
+pub fn panic_any<M: 'static + Send + Sync>(m: M) -> !{
+
+}

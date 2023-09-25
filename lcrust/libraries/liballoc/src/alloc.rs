@@ -247,13 +247,9 @@ pub fn alloc_align_compatible(old_align: usize, new_align: usize) -> bool {
 pub fn handle_alloc_error(layout: Layout) -> ! {
     extern "Rust" {
         #[no_mangle]
-        fn _ZN5alloc5alloc35__lccc_rust_handle_alloc_error_implu5neverN4core5alloc6Layout(
-            _: Layout,
-        ) -> !;
+        fn _ZNSt5alloc35__lccc_rust_handle_alloc_error_implE_ZN4core5alloc6LayoutE(_: Layout) -> !;
     }
-    unsafe {
-        _ZN5alloc5alloc35__lccc_rust_handle_alloc_error_implu5neverN4core5alloc6Layout(layout)
-    }
+    unsafe { _ZNSt5alloc35__lccc_rust_handle_alloc_error_implE_ZN4core5alloc6LayoutE(layout) }
 }
 
 #[lcrust::weak_def]

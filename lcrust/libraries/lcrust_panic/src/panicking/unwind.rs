@@ -1,10 +1,13 @@
 
-pub use crate::rt::unwind::sys::{ForeignExceptionType,PanicUnwindInfo};
+pub use crate::rt::unwind::sys::{ForeignExceptionType,PanicUnwindInfo, FOREIGN_EXCEPTION_INIT};
 
 use crate::rt::unwind::sys::{__dispose_foreign_exception,__begin_unwind};
 
+use core::sync::atomic::AtomicUsize;
 use core::cell::Cell;
 use core::any::Any;
+
+pub(crate) static ALWAYS_ABORT: AtomicUsize = AtomicUsize::new(0);
 
 #[thread_local]
 static PANIC_COUNT: Cell<usize> = Cell::new(0);
@@ -135,12 +138,44 @@ pub unsafe fn catch_unwind_landing_pad(_: *mut dyn FnOnce()->*mut !, p: *mut For
 }
 
 
+
+#[lcrust::weak_def]
+pub fn panic_call_hook(_: &PanicInfo<'_>){}
+
+
+
 #[cfg_attr(define_lang_items, lang = "lcrust_begin_unwind_symbol")]
 #[cfg_attr(define_lang_items, lcrust::weak_def)]
 #[cfg_attr(not(define_lang_items), panic_handler)]
 #[cold]
 #[inline(never)]
 pub fn begin_panic(info: &core::panic::PanicInfo) -> !{
-    let payload = 
+    let count = unsafe{increment_panic_count()};
+
+    if count > 1{
+        unsafe{abort_fmt(info.location(), format_args!("Immediate abort from panics: {} active panics on thread", count))}
+    }else{
+        panic_call_hook(info);
+
+        if count > 0{
+            unsafe{abort(info.location(), Some("Double-panic: Aborting process"))}
+        }
+
+        // Per lcrust abi v0: `PanicInfo` constructed by the implementation shall have a location valid for the duration of the program
+        let location = unsafe{core::mem::transmute(core::ptr::read(info.location()))};
+
+        let mut info = PanicUnwindInfo{
+            foreign: FOREIGN_EXCEPTION_INIT,
+            abi_ver: 0,
+            panic_origin: location,
+            message: info.message().map(|args| ::alloc::format!("{}",args)),
+            vtable: core::ptr::metadata(info.payload()),
+            tail_size: 0,
+        };
+
+
+        let layout = alloc::alloc::Layout::of_val(info.payload());
+
+    }
 }
 
