@@ -1,8 +1,10 @@
-use super::{
-    asm::{AsmScalar, AsmScalarKind},
-    ArchProperties, AsmProperties, MachineProperties, PrimitiveProperties,
+use {
+    super::{
+        asm::{AsmScalar, AsmScalarKind},
+        ArchProperties, AsmProperties, MachineProperties, PrimitiveProperties,
+    },
+    xlang_abi::{const_sv, pair::Pair, span},
 };
-use xlang_abi::{const_sv, pair::Pair, span};
 
 macro_rules! constraints {
     {
@@ -19,6 +21,7 @@ macro_rules! sv_span {
         span![$(const_sv!(::std::stringify!($r))),*]
     };
 }
+
 pub static PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
     intbits: 32,
     longbits: 64,
