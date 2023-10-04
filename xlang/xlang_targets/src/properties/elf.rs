@@ -2,6 +2,7 @@ use xlang_abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
 
 use super::{
     clever::{CLEVER, CLEVERILP32_PRIMITIVES, CLEVER_PRIMITIVES},
+    holeybytes,
     w65::{W65, W65_PRIMITIVES},
     x86::{
         I386, I486, I586, I686, I86, X32_PRIMITIVES, X86_16_FAR_DATA_NEAR_FN_PRIMITIVES,
@@ -349,6 +350,29 @@ pub static W65_ELF: TargetProperties = TargetProperties {
     link: &W65_ELF_LINK,
     abis: span![],
     enabled_features: span![],
+    default_tag_name: const_sv!("C"),
+    system_tag_name: const_sv!("C"),
+};
+
+pub static HOLEYBYTES_ELF_LINK: LinkProperties = LinkProperties {
+    libdirs: span![const_sv!("lib")],
+    default_libs: span![],
+    startfiles: span![const_sv!("crt1.o"), const_sv!("crti.o")],
+    endfiles: span![const_sv!("crtn.o")],
+    available_formats: span![],
+    interp: const_sv!("ld-clever.so"),
+    obj_binfmt: const_sv!("elf64-holeybytes"),
+    lib_binfmt: const_sv!("elf64-holeybytes"),
+    exec_binfmt: const_sv!("elf64-holeybytes"),
+};
+
+pub static HOLEYBYTES_ELF: TargetProperties = TargetProperties {
+    primitives: &holeybytes::PRIMITIVES,
+    arch: &holeybytes::HOLEYBYTES,
+    os: &BARE_ELF,
+    link: &HOLEYBYTES_ELF_LINK,
+    enabled_features: span![],
+    abis: span![],
     default_tag_name: const_sv!("C"),
     system_tag_name: const_sv!("C"),
 };
