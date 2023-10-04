@@ -286,6 +286,7 @@ pub struct TargetProperties<'a> {
 
 mod clever;
 mod elf;
+mod holeybytes;
 mod linux;
 mod w65;
 mod x86;
@@ -317,6 +318,7 @@ pub fn __get_properties(targ: StringView) -> Option<&'static TargetProperties<'s
             w65-*-elf => Some(&elf::W65_ELF),
             w65-*-snes-elf => Some(&elf::W65_ELF),
             i86-*-near => Some(&elf::I86_NEAR_ELF),
+            holeybytes-*-elf => Some(&elf::HOLEYBYTES_ELF),
             * => None
         }
     }
