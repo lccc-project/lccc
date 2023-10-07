@@ -409,7 +409,8 @@ impl<'a> HirLowerer<'a> {
                 let inner = self.desugar_expr(inner)?;
 
                 let ty = ty.try_copy_span(|ty| {
-                    super::ty::convert_type(self.defs, self.curmod, self.atitem, ty)
+                    super::ty::convert_type(self.defs, self.curmod, self.atitem, ty, None)
+                    // TODO: This also needs a SelfTy
                 })?;
 
                 Ok(expr.copy_span(|_| HirExpr::Cast(Box::new(inner), ty)))
@@ -456,6 +457,7 @@ impl<'a> HirLowerer<'a> {
                             self.curmod,
                             &ctor.ctor_name,
                             self.atitem,
+                            None, // TODO: Give this a SelfTy
                         )?,
                         span: ctor.ctor_name.span,
                     };
@@ -546,7 +548,8 @@ impl<'a> HirLowerer<'a> {
                     .as_ref()
                     .map(|x| {
                         x.try_copy_span(|x| {
-                            ty::convert_type(self.defs, self.curmod, self.atitem, x)
+                            ty::convert_type(self.defs, self.curmod, self.atitem, x, None)
+                            // TODO: Give this a SelfTy
                         })
                     })
                     .transpose()?;

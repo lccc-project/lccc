@@ -1,5 +1,7 @@
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::TryInto;
+use std::f32::consts::E;
 
 use ast::Mutability;
 use ast::Safety;
@@ -118,6 +120,7 @@ pub enum ErrorCategory {
 
 pub mod attr;
 pub mod cx;
+pub mod gen;
 pub mod hir;
 pub mod intrin;
 pub mod mir;
@@ -343,6 +346,7 @@ pub struct Definitions {
     intrinsics: HashMap<intrin::IntrinsicDef, DefId>,
     layout_cache: RefCell<HashMap<ty::Type, *mut TypeLayout>>,
     fields_cache: RefCell<HashMap<ty::Type, *mut Vec<ty::TypeField>>>,
+    inherent_impls_cache: RefCell<HashMap<ty::Type, *mut Vec<DefId>>>,
     properties: &'static TargetProperties<'static>,
 }
 
@@ -350,13 +354,19 @@ impl Drop for Definitions {
     fn drop(&mut self) {
         for Pair(_, layout) in self.layout_cache.get_mut() {
             unsafe {
-                Box::from_raw(*layout);
+                let _ = Box::from_raw(*layout);
             }
         }
 
         for Pair(_, fields) in self.fields_cache.get_mut() {
             unsafe {
-                Box::from_raw(*fields);
+                let _ = Box::from_raw(*fields);
+            }
+        }
+
+        for Pair(_, inherent_impls) in self.inherent_impls_cache.get_mut() {
+            unsafe {
+                let _ = Box::from_raw(*inherent_impls);
             }
         }
     }
@@ -377,6 +387,7 @@ impl Definitions {
             layout_cache: RefCell::new(HashMap::new()),
             fields_cache: RefCell::new(HashMap::new()),
             properties,
+            inherent_impls_cache: RefCell::new(HashMap::new()),
         }
     }
 
@@ -385,10 +396,6 @@ impl Definitions {
             DefinitionInner::Function(_, Some(FunctionBody::Intrinsic(intrin))) => Some(intrin),
             _ => None,
         }
-    }
-
-    pub fn canon_def(&self, intrin: IntrinsicDef) -> DefId {
-        self.intrinsics[&intrin]
     }
 
     pub fn spanof(&self, defid: DefId) -> Span {
@@ -588,9 +595,16 @@ impl Definitions {
     }
 
     pub fn visible_from(&self, item: DefId, curmod: DefId) -> bool {
-        let vis = self.definition(item).visible_from;
-
+        let vis = self.visibility_of(item); // So we handle `visible_from(ROOT)` properly.
         self.visibility_matches(vis, curmod)
+    }
+
+    pub fn visibility_of(&self, item: DefId) -> DefId {
+        if item == DefId::ROOT {
+            item
+        } else {
+            self.definition(item).visible_from
+        }
     }
 
     pub fn owning_crate(&self, item: DefId) -> DefId {
@@ -626,6 +640,129 @@ impl Definitions {
             Ok(md.impls[&impl_id.body])
         } else {
             panic!("Expected a module for item {}", searchmod); // TODO handle Ty::ASSOC_TYPE
+        }
+    }
+
+    pub fn find_type_in_trait(
+        &self,
+        curmod: DefId,
+        searchdef: DefId,
+        id: Spanned<Symbol>,
+        at_item: DefId,
+    ) -> Result<DefId> {
+        match &self.definition(searchdef).inner.body {
+            DefinitionInner::Trait(tr) => {
+                if let Some(x) = tr.assoc_types.get(&id.body) {
+                    Ok(*x)
+                } else {
+                    for bound in &tr.supertraits {
+                        match bound {
+                            ty::SemaTypeBound::Trait(tr) => {
+                                if let Ok(def) = self.find_type_in_trait(curmod, *tr, id, at_item) {
+                                    return Ok(def);
+                                }
+                            }
+                            ty::SemaTypeBound::Life(_) => {}
+                        }
+                    }
+                    Err(Error {
+                        span: id.span,
+                        text: format!("Cannot find associated type {} in trait", *id),
+                        category: ErrorCategory::CannotFindName,
+                        at_item,
+                        containing_item: curmod,
+                        relevant_item: searchdef,
+                        hints: vec![],
+                    })
+                }
+            }
+            DefinitionInner::Impl(blk) => {
+                if let Some(x) = blk
+                    .values
+                    .get(&id.body)
+                    .copied()
+                    .filter(|&x| self.visible_from(x, curmod))
+                {
+                    Ok(x)
+                } else {
+                    if let Some(tr) = blk.trait_def {
+                        return self.find_type_in_trait(curmod, tr.body, id, at_item);
+                    } else {
+                        Err(Error {
+                            span: id.span,
+                            text: format!("Cannot find associated type {} in impl block", *id),
+                            category: ErrorCategory::CannotFindName,
+                            at_item,
+                            containing_item: curmod,
+                            relevant_item: searchdef,
+                            hints: vec![],
+                        })
+                    }
+                }
+            }
+            _ => panic!("Expected a trait or impl"),
+        }
+    }
+
+    pub fn find_value_in_trait(
+        &self,
+        curmod: DefId,
+        searchdef: DefId,
+        id: Spanned<Symbol>,
+        at_item: DefId,
+    ) -> Result<DefId> {
+        match &self.definition(searchdef).inner.body {
+            DefinitionInner::Trait(tr) => {
+                if let Some(x) = tr.values.get(&id.body) {
+                    Ok(*x)
+                } else {
+                    for bound in &tr.supertraits {
+                        match bound {
+                            ty::SemaTypeBound::Trait(tr) => {
+                                if let Ok(def) = self.find_value_in_trait(curmod, *tr, id, at_item)
+                                {
+                                    return Ok(def);
+                                }
+                            }
+                            ty::SemaTypeBound::Life(_) => {}
+                        }
+                    }
+                    Err(Error {
+                        span: id.span,
+                        text: format!("Cannot find associated type {} in trait", *id),
+                        category: ErrorCategory::CannotFindName,
+                        at_item,
+                        containing_item: curmod,
+                        relevant_item: searchdef,
+                        hints: vec![],
+                    })
+                }
+            }
+            DefinitionInner::Impl(blk) => {
+                if let Some(x) = blk
+                    .values
+                    .get(&id.body)
+                    .copied()
+                    .filter(|&x| self.visible_from(x, curmod))
+                {
+                    Ok(x)
+                } else {
+                    if let Some(tr) = blk.trait_def {
+                        return self.find_value_in_trait(curmod, tr.body, id, at_item);
+                    } else {
+                        Err(Error {
+                            span: id.span,
+                            text: format!("Cannot find associated type {} in impl block", *id),
+                            category: ErrorCategory::CannotFindName,
+                            at_item,
+                            containing_item: curmod,
+                            relevant_item: searchdef,
+                            hints: vec![],
+                        })
+                    }
+                }
+            }
+            _ => panic!("Expected a trait or impl"),
         }
     }
 
@@ -832,28 +969,146 @@ impl Definitions {
         curmod: DefId,
         path: &ast::Path,
         at_item: DefId,
+        self_ty: Option<&Type>,
     ) -> Result<DefId> {
-        self.find_type(curmod, path, at_item)
+        self.find_type(curmod, path, at_item, self_ty)
     }
 
-    pub fn find_type(&self, curmod: DefId, path: &ast::Path, at_item: DefId) -> Result<DefId> {
-        let mut resolve_mod = None;
+    fn collect_impls_in(&self, impls: &mut Vec<DefId>, searchmod: DefId, ty: &ty::Type) {
+        match &self.definition(searchmod).inner.body {
+            DefinitionInner::Module(md) => {
+                for &Pair(_, defid) in &md.impls {
+                    match &self.definition(defid).inner.body {
+                        DefinitionInner::Impl(ImplBlock {
+                            ty: impl_ty,
+                            trait_def: None,
+                            ..
+                        }) => {
+                            if ty.matches_ignore_bounds(impl_ty) {
+                                impls.push(defid);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                for &Pair(_, defid) in &md.types {
+                    if self.is_module(defid) {
+                        self.collect_impls_in(impls, defid, ty);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn find_inherent_impls(&self, ty: &ty::Type) -> &[DefId] {
+        let mut guard = self.inherent_impls_cache.borrow_mut();
+        if let Some(element) = guard.get(ty).copied() {
+            unsafe { &*element }
+        } else {
+            let mut impls = Vec::new();
+
+            let defid = self.type_defid(ty);
+            if let DefinitionInner::Impl(_) = &self.definition(defid).inner.body {
+                impls.push(defid);
+                if let Some(rtlang) = ty.rt_impl_lang().and_then(|lang| self.get_lang_item(lang)) {
+                    impls.push(rtlang);
+                }
+            } else {
+                let cr = self.owning_crate(defid);
+                self.collect_impls_in(&mut impls, cr, ty);
+            }
+
+            let val = Box::into_raw(Box::new(impls));
+            let _ = guard.insert(ty.clone(), val);
+            return unsafe { &*val };
+        }
+    }
+
+    #[allow(clippy::while_let_on_iterator)] // This currently isn't needed, but in the future the body will need to call `path.as_slice()` and recurse.
+    fn find_type_in_type(
+        &self,
+        curmod: DefId,
+        path: &[Spanned<ast::PathSegment>],
+        at_item: DefId,
+        mut search_ty: Type,
+        self_ty: Option<&Type>,
+    ) -> Result<DefId> {
+        let mut path = path.iter();
+
+        while let Some(component) = path.next() {
+            match &component.ident.body {
+                ast::SimplePathSegment::Identifier(id) => {
+                    let impls = self.find_inherent_impls(&search_ty);
+
+                    for &i in impls {
+                        if let Ok(x) = self.find_type_in_trait(
+                            curmod,
+                            i,
+                            Spanned {
+                                body: *id,
+                                span: component.ident.span,
+                            },
+                            at_item,
+                        ) {
+                            if path.len() == 0 {
+                                // I swear if clippy lints this in the future
+                                return Ok(x);
+                            }
+                            todo!("Well, this is akward - we have an item in the type namespace, but no actual definition type to determine what it is")
+                        }
+                    }
+
+                    todo!("Collect possible source traits")
+                }
+                seg => {
+                    return Err(Error {
+                        span: component.span,
+                        text: format!("Path segment `{}` cannot be found within a type", seg),
+                        category: ErrorCategory::CannotFindName,
+                        at_item,
+                        containing_item: curmod,
+                        relevant_item: self.type_defid(&search_ty),
+                        hints: vec![],
+                    })
+                }
+            }
+        }
+        panic!("Impossible to parse an empty path")
+    }
+
+    pub fn find_type(
+        &self,
+        curmod: DefId,
+        path: &ast::Path,
+        at_item: DefId,
+        self_ty: Option<&Type>,
+    ) -> Result<DefId> {
+        let mut resolve_base = None;
 
         match &path.root {
             Some(Spanned {
                 body: ast::PathRoot::Root,
                 ..
             }) => {
-                resolve_mod = Some(DefId(0));
+                resolve_base = Some(DefId(0));
             }
             Some(Spanned {
-                body: ast::PathRoot::QSelf(_, _),
+                body: ast::PathRoot::QSelf(ty, None),
                 ..
-            }) => todo!("QSelf"),
+            }) => {
+                let ty = ty::convert_type(self, curmod, at_item, ty, self_ty)?;
+                return self.find_type_in_type(curmod, &path.segments, at_item, ty, self_ty);
+            }
+            Some(Spanned {
+                body: ast::PathRoot::QSelf(ty, Some(tr)),
+                ..
+            }) => {}
             None => {}
         }
-
-        for seg in &path.segments {
+        let mut path_iter = path.segments.iter();
+        while let Some(seg) = path_iter.next() {
             match &seg.ident.body {
                 ast::SimplePathSegment::Identifier(id) => {
                     let id = Spanned {
@@ -861,11 +1116,30 @@ impl Definitions {
                         span: seg.ident.span,
                     };
 
-                    if let Some(md) = resolve_mod {
-                        resolve_mod = Some(self.find_type_in_mod(curmod, md, id, at_item)?);
+                    if let Some(md) = resolve_base {
+                        match &self.definition(md).inner.body {
+                            DefinitionInner::Module(_) => {
+                                resolve_base = Some(self.find_type_in_mod(curmod, md, id, at_item)?)
+                            }
+                            DefinitionInner::UserType(_) => {
+                                let ty = Type::UserType(md);
+                                return self.find_type_in_type(
+                                    curmod,
+                                    path_iter.as_slice(), // FIXME: We need to not step the iterator by here
+                                    at_item,
+                                    ty,
+                                    self_ty,
+                                );
+                            }
+                            DefinitionInner::Trait(_) => {
+                                resolve_base =
+                                    Some(self.find_type_in_trait(curmod, md, id, at_item)?);
+                            }
+                            _ => todo!(""),
+                        }
                     } else {
                         match self.find_type_in_mod(curmod, curmod, id, at_item) {
-                            Ok(item) => resolve_mod = Some(item),
+                            Ok(item) => resolve_base = Some(item),
                             Err(e) => {
                                 if self.prelude_import.0 != 0 {
                                     if let Ok(item) = self.find_type_in_mod(
@@ -874,18 +1148,18 @@ impl Definitions {
                                         id,
                                         at_item,
                                     ) {
-                                        resolve_mod = Some(item)
+                                        resolve_base = Some(item)
                                     } else if let Ok(item) =
                                         self.find_type_in_mod(curmod, DefId::ROOT, id, at_item)
                                     {
-                                        resolve_mod = Some(item)
+                                        resolve_base = Some(item)
                                     } else {
                                         return Err(e);
                                     }
                                 } else if let Ok(item) =
                                     self.find_type_in_mod(curmod, DefId::ROOT, id, at_item)
                                 {
-                                    resolve_mod = Some(item)
+                                    resolve_base = Some(item)
                                 } else {
                                     return Err(e);
                                 }
@@ -898,7 +1172,7 @@ impl Definitions {
                     }
                 }
                 ast::SimplePathSegment::SuperPath => {
-                    if let Some(md) = resolve_mod {
+                    if let Some(md) = resolve_base {
                         if md == DefId::ROOT {
                             return Err(Error {
                                 span: seg.ident.span,
@@ -925,7 +1199,7 @@ impl Definitions {
                             });
                         }
                     } else {
-                        resolve_mod = Some(self.definition(curmod).parent);
+                        resolve_base = Some(self.definition(curmod).parent);
                     }
 
                     if let Some(generics) = &seg.generics {
@@ -941,7 +1215,7 @@ impl Definitions {
                     }
                 }
                 ast::SimplePathSegment::SelfPath => {
-                    if let Some(md) = resolve_mod {
+                    if let Some(md) = resolve_base {
                         if md == DefId::ROOT {
                             return Err(Error {
                                 span: seg.ident.span,
@@ -968,7 +1242,7 @@ impl Definitions {
                             });
                         }
                     } else {
-                        resolve_mod = Some(curmod);
+                        resolve_base = Some(curmod);
                     }
 
                     if let Some(generics) = &seg.generics {
@@ -984,7 +1258,7 @@ impl Definitions {
                     }
                 }
                 ast::SimplePathSegment::CratePath => {
-                    if let Some(md) = resolve_mod {
+                    if let Some(md) = resolve_base {
                         if md == DefId::ROOT {
                             return Err(Error {
                                 span: seg.ident.span,
@@ -1011,7 +1285,7 @@ impl Definitions {
                             });
                         }
                     } else {
-                        resolve_mod = Some(self.curcrate);
+                        resolve_base = Some(self.curcrate);
                     }
 
                     if let Some(generics) = &seg.generics {
@@ -1030,7 +1304,7 @@ impl Definitions {
             }
         }
 
-        Ok(resolve_mod.expect("Parsing an empty path is impossible"))
+        Ok(resolve_base.expect("Parsing an empty path is impossible"))
     }
 
     pub fn is_copy(&self, ty: &ty::Type) -> bool {
@@ -2582,14 +2856,14 @@ fn collect_function(
         .params
         .iter()
         .map(|param| &param.ty)
-        .map(|ty| ty.try_copy_span(|ty| ty::convert_type(defs, curmod, item, ty)))
+        .map(|ty| ty.try_copy_span(|ty| ty::convert_type(defs, curmod, item, ty, None)))
         .collect::<Result<Vec<_>>>()?;
 
     let retty = Box::new(
         itemfn
             .ret_ty
             .as_ref()
-            .map(|ty| ty.try_copy_span(|ty| ty::convert_type(defs, curmod, item, ty)))
+            .map(|ty| ty.try_copy_span(|ty| ty::convert_type(defs, curmod, item, ty, None)))
             .transpose()?
             .unwrap_or(Spanned {
                 body: ty::Type::UNIT,
@@ -2821,8 +3095,12 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                 let defid = defs.find_type_in_mod(curmod, curmod, tr.name, curmod)?;
                 for item in &tr.body.body {
                     match &item.body.item.body {
-                        ast::ItemBody::Value(_) | ast::ItemBody::Function(_) => {
-                            todo!("item in trait")
+                        ast::ItemBody::Value(_) => {
+                            todo!("Associated Const in Trait")
+                        }
+                        ast::ItemBody::Function(f) => {
+                            let ty = Type::TraitSelf(defid);
+                            let fndef = defs.allocate_defid();
                         }
                         item => unreachable!(
                             "{:?} Bad item. This should be filtered during ast validation",
@@ -2833,20 +3111,40 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
             }
             ast::ItemBody::ImplBlock(blk) => {
                 let defid = defs.allocate_defid();
+                if let Some(vis) = item.vis.as_ref() {
+                    return Err(Error {
+                        span: vis.span,
+                        text: format!("impl blocks cannot have a visibility"),
+                        category: ErrorCategory::InvisibleEntity,
+                        at_item: defid,
+                        containing_item: curmod,
+                        relevant_item: visible_from,
+                        hints: vec![],
+                    });
+                }
+                let ty = blk
+                    .ty
+                    .try_copy_span(|ty| convert_type(defs, curmod, defid, ty, None))?;
                 let mut trbody = ImplBlock {
                     safety: blk.safety.map(|s| s.body).unwrap_or(Safety::Safe),
                     trait_def: blk
                         .tr
                         .as_ref()
-                        .map(|p| p.try_copy_span(|p| defs.find_type(curmod, p, defid)))
+                        .map(|p| p.try_copy_span(|p| defs.find_type(curmod, p, defid, Some(&ty))))
                         .transpose()?,
                     assoc_types: HashMap::new(),
                     values: HashMap::new(),
-                    ty: blk
-                        .ty
-                        .try_copy_span(|ty| convert_type(defs, curmod, defid, ty))?,
+                    ty: ty,
                     provides: HashMap::new(),
                 };
+
+                let visible_from = defs.visibility_of(
+                    trbody
+                        .trait_def
+                        .map(|s| s.body)
+                        .unwrap_or_else(|| defs.type_defid(&trbody.ty)),
+                );
+                // Note: primitive
 
                 let def = defs.definition_mut(defid);
                 def.attrs = item
@@ -2908,7 +3206,13 @@ pub fn convert_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mo
                                                 .unwrap_or(curmod);
                                         let name = field.name;
                                         let ty = field.ty.try_copy_span(|ty| {
-                                            ty::convert_type(defs, curmod, defid, ty)
+                                            ty::convert_type(
+                                                defs,
+                                                curmod,
+                                                defid,
+                                                ty,
+                                                Some(&Type::UserType(defid)),
+                                            )
                                         })?;
                                         Ok(StructField {
                                             attrs,

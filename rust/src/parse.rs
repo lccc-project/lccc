@@ -8,7 +8,7 @@ use crate::{
         CompoundBlock, ConstParam, Constructor, ConstructorExpr, Expr, ExternBlock, FieldInit,
         Function, GenericBound, GenericParam, GenericParams, ImplBlock, Item, ItemBody, ItemValue,
         Label, LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind, Mod, Param, Path,
-        PathSegment, Pattern, Safety, SimplePath, SimplePathSegment, Spanned, Statement,
+        PathSegment, Pattern, Safety, SelfParam, SimplePath, SimplePathSegment, Spanned, Statement,
         StructCtor, StructField, StructKind, TraitDef, TupleCtor, TupleField, Type, TypeParam,
         UnaryOp, UserType, UserTypeBody, Visibility, WhereClause,
     },
@@ -2443,6 +2443,126 @@ pub fn do_item_fn(
     let (params_group, _) = do_lexeme_group(&mut tree, Some(GroupType::Parens))?;
     // TODO: receiver
     let mut params_tree = params_group.body.into_iter().peekmore();
+    let mut params = Vec::new();
+    while !params_tree.peek().is_eof() {
+        params.push(do_param(&mut params_tree)?);
+        match do_lexeme_class(&mut params_tree, punct!(,)) {
+            Ok(_) => {}
+            Err(e) => {
+                if !params_tree.peek().is_eof() {
+                    Err(e)?
+                }
+            }
+        }
+    }
+    let ret_ty = match do_lexeme_class(&mut tree, punct!(->)) {
+        Ok(_) => Some(do_type(&mut tree)?),
+        Err(_) => None,
+    };
+    let (body, span_end) = match do_lexeme_class(&mut tree, punct!(;)) {
+        Ok(Lexeme { span, .. }) => (None, span),
+        Err(a) => match do_block(&mut tree) {
+            Ok(block) => {
+                let span = block.span;
+                (Some(block), span)
+            }
+            Err(b) => Err(a | b)?,
+        },
+    };
+    let span = Span::between(span_start, span_end);
+    tree.accept();
+    Ok(Spanned {
+        body: ItemBody::Function(Spanned {
+            body: Function {
+                safety: None,
+                abi: None,
+                constness: None,
+                is_async: None,
+                name,
+                generics,
+                receiver: None, // TODO: parse receiver
+                params,
+                varargs: None,
+                ret_ty,
+                body,
+            },
+            span,
+        }),
+        span,
+    })
+}
+
+pub fn do_reciever(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<SelfParam>> {
+    let mut tree = tree.into_rewinder();
+    match do_lexeme_token(&mut tree, punct!(&)) {
+        Ok((span, _)) => {
+            let mt = do_lexeme_token(&mut tree, keyword!(mut))
+                .map(|(span, _)| Spanned {
+                    span,
+                    body: Mutability::Mut,
+                })
+                .ok();
+
+            let (espan, _) = do_lexeme_token(&mut tree, keyword!(self))?;
+
+            let span = Span::between(span, espan);
+            let body = SelfParam::RefSelf(mt);
+            tree.accept();
+            Ok(Spanned { span, body })
+        }
+        Err(e) => {
+            let mt = do_lexeme_token(&mut tree, keyword!(mut))
+                .map(|(span, _)| Spanned {
+                    span,
+                    body: Mutability::Mut,
+                })
+                .ok();
+
+            let (sspan, _) = do_lexeme_token(&mut tree, keyword!(self))?;
+            let startspan = mt.map(|mt| mt.span).unwrap_or(sspan);
+
+            let selfty = match do_lexeme_token(&mut tree, punct!(:)) {
+                Ok(_) => Some(do_type(&mut tree)?),
+                Err(_) => None,
+            };
+            let endspan = selfty.as_ref().map(|ty| ty.span).unwrap_or(sspan);
+            let span = Span::between(startspan, endspan);
+
+            let body = SelfParam::BaseSelf(mt, selfty);
+            tree.accept();
+            Ok(Spanned { span, body })
+        }
+    }
+}
+
+pub fn do_item_fn_in_trait(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<ItemBody>> {
+    let mut tree = tree.into_rewinder();
+    let Lexeme {
+        span: span_start, ..
+    } = do_lexeme_class(&mut tree, keyword!(fn))?;
+    let name = do_lexeme_class(&mut tree, LexemeClass::Identifier)?;
+    let name = Spanned {
+        body: *name.text().unwrap(),
+        span: name.span,
+    };
+
+    let generics = do_generic_params(&mut tree).ok();
+
+    let (params_group, _) = do_lexeme_group(&mut tree, Some(GroupType::Parens))?;
+    // TODO: receiver
+    let mut params_tree = params_group.body.into_iter().peekmore();
+
+    let reciever = match do_reciever(&mut params_tree) {
+        Ok(x) => {
+            do_lexeme_classes(&mut params_tree, &[punct!(,), LexemeClass::Eof])?;
+            Some(x)
+        }
+        Err(_) => None,
+    };
     let mut params = Vec::new();
     while !params_tree.peek().is_eof() {
         params.push(do_param(&mut params_tree)?);

@@ -119,7 +119,7 @@ pub struct Param {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum SelfParam {
-    BaseSelf(Option<Spanned<Type>>),
+    BaseSelf(Option<Spanned<Mutability>>, Option<Spanned<Type>>),
     RefSelf(Option<Spanned<Mutability>>),
 }
 

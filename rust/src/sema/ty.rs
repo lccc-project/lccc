@@ -271,10 +271,41 @@ impl IntType {
         signed: false,
         width: IntWidth::Bits(nzu16!(8)),
     };
-
+    pub const u16: IntType = IntType {
+        signed: false,
+        width: IntWidth::Bits(nzu16!(16)),
+    };
+    pub const u32: IntType = IntType {
+        signed: false,
+        width: IntWidth::Bits(nzu16!(32)),
+    };
+    pub const u64: IntType = IntType {
+        signed: false,
+        width: IntWidth::Bits(nzu16!(64)),
+    };
+    pub const u128: IntType = IntType {
+        signed: false,
+        width: IntWidth::Bits(nzu16!(128)),
+    };
+    pub const i8: IntType = IntType {
+        signed: true,
+        width: IntWidth::Bits(nzu16!(8)),
+    };
+    pub const i16: IntType = IntType {
+        signed: true,
+        width: IntWidth::Bits(nzu16!(16)),
+    };
     pub const i32: IntType = IntType {
         signed: true,
         width: IntWidth::Bits(nzu16!(32)),
+    };
+    pub const i64: IntType = IntType {
+        signed: true,
+        width: IntWidth::Bits(nzu16!(64)),
+    };
+    pub const i128: IntType = IntType {
+        signed: true,
+        width: IntWidth::Bits(nzu16!(128)),
     };
 }
 
@@ -418,6 +449,22 @@ pub struct FnType {
     pub iscvarargs: Spanned<bool>,
 }
 
+impl FnType {
+    pub fn matches_ignore_bounds(&self, other: &Self) -> bool {
+        self.safety.body == other.safety.body
+            && self.tag.body == other.tag.body
+            && self.iscvarargs.body == other.iscvarargs.body
+            && self.asyncness.body == other.asyncness.body
+            && self.constness.body == other.constness.body
+            && self.retty.matches_ignore_bounds(&other.retty)
+            && self
+                .paramtys
+                .iter()
+                .zip(&other.paramtys)
+                .all(|(a, b)| a.matches_ignore_bounds(b))
+    }
+}
+
 impl core::fmt::Display for FnType {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         if self.constness.body == Mutability::Const {
@@ -497,8 +544,45 @@ pub enum Type {
 impl Type {
     pub const UNIT: Self = Self::Tuple(Vec::new());
 
+    pub fn matches_ignore_bounds(&self, other: &Self) -> bool {
+        match (self, other) {
+            (_, Type::Param(_)) | (_, Type::TraitSelf(_)) => true,
+            (Type::Bool, Type::Bool)
+            | (Type::Char, Type::Char)
+            | (Type::Str, Type::Str)
+            | (Type::Never, Type::Never) => true,
+            (Type::Tuple(t), Type::Tuple(u)) => {
+                t.len() == u.len() && t.iter().zip(u).all(|(a, b)| a.matches_ignore_bounds(b))
+            }
+            (Type::UserType(def1), Type::UserType(def2)) => def1 == def2,
+            (Type::FnPtr(p1), Type::FnPtr(p2)) => p1.matches_ignore_bounds(p2),
+            (Type::FnItem(fnty1, defid1), Type::FnItem(fnty2, defid2)) => {
+                fnty1.matches_ignore_bounds(fnty2) && defid1 == defid2
+            }
+            (Type::Array(g1, expr1), Type::Array(g2, expr2)) => {
+                g1.matches_ignore_bounds(g2) && expr1 == expr2
+            }
+            (Type::Reference(_, mt1, bx1), Type::Reference(_, mt2, bx2)) => {
+                mt1 == mt2 && bx1.matches_ignore_bounds(bx2)
+            }
+            (Type::Pointer(mt1, bx1), Type::Pointer(mt2, bx2)) => mt1 == mt2 && bx1 == bx2,
+            _ => false,
+        }
+    }
+
     pub fn is_inference(&self) -> bool {
         matches!(self, Self::Inferable(_) | Self::InferableInt(_))
+    }
+
+    pub fn rt_impl_lang(&self) -> Option<LangItem> {
+        match self {
+            Self::Float(x) => match *x {
+                FloatWidth::f32 => Some(LangItem::F32Rt),
+                FloatWidth::f64 => Some(LangItem::F64Rt),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     pub fn as_lang_item(&self) -> Option<LangItem> {
@@ -508,7 +592,27 @@ impl Type {
             Self::Str => Some(LangItem::Str),
             Self::Array(_, _) => Some(LangItem::Array),
             Self::Tuple(tuples) if tuples.len() == 0 => Some(LangItem::Unit),
-            Self::Tuple(_) => Some(LangItem::Tuple),
+            Self::Tuple(_) => None,
+            Self::Int(x) => match *x {
+                IntType::u8 => Some(LangItem::U8),
+                IntType::u16 => Some(LangItem::U16),
+                IntType::u32 => Some(LangItem::U32),
+                IntType::u64 => Some(LangItem::U64),
+                IntType::u128 => Some(LangItem::U128),
+                IntType::usize => Some(LangItem::USize),
+                IntType::i8 => Some(LangItem::I8),
+                IntType::i16 => Some(LangItem::I16),
+                IntType::i32 => Some(LangItem::I32),
+                IntType::i64 => Some(LangItem::I64),
+                IntType::i128 => Some(LangItem::I128),
+                IntType::isize => Some(LangItem::ISize),
+                _ => None,
+            },
+            Self::Float(x) => match *x {
+                FloatWidth::f32 => Some(LangItem::F32),
+                FloatWidth::f64 => Some(LangItem::F64),
+                _ => None,
+            },
             Self::Pointer(
                 Spanned {
                     body: Mutability::Const,
@@ -640,9 +744,10 @@ pub fn convert_type(
     curmod: DefId,
     at_item: DefId,
     ty: &ast::Type,
+    self_ty: Option<&Type>,
 ) -> super::Result<Type> {
     match ty {
-        ast::Type::Path(path) => match defs.find_type(curmod, &path.body, at_item) {
+        ast::Type::Path(path) => match defs.find_type(curmod, &path.body, at_item, self_ty) {
             Ok(defid) => Ok(Type::UserType(defid)),
             Err(e) => match &*path.segments {
                 [Spanned {
@@ -662,7 +767,7 @@ pub fn convert_type(
         },
         ast::Type::Reference(_, _) => todo!("reference"),
         ast::Type::Pointer(mt, ty) => {
-            let ty = ty.try_copy_span(|ty| convert_type(defs, curmod, at_item, ty))?;
+            let ty = ty.try_copy_span(|ty| convert_type(defs, curmod, at_item, ty, self_ty))?;
 
             Ok(Type::Pointer(*mt, Box::new(ty)))
         }
@@ -672,7 +777,7 @@ pub fn convert_type(
         ast::Type::Tuple(tys) => {
             let mut tys = tys
                 .iter()
-                .map(|ty| ty.try_copy_span(|ty| convert_type(defs, curmod, at_item, ty)))
+                .map(|ty| ty.try_copy_span(|ty| convert_type(defs, curmod, at_item, ty, self_ty)))
                 .collect::<super::Result<Vec<_>>>()?;
 
             Ok(Type::Tuple(tys))
