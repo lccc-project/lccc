@@ -38,7 +38,7 @@ impl Pos {
 pub struct NoHygiene;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Span<H> {
+pub struct Span<H = NoHygiene> {
     begin: Pos,
     end: Pos,
     file: Symbol,
@@ -99,7 +99,7 @@ impl<H> Span<H> {
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Spanned<T, H> {
+pub struct Spanned<T, H = NoHygiene> {
     val: T,
     span: Span<H>,
 }
@@ -169,5 +169,103 @@ impl<T, H> Spanned<T, H> {
         let Self { val, span } = self;
 
         Try::from_output(Spanned::new(try_!(f(val)), *span))
+    }
+}
+
+pub trait Speekerator: Iterator<Item = char> + Sized {
+    fn speekable(self, file_name: impl Into<Symbol>) -> Speekable<Self>;
+}
+
+impl<I: Iterator<Item = char>> Speekerator for I {
+    fn speekable(self, file_name: impl Into<Symbol>) -> Speekable<Self> {
+        Speekable::new(self, file_name)
+    }
+}
+
+pub struct Speekable<I: Iterator<Item = char>> {
+    inner: I,
+    peeked: Option<(Pos, char)>,
+    index: usize,
+    pos: Pos,
+    fname: Symbol,
+    row_map: Vec<usize>,
+}
+
+#[allow(dead_code)]
+impl<I: Iterator<Item = char>> Speekable<I> {
+    fn new(inner: I, fname: impl Into<Symbol>) -> Self {
+        Self {
+            inner,
+            index: 0,
+            peeked: None,
+            pos: Pos::new(1, 1),
+            fname: fname.into(),
+            row_map: vec![0],
+        }
+    }
+
+    pub fn file_name(&self) -> Symbol {
+        self.fname
+    }
+
+    pub fn row_map(&self) -> &[usize] {
+        &self.row_map
+    }
+
+    fn tick(&mut self) {
+        let mut expect_newline = false;
+        while self.peeked.is_none() {
+            let c = self.inner.next();
+            if expect_newline && c != Some('\n') {
+                panic!("todo: diag");
+            }
+            if let Some('\r') = c {
+                self.index += 1; // Yeet the carriage return, try again
+                expect_newline = true;
+            } else if let Some(c) = c {
+                let idx = self.index.fetch_increment();
+                let next_pos = match c {
+                    '\n' => Pos::new(self.pos.row + 1, 1),
+                    _ => Pos::new(self.pos.row, self.pos.col + 1),
+                };
+
+                if next_pos.row != self.pos.row {
+                    self.row_map.push(idx);
+                }
+
+                self.peeked = Some((self.pos, c));
+                self.pos = next_pos;
+            } else {
+                break;
+            }
+        }
+    }
+
+    pub fn speek(&mut self) -> Option<&(Pos, char)> {
+        self.tick();
+        self.peeked.as_ref()
+    }
+
+    pub fn peek(&mut self) -> Option<&char> {
+        self.tick();
+        self.peeked.as_ref().map(|(_, x)| x)
+    }
+
+    pub fn snext(&mut self) -> Option<(Pos, char)> {
+        self.tick();
+        self.peeked.take()
+    }
+
+    pub fn last_pos(&self) -> Pos {
+        self.pos
+    }
+}
+
+impl<I: Iterator<Item = char>> Iterator for Speekable<I> {
+    type Item = char;
+
+    fn next(&mut self) -> Option<char> {
+        self.tick();
+        self.peeked.take().map(|(_, x)| x)
     }
 }
