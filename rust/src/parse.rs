@@ -10,7 +10,7 @@ use crate::{
         Label, LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind, Mod, Param, Path,
         PathSegment, Pattern, Safety, SelfParam, SimplePath, SimplePathSegment, Spanned, Statement,
         StructCtor, StructField, StructKind, TraitDef, TupleCtor, TupleField, Type, TypeParam,
-        UnaryOp, UserType, UserTypeBody, Visibility, WhereClause,
+        UnaryOp, UserType, UserTypeBody, Visibility, WhereClause, IfBlock, CondBlock,
     },
     interning::Symbol,
     lex::{
@@ -754,10 +754,56 @@ pub fn do_item_user_type(
     })
 }
 
+pub fn do_if_block(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<IfBlock>> {
+    let mut tree = tree.into_rewinder();
+    let span_start = do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::If))?.span;
+    let cond = Box::new(do_expression_without_constructor(&mut tree)?);
+    let block = do_block(&mut tree)?;
+    let mut span_end = block.span;
+    let mut elseifs = Vec::new();
+    let mut elseblock = None;
+    while let Ok(Lexeme { span: else_span, .. }) = do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::Else)) {
+        match do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::If)) {
+            Ok(Lexeme { span: if_span, .. }) => {
+                let cond = Box::new(do_expression_without_constructor(&mut tree)?);
+                let block = do_block(&mut tree)?;
+                span_end = block.span;
+                let span = Span::between(if_span, block.span);
+                elseifs.push(Spanned {
+                    body: CondBlock {
+                        cond,
+                        block,
+                    },
+                    span,
+                });
+            }
+            Err(_) => {
+                let block = do_block(&mut tree)?;
+                span_end = block.span;
+                elseblock = Some(block);
+                break;
+            }
+        }
+    }
+    tree.accept();
+    let span = Span::between(span_start, span_end);
+    Ok(Spanned {
+        body: IfBlock { cond, block, elseifs, elseblock },
+        span,
+    })
+}
+
 pub fn do_compound_block(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<CompoundBlock>> {
-    // TODO: support more than `unsafe` and `loop`
+    if let Ok(if_block) = do_if_block(tree) {
+        return Ok(Spanned {
+            span: if_block.span,
+            body: CompoundBlock::If(if_block),
+        });
+    }
     let mut tree = tree.into_rewinder();
     let (
         Lexeme {
