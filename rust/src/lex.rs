@@ -949,7 +949,7 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                             file.file_name(),
                         )));
                     }
-                    '+' | '*' | '!' => {
+                    '+' | '*' | '!' | '%' => {
                         let (punct, end) = match file.speek() {
                             Some(&(end, '=')) => {
                                 file.next();
