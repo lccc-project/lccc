@@ -163,11 +163,19 @@ pub enum HirStatement {
     },
 }
 
+type HirSimpleBlock = Vec<Spanned<HirStatement>>;
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum HirBlock {
-    Normal(Vec<Spanned<HirStatement>>),
-    Unsafe(Vec<Spanned<HirStatement>>),
-    Loop(Vec<Spanned<HirStatement>>),
+    Normal(HirSimpleBlock),
+    Unsafe(HirSimpleBlock),
+    Loop(HirSimpleBlock),
+    If {
+        cond: Spanned<HirExpr>,
+        block: HirSimpleBlock,
+        elseifs: Vec<(HirExpr, HirSimpleBlock)>,
+        elseblock: HirSimpleBlock,
+    },
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -250,6 +258,32 @@ impl HirFunctionBody {
                         self.display_statement(stmt, f, nested)?;
                     }
                     tabs.fmt(f)?;
+                    f.write_str("}\n")
+                }
+                HirBlock::If {
+                    cond,
+                    block,
+                    elseifs,
+                    elseblock,
+                } => {
+                    tabs.fmt(f)?;
+                    write!(f, "if {} {{\n", cond.body)?;
+                    let nested = tabs.nest();
+                    for stmt in block {
+                        self.display_statement(stmt, f, nested)?;
+                    }
+                    for (cond, block) in elseifs {
+                        write!(f, "}} else if {} {{\n", cond)?;
+                        for stmt in block {
+                            self.display_statement(stmt, f, nested)?;
+                        }
+                    }
+                    if elseblock.len() > 0 {
+                        f.write_str("} else {\n")?;
+                        for stmt in elseblock {
+                            self.display_statement(stmt, f, nested)?;
+                        }
+                    }
                     f.write_str("}\n")
                 }
             },

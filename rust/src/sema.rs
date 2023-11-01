@@ -3459,6 +3459,7 @@ pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
                         let (stmts, safety) = match block.body.body.body {
                             hir::HirBlock::Normal(stmts) => (stmts, Safety::Safe),
                             hir::HirBlock::Unsafe(stmts) => (stmts, Safety::Unsafe),
+                            hir::HirBlock::If { .. } => todo!("if"),
                             hir::HirBlock::Loop(_) => unreachable!(),
                         };
 

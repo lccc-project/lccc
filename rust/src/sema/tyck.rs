@@ -799,6 +799,7 @@ impl<'a> ThirConverter<'a> {
                             .map(|stmt| self.convert_statement(stmt))
                             .collect::<Result<_>>()?,
                     )),
+                    hir::HirBlock::If { .. } => todo!("if"),
                 }
             })?)),
             hir::HirStatement::Discard(expr) => {
