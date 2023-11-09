@@ -657,6 +657,7 @@ def_visitors! {
     }
 
     pub trait FunctionBodyVisitor {
+        fn visit_inner_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>>;
         fn visit_basic_block(&mut self) -> Option<Box<dyn BasicBlockVisitor + '_>>;
     }
 

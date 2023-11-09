@@ -204,6 +204,7 @@ pub struct XirValueDefVisitor<'a> {
     deftys: &'a HashMap<DefId, ir::Type>,
     file: &'a mut ir::File,
     name: Option<Symbol>,
+    scope_member: Option<ir::ScopeMember>,
     properties: &'a TargetProperties<'a>,
 }
 
@@ -221,6 +222,7 @@ impl<'a> XirValueDefVisitor<'a> {
             deftys,
             file,
             name: None,
+            scope_member: None,
             properties,
         }
     }
@@ -241,33 +243,41 @@ impl<'a> ValueDefVisitor for XirValueDefVisitor<'a> {
     }
 
     fn visit_function(&mut self) -> Option<Box<dyn FunctionDefVisitor + '_>> {
-        let path = ir::Path {
-            components: vec![ir::PathComponent::Text(
-                (&*self.name.expect("name should have been set previously")).into(),
-            )],
-        };
+        self.scope_member = Some(ir::ScopeMember {
+            annotations: ir::AnnotatedElement::default(),
+            vis: ir::Visibility::Public,
+            member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration::default()),
+        });
 
-        self.file.root.members.insert(
-            path.clone(),
-            ir::ScopeMember {
-                annotations: ir::AnnotatedElement::default(),
-                vis: ir::Visibility::Public,
-                member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration::default()),
-            },
-        );
-
-        let def = match &mut self.file.root.members.get_mut(&path).unwrap().member_decl {
-            ir::MemberDeclaration::Function(fndef) => fndef,
-            _ => unreachable!(),
-        };
+        let def: &mut ir::FunctionDeclaration =
+            match &mut self.scope_member.as_mut().unwrap().member_decl {
+                ir::MemberDeclaration::Function(fndef) => fndef,
+                _ => unreachable!(),
+            };
 
         Some(Box::new(XirFunctionDefVisitor::new(
             self.defs,
             self.names,
             self.deftys,
+            self.file,
             def,
             self.properties,
         )))
+    }
+}
+
+impl<'a> Drop for XirValueDefVisitor<'a> {
+    fn drop(&mut self) {
+        let name = self.name.expect("defid should already be set");
+        let path = ir::Path {
+            components: vec![ir::PathComponent::Text((&name).into())],
+        };
+        self.file.root.members.insert(
+            path,
+            self.scope_member
+                .take()
+                .expect("this was supposed to be visited"),
+        );
     }
 }
 
@@ -499,6 +509,7 @@ pub struct XirFunctionDefVisitor<'a> {
     defs: &'a Definitions,
     names: &'a NameMap,
     deftys: &'a HashMap<DefId, ir::Type>,
+    file: &'a mut ir::File,
     fndef: &'a mut ir::FunctionDeclaration,
     properties: &'a TargetProperties<'a>,
 }
@@ -508,6 +519,7 @@ impl<'a> XirFunctionDefVisitor<'a> {
         defs: &'a Definitions,
         names: &'a NameMap,
         deftys: &'a HashMap<DefId, ir::Type>,
+        file: &'a mut ir::File,
         fndef: &'a mut ir::FunctionDeclaration,
         properties: &'a TargetProperties<'a>,
     ) -> Self {
@@ -515,6 +527,7 @@ impl<'a> XirFunctionDefVisitor<'a> {
             defs,
             names,
             deftys,
+            file,
             fndef,
             properties,
         }
@@ -537,6 +550,7 @@ impl<'a> FunctionDefVisitor for XirFunctionDefVisitor<'a> {
             self.names,
             self.properties,
             self.deftys,
+            self.file,
             &mut self.fndef.ty,
             self.fndef.body.insert(ir::FunctionBody::default()),
         )))
@@ -918,6 +932,7 @@ pub struct XirFunctionBodyVisitor<'a> {
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
+    file: &'a mut ir::File,
     cur_fnty: &'a mut ir::FnType,
     fndecl: &'a mut ir::FunctionBody,
     targs: HashMap<BasicBlockId, Vec<ir::StackItem>>,
@@ -931,6 +946,7 @@ impl<'a> XirFunctionBodyVisitor<'a> {
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
+        file: &'a mut ir::File,
         cur_fnty: &'a mut ir::FnType,
         fndecl: &'a mut ir::FunctionBody,
     ) -> Self {
@@ -939,6 +955,7 @@ impl<'a> XirFunctionBodyVisitor<'a> {
             names,
             properties,
             deftys,
+            file,
             fndecl,
             cur_fnty,
             targs: HashMap::new(),
@@ -974,6 +991,16 @@ impl<'a> FunctionBodyVisitor for XirFunctionBodyVisitor<'a> {
             &mut self.targs,
             &mut self.var_heights,
             &mut self.ssa_tys,
+        )))
+    }
+
+    fn visit_inner_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>> {
+        Some(Box::new(XirValueDefVisitor::new(
+            self.defs,
+            self.names,
+            self.deftys,
+            self.file,
+            self.properties,
         )))
     }
 }

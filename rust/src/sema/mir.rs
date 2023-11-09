@@ -273,6 +273,7 @@ impl MirFunctionBody {
         tabs: TabPrinter,
     ) -> core::fmt::Result {
         use core::fmt::Display;
+        tabs.fmt(f)?;
         bb.id.fmt(f)?;
         f.write_str(": {\n")?;
 

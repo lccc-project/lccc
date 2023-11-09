@@ -3468,6 +3468,77 @@ pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     Ok(())
 }
 
+pub fn tycheck_function(defs: &mut Definitions, curmod: DefId, defid: DefId) -> Result<()> {
+    let def = defs.definition_mut(defid);
+    match &mut def.inner.body {
+        DefinitionInner::Function(_, val @ Some(FunctionBody::HirBody(_))) => match val.take() {
+            Some(FunctionBody::HirBody(block)) => {
+                let localitems = block.body.localitems;
+
+                for &(_, defid) in &localitems {
+                    tycheck_function(defs, curmod, defid)?;
+                }
+
+                let (stmts, safety) = match block.body.body.body {
+                    hir::HirBlock::Normal(stmts) => (stmts, Safety::Safe),
+                    hir::HirBlock::Unsafe(stmts) => (stmts, Safety::Unsafe),
+                    hir::HirBlock::If { .. } => todo!("if"),
+                    hir::HirBlock::Loop(_) => unreachable!(),
+                };
+
+                let mut converter = tyck::ThirConverter::new(
+                    defs,
+                    safety,
+                    defid,
+                    curmod,
+                    block.body.vardebugmap,
+                    localitems,
+                );
+
+                for stmt in stmts {
+                    converter.write_statement(&stmt)?;
+                }
+
+                let mut body = converter.into_thir_body(block.body.body.span);
+
+                let mut inferer = Inferer::new(&defs, defid, curmod);
+
+                let mut iter_count = 0;
+                const MAX_ITER: usize = 4096;
+
+                loop {
+                    if inferer.unify_block(&mut body.body.body)?.is_complete() {
+                        break;
+                    }
+
+                    if inferer.propagate_block(&mut body.body.body)?.is_complete() {
+                        break;
+                    }
+
+                    iter_count += 1;
+
+                    if iter_count > MAX_ITER {
+                        panic!("Semantic analyzer failed to resolve types. This is an ICE in this case.");
+                    }
+                }
+
+                match &mut defs.definition_mut(defid).inner.body {
+                    DefinitionInner::Function(_, val) => {
+                        *val = Some(FunctionBody::ThirBody(Spanned {
+                            body,
+                            span: block.span,
+                        }))
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+    Ok(())
+}
+
 pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     let tys = defs.as_module(curmod).types.clone();
 
@@ -3490,70 +3561,64 @@ pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     for &Pair(sym, defid) in &values {
         let def = defs.definition_mut(defid);
         match &mut def.inner.body {
-            DefinitionInner::Function(fnty, val @ Some(FunctionBody::HirBody(_))) => {
-                match val.take() {
-                    Some(FunctionBody::HirBody(block)) => {
-                        let localitems = block.body.localitems;
-                        let (stmts, safety) = match block.body.body.body {
-                            hir::HirBlock::Normal(stmts) => (stmts, Safety::Safe),
-                            hir::HirBlock::Unsafe(stmts) => (stmts, Safety::Unsafe),
-                            hir::HirBlock::If { .. } => todo!("if"),
-                            hir::HirBlock::Loop(_) => unreachable!(),
-                        };
-
-                        let mut converter = tyck::ThirConverter::new(
-                            defs,
-                            safety,
-                            defid,
-                            curmod,
-                            block.body.vardebugmap,
-                            localitems,
-                        );
-
-                        for stmt in stmts {
-                            converter.write_statement(&stmt)?;
-                        }
-
-                        let mut body = converter.into_thir_body(block.body.body.span);
-
-                        let mut inferer = Inferer::new(&defs, defid, curmod);
-
-                        let mut iter_count = 0;
-                        const MAX_ITER: usize = 4096;
-
-                        loop {
-                            if inferer.unify_block(&mut body.body.body)?.is_complete() {
-                                break;
-                            }
-
-                            if inferer.propagate_block(&mut body.body.body)?.is_complete() {
-                                break;
-                            }
-
-                            iter_count += 1;
-
-                            if iter_count > MAX_ITER {
-                                panic!("Semantic analyzer failed to resolve types. This is an ICE in this case.");
-                            }
-                        }
-
-                        match &mut defs.definition_mut(defid).inner.body {
-                            DefinitionInner::Function(_, val) => {
-                                *val = Some(FunctionBody::ThirBody(Spanned {
-                                    body,
-                                    span: block.span,
-                                }))
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-                    _ => {}
-                }
+            DefinitionInner::Function(_, Some(FunctionBody::HirBody(_))) => {
+                tycheck_function(defs, curmod, defid);
             }
             _ => {}
         }
     }
 
+    Ok(())
+}
+
+pub fn lower_function(defs: &mut Definitions, curmod: DefId, defid: DefId) -> Result<()> {
+    let def = defs.definition_mut(defid);
+    match &mut def.inner.body {
+        DefinitionInner::Function(_, val @ Some(FunctionBody::ThirBody(_))) => match val.take() {
+            Some(FunctionBody::ThirBody(block)) => {
+                let localitems = block.body.localitems;
+
+                for &(_, defid) in &localitems {
+                    lower_function(defs, curmod, defid)?;
+                }
+
+                let mut lowerer = mir::MirConverter::new(
+                    defs,
+                    defid,
+                    curmod,
+                    block
+                        .body
+                        .vardefs
+                        .into_iter()
+                        .flat_map(|Pair(a, b)| Some(Pair(a, b.debug_name?)))
+                        .collect(),
+                    localitems,
+                );
+                let stmts = match block.body.body.body {
+                    ThirBlock::Normal(stmts) | ThirBlock::Unsafe(stmts) => stmts,
+                    _ => unreachable!(),
+                };
+
+                for stmt in stmts {
+                    lowerer.write_statement(stmt)?;
+                }
+
+                let body = lowerer.finish();
+
+                match &mut defs.definition_mut(defid).inner.body {
+                    DefinitionInner::Function(_, ibody) => {
+                        *ibody = Some(FunctionBody::MirBody(Spanned {
+                            span: block.span,
+                            body,
+                        }));
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            _ => unreachable!(),
+        },
+        _ => {}
+    }
     Ok(())
 }
 
@@ -3563,44 +3628,8 @@ pub fn mir_lower(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     for &Pair(_sym, defid) in &values {
         let def = defs.definition_mut(defid);
         match &mut def.inner.body {
-            DefinitionInner::Function(_fnty, val @ Some(FunctionBody::ThirBody(_))) => {
-                match val.take() {
-                    Some(FunctionBody::ThirBody(block)) => {
-                        let mut lowerer = mir::MirConverter::new(
-                            defs,
-                            defid,
-                            curmod,
-                            block
-                                .body
-                                .vardefs
-                                .into_iter()
-                                .flat_map(|Pair(a, b)| Some(Pair(a, b.debug_name?)))
-                                .collect(),
-                            block.body.localitems,
-                        );
-                        let stmts = match block.body.body.body {
-                            ThirBlock::Normal(stmts) | ThirBlock::Unsafe(stmts) => stmts,
-                            _ => unreachable!(),
-                        };
-
-                        for stmt in stmts {
-                            lowerer.write_statement(stmt)?;
-                        }
-
-                        let body = lowerer.finish();
-
-                        match &mut defs.definition_mut(defid).inner.body {
-                            DefinitionInner::Function(_, ibody) => {
-                                *ibody = Some(FunctionBody::MirBody(Spanned {
-                                    span: block.span,
-                                    body,
-                                }));
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-                    _ => unreachable!(),
-                }
+            DefinitionInner::Function(_, Some(FunctionBody::ThirBody(_))) => {
+                lower_function(defs, curmod, defid)?;
             }
             _ => {}
         }

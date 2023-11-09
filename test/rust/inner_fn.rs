@@ -6,4 +6,5 @@ fn main() {
     fn foo() {
         unsafe { puts(b"Hello, World!" as *const u8) }
     }
+    foo()
 }

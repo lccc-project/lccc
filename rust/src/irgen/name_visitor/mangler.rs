@@ -47,6 +47,12 @@ impl Mangle for SeqId {
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct LocalItem<'a> {
+    pub prefix: &'a [Symbol],
+    pub tail: &'a [Symbol],
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Substitution {
     St,
