@@ -41,6 +41,83 @@ pub enum AbiTag {
     W65Interrupt,
 }
 
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum IntWidth {
+    Bits(NonZeroU16),
+    Size,
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum FloatWidth {
+    Bits(NonZeroU16),
+    Long,
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct IntType {
+    pub signed: bool,
+    pub width: IntWidth,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct FnType {
+    pub safety: Spanned<Safety>,
+    pub constness: Spanned<Mutability>,
+    pub asyncness: Spanned<AsyncType>,
+    pub tag: Spanned<AbiTag>,
+    pub retty: Box<Spanned<Type>>,
+    pub paramtys: Vec<Spanned<Type>>,
+    pub iscvarargs: Spanned<bool>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum SemaLifetime {
+    Bound(Spanned<u32>),
+    Region(RegionId),
+    Static,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Type {
+    Bool,
+    Int(IntType),
+    Float(FloatWidth),
+    Char,
+    Str,
+    Never,
+    Tuple(Vec<Spanned<Type>>),
+    FnPtr(FnType),
+    FnItem(FnType, DefId),
+    UserType(DefId),
+    IncompleteAlias(DefId),
+    Pointer(Spanned<Mutability>, Box<Spanned<Type>>),
+    Array(Box<Spanned<Type>>, Spanned<ConstExpr>),
+    Inferable(InferId),
+    InferableInt(InferId),
+    Reference(
+        Option<Spanned<SemaLifetime>>,
+        Spanned<Mutability>,
+        Box<Spanned<Type>>,
+    ),
+    Param(u32),
+    TraitSelf(DefId),
+    DropFlags(Box<Type>),
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum FatPtrPart {
+    Payload,
+    Metadata,
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum FieldName {
+    EnumDiscrim,
+    Field(Symbol),
+    VariantSubfield(DefId, Symbol),
+    FatPtrPart(FatPtrPart),
+}
+
 impl core::fmt::Display for AbiTag {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.write_str("extern \"")?;
@@ -231,29 +308,11 @@ pub fn convert_tag(tag: Spanned<Symbol>, curmod: DefId, at_item: DefId) -> super
     }
 }
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub enum IntWidth {
-    Bits(NonZeroU16),
-    Size,
-}
-
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub enum FloatWidth {
-    Bits(NonZeroU16),
-    Long,
-}
-
 // Write the Rust type here
 #[allow(non_upper_case_globals)]
 impl FloatWidth {
     pub const f32: FloatWidth = FloatWidth::Bits(nzu16!(32));
     pub const f64: FloatWidth = FloatWidth::Bits(nzu16!(64));
-}
-
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub struct IntType {
-    pub signed: bool,
-    pub width: IntWidth,
 }
 
 #[allow(non_upper_case_globals)] // Write the Rust type here
@@ -438,17 +497,6 @@ pub fn parse_int_suffix(
     })
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct FnType {
-    pub safety: Spanned<Safety>,
-    pub constness: Spanned<Mutability>,
-    pub asyncness: Spanned<AsyncType>,
-    pub tag: Spanned<AbiTag>,
-    pub retty: Box<Spanned<Type>>,
-    pub paramtys: Vec<Spanned<Type>>,
-    pub iscvarargs: Spanned<bool>,
-}
-
 impl FnType {
     pub fn matches_ignore_bounds(&self, other: &Self) -> bool {
         self.safety.body == other.safety.body
@@ -498,13 +546,6 @@ impl core::fmt::Display for FnType {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum SemaLifetime {
-    Bound(Spanned<u32>),
-    Region(RegionId),
-    Static,
-}
-
 impl core::fmt::Display for SemaLifetime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -513,32 +554,6 @@ impl core::fmt::Display for SemaLifetime {
             Self::Static => f.write_str("'static"),
         }
     }
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum Type {
-    Bool,
-    Int(IntType),
-    Float(FloatWidth),
-    Char,
-    Str,
-    Never,
-    Tuple(Vec<Spanned<Type>>),
-    FnPtr(FnType),
-    FnItem(FnType, DefId),
-    UserType(DefId),
-    IncompleteAlias(DefId),
-    Pointer(Spanned<Mutability>, Box<Spanned<Type>>),
-    Array(Box<Spanned<Type>>, Spanned<ConstExpr>),
-    Inferable(InferId),
-    InferableInt(InferId),
-    Reference(
-        Option<Spanned<SemaLifetime>>,
-        Spanned<Mutability>,
-        Box<Spanned<Type>>,
-    ),
-    Param(u32),
-    TraitSelf(DefId),
 }
 
 impl Type {
@@ -699,6 +714,7 @@ impl core::fmt::Display for Type {
             }
             Self::Param(var) => f.write_fmt(format_args!("%{}", var)),
             Self::TraitSelf(tr) => f.write_fmt(format_args!("Self(impl #{})", tr)),
+            Self::DropFlags(ty) => f.write_fmt(format_args!("DropFlags({})", ty)),
         }
     }
 }
@@ -785,14 +801,6 @@ pub fn convert_type(
     }
 }
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub enum FieldName {
-    EnumDiscrim,
-    Field(Symbol),
-    VariantSubfield(DefId, Symbol),
-    FatPtrPart(FatPtrPart),
-}
-
 impl core::fmt::Display for FieldName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -806,12 +814,6 @@ impl core::fmt::Display for FieldName {
             Self::FatPtrPart(part) => part.fmt(f),
         }
     }
-}
-
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub enum FatPtrPart {
-    Payload,
-    Metadata,
 }
 
 impl core::fmt::Display for FatPtrPart {

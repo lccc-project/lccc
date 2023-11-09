@@ -12,6 +12,7 @@ mod lex;
 mod macro_parse;
 mod parse;
 mod sema;
+mod serialize;
 mod session;
 mod span;
 

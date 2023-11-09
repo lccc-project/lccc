@@ -26,7 +26,7 @@ pub struct Vec<T, A: Allocator = XLangAlloc> {
 impl<T> Vec<T, XLangAlloc> {
     /// Creates a new (empty) Vec
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self::new_in(XLangAlloc::new())
     }
 
@@ -78,7 +78,7 @@ impl<T, A: Allocator> Drop for Vec<T, A> {
 
 impl<T, A: Allocator> Vec<T, A> {
     /// Creates a new (empty) Vec in `alloc` without allocating.
-    pub fn new_in(alloc: A) -> Self {
+    pub const fn new_in(alloc: A) -> Self {
         Self {
             ptr: Unique::dangling(),
             cap: 0,
@@ -303,7 +303,7 @@ impl<T, A: Allocator> Vec<T, A> {
     }
 
     /// Returns the capacity of the [`Vec`], that is, the total number of elements the [`Vec`] can hold without reallocating
-    pub fn capacity(&self) -> usize {
+    pub const fn capacity(&self) -> usize {
         self.cap
     }
 

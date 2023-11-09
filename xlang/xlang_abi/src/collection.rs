@@ -11,6 +11,7 @@ use crate::pair::Pair;
 use crate::alloc::{Allocator, Layout, XLangAlloc};
 use crate::hash::{BuildHasherDefault, XLangHasher};
 use crate::ptr::Unique;
+use crate::vec::Vec;
 
 #[repr(C)]
 struct HashMapSlot<K, V> {
@@ -916,6 +917,57 @@ impl<'a, K> Iterator for SetIter<'a, K> {
 
     fn next(&mut self) -> Option<&'a K> {
         self.0.next()
+    }
+}
+
+/// A double ended queue backed by an expandable ring buffer
+pub struct VecDeque<T, A: Allocator = XLangAlloc> {
+    storage: Vec<MaybeUninit<T>, A>,
+    head: usize,
+    tail: usize,
+}
+
+impl<T> VecDeque<T, XLangAlloc> {
+    /// Creates a new [`VecDeque`] with no initial capacity
+    pub const fn new() -> Self {
+        Self::new_in(XLangAlloc::new())
+    }
+    /// Constructs a [`VecDeque`] that can hold at least `cap` elements before reallocating
+    pub fn with_capacity(cap: usize) -> Self {
+        Self::with_capacity_in(cap, XLangAlloc::new())
+    }
+}
+impl<T, A: Allocator> VecDeque<T, A> {
+    /// Creates a new [`VecDeque`] with no initial capacity using `alloc`
+    pub const fn new_in(alloc: A) -> Self {
+        Self {
+            storage: Vec::new_in(alloc),
+            head: 0,
+            tail: 0,
+        }
+    }
+    /// Constructs a [`VecDeque`] that can hold at least `cap` elements before reallocating, using `alloc`
+    pub fn with_capacity_in(cap: usize, alloc: A) -> Self {
+        Self {
+            storage: Vec::with_capacity_in(cap, alloc),
+            head: 0,
+            tail: 0,
+        }
+    }
+
+    /// Determines the number of elements in the [`VecDeque`]
+    pub const fn len(&self) -> usize {
+        (self.tail - self.head) & (self.storage.capacity())
+    }
+
+    /// Determines if the [`VecDeque`] is empty (IE. has no elements)
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Determines the capacity of the [`VecDeque`]
+    pub const fn capacity(&self) -> usize {
+        self.storage.capacity()
     }
 }
 

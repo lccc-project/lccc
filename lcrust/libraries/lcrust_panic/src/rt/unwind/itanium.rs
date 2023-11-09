@@ -77,7 +77,6 @@ fn init_panic_info(x: &mut PanicUnwindInfo) {
     x.except.cl = EXCEPT_CLASS;
     x.except.exception_cleanup = Some(cleanup_exception);
     x.abi_ver = env_int!("LCRUST_ABI_VERSION");
-    x.tail_size = 0;
     x.impl_info = 0;
 }
 

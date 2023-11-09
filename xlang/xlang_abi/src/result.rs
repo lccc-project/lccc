@@ -184,6 +184,8 @@ where
     E: Into<core::convert::Infallible>,
 {
     /// Infallibly unwraps `self` into it's value
+    ///
+    /// This is guaranteed sound because the `Err` arm is divergent
     #[allow(unreachable_code)] // removing the offending `match` fails type checking
     pub fn into_ok(self) -> T {
         match self {
@@ -203,6 +205,66 @@ where
         match self {
             Err(e) => e,
             Ok(val) => match Into::into(val) {},
+        }
+    }
+}
+
+impl<T: Clone, E> Result<&T, E> {
+    /// Returns a [`Result<T,E>`] by cloning the value if [`Ok`]
+    pub fn clone_ok(self) -> Result<T, E> {
+        match self {
+            Ok(x) => Ok(x.clone()),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+impl<T, E: Clone> Result<T, &E> {
+    /// Returns a [`Result<T,E>`] by cloning the value if [`Err`]
+    pub fn clone_err(self) -> Result<T, E> {
+        match self {
+            Ok(x) => Ok(x),
+            Err(e) => Err(e.clone()),
+        }
+    }
+}
+
+impl<T: Clone, E: Clone> Result<&T, &E> {
+    /// Returns a [`Result<T,E>`] by cloning the values on each branch
+    pub fn cloned(self) -> Result<T, E> {
+        match self {
+            Ok(x) => Ok(x.clone()),
+            Err(e) => Err(e.clone()),
+        }
+    }
+}
+
+impl<T: Copy, E> Result<&T, E> {
+    /// Returns a [`Result<T,E>`] by copying the value if [`Ok`]
+    pub fn copy_ok(self) -> Result<T, E> {
+        match self {
+            Ok(x) => Ok(*x),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+impl<T, E: Copy> Result<T, &E> {
+    /// Returns a [`Result<T,E>`] by copying the value if [`Err`]
+    pub fn copy_err(self) -> Result<T, E> {
+        match self {
+            Ok(x) => Ok(x),
+            Err(e) => Err(*e),
+        }
+    }
+}
+
+impl<T: Copy, E: Copy> Result<&T, &E> {
+    /// Returns a [`Result<T,E>`] by cloning the values on each branch
+    pub fn copied(self) -> Result<T, E> {
+        match self {
+            Ok(x) => Ok(*x),
+            Err(e) => Err(*e),
         }
     }
 }

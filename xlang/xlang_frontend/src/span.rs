@@ -4,6 +4,7 @@ use xlang::abi::ops::{ChangeOutputType, Residual, Try};
 
 use xlang::abi::try_;
 
+use crate::helpers::FetchIncrement;
 use crate::symbol::Symbol;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -241,19 +242,9 @@ impl<I: Iterator<Item = char>> Speekable<I> {
         }
     }
 
-    pub fn speek(&mut self) -> Option<&(Pos, char)> {
+    pub fn peek(&mut self) -> Option<(Pos, char)> {
         self.tick();
-        self.peeked.as_ref()
-    }
-
-    pub fn peek(&mut self) -> Option<&char> {
-        self.tick();
-        self.peeked.as_ref().map(|(_, x)| x)
-    }
-
-    pub fn snext(&mut self) -> Option<(Pos, char)> {
-        self.tick();
-        self.peeked.take()
+        self.peeked.as_ref().map(|&(pos, x)| (pos, x))
     }
 
     pub fn last_pos(&self) -> Pos {
@@ -262,10 +253,10 @@ impl<I: Iterator<Item = char>> Speekable<I> {
 }
 
 impl<I: Iterator<Item = char>> Iterator for Speekable<I> {
-    type Item = char;
+    type Item = (Pos, char);
 
-    fn next(&mut self) -> Option<char> {
+    fn next(&mut self) -> Option<(Pos, char)> {
         self.tick();
-        self.peeked.take().map(|(_, x)| x)
+        self.peeked.take()
     }
 }

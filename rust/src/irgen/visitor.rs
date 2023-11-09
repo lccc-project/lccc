@@ -288,6 +288,10 @@ pub fn visit_statement<V: StatementVisitor>(
         mir::MirStatement::StoreDead(var) => visitor.visit_store_dead(*var),
         mir::MirStatement::Write(_, _) => todo!("write"),
         mir::MirStatement::EndRegion(_) => todo!("end region"),
+        mir::MirStatement::Dealloca(_) => todo!("dealloca"),
+        mir::MirStatement::MarkAll(_, _) => todo!("mark all"),
+        mir::MirStatement::MarkDropState(_, _, _) => todo!("mark drop state"),
+        mir::MirStatement::CaptureException(_) => todo!("capture exception"),
     }
 }
 
@@ -515,6 +519,9 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         mir::MirExpr::BinaryExpr(op, lhs, rhs) => {
             visit_binary_expr(visitor.visit_binary_expr(), op, lhs, rhs, defs)
         }
+        mir::MirExpr::Uninit(_) => todo!("uninit"),
+        mir::MirExpr::AllocaDrop(_, _) => todo!("alloca drop"),
+        mir::MirExpr::GetSymbol(_) => todo!("get symbol"),
     }
 }
 

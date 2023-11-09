@@ -182,6 +182,7 @@ pub enum HirBlock {
 pub struct HirFunctionBody {
     pub vardebugmap: HashMap<HirVarId, Spanned<Symbol>>,
     pub body: Spanned<HirBlock>,
+    pub localitems: Vec<(Symbol, DefId)>,
 }
 
 impl HirFunctionBody {
@@ -347,21 +348,27 @@ impl HirFunctionBody {
 }
 
 pub struct HirLowerer<'a> {
-    defs: &'a super::Definitions,
+    defs: &'a mut super::Definitions,
     varnames: HashMap<Symbol, HirVarId>,
     vardebugmap: &'a mut HashMap<HirVarId, Spanned<Symbol>>,
     atitem: DefId,
     curmod: DefId,
     nexthirvarid: u32,
     stmts: Vec<Spanned<HirStatement>>,
+    localvalues: HashMap<Symbol, DefId>,
+    localtypes: HashMap<Symbol, DefId>,
+    selfty: Option<&'a ty::Type>,
+    localitems: &'a mut Vec<(Symbol, DefId)>,
 }
 
 impl<'a> HirLowerer<'a> {
     pub fn new(
-        defs: &'a super::Definitions,
+        defs: &'a mut super::Definitions,
         atitem: DefId,
         curmod: DefId,
         vardebugmap: &'a mut HashMap<HirVarId, Spanned<Symbol>>,
+        selfty: Option<&'a ty::Type>,
+        localitems: &'a mut Vec<(Symbol, DefId)>,
     ) -> Self {
         Self {
             defs,
@@ -371,6 +378,10 @@ impl<'a> HirLowerer<'a> {
             vardebugmap,
             nexthirvarid: 0,
             stmts: Vec::new(),
+            localvalues: HashMap::new(),
+            localtypes: HashMap::new(),
+            selfty,
+            localitems,
         }
     }
 
@@ -380,13 +391,15 @@ impl<'a> HirLowerer<'a> {
                 if let Some(id) = p.as_bare_id() {
                     if let Some(hirvar) = self.varnames.get(&id.body) {
                         Ok(id.copy_span(|_| HirExpr::Var(*hirvar)))
+                    } else if let Some(val) = self.localvalues.get(&id.body) {
+                        Ok(id.copy_span(|_| HirExpr::Const(*val)))
                     } else {
                         self.defs
                             .find_value_in_mod(self.curmod, self.curmod, id, self.atitem)
                             .map(|def| id.copy_span(|_| HirExpr::Const(def)))
                     }
                 } else {
-                    todo!("complicated path")
+                    todo!("complicated path (Add find_value)")
                 }
             }
             ast::Expr::BinaryExpr(op, lhs, rhs) => expr.try_copy_span(|_| {
@@ -559,7 +572,55 @@ impl<'a> HirLowerer<'a> {
                 self.stmts
                     .push(stmt.copy_span(|_| HirStatement::Discard(expr)));
             }
-            ast::Statement::ItemDecl(_) => {}
+            ast::Statement::ItemDecl(item) => match &item.item.body {
+                ast::ItemBody::Mod(_) => todo!(),
+                ast::ItemBody::Value(_) => todo!(),
+                ast::ItemBody::ExternCrate { craten, asname } => todo!(),
+                ast::ItemBody::Use(_) => todo!(),
+                ast::ItemBody::UserType(_) => {}
+                ast::ItemBody::Function(itemfn) => {
+                    let defid = self.defs.allocate_defid();
+                    let mut fnbody = super::collect_function(
+                        self.defs,
+                        self.curmod,
+                        defid,
+                        itemfn,
+                        None,
+                        None,
+                        None,
+                        None,
+                        self.selfty,
+                    )?;
+
+                    match &mut fnbody {
+                        super::DefinitionInner::Function(_, Some(body)) => {
+                            *body = super::FunctionBody::AstBody(
+                                itemfn.body.body.as_ref().cloned().unwrap(),
+                            );
+                        }
+                        _ => {}
+                    }
+
+                    let attrs = item
+                        .attrs
+                        .iter()
+                        .map(|attr| super::attr::parse_meta(attr, defid, self.atitem))
+                        .collect::<super::Result<Vec<_>>>()?;
+
+                    let def = self.defs.definition_mut(defid);
+                    def.attrs = attrs;
+                    def.visible_from = self.atitem;
+                    def.parent = self.atitem;
+                    def.inner = itemfn.copy_span(|_| fnbody);
+
+                    self.localitems.push((itemfn.name.body, defid));
+                    self.localvalues.insert(itemfn.name.body, defid);
+                }
+                ast::ItemBody::ExternBlock(_) => todo!(),
+                ast::ItemBody::MacroRules(_) => panic!("macro rules unreachable from rust"),
+                ast::ItemBody::Trait(_) => todo!(),
+                ast::ItemBody::ImplBlock(_) => todo!(),
+            },
             ast::Statement::LetStatement(stmt) => {
                 // TODO: handle patterns correctly
                 let (mutability, var) = match stmt.name.body {
@@ -603,11 +664,19 @@ impl<'a> HirLowerer<'a> {
             }
             ast::Statement::Block(blk) => match &blk.body {
                 ast::CompoundBlock::SimpleBlock(blk) => {
-                    let mut lowerer =
-                        HirLowerer::new(self.defs, self.atitem, self.curmod, self.vardebugmap);
+                    let mut lowerer = HirLowerer::new(
+                        self.defs,
+                        self.atitem,
+                        self.curmod,
+                        self.vardebugmap,
+                        self.selfty,
+                        self.localitems,
+                    );
 
                     lowerer.nexthirvarid = self.nexthirvarid;
                     lowerer.varnames = self.varnames.clone();
+                    lowerer.localtypes = self.localtypes.clone();
+                    lowerer.localvalues = self.localvalues.clone();
 
                     lowerer.desugar_block(ret, blk)?;
 
@@ -620,11 +689,19 @@ impl<'a> HirLowerer<'a> {
                 ast::CompoundBlock::If(_) => todo!("if"),
                 ast::CompoundBlock::While(_) => todo!("while"),
                 ast::CompoundBlock::Loop(blk) => {
-                    let mut lowerer =
-                        HirLowerer::new(self.defs, self.atitem, self.curmod, self.vardebugmap);
+                    let mut lowerer = HirLowerer::new(
+                        self.defs,
+                        self.atitem,
+                        self.curmod,
+                        self.vardebugmap,
+                        self.selfty,
+                        self.localitems,
+                    );
 
                     lowerer.nexthirvarid = self.nexthirvarid;
                     lowerer.varnames = self.varnames.clone();
+                    lowerer.localtypes = self.localtypes.clone();
+                    lowerer.localvalues = self.localvalues.clone();
 
                     lowerer.desugar_block(None, blk)?; // handle `break` at some point
 
@@ -635,11 +712,19 @@ impl<'a> HirLowerer<'a> {
                     self.nexthirvarid = lowerer.nexthirvarid;
                 }
                 ast::CompoundBlock::Unsafe(blk) => {
-                    let mut lowerer =
-                        HirLowerer::new(self.defs, self.atitem, self.curmod, self.vardebugmap);
+                    let mut lowerer = HirLowerer::new(
+                        self.defs,
+                        self.atitem,
+                        self.curmod,
+                        self.vardebugmap,
+                        self.selfty,
+                        self.localitems,
+                    );
 
                     lowerer.nexthirvarid = self.nexthirvarid;
                     lowerer.varnames = self.varnames.clone();
+                    lowerer.localtypes = self.localtypes.clone();
+                    lowerer.localvalues = self.localvalues.clone();
 
                     lowerer.desugar_block(ret, blk)?;
 
@@ -695,18 +780,29 @@ impl<'a> HirLowerer<'a> {
                     .push(blk.copy_span(|_| ret(blk.copy_span(|_| HirExpr::Tuple(vec![])))));
             }
         }
+
         Ok(())
     }
 
-    pub fn into_fn_body(self, safety: Safety, span: Span) -> HirFunctionBody {
+    pub fn into_fn_body(self, safety: Safety, span: Span) -> super::Result<HirFunctionBody> {
         let body = match safety {
             Safety::Safe => HirBlock::Normal(self.stmts),
             Safety::Unsafe => HirBlock::Unsafe(self.stmts),
         };
 
-        HirFunctionBody {
+        for &(_, defid) in &*self.localitems {
+            match &self.defs.definition(defid).inner.body {
+                super::DefinitionInner::Function(_, Some(super::FunctionBody::AstBody(_))) => {
+                    super::desugar_fn(self.defs, self.curmod, defid)?
+                }
+                _ => {}
+            }
+        }
+
+        Ok(HirFunctionBody {
             vardebugmap: core::mem::take(self.vardebugmap),
             body: Spanned { body, span },
-        }
+            localitems: core::mem::take(self.localitems),
+        })
     }
 }

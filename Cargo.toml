@@ -12,4 +12,5 @@ members = [
     "codegen-x86","codegen-clever","codegen-w65",
     "lc-binutils/arch-ops", "lc-binutils/binfmt",
     "rust/interning-static-syms",
+    "rust/rust_mir_macro",
 ]

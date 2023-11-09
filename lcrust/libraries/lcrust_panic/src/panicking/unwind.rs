@@ -7,26 +7,8 @@ use core::sync::atomic::AtomicUsize;
 use core::cell::Cell;
 use core::any::Any;
 
-pub(crate) static ALWAYS_ABORT: AtomicUsize = AtomicUsize::new(0);
-
-#[thread_local]
-static PANIC_COUNT: Cell<usize> = Cell::new(0);
 
 
-#[cfg_attr(define_lang_items, lang = "lcrust_increment_panic_count_symbol")]
-pub unsafe fn increment_panic_count() -> usize{
-    PANIC_COUNT.replace(PANIC_COUNT.get().add_unchecked(1))
-}
-
-#[cfg_attr(define_lang_items, lang = "lcrust_decrement_panic_count_symbol")]
-pub unsafe fn decrement_panic_count() -> usize{
-    PANIC_COUNT.replace(PANIC_COUNT.get().sub_unchecked(1))
-}
-
-#[cfg_attr(define_lang_items, lang = "lcrust_panic_count_symbol")]
-pub fn panic_count() -> usize{
-    PANIC_COUNT.get()
-}
 
 #[cfg_attr(define_lang_items, lang = "lcrust_dispose_foreign_exception_symbol")]
 pub unsafe fn dispose_foreign_exception(p: *mut ForeignExceptionType){
@@ -139,12 +121,9 @@ pub unsafe fn catch_unwind_landing_pad(_: *mut dyn FnOnce()->*mut !, p: *mut For
 
 
 
-#[lcrust::weak_def]
-pub fn panic_call_hook(_: &PanicInfo<'_>){}
 
 
-
-#[cfg_attr(define_lang_items, lang = "lcrust_begin_unwind_symbol")]
+#[cfg_attr(define_lang_items, lang = "lcrust_begin_panic_symbol")]
 #[cfg_attr(define_lang_items, lcrust::weak_def)]
 #[cfg_attr(not(define_lang_items), panic_handler)]
 #[cold]
@@ -157,12 +136,12 @@ pub fn begin_panic(info: &core::panic::PanicInfo) -> !{
     }else{
         panic_call_hook(info);
 
-        if count > 0{
+        if count > 0 || ALWAYS_ABORT.get(Ordering::Relaxed) != 0{
             unsafe{abort(info.location(), Some("Double-panic: Aborting process"))}
         }
 
         // Per lcrust abi v0: `PanicInfo` constructed by the implementation shall have a location valid for the duration of the program
-        let location = unsafe{core::mem::transmute(core::ptr::read(info.location()))};
+        let location = unsafe{core::mem::transmute(core::ptr::read(info.location().unwrap()))};
 
         let mut info = PanicUnwindInfo{
             foreign: FOREIGN_EXCEPTION_INIT,
@@ -175,7 +154,15 @@ pub fn begin_panic(info: &core::panic::PanicInfo) -> !{
 
 
         let layout = alloc::alloc::Layout::of_val(info.payload());
-
+        
+        let unwind_info = __allocate_exception(layout);
+        
+        unsafe{unwind_info.write(info)};
+        let except = unsafe{unwind_info.offset(1).align_to(layout.align()).cast::<u8>};
+        // The payload may not be `Copy`, but `begin`
+        unsafe{core::ptr::copy_nonoverlapping(info.payload() as *const dyn Any as *const u8, except, info.size())};
+        
+        begin_unwind(unwind_info)
     }
 }
 

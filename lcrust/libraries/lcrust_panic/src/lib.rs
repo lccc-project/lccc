@@ -9,7 +9,10 @@ pub(crate) mod rt;
 
 #[cfg(feature = "unwind")]
 pub mod panic {
-    pub fn always_abort() {}
+    pub fn always_abort() {
+        use core::sync::atomic::Ordering;
+        self::panicking::lcrust::ALWAYS_ABORT.set(1, Ordering::Relaxed);
+    }
     pub mod foreign;
 }
 

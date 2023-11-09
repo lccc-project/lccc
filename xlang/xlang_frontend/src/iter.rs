@@ -1,6 +1,15 @@
-use std::{collections::VecDeque, iter::FusedIterator}; // FIXME: Use `xlang::abi::VecDeque` instead
+use std::{
+    collections::VecDeque,
+    iter::FusedIterator,
+    ops::{Deref, DerefMut},
+}; // FIXME: Use `xlang::abi::VecDeque` instead
 
 use xlang::abi::ops::{ControlFlow, FromResidual, Try};
+
+use crate::{
+    span::{Pos, Speekable},
+    symbol::Symbol,
+};
 
 pub struct PeekMoreIterator<I: Iterator> {
     inner: I,
@@ -15,8 +24,7 @@ impl<I: Iterator> Iterator for PeekMoreIterator<I> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(val) = self.buf.pop_front() {
             self.cursor = self.cursor.saturating_sub(1);
-            self.mark = self
-                .mark
+            self.mark
                 .iter_mut()
                 .for_each(|x| *x = (*x).saturating_sub(1));
             Some(val)
@@ -39,8 +47,22 @@ impl<I: Iterator> Iterator for PeekMoreIterator<I> {
 
 impl<I: FusedIterator> FusedIterator for PeekMoreIterator<I> {}
 
+impl<I: Iterator<Item = char>> PeekMoreIterator<Speekable<I>> {
+    pub fn last_pos(&self) -> Pos {
+        if let Some((pos, _)) = self.buf.front() {
+            *pos
+        } else {
+            self.inner.last_pos()
+        }
+    }
+
+    pub fn file_name(&self) -> Symbol {
+        self.inner.file_name()
+    }
+}
+
 impl<I: Iterator> PeekMoreIterator<I> {
-    pub fn peek(&mut self) -> Option<&Self::Item> {
+    pub fn peek(&mut self) -> Option<&I::Item> {
         if self.cursor < self.buf.len() {
             Some(&self.buf[self.cursor])
         } else {
@@ -51,14 +73,14 @@ impl<I: Iterator> PeekMoreIterator<I> {
         }
     }
 
-    pub fn peek_next(&mut self) -> Option<&Self::Item> {
+    pub fn peek_next(&mut self) -> Option<&I::Item> {
         if self.cursor < self.buf.len() {
             self.cursor += 1;
         }
         self.peek()
     }
 
-    pub fn peek_last(&mut self) -> Option<&Self::Item> {
+    pub fn peek_last(&mut self) -> Option<&I::Item> {
         self.cursor = self.cursor.checked_sub(1)?;
         self.peek()
     }
@@ -74,10 +96,20 @@ impl<I: Iterator> PeekMoreIterator<I> {
             self.cursor = mark;
         }
     }
+    pub fn reset(&mut self) {
+        self.cursor = 0;
+    }
+    pub fn consume_peaked(&mut self) {
+        let count = self.cursor;
+        drop(self.buf.drain(..count));
+        self.mark.clear();
+    }
 }
 
 pub trait Peekmore: Iterator {
-    fn peekmore(self) -> PeekMoreIterator<Self>;
+    fn peekmore(self) -> PeekMoreIterator<Self>
+    where
+        Self: Sized;
 }
 
 impl<I: Iterator> Peekmore for I {
@@ -86,7 +118,7 @@ impl<I: Iterator> Peekmore for I {
             inner: self,
             buf: VecDeque::with_capacity(8),
             cursor: 0,
-            mark: None,
+            mark: Vec::new(),
         }
     }
 }

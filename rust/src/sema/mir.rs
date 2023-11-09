@@ -16,7 +16,11 @@ use super::{
     DefId, Definitions, SemaHint, Spanned,
 };
 
+pub mod mir_macro;
+
 pub use crate::sema::hir::BinaryOp;
+
+include!("mir_defs.rs");
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub enum BorrowckErrorCategory {
@@ -25,24 +29,6 @@ pub enum BorrowckErrorCategory {
     CannotMove,
     CannotAssign,
 }
-
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
-pub struct RegionId(u32);
-
-impl core::fmt::Display for RegionId {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        f.write_fmt(format_args!("'{}", self.0))
-    }
-}
-
-impl core::fmt::Debug for RegionId {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        f.write_fmt(format_args!("'{}", self.0))
-    }
-}
-
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
-pub struct BasicBlockId(pub(crate) u32);
 
 impl BasicBlockId {
     pub const UNUSED: BasicBlockId = BasicBlockId(!0);
@@ -58,73 +44,19 @@ impl core::borrow::Borrow<u32> for BasicBlockId {
     }
 }
 
-impl core::fmt::Display for BasicBlockId {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        f.write_fmt(format_args!("@{}", self.0))
-    }
-}
-
-impl core::fmt::Debug for BasicBlockId {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        f.write_fmt(format_args!("@{}", self.0))
-    }
-}
-
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
-pub struct SsaVarId(pub(crate) u32);
-
 impl SsaVarId {
     pub const fn id(self) -> u32 {
         self.0
     }
 }
 
-impl core::fmt::Display for SsaVarId {
+impl core::fmt::Display for DropFlagState {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        f.write_fmt(format_args!("_{}", self.0))
+        match self {
+            Self::Init => f.write_str("init"),
+            Self::Uninit => f.write_str("uninit"),
+        }
     }
-}
-
-impl core::fmt::Debug for SsaVarId {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        f.write_fmt(format_args!("_{}", self.0))
-    }
-}
-
-#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
-pub enum RefKind {
-    Raw,
-    Ref,
-}
-
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub enum MirExpr {
-    Unreachable,
-    Var(SsaVarId),
-    Read(Box<Spanned<MirExpr>>),
-    Alloca(Mutability, Type, Box<Spanned<MirExpr>>),
-    ConstInt(IntType, u128),
-    ConstString(StringType, Symbol),
-    Const(DefId),
-    Retag(RefKind, Mutability, Box<Spanned<MirExpr>>),
-    Cast(Box<Spanned<MirExpr>>, Type),
-    Tuple(Vec<Spanned<MirExpr>>),
-    Intrinsic(IntrinsicDef),
-    FieldProject(Box<Spanned<MirExpr>>, FieldName),
-    GetSubobject(Box<Spanned<MirExpr>>, FieldName),
-    Ctor(MirConstructor),
-    BinaryExpr(
-        Spanned<BinaryOp>,
-        Box<Spanned<MirExpr>>,
-        Box<Spanned<MirExpr>>,
-    ),
-}
-
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct MirConstructor {
-    pub ctor_def: DefId,
-    pub fields: Vec<(FieldName, Spanned<MirExpr>)>,
-    pub rest_init: Option<Box<Spanned<MirExpr>>>,
 }
 
 impl core::fmt::Display for MirConstructor {
@@ -202,41 +134,29 @@ impl core::fmt::Display for MirExpr {
             MirExpr::BinaryExpr(op, lhs, rhs) => {
                 f.write_fmt(format_args!("({} {} {})", lhs.body, op.body, rhs.body))
             }
+            MirExpr::AllocaDrop(ty, state) => {
+                f.write_fmt(format_args!("alloca_drop {} {}", ty, state))
+            }
+            MirExpr::Uninit(ty) => f.write_fmt(format_args!("uninit {}", ty)),
+            MirExpr::GetSymbol(sym) => f.write_fmt(format_args!("get_symbol {}", sym)),
         }
     }
 }
 
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub enum MirStatement {
-    Write(Spanned<MirExpr>, Spanned<MirExpr>),
-    Declare {
-        var: Spanned<SsaVarId>,
-        ty: Spanned<Type>,
-        init: Spanned<MirExpr>,
-    },
-    StoreDead(SsaVarId),
-    EndRegion(RegionId),
-    Discard(Spanned<MirExpr>),
-}
+impl core::fmt::Display for MirDropInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.target.fmt(f)?;
+        f.write_str(" ")?;
+        if let Some(flags) = &self.flags {
+            f.write_fmt(format_args!("{{{}}} ", flags))?;
+        }
 
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub enum MirTerminator {
-    Call(MirCallInfo),
-    Tailcall(MirTailcallInfo),
-    Return(Spanned<MirExpr>),
-    Jump(MirJumpInfo),
-    Unreachable,
-    ResumeUnwind,
-}
-
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct MirCallInfo {
-    pub retplace: Spanned<SsaVarId>, // id of the return place, which is made live in the next
-    pub targ: Spanned<MirExpr>,
-    pub fnty: FnType,
-    pub params: Vec<Spanned<MirExpr>>,
-    pub next: MirJumpInfo,
-    pub unwind: Option<MirJumpInfo>,
+        f.write_fmt(format_args!("next {}", self.next))?;
+        if let Some(unwind) = &self.unwind {
+            f.write_fmt(format_args!(" unwind {}", unwind))?;
+        }
+        Ok(())
+    }
 }
 
 impl core::fmt::Display for MirCallInfo {
@@ -270,14 +190,6 @@ impl core::fmt::Display for MirCallInfo {
     }
 }
 
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct MirTailcallInfo {
-    pub targ: Spanned<MirExpr>,
-    pub fnty: FnType,
-    pub params: Vec<Spanned<MirExpr>>,
-    pub unwind: Option<MirJumpInfo>,
-}
-
 impl core::fmt::Display for MirTailcallInfo {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         self.targ.body.fmt(f)?;
@@ -301,12 +213,6 @@ impl core::fmt::Display for MirTailcallInfo {
 
         Ok(())
     }
-}
-
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct MirJumpInfo {
-    pub targbb: BasicBlockId,
-    pub remaps: Vec<(SsaVarId, SsaVarId)>,
 }
 
 impl core::fmt::Display for MirJumpInfo {
@@ -340,14 +246,20 @@ pub struct MirBasicBlock {
 pub struct MirFunctionBody {
     pub bbs: Vec<MirBasicBlock>,
     pub vardbg_info: HashMap<SsaVarId, Spanned<Symbol>>,
+    pub localitems: Vec<(Symbol, DefId)>,
 }
 
 impl MirFunctionBody {
     pub fn display_body(
         &self,
+        defs: &Definitions,
         f: &mut core::fmt::Formatter,
         tabs: TabPrinter,
     ) -> core::fmt::Result {
+        for &(name, defid) in &self.localitems {
+            let nested = tabs.nest();
+            defs.display_item(f, defid, &name, nested)?;
+        }
         for bb in &self.bbs {
             self.display_block(bb, f, tabs.nest())?;
         }
@@ -396,6 +308,16 @@ impl MirFunctionBody {
             MirStatement::StoreDead(var) => f.write_fmt(format_args!("store dead {};", var)),
             MirStatement::EndRegion(region) => f.write_fmt(format_args!("end region {};", region)),
             MirStatement::Discard(expr) => f.write_fmt(format_args!("{};", expr.body)),
+            MirStatement::Dealloca(expr) => f.write_fmt(format_args!("dealloca {};", expr)),
+            MirStatement::MarkAll(expr, state) => {
+                f.write_fmt(format_args!("mark_all({},{});", expr, state))
+            }
+            MirStatement::MarkDropState(expr, field, state) => {
+                f.write_fmt(format_args!("mark_drop({}.{}, {});", expr, field, state))
+            }
+            MirStatement::CaptureException(varid) => {
+                f.write_fmt(format_args!("let {} = current_exception();", varid))
+            }
         }
     }
 
@@ -415,6 +337,7 @@ impl MirFunctionBody {
             MirTerminator::Jump(jmp) => f.write_fmt(format_args!("jump {}", jmp)),
             MirTerminator::Unreachable => f.write_str("unreachable"),
             MirTerminator::ResumeUnwind => f.write_str("resume_unwind"),
+            MirTerminator::DropInPlace(drop) => f.write_fmt(format_args!("drop_in_place {}", drop)),
         }
     }
 }
@@ -485,6 +408,7 @@ pub struct MirConverter<'a> {
     mir_debug_map: HashMap<SsaVarId, Spanned<Symbol>>,
     nextvar: u32,
     nextbb: u32,
+    localitems: Vec<(Symbol, DefId)>,
 }
 
 impl<'a> MirConverter<'a> {
@@ -493,6 +417,7 @@ impl<'a> MirConverter<'a> {
         at_item: DefId,
         curmod: DefId,
         hir_var_names: HashMap<HirVarId, Spanned<Symbol>>,
+        localitems: Vec<(Symbol, DefId)>,
     ) -> Self {
         Self {
             defs,
@@ -507,6 +432,7 @@ impl<'a> MirConverter<'a> {
             mir_debug_map: HashMap::new(),
             nextvar: 0,
             nextbb: 1,
+            localitems,
         }
     }
 
@@ -1231,6 +1157,7 @@ impl<'a> MirConverter<'a> {
         MirFunctionBody {
             bbs: self.basic_blocks,
             vardbg_info: self.mir_debug_map,
+            localitems: self.localitems,
         }
     }
 }

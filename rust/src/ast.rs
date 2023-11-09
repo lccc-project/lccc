@@ -622,6 +622,19 @@ pub enum BinaryOp {
     RangeInclusive,
 }
 
+#[allow(dead_code)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum UnaryOp {
+    RawAddrOf(Spanned<Mutability>),
+    AddrOf(Option<Spanned<Mutability>>),
+    Deref,
+    Neg,
+    Not,
+    RangeFrom,
+    RangeTo,
+    RangeToInclusive,
+}
+
 impl core::fmt::Display for BinaryOp {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
@@ -662,18 +675,7 @@ impl core::fmt::Display for BinaryOp {
     }
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-pub enum UnaryOp {
-    RawAddrOf(Spanned<Mutability>),
-    AddrOf(Option<Spanned<Mutability>>),
-    Deref,
-    Neg,
-    Not,
-    RangeFrom,
-    RangeTo,
-    RangeToInclusive,
-}
+
 
 #[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]

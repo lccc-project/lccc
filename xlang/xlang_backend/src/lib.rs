@@ -486,7 +486,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         }
     }
 
-    /// Makes the given value opaque, if it is not alreayd.
+    /// Makes the given value opaque, if it is not already.
     pub fn make_opaque(&mut self, val: VStackValue<F::Loc>) -> VStackValue<F::Loc> {
         match val {
             VStackValue::Constant(v) => match v {

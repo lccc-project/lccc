@@ -1,17 +1,15 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
-use ir::FunctionBody;
-use xlang::abi::io::{self, IntoChars, Read};
+#![allow(dead_code, unused_variables)] // For now
+use xlang::abi::io::{self, Read};
 use xlang::abi::prelude::v1::*;
 use xlang::abi::result::Result;
+
 mod analyze;
 mod lex;
+mod mode;
 mod parse;
+mod pplex;
 
-use analyze::analyze;
-use lex::lex;
-use parse::{
-    parse, BaseType, Declaration, Expression, Initializer, Pointer, PrimitiveType, Statement, Type,
-};
 use xlang::abi::string::StringView;
 use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
@@ -24,16 +22,12 @@ fn diagnostic() -> ! {
 
 struct CFrontend {
     filename: Option<String>,
-    parsed: std::vec::Vec<Declaration>,
 }
 
 impl CFrontend {
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            filename: None,
-            parsed: std::vec::Vec::new(),
-        }
+        Self { filename: None }
     }
 }
 
@@ -47,215 +41,14 @@ impl XLangFrontend for CFrontend {
     }
 
     fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
-        let mut file = file.into_chars();
-        let lexed = lex(&mut file);
-        self.parsed = parse(&lexed);
-        analyze(&mut self.parsed);
-        io::Result::Ok(())
+        todo!()
     }
 }
 
 impl XLangPlugin for CFrontend {
     #[allow(clippy::too_many_lines, unreachable_code)] // ray can fix passing properties.
     fn accept_ir(&mut self, file: &mut ir::File) -> Result<(), Error> {
-        fn into_xir_type_real(
-            char_type: &ir::ScalarType,
-            int_type: &ir::ScalarType,
-            ty: &Type,
-            pointer: Option<&Pointer>,
-            properties: &TargetProperties,
-        ) -> ir::Type {
-            // const is not currently supported by xir
-            let inner = match &ty.base {
-                BaseType::Function { ret, params } => {
-                    let mut param_types = Vec::new();
-                    for (param, _) in params {
-                        param_types.push(into_xir_type_real(
-                            char_type,
-                            int_type,
-                            &param.inner,
-                            param.pointer.as_ref().into(),
-                            properties,
-                        ));
-                    }
-                    ir::Type::FnType(Box::new(ir::FnType {
-                        ret: into_xir_type_real(char_type, int_type, ret, None, properties),
-                        params: param_types,
-                        tag: properties.default_tag_name.into(),
-                        variadic: false,
-                    }))
-                }
-                BaseType::Primitive(PrimitiveType::Char) => ir::Type::Scalar(*char_type),
-                BaseType::Primitive(PrimitiveType::Int) => ir::Type::Scalar(*int_type),
-            };
-            if let Some(pointer) = pointer {
-                if pointer.sub_ptr.is_some() {
-                    todo!()
-                } else {
-                    ir::Type::Pointer(ir::PointerType {
-                        inner: Box::new(inner),
-                        ..ir::PointerType::default()
-                    })
-                }
-            } else {
-                inner
-            }
-        }
-
-        #[allow(clippy::match_wildcard_for_single_variants, clippy::needless_borrow)]
-        fn codegen_expr_real(
-            char_type: &ir::ScalarType,
-            int_type: &ir::ScalarType,
-            expr: &Expression,
-            block: &mut Vec<ir::BlockItem>,
-            properties: &TargetProperties,
-        ) {
-            match expr {
-                Expression::FunctionCall { callee, args, .. } => {
-                    codegen_expr_real(char_type, int_type, callee, block, properties);
-                    for arg in args {
-                        codegen_expr_real(char_type, int_type, arg, block, properties);
-                    }
-                    block.push(ir::BlockItem::Expr(ir::Expr::CallFunction(
-                        match into_xir_type_real(
-                            char_type,
-                            int_type,
-                            &callee.get_type().unwrap().inner,
-                            callee.get_type().unwrap().pointer.as_ref().into(),
-                            properties,
-                        ) {
-                            ir::Type::FnType(x) => (*x).clone(),
-                            x => todo!("{:?}", x),
-                        },
-                    )));
-                }
-                Expression::Identifier {
-                    id,
-                    ty: std::option::Option::Some(ty),
-                } => {
-                    block.push(ir::BlockItem::Expr(ir::Expr::Const(
-                        ir::Value::GlobalAddress {
-                            ty: into_xir_type_real(
-                                char_type,
-                                int_type,
-                                &ty.inner,
-                                ty.pointer.as_ref().into(),
-                                properties,
-                            ),
-                            item: ir::Path {
-                                components: xlang::vec![ir::PathComponent::Text(String::from(&id))],
-                            },
-                        },
-                    )));
-                }
-                Expression::String {
-                    str,
-                    ty: std::option::Option::Some(ty),
-                } => {
-                    let mut str = str.clone();
-                    str.push('\0'); // Null terminator
-                    block.push(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::String {
-                        ty: into_xir_type_real(
-                            char_type,
-                            int_type,
-                            &ty.inner,
-                            ty.pointer.as_ref().into(),
-                            properties,
-                        ),
-                        utf8: (&str).into(),
-                        encoding: ir::StringEncoding::Utf8,
-                    })));
-                }
-                _ => todo!("{:?}", expr),
-            }
-        }
-
-        let char_type = ir::ScalarType {
-            header: ir::ScalarTypeHeader {
-                bitsize: 8,
-                ..ir::ScalarTypeHeader::default()
-            },
-            kind: ir::ScalarTypeKind::Integer {
-                signed: false,
-                min: xlang::abi::option::None,
-                max: xlang::abi::option::None,
-            },
-        };
-        let int_type = ir::ScalarType {
-            header: ir::ScalarTypeHeader {
-                bitsize: 32,
-                ..ir::ScalarTypeHeader::default()
-            },
-            kind: ir::ScalarTypeKind::Integer {
-                signed: true,
-                min: xlang::abi::option::None,
-                max: xlang::abi::option::None,
-            },
-        };
-
-        let into_xir_type = |ty: &Type, pointer: Option<&Pointer>| {
-            into_xir_type_real(&char_type, &int_type, ty, pointer, todo!())
-        };
-
-        let codegen_expr = |expr: &Expression, block: &mut Vec<ir::BlockItem>| {
-            codegen_expr_real(&char_type, &int_type, expr, block, todo!());
-        };
-
-        for decl in &self.parsed {
-            let member = if let Type {
-                base: BaseType::Function { .. },
-                ..
-            } = &decl.ty
-            {
-                let body = decl.initializer.as_ref().map(|init| {
-                    if let Initializer::Function(statements) = init {
-                        let mut block = Vec::new();
-                        for statement in statements {
-                            let Statement::Expression(expr) = statement;
-                            codegen_expr(expr, &mut block);
-                        }
-                        if decl.name == "main" {
-                            block.push(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Integer {
-                                ty: int_type,
-                                val: 0,
-                            })));
-                            block.push(ir::BlockItem::Expr(ir::Expr::Exit { values: 1 }));
-                        }
-                        ir::Block { items: block }
-                    } else {
-                        diagnostic()
-                    }
-                });
-                let function = ir::FunctionDeclaration {
-                    ty: match into_xir_type(&decl.ty, decl.pointer.as_ref().into()) {
-                        ir::Type::FnType(x) => (*x).clone(),
-                        x => todo!("{:?}", x),
-                    },
-                    body: body
-                        .map(|block| FunctionBody {
-                            locals: xlang::abi::vec![],
-                            block,
-                        })
-                        .into(),
-                };
-                ir::ScopeMember {
-                    annotations: ir::AnnotatedElement {
-                        annotations: Vec::new(),
-                    },
-                    vis: ir::Visibility::Public,
-                    member_decl: ir::MemberDeclaration::Function(function),
-                }
-            } else {
-                todo!()
-            };
-            file.root.members.insert(
-                ir::Path {
-                    components: xlang::vec![ir::PathComponent::Text(String::from(&decl.name))],
-                },
-                member,
-            );
-        }
-        Result::Ok(())
+        todo!()
     }
 
     fn set_target(&mut self, _targ: &'static TargetProperties<'static>) {}

@@ -125,13 +125,19 @@ pub mod hir;
 pub mod intrin;
 pub mod mir;
 pub mod ty;
+mod ty_defs;
 pub mod tyck;
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
-pub struct DefId(u32);
+pub struct DefId(pub(crate) u32);
 
 impl DefId {
     pub const ROOT: DefId = DefId(0);
+
+    #[doc(hidden)]
+    pub const fn __new_unchecked(x: u32) -> Self {
+        Self(x)
+    }
 }
 
 impl core::fmt::Display for DefId {
@@ -1327,7 +1333,8 @@ impl Definitions {
                 panic!("Cannot determine copyability of an uninfered type")
             }
             ty::Type::TraitSelf(_) => false, // for now
-            ty::Type::Param(_) => false,     // for now
+            ty::Type::Param(_) => false,
+            ty::Type::DropFlags(_) => false,
         }
     }
 
@@ -1899,6 +1906,7 @@ impl Definitions {
                 }
                 Type::Param(_) => panic!("generics not allowed, monomorphize types first"),
                 Type::TraitSelf(_) => todo!("generics not allowed, monomorphize types first"),
+                Type::DropFlags(fl) => todo!("drop flags layout computation is needed"),
             };
 
             let layout = Box::new(layout);
@@ -2011,6 +2019,7 @@ impl Definitions {
 
                 Type::Inferable(_) => Vec::new(),
                 Type::InferableInt(_) => Vec::new(),
+                Type::DropFlags(_) => Vec::new(),
             };
 
             let fields = Box::into_raw(Box::new(fields));
@@ -2237,7 +2246,7 @@ impl Definitions {
                     Some(FunctionBody::MirBody(body)) => {
                         fmt.write_str("{\n")?;
                         let nested = tabs.nest();
-                        body.display_body(fmt, nested)?;
+                        body.display_body(self, fmt, nested)?;
                         tabs.fmt(fmt)?;
                         fmt.write_str("}\n")
                     }
@@ -2327,7 +2336,7 @@ impl Definitions {
                     Some(FunctionBody::MirBody(body)) => {
                         fmt.write_str("{\n")?;
                         let nested = tabs.nest();
-                        body.display_body(fmt, nested)?;
+                        body.display_body(self, fmt, nested)?;
                         tabs.fmt(fmt)?;
                         fmt.write_str("}\n")
                     }
@@ -2424,7 +2433,7 @@ impl Definitions {
                     Some(FunctionBody::MirBody(body)) => {
                         fmt.write_str("{\n")?;
                         let nested = tabs.nest();
-                        body.display_body(fmt, nested)?;
+                        body.display_body(self, fmt, nested)?;
                         tabs.fmt(fmt)?;
                         fmt.write_str("}\n")
                     }
@@ -2756,7 +2765,7 @@ fn collect_function(
     outer_safety: Option<Spanned<Safety>>,
     outer_span: Option<Span>,
     outer_defid: Option<DefId>,
-    self_ty: Option<Spanned<ty::Type>>,
+    self_ty: Option<&ty::Type>,
 ) -> Result<DefinitionInner> {
     let actual_tag = itemfn
         .abi
@@ -3380,6 +3389,53 @@ pub fn convert_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::M
     Ok(())
 }
 
+pub fn desugar_fn(defs: &mut Definitions, curmod: DefId, defid: DefId) -> Result<()> {
+    let def = defs.definition_mut(defid);
+    match &mut def.inner.body {
+        DefinitionInner::Function(fnty, val @ Some(FunctionBody::AstBody(_))) => {
+            match (fnty.clone(), val.take()) {
+                (fnty, Some(FunctionBody::AstBody(block))) => {
+                    let parent = def.parent;
+
+                    let selfty = match &defs.definition(parent).inner.body {
+                        DefinitionInner::Module(_) => None,
+                        DefinitionInner::Impl(blk) => Some(blk.ty.body.clone()),
+                        DefinitionInner::Trait(_) => Some(Type::TraitSelf(parent)),
+                        _ => None,
+                    };
+
+                    let mut vardebugmap = HashMap::new();
+                    let safety = fnty.safety.body;
+                    let span = block.span;
+                    let mut localitems = Vec::new();
+                    let mut builder = HirLowerer::new(
+                        defs,
+                        defid,
+                        curmod,
+                        &mut vardebugmap,
+                        selfty.as_ref(),
+                        &mut localitems,
+                    );
+                    builder
+                        .desugar_block(Some(&mut |expr| hir::HirStatement::Return(expr)), &block)?;
+
+                    let body = builder.into_fn_body(safety, span)?;
+
+                    match &mut defs.definition_mut(defid).inner.body {
+                        DefinitionInner::Function(_, val) => {
+                            *val = Some(FunctionBody::HirBody(block.copy_span(|_| body)))
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                _ => {}
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     let tys = defs.as_module(curmod).types.clone();
 
@@ -3400,30 +3456,11 @@ pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     let values = defs.as_module(curmod).values.clone();
 
     for &Pair(sym, defid) in &values {
-        let def = defs.definition_mut(defid);
-        match &mut def.inner.body {
-            DefinitionInner::Function(fnty, val @ Some(FunctionBody::AstBody(_))) => match val
-                .take()
-            {
-                Some(FunctionBody::AstBody(block)) => {
-                    let mut vardebugmap = HashMap::new();
-                    let safety = fnty.safety.body;
-                    let span = block.span;
-                    let mut builder = HirLowerer::new(defs, defid, curmod, &mut vardebugmap);
-                    builder
-                        .desugar_block(Some(&mut |expr| hir::HirStatement::Return(expr)), &block)?;
-
-                    let body = builder.into_fn_body(safety, span);
-
-                    match &mut defs.definition_mut(defid).inner.body {
-                        DefinitionInner::Function(_, val) => {
-                            *val = Some(FunctionBody::HirBody(block.copy_span(|_| body)))
-                        }
-                        _ => unreachable!(),
-                    }
-                }
-                _ => {}
-            },
+        let def = defs.definition(defid);
+        match &def.inner.body {
+            DefinitionInner::Function(_, Some(FunctionBody::AstBody(_))) => {
+                desugar_fn(defs, curmod, defid)?;
+            }
             _ => {}
         }
     }
@@ -3456,6 +3493,7 @@ pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
             DefinitionInner::Function(fnty, val @ Some(FunctionBody::HirBody(_))) => {
                 match val.take() {
                     Some(FunctionBody::HirBody(block)) => {
+                        let localitems = block.body.localitems;
                         let (stmts, safety) = match block.body.body.body {
                             hir::HirBlock::Normal(stmts) => (stmts, Safety::Safe),
                             hir::HirBlock::Unsafe(stmts) => (stmts, Safety::Unsafe),
@@ -3469,6 +3507,7 @@ pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
                             defid,
                             curmod,
                             block.body.vardebugmap,
+                            localitems,
                         );
 
                         for stmt in stmts {
@@ -3537,6 +3576,7 @@ pub fn mir_lower(defs: &mut Definitions, curmod: DefId) -> Result<()> {
                                 .into_iter()
                                 .flat_map(|Pair(a, b)| Some(Pair(a, b.debug_name?)))
                                 .collect(),
+                            block.body.localitems,
                         );
                         let stmts = match block.body.body.body {
                             ThirBlock::Normal(stmts) | ThirBlock::Unsafe(stmts) => stmts,
@@ -3654,6 +3694,7 @@ pub fn convert_crate(
             mir::MirFunctionBody {
                 bbs: vec![block],
                 vardbg_info: HashMap::new(),
+                localitems: Vec::new(),
             }
         } else {
             let var = mir::SsaVarId(0);
@@ -3705,6 +3746,7 @@ pub fn convert_crate(
             mir::MirFunctionBody {
                 bbs: vec![first_block, second_block],
                 vardbg_info: HashMap::new(),
+                localitems: Vec::new(),
             }
         };
 

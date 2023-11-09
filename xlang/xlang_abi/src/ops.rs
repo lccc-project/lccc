@@ -35,6 +35,18 @@ pub trait Try: FromResidual {
 /// An Empty enum, used for residuals
 pub enum Empty {}
 
+impl From<Empty> for core::convert::Infallible {
+    fn from(value: Empty) -> Self {
+        match value {}
+    }
+}
+
+impl From<core::convert::Infallible> for Empty {
+    fn from(value: core::convert::Infallible) -> Self {
+        match value {}
+    }
+}
+
 impl<T, E> Residual<T> for crate::result::Result<Empty, E> {
     type Try = crate::result::Result<T, E>;
 }

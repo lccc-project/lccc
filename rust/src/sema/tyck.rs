@@ -236,6 +236,7 @@ impl ThirBlock {
 pub struct ThirFunctionBody {
     pub vardefs: HashMap<HirVarId, ThirVarDef>,
     pub body: Spanned<ThirBlock>,
+    pub localitems: Vec<(Symbol, DefId)>,
 }
 
 impl ThirFunctionBody {
@@ -391,6 +392,7 @@ pub struct ThirConverter<'a> {
     containing_item: DefId,
     next_infer: u32,
     dbgnames: HashMap<HirVarId, Spanned<Symbol>>,
+    localitems: Vec<(Symbol, DefId)>,
 }
 
 impl<'a> ThirConverter<'a> {
@@ -400,6 +402,7 @@ impl<'a> ThirConverter<'a> {
         at_item: DefId,
         containing_item: DefId,
         dbgnames: HashMap<HirVarId, Spanned<Symbol>>,
+        localitems: Vec<(Symbol, DefId)>,
     ) -> ThirConverter<'a> {
         ThirConverter {
             defs,
@@ -411,6 +414,7 @@ impl<'a> ThirConverter<'a> {
             containing_item,
             next_infer: 0,
             dbgnames,
+            localitems,
         }
     }
 
@@ -845,6 +849,7 @@ impl<'a> ThirConverter<'a> {
         ThirFunctionBody {
             vardefs: self.var_defs,
             body: Spanned { body, span },
+            localitems: self.localitems,
         }
     }
 }

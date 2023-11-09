@@ -91,7 +91,7 @@ pub const X86_FEATURES: Span<'static, StringView<'static>> = span![
     const_sv!("clwb"),
     const_sv!("fsgsbase"),
     const_sv!("ptwrite"),
-    const_sv!("rdrand"),
+    const_sv!("rdrnd"),
     const_sv!("f16c"),
     const_sv!("fma"),
     const_sv!("pconfig"),
@@ -99,7 +99,7 @@ pub const X86_FEATURES: Span<'static, StringView<'static>> = span![
     const_sv!("fma4"),
     const_sv!("prfchw"),
     const_sv!("rdpid"),
-    const_sv!("prefetchwcl"),
+    const_sv!("prefetchwt1"),
     const_sv!("rdseed"),
     const_sv!("sgx"),
     const_sv!("xop"),
@@ -112,6 +112,7 @@ pub const X86_FEATURES: Span<'static, StringView<'static>> = span![
     const_sv!("bmi"),
     const_sv!("bmi2"),
     const_sv!("lzcnt"),
+    const_sv!("fxsr"),
     const_sv!("xsave"),
     const_sv!("xsaveopt"),
     const_sv!("xsavec"),
@@ -149,11 +150,31 @@ pub const X86_FEATURES: Span<'static, StringView<'static>> = span![
     const_sv!("hreset"),
     const_sv!("kl"),
     const_sv!("widekl"),
+    const_sv!("avxifma"),
+    const_sv!("avxvnniint8"),
+    const_sv!("avxneconvert"),
+    const_sv!("cmpccxadd"),
+    const_sv!("amx-fp16"),
+    const_sv!("prefetchi"),
+    const_sv!("raoint"),
+    const_sv!("avxvnniint16"),
     const_sv!("sahf"),
     const_sv!("cx16"),
     const_sv!("movbe"),
+    const_sv!("shstk"),
     const_sv!("crc32"),
     const_sv!("mwait"),
+    const_sv!("recip"),
+    const_sv!("apxf"),
+    const_sv!("avx10"),
+    const_sv!("avx10/256"),
+    const_sv!("avx10/512"),
+    const_sv!("sha512"),
+    const_sv!("amx-complex"),
+    const_sv!("sm3"),
+    const_sv!("sm4"),
+    const_sv!("uintr"),
+    const_sv!("usermsr"),
 ];
 
 macro_rules! x86_constraints{
@@ -246,8 +267,11 @@ x86_constraints![
     ]
     x86_64: [
         Integer @ 16 | 32 | 64 => reg,
+        Integer @ 16 | 32 | 64 => reg_egpr,
+        Integer @ 16 | 32 | 64 => any_gpr,
         Integer @ 16 | 32 | 64 => reg_abcd,
         Integer @ 8 => reg_byte,
+        Integer @ 8 => any_gpr_byte,
         Vector @ 128 => xmm_reg,
         Integer @ 8 | 16 | 32 | 64 | 128 => xmm_reg,
         Float @ 32 | 64 | 128 => xmm_reg,
@@ -298,13 +322,38 @@ x86_register_groups![
             | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15
             | r8d | r9d | r10d | r11d | r12d | r13d | r14d | r15d
             | r8w | r9w | r10w | r11w | r12w | r13w | r14w | r15w,
+        reg_apx => r16 | r17 | r18 | r19 | r20 | r21 | r22 | r23
+            | r24 | r25 | r26 | r27 | r28 | r29 | r30 | r31
+            | r16d | r17d | r18d | r19d | r20d | r21d | r22d | r23d
+            | r24d | r25d | r26d | r27d | r28d | r29d | r30d | r31d
+            | r16w | r17w | r18w | r19w | r20w | r21w | r22w | r23w
+            | r24w | r25w | r26w | r27w | r28w | r29w | r30w | r31w,
+        any_gpr => ax | cx | dx | si | di
+            | eax | ecx | edx | esi | edi
+            | rax | rcx | rdx | rsi | rdi
+            | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15
+            | r8d | r9d | r10d | r11d | r12d | r13d | r14d | r15d
+            | r8w | r9w | r10w | r11w | r12w | r13w | r14w | r15w
+            | r16 | r17 | r18 | r19 | r20 | r21 | r22 | r23
+            | r24 | r25 | r26 | r27 | r28 | r29 | r30 | r31
+            | r16d | r17d | r18d | r19d | r20d | r21d | r22d | r23d
+            | r24d | r25d | r26d | r27d | r28d | r29d | r30d | r31d
+            | r16w | r17w | r18w | r19w | r20w | r21w | r22w | r23w
+            | r24w | r25w | r26w | r27w | r28w | r29w | r30w | r31w,
         reg_abcd => ax | cx | dx
             | eax | ecx | edx
             | rax | rcx | rdx,
         reg_byte => al | cl | dl | sil | dil | r8b | r9b | r10b | r11b | r12b | r13b | r14b | r15b,
+        any_gpr_byte => al | cl | dl | sil | dil | r8b | r9b | r10b | r11b | r12b | r13b | r14b | r15b
+            | r16b | r17b | r18b | r19b | r20b | r21b | r22b | r23b
+            | r24b | r25b | r26b | r27b | r28b | r29b | r30b | r31b,
         xmm_reg => xmm0 | xmm1 | xmm2 | xmm3 | xmm4 | xmm5 | xmm6 | xmm7
+            | xmm8 | xmm9 | xmm10 | xmm11 | xmm12 | xmm13 | xmm14 | xmm15,
+        xmm_hi => xmm16 | xmm17 | xmm18 | xmm19 | xmm20 | xmm21 | xmm22 | xmm23
+            | xmm24 | xmm25 | xmm26 | xmm27 | xmm28 | xmm29 | xmm30 | xmm31,
+        xmm_any => xmm0 | xmm1 | xmm2 | xmm3 | xmm4 | xmm5 | xmm6 | xmm7
             | xmm8 | xmm9 | xmm10 | xmm11 | xmm12 | xmm13 | xmm14 | xmm15
-            | xmm16 | xmm17 | xmm18 | xmm19 | xmm20 | xmm21 | xmm22 | xmm23
+            |xmm16 | xmm17 | xmm18 | xmm19 | xmm20 | xmm21 | xmm22 | xmm23
             | xmm24 | xmm25 | xmm26 | xmm27 | xmm28 | xmm29 | xmm30 | xmm31,
         ymm_reg => ymm0 | ymm1 | ymm2 | ymm3 | ymm4 | ymm5 | ymm6 | ymm7
             | ymm8 | ymm9 | ymm10 | ymm11 | ymm12 | ymm13 | ymm14 | ymm15
@@ -318,7 +367,7 @@ x86_register_groups![
         x87_reg => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
         mmx_reg => mm0 | mm1 | mm2 | mm3 | mm4 | mm5 | mm6 | mm7,
         kreg => k1 | k2 | k3 | k4 | k5 | k6 | k7,
-        kreg0 => k0 | k1 | k2 | k3 | k4 | k5 | k6 | k7,
+        kreg0 => k0,
         flag => ZF | OF | CF | SF | PF,
     ]
 ];
@@ -433,14 +482,14 @@ x86_overlaps![
     zmm31 => ymm31 | xmm31,
     ymm31 => xmm31,
 
-    mm0 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
-    mm1 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
-    mm2 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
-    mm3 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
-    mm4 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
-    mm5 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
-    mm6 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
-    mm7 => st0 | st1 | st2 | st3 | st4 | st5 | st6 | st7,
+    mm0 => st7,
+    mm1 => st6,
+    mm2 => st5,
+    mm3 => st4,
+    mm4 => st3,
+    mm5 => st2,
+    mm6 => st1,
+    mm7 => st0,
 ];
 
 x86_classes![

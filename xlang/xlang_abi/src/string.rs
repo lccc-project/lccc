@@ -217,6 +217,18 @@ impl<A: Allocator, S: AsRef<str> + ?Sized> PartialEq<S> for String<A> {
 
 impl<A: Allocator> Eq for String<A> {}
 
+impl From<char> for String {
+    fn from(value: char) -> Self {
+        let mut utf8 = [0u8; 4];
+
+        let st = value.encode_utf8(&mut utf8);
+
+        let mut bytes = crate::vec::Vec::with_capacity(st.len());
+        bytes.extend_from_slice(st.as_bytes());
+        Self(bytes)
+    }
+}
+
 impl<S: AsRef<str> + ?Sized> From<&S> for String {
     fn from(s: &S) -> Self {
         let s = s.as_ref();
