@@ -13,6 +13,7 @@ impl core::fmt::Display for MacroDefId {
     }
 }
 
+#[allow(dead_code)]
 pub struct Macros {
     nextdefid: u64,
 }

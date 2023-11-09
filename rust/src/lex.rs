@@ -221,6 +221,7 @@ macro_rules! punctuation {
                 }
             }
 
+            #[allow(dead_code)]
             pub const fn symbol(&self) -> &'static str {
                 match self {
                     $(Self::$name => ::core::stringify!($tok)),*

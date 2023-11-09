@@ -3,6 +3,7 @@ pub enum LangItemTarget {
     Type,
     Variant,
     Function,
+    #[allow(dead_code)]
     AssociatedType,
     AssociatedFunction,
     Trait,

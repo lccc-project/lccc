@@ -6,6 +6,7 @@ use xlang::{
 
 use crate::interning::Symbol;
 
+#[allow(dead_code)]
 fn single<S: Into<Symbol>>(x: S) -> HashSet<Symbol> {
     let mut set = HashSet::new();
 
@@ -21,6 +22,7 @@ where
     i.into_iter().map(Into::into).collect()
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Cfg {
     keys: HashSet<Symbol>,

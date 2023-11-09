@@ -2,7 +2,6 @@ use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
     ast::{AttrInput, Literal, LiteralKind, SimplePath, SimplePathSegment},
-    interning::Symbol,
     lang::LangItem,
     lex::{self, punct, Lexeme, LexemeClass},
     parse::{self, do_lexeme_class, do_lexeme_group, do_literal, IntoRewinder},
@@ -334,7 +333,7 @@ pub fn convert_repr(
     inner: Spanned<Vec<Spanned<MetaContent>>>,
     at_item: DefId,
     containing_item: DefId,
-    attr_span: Span,
+    _attr_span: Span,
 ) -> Result<Spanned<Repr>> {
     let mut base = None::<Spanned<ReprBase>>;
     let mut alignment = None::<Spanned<AlignmentSpec>>;
@@ -431,7 +430,7 @@ pub fn convert_repr(
                         }] => {
                             let span = *span;
                             if let Some(ver) = id.strip_prefix("lcrust_v") {
-                                let ver = ver.parse().map_err(|e| Error {
+                                let ver = ver.parse().map_err(|_e| Error {
                                     span,
                                     text: format!("Unknown repr({})", id),
                                     category: ErrorCategory::InvalidAttr,
@@ -522,7 +521,7 @@ pub fn convert_repr(
                                 ..
                             }),
                     }] => {
-                        let val = val.parse::<u64>().map_err(|e| Error {
+                        let val = val.parse::<u64>().map_err(|_e| Error {
                             span: *span,
                             text: format!(
                                 "Invalid alignment value {} (exceeds u64::max())",
@@ -680,7 +679,7 @@ pub fn parse_meta(
                     match id{
                         id if matches_simple_path!(id,always) => Spanned{body: InlineFrequency::Always,span: *span},
                         id if matches_simple_path!(id,never) => Spanned{body: InlineFrequency::Never,span: *span},
-                        id => return Err(Error{
+                        _id => return Err(Error{
                             span: *span,
                             text: format!("Invalid #[inline] attribute: expected either `inline(always)` or `inline(never)`"),
                             category: ErrorCategory::InvalidAttr,

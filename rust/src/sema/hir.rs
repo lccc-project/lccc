@@ -63,6 +63,7 @@ pub enum HirExpr {
     ConstInt(Option<Spanned<IntType>>, u128),
     ConstString(StringType, Spanned<Symbol>),
     Const(DefId),
+    #[allow(dead_code)]
     Unreachable,
     Cast(Box<Spanned<HirExpr>>, Spanned<Type>),
     Tuple(Vec<Spanned<HirExpr>>),
@@ -561,7 +562,7 @@ impl<'a> HirLowerer<'a> {
                         .collect::<Result<_, _>>()?,
                 ))
             }),
-            ast::Expr::ArrayRepeat { base, len } => todo!("array repeat"),
+            ast::Expr::ArrayRepeat { .. } => todo!("array repeat"),
         }
     }
 
@@ -580,7 +581,7 @@ impl<'a> HirLowerer<'a> {
             ast::Statement::ItemDecl(item) => match &item.item.body {
                 ast::ItemBody::Mod(_) => todo!(),
                 ast::ItemBody::Value(_) => todo!(),
-                ast::ItemBody::ExternCrate { craten, asname } => todo!(),
+                ast::ItemBody::ExternCrate { .. } => todo!(),
                 ast::ItemBody::Use(_) => todo!(),
                 ast::ItemBody::UserType(_) => {}
                 ast::ItemBody::Function(itemfn) => {

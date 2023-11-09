@@ -223,7 +223,7 @@ pub fn do_token_classes(
                 if let Some(err) = error.as_mut() {
                     *err |= e;
                 } else {
-                    error.insert(e);
+                    error = Some(e);
                 }
             }
         }
@@ -258,7 +258,7 @@ pub fn do_alternation<R, I: Iterator<Item = Lexeme>>(
                 if let Some(err) = err.as_mut() {
                     *err |= e;
                 } else {
-                    err.insert(e);
+                    err = Some(e);
                 }
             }
         }
@@ -705,7 +705,7 @@ pub fn do_user_type_struct(
             _ => ctor,
         },
         Err(e) => match do_lexeme_class(&mut tree, LexemeClass::Punctuation(Punctuation::Semi)) {
-            Ok(lex) => Spanned {
+            Ok(_) => Spanned {
                 body: Constructor::Unit,
                 span: end_span.after(),
             },
@@ -765,7 +765,7 @@ pub fn do_if_block(
     let mut elseifs = Vec::new();
     let mut elseblock = None;
     while let Ok(Lexeme {
-        span: else_span, ..
+        ..
     }) = do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::Else))
     {
         match do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::If)) {
@@ -1283,7 +1283,7 @@ pub fn do_control_flow_expr<const ALLOW_CONSTRUCTOR: bool>(
                         span: tspan,
                     })
                 }
-                Err(e_) => None,
+                Err(_) => None,
             };
 
             let expr = match do_expression_maybe_constructor::<ALLOW_CONSTRUCTOR>(&mut tree) {
@@ -1326,7 +1326,7 @@ pub fn do_control_flow_expr<const ALLOW_CONSTRUCTOR: bool>(
                         span: tspan,
                     })
                 }
-                Err(e_) => None,
+                Err(_) => None,
             };
 
             Ok(Spanned {
@@ -1770,7 +1770,7 @@ pub fn do_raw_ref(
                 Err(e) => Err(e),
             }
         }
-        Ok((span, tok)) => Err(Error {
+        Ok((span, _)) => Err(Error {
             expected: vec![keyword!(raw)],
             got: LexemeClass::Identifier,
             span,
@@ -1888,7 +1888,6 @@ pub fn do_unary_expression<const ALLOW_CONSTRUCTOR: bool>(
                 );
                 Ok(Spanned { body: expr, span })
             }
-            _ => unreachable!(),
         },
         Ok(_) => unreachable!(),
         Err(e) => match do_suffix_expression::<ALLOW_CONSTRUCTOR>(&mut tree) {
@@ -2543,7 +2542,8 @@ pub fn do_item_fn(
     })
 }
 
-pub fn do_reciever(
+#[allow(dead_code)]
+pub fn do_receiver(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<SelfParam>> {
     let mut tree = tree.into_rewinder();
@@ -2563,7 +2563,7 @@ pub fn do_reciever(
             tree.accept();
             Ok(Spanned { span, body })
         }
-        Err(e) => {
+        Err(_) => {
             let mt = do_lexeme_token(&mut tree, keyword!(mut))
                 .map(|(span, _)| Spanned {
                     span,
@@ -2588,6 +2588,7 @@ pub fn do_reciever(
     }
 }
 
+#[allow(dead_code)]
 pub fn do_item_fn_in_trait(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<ItemBody>> {
@@ -2607,7 +2608,7 @@ pub fn do_item_fn_in_trait(
     // TODO: receiver
     let mut params_tree = params_group.body.into_iter().peekmore();
 
-    let reciever = match do_reciever(&mut params_tree) {
+    let _receiver = match do_receiver(&mut params_tree) {
         Ok(x) => {
             do_lexeme_classes(&mut params_tree, &[punct!(,), LexemeClass::Eof])?;
             Some(x)
@@ -2871,12 +2872,12 @@ pub fn do_item_trait(
             loop {
                 match do_type_bound(&mut tree) {
                     Ok(bound) => bounds_list.push(bound),
-                    Err(e) => break,
+                    Err(_) => break,
                 }
 
                 match do_lexeme_classes(&mut tree, &[punct!(+)]) {
                     Ok(_) => continue,
-                    Err(e) => break,
+                    Err(_) => break,
                 }
             }
             Some(bounds_list)

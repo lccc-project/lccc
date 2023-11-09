@@ -34,6 +34,7 @@ pub trait RlibSerializeable {
     fn write<S: RlibSerializer>(&self, serialize: S) -> xlang::abi::io::Result<()>;
 }
 
+#[allow(dead_code)]
 pub struct RlibFileBuilder<W> {
     underlying: W,
     file_offset: usize,

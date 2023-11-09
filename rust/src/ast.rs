@@ -719,7 +719,7 @@ impl core::fmt::Display for SimplePath {
         let mut sep = if self.from_root { "::" } else { "" };
 
         for seg in &self.segments {
-            f.write_str(sep);
+            f.write_str(sep)?;
             sep = "::";
             seg.body.fmt(f)?;
         }

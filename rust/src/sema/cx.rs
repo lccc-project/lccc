@@ -2,6 +2,7 @@ use super::{hir::HirExpr, ty::IntType};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ConstExpr {
+    #[allow(dead_code)]
     HirVal(Box<HirExpr>),
     IntConst(IntType, u128),
 }

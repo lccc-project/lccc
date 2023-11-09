@@ -1,7 +1,5 @@
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::TryInto;
-use std::f32::consts::E;
 
 use ast::Mutability;
 use ast::Safety;
@@ -10,7 +8,6 @@ use xlang::abi::collection::HashSet;
 use xlang::abi::pair::Pair;
 use xlang::targets::properties::TargetProperties;
 
-use crate::ast::SelfParam;
 use crate::lang::LangItemTarget;
 use crate::CrateType;
 use crate::{
@@ -104,6 +101,7 @@ pub struct Error {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorCategory {
     Other,
+    #[allow(dead_code)]
     Unstable,
     CannotFindName,
     InvisibleEntity,
@@ -152,6 +150,7 @@ impl core::fmt::Debug for DefId {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum GenericParamInfo {
     Lifetime(Vec<SemaLifetime>),
@@ -276,6 +275,7 @@ impl core::fmt::Display for StructField {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Constructor {
     Unit,
+    #[allow(dead_code)]
     Tuple(Vec<Spanned<TupleField>>),
     Struct(Vec<Spanned<StructField>>),
 }
@@ -313,7 +313,7 @@ pub struct TraitDef {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct TraitFnSignature {
     pub fnty: FnType,
-    pub has_reciever: bool,
+    pub has_receiver: bool,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -321,13 +321,18 @@ pub enum DefinitionInner {
     Placeholder,
     Module(Module),
     UserType(UserType),
+    #[allow(dead_code)]
     IncompletAlias,
     Function(FnType, Option<FunctionBody>),
+    #[allow(dead_code)]
     TraitFunction(TraitFnSignature, Option<FunctionBody>),
+    #[allow(dead_code)]
     ImplFunction(TraitFnSignature, Option<DefId>, Option<FunctionBody>),
     Trait(TraitDef),
     Impl(ImplBlock),
+    #[allow(dead_code)]
     UseName(DefId),
+    #[allow(dead_code)]
     UseWildcard(DefId),
     ExternBlock,
 }
@@ -340,6 +345,7 @@ pub struct Module {
     pub wildcard_imports: Vec<DefId>,
 }
 
+#[allow(dead_code)]
 pub struct Definitions {
     crates: HashMap<Symbol, DefId>,
     curcrate: DefId,
@@ -408,6 +414,7 @@ impl Definitions {
         self.definition(defid).inner.span
     }
 
+    #[allow(dead_code)]
     pub fn as_module_mut(&mut self, defid: DefId) -> &mut Module {
         if let Definition {
             inner:
@@ -444,7 +451,7 @@ impl Definitions {
         if let Definition {
             inner:
                 Spanned {
-                    body: DefinitionInner::Module(md),
+                    body: DefinitionInner::Module(_),
                     ..
                 },
             ..
@@ -478,7 +485,8 @@ impl Definitions {
             ..
         } = self.definition_mut(curmod)
         {
-            if let Some(existing) = md.impls.insert(impl_id, item) {
+            if let Some(_) = md.impls.insert(impl_id, item) {
+                // TODO: This shouldn't happen, period. If nothing else, this should be a rehash.
                 panic!("ICE: impl block with id {} duplicated. This can happen extraordinarily rarely - try recompiling (if you set `LCCC_SEED` in the environment, set it to a different value, or unset it). If this message persists, file a bug report.", impl_id)
             } else {
                 Ok(())
@@ -560,7 +568,7 @@ impl Definitions {
     }
 
     pub fn allocate_defid(&mut self) -> DefId {
-        let mut def = DefId(self.nextdefid.fetch_increment());
+        let def = DefId(self.nextdefid.fetch_increment());
 
         self.defs.insert(
             def,
@@ -629,10 +637,10 @@ impl Definitions {
 
     pub fn find_impl_in_mod(
         &self,
-        curmod: DefId,
+        _curmod: DefId,
         searchmod: DefId,
         impl_id: Spanned<u64>,
-        at_item: DefId,
+        _at_item: DefId,
     ) -> Result<DefId> {
         if let Definition {
             inner:
@@ -710,6 +718,7 @@ impl Definitions {
         }
     }
 
+    #[allow(dead_code)]
     pub fn find_value_in_trait(
         &self,
         curmod: DefId,
@@ -1038,8 +1047,8 @@ impl Definitions {
         curmod: DefId,
         path: &[Spanned<ast::PathSegment>],
         at_item: DefId,
-        mut search_ty: Type,
-        self_ty: Option<&Type>,
+        search_ty: Type,
+        _self_ty: Option<&Type>,
     ) -> Result<DefId> {
         let mut path = path.iter();
 
@@ -1108,7 +1117,7 @@ impl Definitions {
                 return self.find_type_in_type(curmod, &path.segments, at_item, ty, self_ty);
             }
             Some(Spanned {
-                body: ast::PathRoot::QSelf(ty, Some(tr)),
+                body: ast::PathRoot::QSelf(_, Some(_)),
                 ..
             }) => {}
             None => {}
@@ -1172,7 +1181,7 @@ impl Definitions {
                             }
                         }
 
-                        if let Some(generics) = &seg.generics {
+                        if let Some(_) = &seg.generics {
                             todo!("generics")
                         }
                     }
@@ -1629,7 +1638,7 @@ impl Definitions {
                         .unwrap_or(attr::Repr::RUST);
 
                     match &def.inner.body {
-                        DefinitionInner::UserType(UserType::Struct(kind, def)) => {
+                        DefinitionInner::UserType(UserType::Struct(_, def)) => {
                             let mut field_layouts = Vec::new();
 
                             match &def.ctor.body {
@@ -1906,7 +1915,7 @@ impl Definitions {
                 }
                 Type::Param(_) => panic!("generics not allowed, monomorphize types first"),
                 Type::TraitSelf(_) => todo!("generics not allowed, monomorphize types first"),
-                Type::DropFlags(fl) => todo!("drop flags layout computation is needed"),
+                Type::DropFlags(_fl) => todo!("drop flags layout computation is needed"),
             };
 
             let layout = Box::new(layout);
@@ -1919,14 +1928,17 @@ impl Definitions {
         }
     }
 
+    #[allow(dead_code)]
     pub fn size_of(&self, ty: &ty::Type) -> Option<u64> {
         self.layout_of(ty, DefId::ROOT, DefId::ROOT).size
     }
 
+    #[allow(dead_code)]
     pub fn align_of(&self, ty: &ty::Type) -> Option<u64> {
         self.layout_of(ty, DefId::ROOT, DefId::ROOT).align
     }
 
+    #[allow(dead_code)]
     pub fn field_visibility(&self, ty: &ty::Type, fname: &ty::FieldName) -> Option<DefId> {
         self.fields_of(ty)
             .iter()
@@ -1935,6 +1947,7 @@ impl Definitions {
             .next()
     }
 
+    #[allow(dead_code)]
     pub fn field_type(&self, ty: &ty::Type, fname: &ty::FieldName) -> Option<&ty::Type> {
         self.fields_of(ty)
             .iter()
@@ -2040,7 +2053,7 @@ impl Definitions {
     ) -> Result<u64> {
         match &cx.body {
             cx::ConstExpr::HirVal(_) => todo!("expand hir"),
-            cx::ConstExpr::IntConst(_, val) => (*val).try_into().map_err(|e| Error {
+            cx::ConstExpr::IntConst(_, val) => (*val).try_into().map_err(|_| Error {
                 span: cx.span,
                 text: format!("value {} is not in range", val),
                 category: ErrorCategory::ConstEvalError(cx::ConstEvalError::EvaluatorError),
@@ -2257,7 +2270,7 @@ impl Definitions {
                     }
                 }
             }
-            DefinitionInner::TraitFunction(TraitFnSignature { fnty, has_reciever }, body) => {
+            DefinitionInner::TraitFunction(TraitFnSignature { fnty, has_receiver }, body) => {
                 if let Mutability::Const = fnty.constness.body {
                     fmt.write_str("const ")?;
                 }
@@ -2282,7 +2295,7 @@ impl Definitions {
                 fmt.write_str("*/(")?;
 
                 let mut n = 0;
-                let mut sep = if *has_reciever { "self: " } else { "" };
+                let mut sep = if *has_receiver { "self: " } else { "" };
 
                 for ty in &fnty.paramtys {
                     fmt.write_str(sep)?;
@@ -2347,7 +2360,7 @@ impl Definitions {
                     }
                 }
             }
-            DefinitionInner::ImplFunction(TraitFnSignature { fnty, has_reciever }, base, body) => {
+            DefinitionInner::ImplFunction(TraitFnSignature { fnty, has_receiver }, base, body) => {
                 if let Mutability::Const = fnty.constness.body {
                     fmt.write_str("const ")?;
                 }
@@ -2379,7 +2392,7 @@ impl Definitions {
                 fmt.write_str("*/(")?;
 
                 let mut n = 0;
-                let mut sep = if *has_reciever { "self: " } else { "" };
+                let mut sep = if *has_receiver { "self: " } else { "" };
 
                 for ty in &fnty.paramtys {
                     fmt.write_str(sep)?;
@@ -2597,7 +2610,7 @@ fn scan_modules(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) -
         impls: HashMap::new(),
     };
     for item in &md.items {
-        let span = item.span;
+        let _span = item.span;
 
         match &item.item.body {
             ast::ItemBody::Mod(md) => {
@@ -2642,7 +2655,7 @@ fn scan_modules(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) -
 }
 
 fn convert_visibility(
-    defs: &mut Definitions,
+    _defs: &mut Definitions,
     curmod: DefId,
     curvis: Option<&Spanned<ast::Visibility>>,
 ) -> Result<Option<DefId>> {
@@ -2716,7 +2729,7 @@ fn collect_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) 
             }
             ast::ItemBody::Trait(tr) => {
                 let defid = defs.allocate_defid();
-                let mut trbody = TraitDef {
+                let trbody = TraitDef {
                     auto: tr.auto.is_some(),
                     safety: tr.safety.map(|s| s.body).unwrap_or(Safety::Safe),
                     supertraits: vec![],
@@ -2765,7 +2778,7 @@ fn collect_function(
     outer_safety: Option<Spanned<Safety>>,
     outer_span: Option<Span>,
     outer_defid: Option<DefId>,
-    self_ty: Option<&ty::Type>,
+    _self_ty: Option<&ty::Type>,
 ) -> Result<DefinitionInner> {
     let actual_tag = itemfn
         .abi
@@ -2861,7 +2874,7 @@ fn collect_function(
         })?;
     }
 
-    let mut paramtys = itemfn
+    let paramtys = itemfn
         .params
         .iter()
         .map(|param| &param.ty)
@@ -3107,9 +3120,10 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                         ast::ItemBody::Value(_) => {
                             todo!("Associated Const in Trait")
                         }
-                        ast::ItemBody::Function(f) => {
+                        ast::ItemBody::Function(_f) => {
                             let ty = Type::TraitSelf(defid);
                             let fndef = defs.allocate_defid();
+                            todo!("trait body {} {}", ty, fndef);
                         }
                         item => unreachable!(
                             "{:?} Bad item. This should be filtered during ast validation",
@@ -3134,7 +3148,7 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                 let ty = blk
                     .ty
                     .try_copy_span(|ty| convert_type(defs, curmod, defid, ty, None))?;
-                let mut trbody = ImplBlock {
+                let trbody = ImplBlock {
                     safety: blk.safety.map(|s| s.body).unwrap_or(Safety::Safe),
                     trait_def: blk
                         .tr
@@ -3246,7 +3260,7 @@ pub fn convert_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mo
                 }
             }
             ast::ItemBody::Value(_) => {}
-            ast::ItemBody::ExternCrate { craten, asname } => {}
+            ast::ItemBody::ExternCrate { .. } => {}
             ast::ItemBody::Use(_) => {}
             ast::ItemBody::Function(_) => {}
             ast::ItemBody::ExternBlock(_) => {}
@@ -3439,7 +3453,7 @@ pub fn desugar_fn(defs: &mut Definitions, curmod: DefId, defid: DefId) -> Result
 pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     let tys = defs.as_module(curmod).types.clone();
 
-    for &Pair(sym, defid) in &tys {
+    for &Pair(_, defid) in &tys {
         if let Definition {
             inner:
                 Spanned {
@@ -3455,7 +3469,7 @@ pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
 
     let values = defs.as_module(curmod).values.clone();
 
-    for &Pair(sym, defid) in &values {
+    for &Pair(_, defid) in &values {
         let def = defs.definition(defid);
         match &def.inner.body {
             DefinitionInner::Function(_, Some(FunctionBody::AstBody(_))) => {
@@ -3542,7 +3556,7 @@ pub fn tycheck_function(defs: &mut Definitions, curmod: DefId, defid: DefId) -> 
 pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     let tys = defs.as_module(curmod).types.clone();
 
-    for &Pair(sym, defid) in &tys {
+    for &Pair(_, defid) in &tys {
         if let Definition {
             inner:
                 Spanned {
@@ -3558,11 +3572,11 @@ pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
 
     let values = defs.as_module(curmod).values.clone();
 
-    for &Pair(sym, defid) in &values {
+    for &Pair(_, defid) in &values {
         let def = defs.definition_mut(defid);
         match &mut def.inner.body {
             DefinitionInner::Function(_, Some(FunctionBody::HirBody(_))) => {
-                tycheck_function(defs, curmod, defid);
+                tycheck_function(defs, curmod, defid)?;
             }
             _ => {}
         }

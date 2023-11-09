@@ -25,10 +25,12 @@ impl Pos {
         Self { row: !0, col: !0 }
     }
 
+    #[allow(dead_code)]
     pub const fn row(self) -> u32 {
         self.row
     }
 
+    #[allow(dead_code)]
     pub const fn col(self) -> u32 {
         self.col
     }

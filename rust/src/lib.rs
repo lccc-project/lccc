@@ -25,7 +25,7 @@ use xlang::abi::result::Result;
 use xlang::abi::string::StringView;
 use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
-use xlang::targets::properties::{get_properties, TargetProperties};
+use xlang::targets::properties::TargetProperties;
 
 use crate::{
     irgen::irgen,
