@@ -1,6 +1,6 @@
 use xlang::abi::collection::HashMap;
 
-use crate::ast::{self, Literal, LiteralKind, Mutability, Safety, StringType};
+use crate::ast::{self, Literal, LiteralKind, Mutability, Safety, StringType, UnaryOp};
 use crate::helpers::{FetchIncrement, TabPrinter};
 use crate::interning::Symbol;
 use crate::span::Span;
@@ -73,6 +73,7 @@ pub enum HirExpr {
         Box<Spanned<HirExpr>>,
         Box<Spanned<HirExpr>>,
     ),
+    UnaryExpr(Spanned<UnaryOp>, Box<Spanned<HirExpr>>),
     Array(Vec<Spanned<HirExpr>>),
     Index(Box<Spanned<HirExpr>>, Box<Spanned<HirExpr>>),
 }
@@ -124,6 +125,9 @@ impl core::fmt::Display for HirExpr {
             HirExpr::BinaryExpr(op, lhs, rhs) => {
                 write!(f, "({} {} {})", lhs.body, op.body, rhs.body)
             }
+            HirExpr::UnaryExpr(op, val) => {
+                write!(f, "({}{})", op.body, val.body)
+            }
             HirExpr::Array(elements) => {
                 write!(f, "[")?;
                 let mut sep = "";
@@ -173,7 +177,7 @@ pub enum HirBlock {
     If {
         cond: Spanned<HirExpr>,
         block: HirSimpleBlock,
-        elseifs: Vec<(HirExpr, HirSimpleBlock)>,
+        elseifs: Vec<(Spanned<HirExpr>, HirSimpleBlock)>,
         elseblock: HirSimpleBlock,
     },
 }
@@ -274,7 +278,7 @@ impl HirFunctionBody {
                         self.display_statement(stmt, f, nested)?;
                     }
                     for (cond, block) in elseifs {
-                        write!(f, "}} else if {} {{\n", cond)?;
+                        write!(f, "}} else if {} {{\n", cond.body)?;
                         for stmt in block {
                             self.display_statement(stmt, f, nested)?;
                         }
@@ -409,7 +413,8 @@ impl<'a> HirLowerer<'a> {
                     Box::new(self.desugar_expr(rhs)?),
                 ))
             }),
-            ast::Expr::UnaryExpr(_, _) => todo!("unary expr"),
+            ast::Expr::UnaryExpr(op, val) => expr
+                .try_copy_span(|_| Ok(HirExpr::UnaryExpr(*op, Box::new(self.desugar_expr(val)?)))),
             ast::Expr::RangeFull => todo!("range"),
             ast::Expr::FunctionCall {
                 base,
@@ -562,7 +567,7 @@ impl<'a> HirLowerer<'a> {
 
     pub fn desugar_stmt(
         &mut self,
-        ret: Option<&mut dyn FnMut(Spanned<HirExpr>) -> HirStatement>,
+        mut ret: Option<&mut dyn FnMut(Spanned<HirExpr>) -> HirStatement>,
         stmt: &Spanned<ast::Statement>,
     ) -> super::Result<()> {
         match &stmt.body {
@@ -686,7 +691,95 @@ impl<'a> HirLowerer<'a> {
                         .push(stmt.copy_span(|_| HirStatement::Block(blk.copy_span(|_| block))));
                     self.nexthirvarid = lowerer.nexthirvarid;
                 }
-                ast::CompoundBlock::If(_) => todo!("if"),
+                ast::CompoundBlock::If(if_blk) => {
+                    let cond = self.desugar_expr(&if_blk.cond)?;
+
+                    let mut lowerer = HirLowerer::new(
+                        self.defs,
+                        self.atitem,
+                        self.curmod,
+                        self.vardebugmap,
+                        self.selfty,
+                        self.localitems,
+                    );
+
+                    lowerer.nexthirvarid = self.nexthirvarid;
+                    lowerer.varnames = self.varnames.clone();
+
+                    lowerer.desugar_block(
+                        if let Some(ret) = &mut ret {
+                            Some(ret)
+                        } else {
+                            None
+                        },
+                        &if_blk.block,
+                    )?;
+                    let block = lowerer.stmts;
+                    self.nexthirvarid = lowerer.nexthirvarid;
+
+                    let mut elseifs = Vec::new();
+                    for elseif in &if_blk.elseifs {
+                        let cond = self.desugar_expr(&elseif.cond)?;
+                        let mut lowerer = HirLowerer::new(
+                            self.defs,
+                            self.atitem,
+                            self.curmod,
+                            self.vardebugmap,
+                            self.selfty,
+                            self.localitems,
+                        );
+                        lowerer.nexthirvarid = self.nexthirvarid;
+                        lowerer.varnames = self.varnames.clone();
+                        lowerer.desugar_block(
+                            if let Some(ret) = &mut ret {
+                                Some(ret)
+                            } else {
+                                None
+                            },
+                            &elseif.block,
+                        )?;
+                        elseifs.push((cond, lowerer.stmts));
+                        self.nexthirvarid = lowerer.nexthirvarid;
+                    }
+
+                    let elseblock = if let Some(x) = if_blk.elseblock.as_ref() {
+                        let mut lowerer = HirLowerer::new(
+                            self.defs,
+                            self.atitem,
+                            self.curmod,
+                            self.vardebugmap,
+                            self.selfty,
+                            self.localitems,
+                        );
+
+                        lowerer.nexthirvarid = self.nexthirvarid;
+                        lowerer.varnames = self.varnames.clone();
+
+                        lowerer.desugar_block(
+                            if let Some(ret) = &mut ret {
+                                Some(ret)
+                            } else {
+                                None
+                            },
+                            &x,
+                        )?;
+                        self.nexthirvarid = lowerer.nexthirvarid;
+
+                        lowerer.stmts
+                    } else {
+                        Vec::new()
+                    };
+
+                    let if_block = HirBlock::If {
+                        cond,
+                        block,
+                        elseifs,
+                        elseblock,
+                    };
+                    self.stmts.push(
+                        stmt.copy_span(|_| HirStatement::Block(if_blk.copy_span(|_| if_block))),
+                    );
+                }
                 ast::CompoundBlock::While(_) => todo!("while"),
                 ast::CompoundBlock::Loop(blk) => {
                     let mut lowerer = HirLowerer::new(

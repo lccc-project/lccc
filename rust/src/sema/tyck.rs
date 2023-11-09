@@ -673,6 +673,7 @@ impl<'a> ThirConverter<'a> {
 
                 Ok(ThirExpr { ty, cat, inner })
             }
+            hir::HirExpr::UnaryExpr(_, _) => todo!("unary op"),
             hir::HirExpr::BinaryExpr(op, lhs, rhs) => {
                 let lhs = self.convert_rvalue(lhs)?;
                 let rhs = self.convert_rvalue(rhs)?;

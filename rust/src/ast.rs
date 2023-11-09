@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::lex::Group;
 use crate::{interning::Symbol, lex::Lexeme};
 
@@ -635,8 +637,8 @@ pub enum UnaryOp {
     RangeToInclusive,
 }
 
-impl core::fmt::Display for BinaryOp {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             BinaryOp::Add => f.write_str("+"),
             BinaryOp::Sub => f.write_str("-"),
@@ -675,7 +677,14 @@ impl core::fmt::Display for BinaryOp {
     }
 }
 
-
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Neg => f.write_str("-"),
+            _ => todo!(),
+        }
+    }
+}
 
 #[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
