@@ -5,12 +5,12 @@ use peekmore::{PeekMore, PeekMoreIterator};
 use crate::{
     ast::{
         AsyncBlock, Attr, AttrInput, Auto, BinaryOp, Block, CaptureSpec, Closure, ClosureParam,
-        CompoundBlock, ConstParam, Constructor, ConstructorExpr, Expr, ExternBlock, FieldInit,
-        Function, GenericBound, GenericParam, GenericParams, ImplBlock, Item, ItemBody, ItemValue,
-        Label, LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind, Mod, Param, Path,
-        PathSegment, Pattern, Safety, SelfParam, SimplePath, SimplePathSegment, Spanned, Statement,
-        StructCtor, StructField, StructKind, TraitDef, TupleCtor, TupleField, Type, TypeParam,
-        UnaryOp, UserType, UserTypeBody, Visibility, WhereClause, IfBlock, CondBlock,
+        CompoundBlock, CondBlock, ConstParam, Constructor, ConstructorExpr, Expr, ExternBlock,
+        FieldInit, Function, GenericBound, GenericParam, GenericParams, IfBlock, ImplBlock, Item,
+        ItemBody, ItemValue, Label, LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind,
+        Mod, Param, Path, PathSegment, Pattern, Safety, SelfParam, SimplePath, SimplePathSegment,
+        Spanned, Statement, StructCtor, StructField, StructKind, TraitDef, TupleCtor, TupleField,
+        Type, TypeParam, UnaryOp, UserType, UserTypeBody, Visibility, WhereClause,
     },
     interning::Symbol,
     lex::{
@@ -764,7 +764,10 @@ pub fn do_if_block(
     let mut span_end = block.span;
     let mut elseifs = Vec::new();
     let mut elseblock = None;
-    while let Ok(Lexeme { span: else_span, .. }) = do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::Else)) {
+    while let Ok(Lexeme {
+        span: else_span, ..
+    }) = do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::Else))
+    {
         match do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::If)) {
             Ok(Lexeme { span: if_span, .. }) => {
                 let cond = Box::new(do_expression_without_constructor(&mut tree)?);
@@ -772,10 +775,7 @@ pub fn do_if_block(
                 span_end = block.span;
                 let span = Span::between(if_span, block.span);
                 elseifs.push(Spanned {
-                    body: CondBlock {
-                        cond,
-                        block,
-                    },
+                    body: CondBlock { cond, block },
                     span,
                 });
             }
@@ -790,7 +790,12 @@ pub fn do_if_block(
     tree.accept();
     let span = Span::between(span_start, span_end);
     Ok(Spanned {
-        body: IfBlock { cond, block, elseifs, elseblock },
+        body: IfBlock {
+            cond,
+            block,
+            elseifs,
+            elseblock,
+        },
         span,
     })
 }
