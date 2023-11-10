@@ -6,7 +6,7 @@ use super::{
     asm::AsmScalar,
     asm::AsmScalarKind::{Float, Integer, Vector},
     builtins::BuiltinSignature,
-    ArchProperties, AsmProperties, LongDoubleFormat, PrimitiveProperties,
+    AbiProperties, ArchProperties, AsmProperties, FloatFormat, PrimitiveProperties,
 };
 
 macro_rules! x86_machines{
@@ -564,6 +564,33 @@ pub const X86_16_TAG_NAMES: Span<StringView> = span![
     const_sv!("fastcall")
 ];
 
+pub const X86_VECTOR_ABI_FEATURES: Span<Pair<u16, StringView>> = span![
+    Pair(8, const_sv!("mmx")),
+    Pair(16, const_sv!("sse")),
+    Pair(32, const_sv!("avx")),
+    Pair(64, const_sv!("avx512f")),
+    Pair(1024, const_sv!("amx-tile"))
+];
+pub const X86_FLOAT_ABI_FEATURES: Span<Pair<super::FloatFormat, StringView>> = span![Pair(
+    super::FloatFormat::X87DoubleExtended,
+    const_sv!("x87")
+),];
+
+pub static X86_64_ABI_PROPERTIES: AbiProperties = AbiProperties {
+    vector_default_feature: const_sv!(""), // An empty string will never be settable with `-m`
+    vector_width_features: X86_VECTOR_ABI_FEATURES,
+    float_format_features: X86_FLOAT_ABI_FEATURES,
+    float_default_features: const_sv!("sse"),
+};
+
+// x86-64 vs. IA-32 and IA-16 only differs in requiring sse vs. x87 for floats.
+pub static X86_ABI_PROPERTIES: AbiProperties = AbiProperties {
+    vector_default_feature: const_sv!(""), // An empty string will never be settable with `-m`
+    vector_width_features: X86_VECTOR_ABI_FEATURES,
+    float_format_features: X86_FLOAT_ABI_FEATURES,
+    float_default_features: const_sv!("x87"),
+};
+
 pub static X86_64: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xFF,
     builtins: X86_BUILTINS,
@@ -575,6 +602,7 @@ pub static X86_64: ArchProperties = ArchProperties {
     asm_propreties: &X86_64_ASM_PROPERTIES,
     tag_names: X86_64_TAG_NAMES,
     width: 64,
+    abi_properties: Some(&X86_64_ABI_PROPERTIES),
 };
 
 pub static X86_64_V2: ArchProperties = ArchProperties {
@@ -588,6 +616,7 @@ pub static X86_64_V2: ArchProperties = ArchProperties {
     asm_propreties: &X86_64_ASM_PROPERTIES,
     tag_names: X86_64_TAG_NAMES,
     width: 64,
+    abi_properties: Some(&X86_64_ABI_PROPERTIES),
 };
 
 pub static X86_64_V3: ArchProperties = ArchProperties {
@@ -601,6 +630,7 @@ pub static X86_64_V3: ArchProperties = ArchProperties {
     asm_propreties: &X86_64_ASM_PROPERTIES,
     tag_names: X86_64_TAG_NAMES,
     width: 64,
+    abi_properties: Some(&X86_64_ABI_PROPERTIES),
 };
 
 pub static X86_64_V4: ArchProperties = ArchProperties {
@@ -614,6 +644,7 @@ pub static X86_64_V4: ArchProperties = ArchProperties {
     asm_propreties: &X86_64_ASM_PROPERTIES,
     tag_names: X86_64_TAG_NAMES,
     width: 64,
+    abi_properties: Some(&X86_64_ABI_PROPERTIES),
 };
 
 pub static I386: ArchProperties = ArchProperties {
@@ -627,6 +658,7 @@ pub static I386: ArchProperties = ArchProperties {
     asm_propreties: &X86_32_ASM_PROPERTIES,
     tag_names: X86_32_TAG_NAMES,
     width: 32,
+    abi_properties: Some(&X86_ABI_PROPERTIES),
 };
 
 pub static I486: ArchProperties = ArchProperties {
@@ -640,6 +672,7 @@ pub static I486: ArchProperties = ArchProperties {
     asm_propreties: &X86_32_ASM_PROPERTIES,
     tag_names: X86_32_TAG_NAMES,
     width: 32,
+    abi_properties: Some(&X86_ABI_PROPERTIES),
 };
 pub static I586: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xF,
@@ -652,6 +685,7 @@ pub static I586: ArchProperties = ArchProperties {
     asm_propreties: &X86_32_ASM_PROPERTIES,
     tag_names: X86_32_TAG_NAMES,
     width: 32,
+    abi_properties: Some(&X86_ABI_PROPERTIES),
 };
 
 pub static I686: ArchProperties = ArchProperties {
@@ -665,6 +699,7 @@ pub static I686: ArchProperties = ArchProperties {
     asm_propreties: &X86_32_ASM_PROPERTIES,
     tag_names: X86_32_TAG_NAMES,
     width: 32,
+    abi_properties: Some(&X86_ABI_PROPERTIES),
 };
 
 pub static I86: ArchProperties = ArchProperties {
@@ -678,6 +713,7 @@ pub static I86: ArchProperties = ArchProperties {
     asm_propreties: &X86_16_ASM_PROPERTIES,
     tag_names: X86_16_TAG_NAMES,
     width: 16,
+    abi_properties: Some(&X86_ABI_PROPERTIES),
 };
 
 pub static X86_64_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
@@ -694,7 +730,7 @@ pub static X86_64_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
     sizebits: 64,
     lock_free_atomic_mask: 0xffff,
     ldbl_align: 16,
-    ldbl_format: super::LongDoubleFormat::X87,
+    ldbl_format: FloatFormat::X87DoubleExtended,
     max_atomic_align: 16,
 };
 
@@ -712,7 +748,7 @@ pub static X32_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
     sizebits: 32,
     lock_free_atomic_mask: 0xffff,
     ldbl_align: 16,
-    ldbl_format: super::LongDoubleFormat::X87,
+    ldbl_format: FloatFormat::X87DoubleExtended,
     max_atomic_align: 16,
 };
 
@@ -730,7 +766,7 @@ pub static X86_32_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
     lock_free_atomic_mask: 0xf,
     sizebits: 32,
     ldbl_align: 4,
-    ldbl_format: LongDoubleFormat::X87,
+    ldbl_format: FloatFormat::X87DoubleExtended,
     max_atomic_align: 4,
 };
 
@@ -748,7 +784,7 @@ pub static X86_16_NEAR_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
     lock_free_atomic_mask: 0x3,
     sizebits: 16,
     ldbl_align: 4,
-    ldbl_format: LongDoubleFormat::X87,
+    ldbl_format: FloatFormat::X87DoubleExtended,
     max_atomic_align: 2,
 };
 
@@ -766,7 +802,7 @@ pub static X86_16_FAR_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
     lock_free_atomic_mask: 0x3,
     sizebits: 16,
     ldbl_align: 4,
-    ldbl_format: LongDoubleFormat::X87,
+    ldbl_format: FloatFormat::X87DoubleExtended,
     max_atomic_align: 2,
 };
 
@@ -784,7 +820,7 @@ pub static X86_16_NEAR_DATA_FAR_FN_PRIMITIVES: PrimitiveProperties = PrimitivePr
     lock_free_atomic_mask: 0x3,
     sizebits: 16,
     ldbl_align: 4,
-    ldbl_format: LongDoubleFormat::X87,
+    ldbl_format: FloatFormat::X87DoubleExtended,
     max_atomic_align: 2,
 };
 
@@ -802,6 +838,6 @@ pub static X86_16_FAR_DATA_NEAR_FN_PRIMITIVES: PrimitiveProperties = PrimitivePr
     lock_free_atomic_mask: 0x3,
     sizebits: 16,
     ldbl_align: 4,
-    ldbl_format: LongDoubleFormat::X87,
+    ldbl_format: FloatFormat::X87DoubleExtended,
     max_atomic_align: 2,
 };

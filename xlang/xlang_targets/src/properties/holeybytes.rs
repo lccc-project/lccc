@@ -37,7 +37,7 @@ pub static PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
     lock_free_atomic_mask: 0xff,
     max_atomic_align: 16,
     ldbl_align: 16,
-    ldbl_format: super::LongDoubleFormat::IEEE128,
+    ldbl_format: super::FloatFormat::Ieee754(128),
 };
 
 pub static MACHINE_GENERIC: MachineProperties = MachineProperties {
@@ -88,4 +88,5 @@ pub static HOLEYBYTES: ArchProperties = ArchProperties {
     asm_propreties: &ASM,
     tag_names: span![const_sv!("C")],
     width: 64,
+    abi_properties: None,
 };

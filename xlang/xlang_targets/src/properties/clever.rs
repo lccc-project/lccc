@@ -1,6 +1,6 @@
 use xlang_abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
 
-use super::{ArchProperties, AsmProperties, MachineProperties, PrimitiveProperties};
+use super::{AbiProperties, ArchProperties, AsmProperties, MachineProperties, PrimitiveProperties};
 
 macro_rules! clever_machines{
     {
@@ -257,6 +257,13 @@ pub static CLEVER_ASM: AsmProperties = AsmProperties {
     classes: CLEVER_ASM_CLASSES,
 };
 
+pub static CLEVER_ABI: AbiProperties = AbiProperties {
+    vector_default_feature: const_sv!("main"),
+    vector_width_features: span![],
+    float_default_features: const_sv!("float"),
+    float_format_features: span![Pair(super::FloatFormat::Ieee754(128), const_sv!("main"))],
+};
+
 pub static CLEVER: ArchProperties = ArchProperties {
     lock_free_atomic_masks: 0xff,
     builtins: CLEVER_BUILTINS,
@@ -268,6 +275,7 @@ pub static CLEVER: ArchProperties = ArchProperties {
     asm_propreties: &CLEVER_ASM,
     tag_names: span![const_sv!("C")],
     width: 64,
+    abi_properties: Some(&CLEVER_ABI),
 };
 
 pub static CLEVER_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
@@ -284,7 +292,7 @@ pub static CLEVER_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
     sizebits: 64,
     lock_free_atomic_mask: 0xff,
     ldbl_align: 8,
-    ldbl_format: super::LongDoubleFormat::IEEE64,
+    ldbl_format: super::FloatFormat::Ieee754(64),
     max_atomic_align: 16,
 };
 
@@ -302,6 +310,6 @@ pub static CLEVERILP32_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
     sizebits: 32,
     lock_free_atomic_mask: 0xff,
     ldbl_align: 8,
-    ldbl_format: super::LongDoubleFormat::IEEE64,
+    ldbl_format: super::FloatFormat::Ieee754(64),
     max_atomic_align: 16,
 };

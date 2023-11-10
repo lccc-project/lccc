@@ -9,7 +9,7 @@ use super::{
     asm::AsmScalar,
     asm::AsmScalarKind::{ClobberOnly, Float, Integer},
     builtins::BuiltinSignature,
-    ArchProperties, AsmProperties, LongDoubleFormat, MachineProperties, PrimitiveProperties,
+    ArchProperties, AsmProperties, MachineProperties, PrimitiveProperties,
 };
 
 macro_rules! w65_machines{
@@ -142,6 +142,7 @@ pub static W65: ArchProperties = ArchProperties {
     asm_propreties: &W65_ASSEMBLY,
     tag_names: span![const_sv!("C"), const_sv!("w65-interrupt")],
     width: 16,
+    abi_properties: None,
 };
 
 pub static W65_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
@@ -158,6 +159,6 @@ pub static W65_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
     lock_free_atomic_mask: 0x3,
     sizebits: 16,
     ldbl_align: 4,
-    ldbl_format: LongDoubleFormat::IEEE64,
+    ldbl_format: super::FloatFormat::Ieee754(64),
     max_atomic_align: 2,
 };

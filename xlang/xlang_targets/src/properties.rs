@@ -37,29 +37,25 @@ pub enum ArchiverFlavor {
     MsLib,
 }
 
-/// The (default) format (and size) of the C long double type on the target
-#[repr(i32)]
+/// The Format for floating-point types
+#[repr(i16)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub enum LongDoubleFormat {
-    /// IEEE 754, double precision (same as double)
-    IEEE64,
-    /// IEEE 754, quad precision
-    IEEE128,
-    /// Intel x87, double extended precision
-    X87,
-    /// Double-double precision (used by PowerPC )
-    PowerPCDoubleDouble,
+pub enum FloatFormat {
+    /// An IEEE754 floating-point value (width)
+    Ieee754(u16),
+    /// A 10-byte (x87) double-extended precision value
+    X87DoubleExtended,
+    /// Ibm128/double-double precisiion used by PowerPC
+    Ieee64x2,
 }
 
-impl LongDoubleFormat {
-    /// Obtains the size needed to store the format
-    /// Note: This does not necessarily match `float(long)`, and must be rounded to alignment size
-    pub const fn size(self) -> u16 {
+impl FloatFormat {
+    /// The size (in bytes) of the value, before applying alignment
+    pub fn size(&self) -> u16 {
         match self {
-            LongDoubleFormat::IEEE64 => 8,
-            LongDoubleFormat::IEEE128 => 16,
-            LongDoubleFormat::X87 => 10,
-            LongDoubleFormat::PowerPCDoubleDouble => 16,
+            Self::Ieee754(val) => (*val).saturating_add(7) >> 3,
+            Self::X87DoubleExtended => 10,
+            Self::Ieee64x2 => 16,
         }
     }
 }
@@ -114,6 +110,20 @@ pub struct AsmProperties<'a> {
 /// Properties about builtin functions on a target
 pub mod builtins;
 
+/// Properties about types that may require specific target features available to compile to
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct AbiProperties<'a> {
+    /// Which feature vector types to each size
+    pub vector_width_features: Span<'a, Pair<u16, StringView<'a>>>,
+    /// Which feature is required to enable all unmentioned vector types
+    pub vector_default_feature: StringView<'a>,
+    /// Which feature each floating-point format requires,
+    pub float_format_features: Span<'a, Pair<FloatFormat, StringView<'a>>>,
+    /// Which feature is required to enable all unmentioned floating-point types
+    pub float_default_features: StringView<'a>,
+}
+
 ///
 /// Properties about the architecture, shared between targets that use this architecture
 #[repr(C)]
@@ -146,6 +156,9 @@ pub struct ArchProperties<'a> {
 
     /// Width of the architecture: Used by backends to differentiate between supported targets
     pub width: u16,
+
+    /// Abi Limits of the target
+    pub abi_properties: Option<&'a AbiProperties<'a>>,
 }
 
 ///
@@ -258,7 +271,7 @@ pub struct PrimitiveProperties {
     /// While `long double` does not use `max_align`, `max_align` should be at least this value to match the definition of the C/C++ typedef `align_max_t`.
     pub ldbl_align: u16,
     /// The format (and size) of the C `long double` type on this target
-    pub ldbl_format: LongDoubleFormat,
+    pub ldbl_format: FloatFormat,
 }
 
 /// Properties about a particular target, which includes an architecture and an operating system
