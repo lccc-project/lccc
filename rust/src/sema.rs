@@ -213,7 +213,7 @@ pub struct Definition {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum FunctionBody {
     Incomplete,
-    AstBody(Spanned<ast::Block>),
+    AstBody(Vec<Spanned<ast::Param>>, Spanned<ast::Block>),
     HirBody(Spanned<HirFunctionBody>),
     ThirBody(Spanned<ThirFunctionBody>),
     MirBody(Spanned<MirFunctionBody>),
@@ -2230,7 +2230,7 @@ impl Definitions {
                         tabs.fmt(fmt)?;
                         fmt.write_str("}\n")
                     }
-                    Some(FunctionBody::AstBody(stmts)) => {
+                    Some(FunctionBody::AstBody(_, stmts)) => {
                         fmt.write_str("{\n")?;
                         let nested = tabs.nest();
                         for stmt in &stmts.stmts {
@@ -2320,7 +2320,7 @@ impl Definitions {
                         tabs.fmt(fmt)?;
                         fmt.write_str("}\n")
                     }
-                    Some(FunctionBody::AstBody(stmts)) => {
+                    Some(FunctionBody::AstBody(_, stmts)) => {
                         fmt.write_str("{\n")?;
                         let nested = tabs.nest();
                         for stmt in &stmts.stmts {
@@ -2417,7 +2417,7 @@ impl Definitions {
                         tabs.fmt(fmt)?;
                         fmt.write_str("}\n")
                     }
-                    Some(FunctionBody::AstBody(stmts)) => {
+                    Some(FunctionBody::AstBody(_, stmts)) => {
                         fmt.write_str("{\n")?;
                         let nested = tabs.nest();
                         for stmt in &stmts.stmts {
@@ -3371,7 +3371,10 @@ pub fn convert_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::M
                 } = defs.definition_mut(fndef)
                 {
                     if let Some(ast_body) = &fbody.body.body {
-                        *body = Some(FunctionBody::AstBody(ast_body.clone()));
+                        *body = Some(FunctionBody::AstBody(
+                            fbody.params.clone(),
+                            ast_body.clone(),
+                        ));
                     } else {
                         return Err(Error {
                             span: fbody.span,
@@ -3406,9 +3409,9 @@ pub fn convert_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::M
 pub fn desugar_fn(defs: &mut Definitions, curmod: DefId, defid: DefId) -> Result<()> {
     let def = defs.definition_mut(defid);
     match &mut def.inner.body {
-        DefinitionInner::Function(fnty, val @ Some(FunctionBody::AstBody(_))) => {
+        DefinitionInner::Function(fnty, val @ Some(FunctionBody::AstBody(_, _))) => {
             match (fnty.clone(), val.take()) {
-                (fnty, Some(FunctionBody::AstBody(block))) => {
+                (fnty, Some(FunctionBody::AstBody(params, block))) => {
                     let parent = def.parent;
 
                     let selfty = match &defs.definition(parent).inner.body {
@@ -3430,6 +3433,22 @@ pub fn desugar_fn(defs: &mut Definitions, curmod: DefId, defid: DefId) -> Result
                         selfty.as_ref(),
                         &mut localitems,
                     );
+
+                    for param in params {
+                        match &param.pat {
+                            Some(Spanned {
+                                body: ast::Pattern::BareId(sym),
+                                ..
+                            }) => {
+                                let var_id = hir::HirVarId(builder.nexthirvarid);
+                                builder.vardebugmap.insert(var_id, *sym);
+                                builder.varnames.insert(sym.body, var_id);
+                                builder.nexthirvarid += 1;
+                            }
+                            _ => todo!(),
+                        }
+                    }
+
                     builder
                         .desugar_block(Some(&mut |expr| hir::HirStatement::Return(expr)), &block)?;
 
@@ -3472,7 +3491,7 @@ pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
     for &Pair(_, defid) in &values {
         let def = defs.definition(defid);
         match &def.inner.body {
-            DefinitionInner::Function(_, Some(FunctionBody::AstBody(_))) => {
+            DefinitionInner::Function(_, Some(FunctionBody::AstBody(_, _))) => {
                 desugar_fn(defs, curmod, defid)?;
             }
             _ => {}

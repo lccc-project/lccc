@@ -12,7 +12,7 @@ use super::{DefId, Spanned};
 pub use crate::ast::BinaryOp;
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
-pub struct HirVarId(u32);
+pub struct HirVarId(pub u32);
 
 impl core::fmt::Display for HirVarId {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
@@ -354,11 +354,11 @@ impl HirFunctionBody {
 
 pub struct HirLowerer<'a> {
     defs: &'a mut super::Definitions,
-    varnames: HashMap<Symbol, HirVarId>,
-    vardebugmap: &'a mut HashMap<HirVarId, Spanned<Symbol>>,
+    pub varnames: HashMap<Symbol, HirVarId>,
+    pub vardebugmap: &'a mut HashMap<HirVarId, Spanned<Symbol>>,
     atitem: DefId,
     curmod: DefId,
-    nexthirvarid: u32,
+    pub nexthirvarid: u32,
     stmts: Vec<Spanned<HirStatement>>,
     localvalues: HashMap<Symbol, DefId>,
     localtypes: HashMap<Symbol, DefId>,
@@ -601,6 +601,7 @@ impl<'a> HirLowerer<'a> {
                     match &mut fnbody {
                         super::DefinitionInner::Function(_, Some(body)) => {
                             *body = super::FunctionBody::AstBody(
+                                itemfn.params.clone(),
                                 itemfn.body.body.as_ref().cloned().unwrap(),
                             );
                         }
@@ -886,7 +887,7 @@ impl<'a> HirLowerer<'a> {
 
         for &(_, defid) in &*self.localitems {
             match &self.defs.definition(defid).inner.body {
-                super::DefinitionInner::Function(_, Some(super::FunctionBody::AstBody(_))) => {
+                super::DefinitionInner::Function(_, Some(super::FunctionBody::AstBody(_, _))) => {
                     super::desugar_fn(self.defs, self.curmod, defid)?
                 }
                 _ => {}
