@@ -279,17 +279,20 @@ impl HirFunctionBody {
                         self.display_statement(stmt, f, nested)?;
                     }
                     for (cond, block) in elseifs {
+                        tabs.fmt(f)?;
                         write!(f, "}} else if {} {{\n", cond.body)?;
                         for stmt in block {
                             self.display_statement(stmt, f, nested)?;
                         }
                     }
                     if elseblock.len() > 0 {
+                        tabs.fmt(f)?;
                         f.write_str("} else {\n")?;
                         for stmt in elseblock {
                             self.display_statement(stmt, f, nested)?;
                         }
                     }
+                    tabs.fmt(f)?;
                     f.write_str("}\n")
                 }
             },
@@ -468,7 +471,23 @@ impl<'a> HirLowerer<'a> {
 
                 Ok(expr.copy_span(|_| HirExpr::Cast(Box::new(inner), ty)))
             }
-            ast::Expr::BlockExpr(_) => todo!("block expr"),
+            ast::Expr::BlockExpr(block) => {
+                let hirvar = expr.copy_span(|_| HirVarId(self.nexthirvarid.fetch_increment()));
+                self.stmts.push(expr.copy_span(|_| HirStatement::Define {
+                    mutability: expr.copy_span(|_| Mutability::Const),
+                    var: hirvar,
+                    ty: None,
+                }));
+                self.desugar_stmt(
+                    Some(&mut |x| HirStatement::Assign {
+                        dest: hirvar.copy_span(|_| HirExpr::Var(*hirvar)),
+                        val: x,
+                        op: None,
+                    }),
+                    &block.copy_span(|_| ast::Statement::Block(block.clone())),
+                )?;
+                Ok(expr.copy_span(|_| HirExpr::Var(*hirvar)))
+            }
             ast::Expr::Literal(lit) => match lit.body {
                 Literal {
                     lit_kind: LiteralKind::Int(suffix),
