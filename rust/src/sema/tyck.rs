@@ -1,7 +1,7 @@
 use xlang::abi::collection::{HashMap, HashSet};
 
 use crate::{
-    ast::{self, Mutability, Safety, StringType},
+    ast::{self, Mutability, Safety, StringType, UnaryOp},
     helpers::{CyclicOperationStatus, FetchIncrement, TabPrinter},
     interning::Symbol,
     span::Span,
@@ -82,6 +82,10 @@ pub enum ThirExprInner {
     Tuple(Vec<Spanned<ThirExpr>>),
     Ctor(Spanned<ThirConstructor>),
     MemberAccess(Box<Spanned<ThirExpr>>, Spanned<FieldName>),
+    UnaryExpr(
+        Spanned<UnaryOp>,
+        Box<Spanned<ThirExpr>>,
+    ),
     BinaryExpr(
         Spanned<BinaryOp>,
         Box<Spanned<ThirExpr>>,
@@ -175,6 +179,9 @@ impl core::fmt::Display for ThirExprInner {
             }
             ThirExprInner::BinaryExpr(op, lhs, rhs) => {
                 write!(f, "({} {} {})", lhs.body, op.body, rhs.body)
+            }
+            ThirExprInner::UnaryExpr(op, val) => {
+                write!(f, "({}{})", op.body, val.body)
             }
             ThirExprInner::Array(elements) => {
                 write!(f, "[")?;
@@ -673,7 +680,16 @@ impl<'a> ThirConverter<'a> {
 
                 Ok(ThirExpr { ty, cat, inner })
             }
-            hir::HirExpr::UnaryExpr(_, _) => todo!("unary op"),
+            hir::HirExpr::UnaryExpr(op, val) => {
+                let val = self.convert_rvalue(val)?;
+                let ty = match &val.ty {
+                    Type::Int(x) => Type::Int(*x),
+                    Type::Float(x) => Type::Float(*x),
+                    Type::InferableInt(x) => Type::InferableInt(*x),
+                    _ => Type::Inferable(InferId(self.next_infer.fetch_increment())),
+                };
+                Ok(ThirExpr { ty, cat: ValueCategory::Rvalue, inner: ThirExprInner::UnaryExpr(*op, Box::new(val)) })
+            }
             hir::HirExpr::BinaryExpr(op, lhs, rhs) => {
                 let lhs = self.convert_rvalue(lhs)?;
                 let rhs = self.convert_rvalue(rhs)?;
@@ -1099,6 +1115,10 @@ impl<'a> Inferer<'a> {
             }
             ThirExprInner::Index(base, index) => {
                 todo!("index")
+            }
+            ThirExprInner::UnaryExpr(op, val) => {
+                status &= self.unify_types(&mut left.ty, &mut val.ty)?;
+                status &= self.unify_single_expr(val)?;
             }
         }
 
