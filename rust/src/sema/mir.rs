@@ -1026,6 +1026,7 @@ impl<'a> MirConverter<'a> {
                         });
                         self.basic_blocks.push(bb);
                     }
+                    super::tyck::ThirBlock::If { .. } => todo!("if block"),
                 }
             }
             ThirStatement::Discard(expr) => {

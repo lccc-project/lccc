@@ -82,10 +82,7 @@ pub enum ThirExprInner {
     Tuple(Vec<Spanned<ThirExpr>>),
     Ctor(Spanned<ThirConstructor>),
     MemberAccess(Box<Spanned<ThirExpr>>, Spanned<FieldName>),
-    UnaryExpr(
-        Spanned<UnaryOp>,
-        Box<Spanned<ThirExpr>>,
-    ),
+    UnaryExpr(Spanned<UnaryOp>, Box<Spanned<ThirExpr>>),
     BinaryExpr(
         Spanned<BinaryOp>,
         Box<Spanned<ThirExpr>>,
@@ -222,21 +219,29 @@ pub enum ThirStatement {
     },
 }
 
+type ThirSimpleBlock = Vec<Spanned<ThirStatement>>;
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ThirBlock {
-    Normal(Vec<Spanned<ThirStatement>>),
-    Unsafe(Vec<Spanned<ThirStatement>>),
-    Loop(Vec<Spanned<ThirStatement>>),
+    Normal(ThirSimpleBlock),
+    Unsafe(ThirSimpleBlock),
+    Loop(ThirSimpleBlock),
+    If {
+        cond: Spanned<ThirExpr>,
+        block: ThirSimpleBlock,
+        elseifs: Vec<(Spanned<ThirExpr>, ThirSimpleBlock)>,
+        elseblock: ThirSimpleBlock,
+    },
 }
 
 impl ThirBlock {
-    fn inner_mut(&mut self) -> &mut Vec<Spanned<ThirStatement>> {
-        match self {
-            Self::Normal(x) => x,
-            Self::Unsafe(x) => x,
-            Self::Loop(x) => x,
-        }
-    }
+    // fn inner_mut(&mut self) -> &mut Vec<Spanned<ThirStatement>> {
+    //     match self {
+    //         Self::Normal(x) => x,
+    //         Self::Unsafe(x) => x,
+    //         Self::Loop(x) => x,
+    //     }
+    // }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -318,6 +323,35 @@ impl ThirFunctionBody {
                     let nested = tabs.nest();
                     for stmt in stmts {
                         self.display_statement(stmt, f, nested)?;
+                    }
+                    tabs.fmt(f)?;
+                    f.write_str("}\n")
+                }
+                ThirBlock::If {
+                    cond,
+                    block,
+                    elseifs,
+                    elseblock,
+                } => {
+                    tabs.fmt(f)?;
+                    write!(f, "if {} {{\n", cond.body)?;
+                    let nested = tabs.nest();
+                    for stmt in block {
+                        self.display_statement(stmt, f, nested)?;
+                    }
+                    for (cond, block) in elseifs {
+                        tabs.fmt(f)?;
+                        write!(f, "}} else if {} {{\n", cond.body)?;
+                        for stmt in block {
+                            self.display_statement(stmt, f, nested)?;
+                        }
+                    }
+                    if elseblock.len() > 0 {
+                        tabs.fmt(f)?;
+                        f.write_str("} else {\n")?;
+                        for stmt in elseblock {
+                            self.display_statement(stmt, f, nested)?;
+                        }
                     }
                     tabs.fmt(f)?;
                     f.write_str("}\n")
@@ -688,7 +722,11 @@ impl<'a> ThirConverter<'a> {
                     Type::InferableInt(x) => Type::InferableInt(*x),
                     _ => Type::Inferable(InferId(self.next_infer.fetch_increment())),
                 };
-                Ok(ThirExpr { ty, cat: ValueCategory::Rvalue, inner: ThirExprInner::UnaryExpr(*op, Box::new(val)) })
+                Ok(ThirExpr {
+                    ty,
+                    cat: ValueCategory::Rvalue,
+                    inner: ThirExprInner::UnaryExpr(*op, Box::new(val)),
+                })
             }
             hir::HirExpr::BinaryExpr(op, lhs, rhs) => {
                 let lhs = self.convert_rvalue(lhs)?;
@@ -820,7 +858,34 @@ impl<'a> ThirConverter<'a> {
                             .map(|stmt| self.convert_statement(stmt))
                             .collect::<Result<_>>()?,
                     )),
-                    hir::HirBlock::If { .. } => todo!("if"),
+                    hir::HirBlock::If {
+                        cond,
+                        block,
+                        elseifs,
+                        elseblock,
+                    } => Ok(ThirBlock::If {
+                        cond: self.convert_expr(cond)?,
+                        block: block
+                            .iter()
+                            .map(|stmt| self.convert_statement(stmt))
+                            .collect::<Result<_>>()?,
+                        elseifs: elseifs
+                            .iter()
+                            .map(|(cond, block)| {
+                                Ok((
+                                    self.convert_expr(cond)?,
+                                    block
+                                        .iter()
+                                        .map(|stmt| self.convert_statement(stmt))
+                                        .collect::<Result<_>>()?,
+                                ))
+                            })
+                            .collect::<Result<_>>()?,
+                        elseblock: elseblock
+                            .iter()
+                            .map(|stmt| self.convert_statement(stmt))
+                            .collect::<Result<_>>()?,
+                    }),
                 }
             })?)),
             hir::HirStatement::Discard(expr) => {
@@ -1225,6 +1290,26 @@ impl<'a> Inferer<'a> {
                     status &= self.unify_statement(stmt)?;
                 }
             }
+            ThirBlock::If {
+                cond,
+                block,
+                elseifs,
+                elseblock,
+            } => {
+                status &= self.unify_typed_expr(cond, &mut Type::Bool)?;
+                for stmt in block {
+                    status &= self.unify_statement(stmt)?;
+                }
+                for (cond, blk) in elseifs {
+                    status &= self.unify_typed_expr(cond, &mut Type::Bool)?;
+                    for stmt in blk {
+                        status &= self.unify_statement(stmt)?;
+                    }
+                }
+                for stmt in elseblock {
+                    status &= self.unify_statement(stmt)?;
+                }
+            }
         }
         Ok(status)
     }
@@ -1234,6 +1319,26 @@ impl<'a> Inferer<'a> {
         match blk {
             ThirBlock::Normal(stmts) | ThirBlock::Unsafe(stmts) | ThirBlock::Loop(stmts) => {
                 for stmt in stmts {
+                    status &= self.propagate_statement(stmt)?;
+                }
+            }
+            ThirBlock::If {
+                cond,
+                block,
+                elseifs,
+                elseblock,
+            } => {
+                status &= self.propagate_expr(cond)?;
+                for stmt in block {
+                    status &= self.propagate_statement(stmt)?;
+                }
+                for (cond, blk) in elseifs {
+                    status &= self.propagate_expr(cond)?;
+                    for stmt in blk {
+                        status &= self.propagate_statement(stmt)?;
+                    }
+                }
+                for stmt in elseblock {
                     status &= self.propagate_statement(stmt)?;
                 }
             }
