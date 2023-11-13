@@ -3504,8 +3504,10 @@ pub fn desugar_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
 pub fn tycheck_function(defs: &mut Definitions, curmod: DefId, defid: DefId) -> Result<()> {
     let def = defs.definition_mut(defid);
     match &mut def.inner.body {
-        DefinitionInner::Function(_, val @ Some(FunctionBody::HirBody(_))) => match val.take() {
+        DefinitionInner::Function(fnty, val @ Some(FunctionBody::HirBody(_))) => match val.take() {
             Some(FunctionBody::HirBody(block)) => {
+                let fnty = fnty.clone();
+
                 let localitems = block.body.localitems;
 
                 for &(_, defid) in &localitems {
@@ -3526,6 +3528,7 @@ pub fn tycheck_function(defs: &mut Definitions, curmod: DefId, defid: DefId) -> 
                     curmod,
                     block.body.vardebugmap,
                     localitems,
+                    fnty,
                 );
 
                 for stmt in stmts {

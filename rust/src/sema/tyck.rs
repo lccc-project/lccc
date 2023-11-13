@@ -13,7 +13,7 @@ pub use super::ty::Type;
 use super::{
     cx::ConstExpr,
     hir::HirVarId,
-    ty::{FieldName, IntType, SemaLifetime},
+    ty::{FieldName, FnType, IntType, SemaLifetime},
     DefId, DefinitionInner, Definitions, Error, ErrorCategory, Result, SemaHint, Spanned,
 };
 
@@ -444,8 +444,9 @@ impl<'a> ThirConverter<'a> {
         containing_item: DefId,
         dbgnames: HashMap<HirVarId, Spanned<Symbol>>,
         localitems: Vec<(Symbol, DefId)>,
+        fnty: FnType,
     ) -> ThirConverter<'a> {
-        ThirConverter {
+        let mut result = ThirConverter {
             defs,
             inference_set: HashMap::new(),
             var_defs: HashMap::new(),
@@ -456,7 +457,21 @@ impl<'a> ThirConverter<'a> {
             next_infer: 0,
             dbgnames,
             localitems,
+        };
+
+        for (id, param) in fnty.paramtys.into_iter().enumerate() {
+            let id = HirVarId(id as u32);
+            result.var_defs.insert(
+                id,
+                ThirVarDef {
+                    mt: param.copy_span(|_| Mutability::Const),
+                    ty: param,
+                    debug_name: result.dbgnames.get(&id).copied(),
+                },
+            );
         }
+
+        result
     }
 
     pub fn convert_rvalue(
