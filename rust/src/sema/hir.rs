@@ -1,6 +1,6 @@
 use xlang::abi::collection::HashMap;
 
-use crate::ast::{self, Literal, LiteralKind, Mutability, Safety, StringType, UnaryOp};
+use crate::ast::{self, Literal, LiteralKind, Mutability, Safety, StringType};
 use crate::helpers::{FetchIncrement, TabPrinter};
 use crate::interning::Symbol;
 use crate::span::Span;
@@ -9,7 +9,7 @@ use super::ty::{self, FieldName, IntType, Type};
 
 use super::{DefId, Spanned};
 
-pub use crate::ast::BinaryOp;
+pub use crate::ast::{BinaryOp, UnaryOp};
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub struct HirVarId(pub u32);

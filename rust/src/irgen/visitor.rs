@@ -522,6 +522,7 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         mir::MirExpr::Uninit(_) => todo!("uninit"),
         mir::MirExpr::AllocaDrop(_, _) => todo!("alloca drop"),
         mir::MirExpr::GetSymbol(_) => todo!("get symbol"),
+        mir::MirExpr::UnaryExpr(_, _) => todo!("unary expr"),
     }
 }
 

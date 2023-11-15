@@ -1,13 +1,13 @@
 use xlang::abi::collection::{HashMap, HashSet};
 
 use crate::{
-    ast::{self, Mutability, Safety, StringType, UnaryOp},
+    ast::{self, Mutability, Safety, StringType},
     helpers::{CyclicOperationStatus, FetchIncrement, TabPrinter},
     interning::Symbol,
     span::Span,
 };
 
-pub use super::hir::BinaryOp;
+pub use super::hir::{BinaryOp, UnaryOp};
 pub use super::ty::Type;
 
 use super::{

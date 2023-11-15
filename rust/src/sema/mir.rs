@@ -18,7 +18,7 @@ use super::{
 
 pub mod mir_macro;
 
-pub use crate::sema::hir::BinaryOp;
+pub use crate::sema::hir::{BinaryOp, UnaryOp};
 
 include!("mir_defs.rs");
 
@@ -139,6 +139,9 @@ impl core::fmt::Display for MirExpr {
             }
             MirExpr::Uninit(ty) => f.write_fmt(format_args!("uninit {}", ty)),
             MirExpr::GetSymbol(sym) => f.write_fmt(format_args!("get_symbol {}", sym)),
+            MirExpr::UnaryExpr(op, expr) => {
+                f.write_fmt(format_args!("({} {})", op.body, expr.body))
+            }
         }
     }
 }
@@ -339,6 +342,21 @@ impl MirFunctionBody {
             MirTerminator::Unreachable => f.write_str("unreachable"),
             MirTerminator::ResumeUnwind => f.write_str("resume_unwind"),
             MirTerminator::DropInPlace(drop) => f.write_fmt(format_args!("drop_in_place {}", drop)),
+            MirTerminator::Branch(branch) => {
+                f.write_str("branch {")?;
+
+                let mut sep = "";
+
+                for (cond, targ) in &branch.conds {
+                    f.write_str(sep)?;
+                    sep = ", ";
+                    cond.body.fmt(f)?;
+                    f.write_str(" then ")?;
+                    targ.fmt(f)?;
+                }
+                f.write_str("} else ")?;
+                branch.else_block.fmt(f)
+            }
         }
     }
 }
@@ -902,6 +920,24 @@ impl<'a> MirConverter<'a> {
         Ok(())
     }
 
+    fn make_jump_with_assigns(
+        &mut self,
+        bb_id: BasicBlockId,
+        existing_assignments: &HashMap<HirVarId, HirVarAssignment>,
+    ) -> MirJumpInfo {
+        let mut remaps = Vec::new();
+        for Pair(hirvar, hirassign) in &self.var_names {
+            if let Some(existing_assign) = existing_assignments.get(hirvar) {
+                remaps.push((hirassign.cur_var, existing_assign.cur_var))
+            }
+        }
+
+        MirJumpInfo {
+            targbb: bb_id,
+            remaps,
+        }
+    }
+
     fn make_jump(
         &mut self,
         bb_id: BasicBlockId,
@@ -926,6 +962,7 @@ impl<'a> MirConverter<'a> {
                     },
                 );
                 remaps.push((hirassign.cur_var, newvar));
+                incoming_vars.push(newvar);
             }
         }
 
@@ -1026,7 +1063,79 @@ impl<'a> MirConverter<'a> {
                         });
                         self.basic_blocks.push(bb);
                     }
-                    super::tyck::ThirBlock::If { .. } => todo!("if block"),
+                    super::tyck::ThirBlock::If {
+                        cond,
+                        block,
+                        elseifs,
+                        elseblock,
+                    } => {
+                        let mut mir_conds = Vec::new();
+
+                        let newbb = BasicBlockId(self.nextbb.fetch_increment());
+                        let (basejmp, baseassignments, baseincoming) = self.make_jump(newbb);
+
+                        let basecond = self.lower_expr(cond)?;
+
+                        mir_conds.push((basecond, basejmp));
+
+                        let mut branches = Vec::new();
+
+                        branches.push((newbb, baseassignments, baseincoming, block));
+
+                        for (cond, block) in elseifs {
+                            let newbb = BasicBlockId(self.nextbb.fetch_increment());
+                            let (condjmp, condassignments, condincoming) = self.make_jump(newbb);
+                            branches.push((newbb, condassignments, condincoming, block));
+
+                            let cond = self.lower_expr(cond)?;
+                            mir_conds.push((cond, condjmp));
+                        }
+
+                        let elsebb = BasicBlockId(self.nextbb.fetch_increment());
+                        let (elsejmp, elseassignments, elseincoming) = self.make_jump(elsebb);
+
+                        branches.push((elsebb, elseassignments, elseincoming, elseblock));
+
+                        let term = MirTerminator::Branch(MirBranchInfo {
+                            conds: mir_conds,
+                            else_block: elsejmp,
+                        });
+
+                        let endbb = BasicBlockId(self.nextbb.fetch_increment());
+
+                        let bb = self.cur_basic_block.finish_and_reset(Spanned {
+                            body: term,
+                            span: blk.span,
+                        });
+
+                        self.basic_blocks.push(bb);
+
+                        let (_, endassignments, endincoming) = self.make_jump(endbb);
+
+                        for (newbb, assignments, incoming, block) in branches {
+                            self.cur_basic_block.id = newbb;
+                            self.cur_basic_block.incoming_vars = incoming;
+                            self.var_names = assignments;
+                            for stat in block {
+                                self.write_statement(stat)?;
+                            }
+
+                            let jmp = self.make_jump_with_assigns(endbb, &endassignments);
+
+                            let term = MirTerminator::Jump(jmp);
+
+                            let bb = self.cur_basic_block.finish_and_reset(Spanned {
+                                body: term,
+                                span: blk.span,
+                            });
+
+                            self.basic_blocks.push(bb);
+                        }
+
+                        self.cur_basic_block.id = endbb;
+                        self.cur_basic_block.incoming_vars = endincoming;
+                        self.var_names = endassignments;
+                    }
                 }
             }
             ThirStatement::Discard(expr) => {

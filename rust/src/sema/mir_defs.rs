@@ -78,6 +78,7 @@ pub enum MirExpr {
         Box<Spanned<MirExpr>>,
         Box<Spanned<MirExpr>>,
     ),
+    UnaryExpr(Spanned<UnaryOp>, Box<Spanned<MirExpr>>),
     GetSymbol(DefId),
 }
 
@@ -114,6 +115,13 @@ pub enum MirTerminator {
     Unreachable,
     ResumeUnwind,
     DropInPlace(MirDropInfo),
+    Branch(MirBranchInfo),
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct MirBranchInfo {
+    pub conds: Vec<(Spanned<MirExpr>, MirJumpInfo)>,
+    pub else_block: MirJumpInfo,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
