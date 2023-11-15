@@ -764,10 +764,7 @@ pub fn do_if_block(
     let mut span_end = block.span;
     let mut elseifs = Vec::new();
     let mut elseblock = None;
-    while let Ok(Lexeme {
-        ..
-    }) = do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::Else))
-    {
+    while let Ok(Lexeme { .. }) = do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::Else)) {
         match do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::If)) {
             Ok(Lexeme { span: if_span, .. }) => {
                 let cond = Box::new(do_expression_without_constructor(&mut tree)?);
