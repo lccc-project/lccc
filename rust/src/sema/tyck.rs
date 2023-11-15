@@ -1427,6 +1427,9 @@ impl<'a> Inferer<'a> {
                 status &= self.propagate_expr(lhs)?;
                 status &= self.propagate_expr(rhs)?;
             }
+            ThirExprInner::UnaryExpr(_, expr) => {
+                status &= self.propagate_expr(expr)?;
+            }
             _ => {}
         }
         Ok(status)

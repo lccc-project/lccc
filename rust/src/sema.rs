@@ -3517,8 +3517,7 @@ pub fn tycheck_function(defs: &mut Definitions, curmod: DefId, defid: DefId) -> 
                 let (stmts, safety) = match block.body.body.body {
                     hir::HirBlock::Normal(stmts) => (stmts, Safety::Safe),
                     hir::HirBlock::Unsafe(stmts) => (stmts, Safety::Unsafe),
-                    hir::HirBlock::If { .. } => todo!("if"),
-                    hir::HirBlock::Loop(_) => unreachable!(),
+                    hir::HirBlock::If { .. } | hir::HirBlock::Loop(_) => unreachable!(),
                 };
 
                 let mut converter = tyck::ThirConverter::new(
