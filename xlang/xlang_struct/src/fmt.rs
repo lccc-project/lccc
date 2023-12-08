@@ -1,15 +1,20 @@
+//! Helper types for pretty printing `xlang_struct` types
 use crate::*;
 
 use core::fmt::Display;
 use core::ops::{Deref, DerefMut};
 
+/// A type that formats as some number of tab stops or equivalent indendation
 #[derive(Copy, Clone)]
 pub struct Tabs(u64);
 
 impl Tabs {
+    /// Creates a new [`Tabs`] value that formats to `0` tab stops
     pub const fn new() -> Self {
         Self(0)
     }
+    /// Creates a new [`Tabs`] value that formats as 1 more tab stop than the current instance.
+    /// This can be used for nested values
     pub const fn nest(&self) -> Self {
         Self(self.0 + 1)
     }
@@ -25,6 +30,7 @@ impl Display for Tabs {
     }
 }
 
+/// A type that manages state for formatting `xlang_struct` types.
 pub struct IrFormatter<'b, 'a>(&'b mut core::fmt::Formatter<'a>);
 
 impl<'b, 'a> Deref for IrFormatter<'b, 'a> {
@@ -41,10 +47,12 @@ impl<'b, 'a> DerefMut for IrFormatter<'b, 'a> {
 }
 
 impl<'b, 'a> IrFormatter<'b, 'a> {
+    /// Creates a new [`IrFormatter`] that writes to `f`
     pub fn new(f: &'b mut core::fmt::Formatter<'a>) -> Self {
         Self(f)
     }
 
+    /// Formats a scope member `mem` at the given `path` at the current nesting level given by `tabs`
     pub fn fmt_scope_member(
         &mut self,
         mem: &ScopeMember,
