@@ -10,12 +10,14 @@ The Cross-reference Section Hash Table is used by the Elf and Mach-O dylib forma
 
 The table consists of a header, followed by an array of 8-byte bucket entries, followed by an array of 8-byte section references.
 
-The header is given by the following 8-byte structure:
+The header is given by the following 24-byte structure:
 ```rust
 #[repr(C,align(8))]
 pub struct XRefSecHashHeader{
     numbuckets: u32,
     numentries: u32,
+    key0: u64,
+    key1: u64,
 }
 ```
 
@@ -49,7 +51,8 @@ There is no requirement that the bucket order match the entry order (for example
 
 The implementation should ensure that the number of buckets is a power of two, and no more than one third of the total entries ends up in a single bucket. Implementations shall handle a non-power of two bucket count, but may offer degraded performance for non-powers of two bucket count.
 
-The hash algorithm to use is FNV-1a 32-bit of the section name, excluding the null terminator. The resulting 32-bit hash shall then be taken modulo the number of buckets, and, after adding 1, is the offset (in 8-byte chunks) into the hashtable of the bucket reference. 
+The hash algorithm to use is the SipHash-2-4 algorithm, with `k0` and `k1` used as key values. It may pick values of `k0` and `k1` designed to minimize the number of buckets of the hashtable.
+
 
 ## Elf 
 
@@ -60,7 +63,7 @@ The root manifest is placed within a section called `.note.lcrust.rmanifest`.
 The note name shall be `lcrscompat ` and use type `0`. Type `1` for `lcrust` is abi information (see the `abi` crate), type `2` is for macros, type `3` is the language item table, and type `4` is the cross-reference section hash table.
 
 The description is the entire manifest file that would be contained within `.rmanifest`, with the following exceptions:
-* The `sh_link` field contains the section number of the string table used for the manifest, and the strtab field of the manifest header shall be set to `0` (that is, the manifest contains no string table). Any item that requires a string uses the string table in `sh_link` instead. If no string table is used, then the null section, SHN_NULL, is acceptable. The name `.strtab.lcrust.manifest` is recommended for the root manifest, though no requirement is placed upon the implementation to ensure this.
+* The `strtab` field is an index into the section table of the ELF file that is the string table to use for the manifest. The name `.strtab.note.lcrust` is recommended for this purpose, though the implementation is not required to ensure this property.
 * the `order` field of the manifest file shall match the byte order in the e_ident array (EI_DATA). That is, for an ELFDATA2LSB file, it must be `[BB AA]` and, for an ELFDATA2MSB File, it must be `[AA BB]`.
 * In the cross reference table, where items reference other files in the archive by name, the field is repurposed to reference the name of a section in the file. `sh_info` contains a hash table for section names referenced by the manifest's cross-reference table. The name `.note.lcrust.sechash` is recommended for this section used for the root manifest, though no requirement is placed on the implementation to ensure this.
 * The section must be aligned to 8. The start of the description portion of the note is aligned to 8 bytes.

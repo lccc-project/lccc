@@ -99,7 +99,7 @@ impl Group {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Token {
     pub ty: TokenType,
     pub body: Symbol,
@@ -340,6 +340,7 @@ punctuation! {
     ... => Cursed,
     ~ => Tilde,
     :: => Path,
+    @ => At,
 }
 
 keywords! {
@@ -376,7 +377,6 @@ keywords! {
     override => Override,
     priv => Priv,
     pub => Pub,
-    raw => Raw,
     ref => Ref,
     return => Return,
     self => SelfPat,
@@ -395,11 +395,38 @@ keywords! {
     where => Where,
     while => While,
     yield => Yield,
+    // Contextual Keywords
+    raw => Raw,
     yeet => Yeet,
     union => Union,
     macro_rules => MacroRules,
+    // Special Lifetimes - only used in errors
     'static => StaticLife,
     '_ => WildcardLife,
+    // Macro Fragment Specifiers
+    block => Block,
+    expr => Expr,
+    ident => Ident,
+    item => Item,
+    lifetime => Lifetime,
+    literal => Literal,
+    meta => Meta,
+    pat => Pat,
+    pat_param => PatParam,
+    path => Path,
+    stmt => Stmt,
+    tt => Tt,
+    ty => Ty,
+    vis => Vis,
+
+}
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum AstFragClass {
+    Item,
+    Vis,
+    Expr,
+    Meta,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -409,10 +436,12 @@ pub enum LexemeClass {
     Group(Option<GroupType>),
     Keyword(Keyword),
     Identifier,
+    IdentOrKeyword,
     Lifetime,
     Number,
     Punctuation(Punctuation),
     String,
+    AstFrag(Option<AstFragClass>),
 }
 
 impl LexemeClass {
@@ -441,6 +470,15 @@ impl LexemeClass {
                 TokenType::Punctuation => Self::Punctuation(Punctuation::from_token(&token.body)),
                 TokenType::String(_) => Self::String,
                 _ => unreachable!(), // Comments should be removed by now
+            },
+            Some(Lexeme {
+                body: LexemeBody::AstFrag(frag),
+                ..
+            }) => match &**frag {
+                AstFrag::Expr(_) => Self::AstFrag(Some(AstFragClass::Expr)),
+                AstFrag::Item(_) => Self::AstFrag(Some(AstFragClass::Item)),
+                AstFrag::Vis(_) => Self::AstFrag(Some(AstFragClass::Vis)),
+                AstFrag::Meta(_) => Self::AstFrag(Some(AstFragClass::Meta)),
             },
             _ => todo!(),
         }
@@ -492,6 +530,21 @@ impl LexemeClass {
                     Self::Identifier,
                     TokenType::Identifier(IdentifierType::Default | IdentifierType::Raw),
                 ) => true,
+                (Self::IdentOrKeyword, TokenType::Identifier(_)) => true,
+                _ => false,
+            },
+            (
+                LexemeClass::AstFrag(cl),
+                Some(Lexeme {
+                    body: LexemeBody::AstFrag(frag),
+                    ..
+                }),
+            ) => match (cl, &**frag) {
+                (None, _) => true,
+                (Some(AstFragClass::Expr), AstFrag::Expr(_)) => true,
+                (Some(AstFragClass::Item), AstFrag::Item(_)) => true,
+                (Some(AstFragClass::Meta), AstFrag::Meta(_)) => true,
+                (Some(AstFragClass::Vis), AstFrag::Vis(_)) => true,
                 _ => false,
             },
             _ => false,
@@ -499,7 +552,11 @@ impl LexemeClass {
     }
 
     pub fn is(&self, other: &Self) -> bool {
-        self == other || (matches!(other, Self::Group(None)) && matches!(self, Self::Group(_)))
+        self == other
+            || (matches!(other, Self::Group(None)) && matches!(self, Self::Group(_)))
+            || (matches!(other, Self::AstFrag(None)) && matches!(self, Self::AstFrag(_)))
+            || (matches!(other, Self::IdentOrKeyword)
+                && matches!(self, Self::Identifier | Self::Keyword(_)))
     }
 }
 

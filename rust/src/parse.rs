@@ -14,8 +14,8 @@ use crate::{
     },
     interning::Symbol,
     lex::{
-        Group, GroupType, IsEof, Keyword, Lexeme, LexemeBody, LexemeClass, Punctuation, StringType,
-        Token, TokenType,
+        AstFrag, AstFragClass, Group, GroupType, IsEof, Keyword, Lexeme, LexemeBody, LexemeClass,
+        Punctuation, StringType, Token, TokenType,
     },
     sema::ty::Mutability,
     span::{Pos, Span},
@@ -23,7 +23,7 @@ use crate::{
 
 use crate::lex::{keyword, punct};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Error {
     pub expected: Vec<LexemeClass>,
     pub got: LexemeClass,
@@ -177,6 +177,40 @@ pub fn do_lexeme_classes(
         }
     }
     Err(error.unwrap())
+}
+
+macro_rules! unwrap_frag {
+    ($var:ident) => {
+        (|frag| match frag {
+            $crate::lex::AstFrag::$var(val) => Ok(val),
+            frag => Err((frag, $crate::lex::AstFragClass::$var)),
+        })
+    };
+}
+
+pub fn do_ast_frag<T, F: FnOnce(AstFrag) -> core::result::Result<T, (AstFrag, AstFragClass)>>(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+    matcher: F,
+) -> Result<Spanned<T>> {
+    let mut tree = tree.into_rewinder();
+    let mut lexeme = do_lexeme_class(&mut tree, LexemeClass::AstFrag(None))?;
+    match lexeme.body {
+        LexemeBody::AstFrag(frag) => match matcher(*frag) {
+            Ok(val) => Ok(Spanned {
+                span: lexeme.span,
+                body: val,
+            }),
+            Err((frag, expected)) => {
+                lexeme.body = LexemeBody::AstFrag(Box::new(frag));
+                Err(Error {
+                    expected: vec![LexemeClass::AstFrag(Some(expected))],
+                    got: LexemeClass::of(Some(&lexeme)),
+                    span: lexeme.span,
+                })
+            }
+        },
+        _ => unreachable!(),
+    }
 }
 
 pub fn do_lexeme_group(
@@ -1569,6 +1603,19 @@ pub fn do_array_expr(
     }
 }
 
+pub fn do_frag_expr(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Expr>> {
+    let expr = do_ast_frag(tree, unwrap_frag!(Expr))?;
+
+    let span = expr.span;
+
+    Ok(Spanned {
+        span,
+        body: Expr::Frag(Box::new(expr)),
+    })
+}
+
 pub fn do_primary_expression<const ALLOW_CONSTRUCTOR: bool>(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Expr>> {
@@ -1584,6 +1631,7 @@ pub fn do_primary_expression<const ALLOW_CONSTRUCTOR: bool>(
             do_const_block,
             do_closure::<ALLOW_CONSTRUCTOR>,
             do_array_expr,
+            do_frag_expr,
         ],
     )
 }

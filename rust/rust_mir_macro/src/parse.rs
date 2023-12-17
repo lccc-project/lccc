@@ -100,10 +100,53 @@ pub fn do_interpolation<I: Iterator<Item = TokenTree>>(
     })
 }
 
+fn write_interpolation_for_type<'a, I: IntoIterator<Item = &'a str>>(
+    ty_path: I,
+    dollar_crate: &TokenStream,
+    interp: Ident,
+) -> TokenStream {
+    let mut inner_stream = TokenStream::new();
+
+    let idspan = dollar_crate.clone().into_iter().next().unwrap().span();
+
+    let letkw = TokenTree::Ident(Ident::new("let", idspan));
+
+    let id = TokenTree::Ident(Ident::new("__interp", idspan));
+    let id2 = id.clone();
+
+    let colon = TokenTree::Punct(Punct::new(':', Spacing::Alone));
+
+    inner_stream.extend([letkw, id, colon]);
+
+    write_crate_path(&mut inner_stream, idspan, dollar_crate, ty_path);
+
+    let eq = TokenTree::Punct(Punct::new('=', Spacing::Alone));
+
+    let interp = TokenTree::Ident(interp);
+    let semi = TokenTree::Punct(Punct::new(';', Spacing::Alone));
+
+    inner_stream.extend([eq, interp, semi, id2]);
+
+    let mut stream = TokenStream::new();
+
+    let group = Group::new(proc_macro::Delimiter::Bracket, inner_stream);
+
+    stream.extend([TokenTree::Group(group)]);
+
+    let group = Group::new(
+        proc_macro::Delimiter::Parenthesis,
+        core::mem::take(&mut stream),
+    );
+
+    stream.extend([TokenTree::Group(group)]);
+
+    stream
+}
+
 pub fn do_defid<I: Iterator<Item = TokenTree>>(
     tokens: &mut PeekMoreIterator<I>,
     dollar_crate: &TokenStream,
-) -> Result<(Span, TokenStream)> {
+) -> Result<TokenStream> {
     with_rewinder_accept_on_continue(tokens, |tree| {
         let span = do_punct(tree, "#")?;
         let mut token_stream = TokenStream::new();
@@ -117,20 +160,39 @@ pub fn do_defid<I: Iterator<Item = TokenTree>>(
                 );
                 let mut group = TokenStream::new();
                 group.extend([TokenTree::Literal(lit)]);
-                todo!()
+                let group = Group::new(proc_macro::Delimiter::Parenthesis, group);
+                token_stream.extend([TokenTree::Group(group)]);
+                Ok(token_stream)
             }
             Err(_) => match do_interpolation(tree) {
-                _ => todo!(),
+                Ok(interp) => Ok(write_interpolation_for_type(
+                    ["sema", "DefId"],
+                    dollar_crate,
+                    interp,
+                )),
+                Err(d) => Err(d),
             },
         }
     })
+}
+
+pub fn do_type_interpolation<I: Iterator<Item = TokenTree>>(
+    tokens: &mut PeekMoreIterator<I>,
+    dollar_crate: &TokenStream,
+) -> Result<TokenStream> {
+    let interp = do_interpolation(tokens)?;
+    Ok(write_interpolation_for_type(
+        ["sema", "ty", "Type"],
+        dollar_crate,
+        interp,
+    ))
 }
 
 pub fn do_user_type<I: Iterator<Item = TokenTree>>(
     tokens: &mut PeekMoreIterator<I>,
     dollar_crate: &TokenStream,
 ) -> Result<TokenStream> {
-    let (span, defid) = do_defid(tokens, dollar_crate)?;
+    let defid = do_defid(tokens, dollar_crate)?;
     let mut token_stream = TokenStream::new();
     write_crate_path(
         &mut token_stream,

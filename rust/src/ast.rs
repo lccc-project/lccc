@@ -473,6 +473,7 @@ pub enum Expr {
         base: Box<Spanned<Expr>>,
         len: Box<Spanned<Expr>>,
     },
+    Frag(Box<Spanned<Expr>>),
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]

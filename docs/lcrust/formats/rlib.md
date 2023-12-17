@@ -62,6 +62,7 @@ file_contents shall be set as a bitfield, to indicate the kinds of files present
 - 0x00000004: The rlib contains other (non-root) rmanifest files
 - 0x00000008: The rlib contains rust source files
 - 0x00000010: The rlib contains other, embedded rlib files.
+- 0x00000020: The rlib contains MIR definitions.
 - 0x00000100-0x00800000: The rlib contains other, compiler specific files. The compiler producing the rlib may assign an arbitrary meaning to these bits and to the contents of such files. 
     - It is RECOMMENDED that compilers producing such files define a manifest file containing information about these compiler-specific files, and refuse to interpret rlib files that set any of these bits and do not have a proper manifest present. 
     - [Note: The lccc compiler uses bits 0x00000100 and 0x00000200 to indicate the presence of xir bytecode and manifest files respectively, this is used for generic and inlineable functions, and when LTO is produced. Additionally, the lccc compiler uses bits 0x00001000 to indicate the presence of the language item table in the rlib, under a file called `.rlang`]
@@ -273,18 +274,16 @@ The `items` shall be an array of `ItemRef`s, given below. The length of the arra
 ```rust
 #[repr(C,align(8))]
 pub struct ItemRef{
-    xrefid: u16,
+    xrefid: u32,
     item_type: u16,
+    flags: u16,
     name: u32,
-    itemsig: u32,
     stability: Stability,
-    file_ref: u32,
-    flags: u32,
 }
 ```
 
-`ikind` is one of the given values, indicating the type of item:
-* 0: A `use` item. If multiple items are imported without being given a name, then `name` is blank. Items that are renamed via `as` are expanded into separate `ItemRef`s. 
+`item_type` is one of the given values, indicating the type of item:
+* 0: A `use` item (one per item).
 * 1: An `extern crate` declaration. The name is the name of the crate, or renamed name for `extern crate _ as ...`
 * 2: A `function` item. 
 * 3: A `trait` defintion. 
@@ -293,7 +292,7 @@ pub struct ItemRef{
 * 6: A `union` definition.
 * 7: An `enum` definition
 * 8: A `macro_rules` (`#[macro_export]`) defintion
-* 9: A `macro_rules` (`pub macro_rules!`) defintion
+* 9: A `macro_rules` (`$vis macro_rules!`) defintion
 * 10: A `trait` impl item. The name is blank.
 * 11: A type Alias definition.
 * 12: A trait alias definition
@@ -308,3 +307,22 @@ pub struct ItemRef{
 * 21: A synthetically generated `function` definition
 * 22: A synthetically generated `static` definition
 * 23: A type alias that designates an `impl Trait` type.
+* 24: A wildcard import `use path::*;` (one per module).
+* 25: A `function` declaration that expands to a compiler intrinsic
+* 26: A `function` declaration that expands to a platform intrinsic
+
+Only items visible from the root are present in the `Contents` list
+
+The `name` is the name that this item is exported as. In the case of a wildcard import, this is the module that includes the `use`. Otherwise, it's the fully qualified path, excluding the crate root, of the item. If nested manifests are used, the prefix given to the current manifest is assumed, and the `name` is the path to the item within the manifest. 
+
+Inherent impls for primitive types use the path given by name mangling according to the lcrust ABI. The lang item table contains a reference to the same xref id.
+
+`xrefid` is the cross-reference table entry the item refers to.
+
+`flags` are flags for the export. No flags are currently defined and this field must be set to `0`.
+
+`stability` is stability information for the export name.
+
+## Cross Reference Table
+
+The cross-reference table contains item definitions. It is indexed by several poritions of the rlib and containing formats using cross-reference ids. 

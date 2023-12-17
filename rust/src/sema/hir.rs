@@ -570,7 +570,7 @@ impl<'a> HirLowerer<'a> {
             }
             ast::Expr::Await(_) => todo!("await"),
             ast::Expr::Try(_) => todo!("try"),
-            ast::Expr::Group(expr) => self.desugar_expr(expr),
+            ast::Expr::Group(expr) | ast::Expr::Frag(expr) => self.desugar_expr(expr),
             ast::Expr::Tuple(_) => todo!("tuple"),
             ast::Expr::Return(_) => todo!("return"),
             ast::Expr::Array(elements) => expr.try_copy_span(|_| {
