@@ -8,7 +8,7 @@ use xlang::{
 };
 use xlang_backend::{callconv::CallingConvention, ty::TypeInformation};
 use xlang_struct::{
-    AggregateDefinition, FnType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type,
+    AggregateDefinition, FloatFormat, FnType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type,
 };
 
 use crate::ValLocation;
@@ -38,9 +38,18 @@ pub fn classify_type(ty: &Type) -> Option<TypeClass> {
         }) => Some(TypeClass::Sse),
         Type::Scalar(ScalarType {
             header: ScalarTypeHeader { bitsize: 80, .. },
-            kind: ScalarTypeKind::LongFloat { .. },
+            kind:
+                ScalarTypeKind::Float {
+                    format: FloatFormat::IeeeExtPrecision,
+                },
             ..
         }) => Some(TypeClass::X87),
+        Type::Scalar(ScalarType {
+            header: ScalarTypeHeader {
+                bitsize: 65..=128, ..
+            },
+            kind: ScalarTypeKind::Float { .. },
+        }) => Some(TypeClass::Sse),
         Type::Scalar(ScalarType {
             kind: ScalarTypeKind::Float { .. },
             ..

@@ -104,6 +104,13 @@ pub enum MCInsn<Loc> {
         /// Class
         cl: AccessClass,
     },
+    /// Stores of an immediate integer into the pointer in `dest_ptr`
+    StoreIndirectImm {
+        /// The destination pointer
+        dest_ptr: MaybeResolved<Loc>,
+        /// The source value
+        src: u128,
+    },
     /// Emits a trap
     Trap {
         /// The kind of trap
@@ -312,7 +319,13 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
     }
 
     fn store_indirect_imm(&mut self, src: xlang::ir::Value, ptr: Self::Loc) {
-        todo!()
+        match src {
+            xlang::ir::Value::Integer { ty, val } => self.mc_insns.push(MCInsn::StoreIndirectImm {
+                dest_ptr: ptr,
+                src: val,
+            }),
+            _ => todo!(),
+        }
     }
 
     fn load_val(&mut self, lvalue: Self::Loc, loc: Self::Loc) {
@@ -566,6 +579,7 @@ pub trait MCWriter {
         &self,
         insns: &[MCInsn<<Self::Features as MachineFeatures>::Loc>],
         clobbers: Self::Clobbers,
+        tys: Rc<TypeInformation>,
         out: &mut I,
         sym_accepter: F,
     ) -> std::io::Result<()>;
@@ -595,6 +609,7 @@ pub struct MCBackend<W: MCWriter> {
     strings: Rc<RefCell<StringMap>>,
     writer: W,
     functions: HashMap<String, FunctionCodegen<MCFunctionCodegen<W::Features>>>,
+    tys: Option<Rc<TypeInformation>>,
 }
 
 impl<W: MCWriter> MCBackend<W> {
@@ -606,6 +621,7 @@ impl<W: MCWriter> MCBackend<W> {
             strings: Rc::new(RefCell::new(StringMap::new())),
             writer: x,
             functions: HashMap::new(),
+            tys: None,
         }
     }
 }
@@ -671,7 +687,7 @@ impl<W: MCWriter> XLangPlugin for MCBackend<W> {
                 _ => {}
             }
         }
-
+        self.tys = Some(tys);
         XLangOk(())
     }
 
@@ -739,15 +755,21 @@ impl<W: MCWriter> XLangCodegen for MCBackend<W> {
 
             try_!(self
                 .writer
-                .write_machine_code(&inner.mc_insns, clobbers, &mut text, |label, offset| {
-                    syms.push(Symbol::new(
-                        label,
-                        Some(1),
-                        Some(offset as u128),
-                        binfmt::sym::SymbolType::Function,
-                        binfmt::sym::SymbolKind::Local,
-                    ))
-                })
+                .write_machine_code(
+                    &inner.mc_insns,
+                    clobbers,
+                    self.tys.clone().unwrap(),
+                    &mut text,
+                    |label, offset| {
+                        syms.push(Symbol::new(
+                            label,
+                            Some(1),
+                            Some(offset as u128),
+                            binfmt::sym::SymbolType::Function,
+                            binfmt::sym::SymbolKind::Local,
+                        ))
+                    }
+                )
                 .map_err(Into::into));
 
             syms.push(sym);

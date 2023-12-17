@@ -1581,6 +1581,10 @@ pub fn parse_expr<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I>) -> Ex
             };
             Expr::Select(val)
         }
+        Token::Ident(id) if id == "indirect" => {
+            it.next();
+            Expr::Indirect
+        }
         tok => todo!("{:?}", tok),
     }
 }

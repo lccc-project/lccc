@@ -29,8 +29,8 @@ use xlang_backend::{
     ty::TypeInformation, FunctionCodegen, FunctionRawCodegen,
 };
 use xlang_struct::{
-    AccessClass, AggregateDefinition, BinaryOp, FnType, FunctionDeclaration, PathComponent,
-    ScalarType, ScalarTypeHeader, ScalarTypeKind, Type,
+    AccessClass, AggregateDefinition, BinaryOp, FloatFormat, FnType, FunctionDeclaration,
+    PathComponent, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type,
 };
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -135,12 +135,7 @@ pub fn classify_type(ty: &Type) -> Option<TypeClass> {
             ..
         }) => Some(TypeClass::Vec),
         Type::Scalar(ScalarType {
-            header: ScalarTypeHeader { bitsize: 64, .. },
-            kind: ScalarTypeKind::LongFloat { .. },
-            ..
-        }) => Some(TypeClass::Float),
-        Type::Scalar(ScalarType {
-            kind: ScalarTypeKind::Float { .. },
+            kind: ScalarTypeKind::Float { .. } | ScalarTypeKind::Posit,
             ..
         }) => Some(TypeClass::Float),
         Type::Scalar(_) | Type::Pointer(_) => Some(TypeClass::Integer),

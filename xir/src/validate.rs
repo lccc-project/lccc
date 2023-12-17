@@ -33,12 +33,12 @@ impl TypeState<'_> {
             ScalarTypeKind::Integer { .. }
             | ScalarTypeKind::Char { .. }
             | ScalarTypeKind::Fixed { .. } => AsmScalarKind::Integer,
-            ScalarTypeKind::Float { .. } | ScalarTypeKind::LongFloat
+            ScalarTypeKind::Float { .. } | ScalarTypeKind::Posit
                 if ty.header.vectorsize.is_some() =>
             {
                 AsmScalarKind::VectorFloat
             }
-            ScalarTypeKind::Float { .. } | ScalarTypeKind::LongFloat => AsmScalarKind::Float,
+            ScalarTypeKind::Float { .. } | ScalarTypeKind::Posit => AsmScalarKind::Float,
             ScalarTypeKind::Empty => panic!("Empty scalar type"),
         };
 
@@ -233,10 +233,10 @@ fn check_unify(ty1: &Type, ty2: &Type, type_state: &TypeState) {
                     ScalarTypeKind::Char { flags: flags2 },
                 ) => assert_eq!(flags1, flags2, "cannot unify types {:?} and {:?}", ty1, ty2),
                 (
-                    ScalarTypeKind::Float { decimal: dec1 },
-                    ScalarTypeKind::Float { decimal: dec2 },
-                ) => assert_eq!(dec1, dec2, "cannot unify types {:?} and {:?}", ty1, ty2),
-                (ScalarTypeKind::LongFloat, ScalarTypeKind::LongFloat) => {}
+                    ScalarTypeKind::Float { format: fmt1 },
+                    ScalarTypeKind::Float { format: fmt2 },
+                ) => assert_eq!(fmt1, fmt2, "cannot unify types {:?} and {:?}", ty1, ty2),
+                (ScalarTypeKind::Posit, ScalarTypeKind::Posit) => {}
                 (_, _) => panic!("cannot unify types {:?} and {:?}", ty1, ty2),
             }
         }
@@ -749,8 +749,8 @@ fn tycheck_expr(
             vstack.push(val);
         }
         xlang_struct::Expr::Assign(_) => {
-            let rvalue = vstack.pop().unwrap();
             let lvalue = vstack.pop().unwrap();
+            let rvalue = vstack.pop().unwrap();
 
             assert_eq!(rvalue.kind, StackValueKind::RValue);
             assert_eq!(lvalue.kind, StackValueKind::LValue);
@@ -767,8 +767,8 @@ fn tycheck_expr(
             });
         }
         xlang_struct::Expr::CompoundAssign(op, v, _) => {
-            let rvalue = vstack.pop().unwrap();
             let lvalue = vstack.pop().unwrap();
+            let rvalue = vstack.pop().unwrap();
 
             assert_eq!(rvalue.kind, StackValueKind::RValue);
             assert_eq!(lvalue.kind, StackValueKind::LValue);
@@ -836,8 +836,8 @@ fn tycheck_expr(
             }
         }
         xlang_struct::Expr::FetchAssign(op, v, _) => {
-            let rvalue = vstack.pop().unwrap();
             let lvalue = vstack.pop().unwrap();
+            let rvalue = vstack.pop().unwrap();
 
             assert_eq!(rvalue.kind, StackValueKind::RValue);
             assert_eq!(lvalue.kind, StackValueKind::LValue);
@@ -855,7 +855,7 @@ fn tycheck_expr(
 
             vstack.push(StackItem {
                 ty: rvalue.ty.clone(),
-                kind: StackValueKind::LValue,
+                kind: StackValueKind::RValue,
             });
 
             match tys.refiy_type(&lvalue.ty) {

@@ -358,7 +358,9 @@ fn resolve_locations_in(
             resolve_location(dest_ptr, assignments);
             resolve_location(src, assignments);
         }
-
+        MCInsn::StoreIndirectImm { dest_ptr, .. } => {
+            resolve_location(dest_ptr, assignments);
+        }
         MCInsn::BinaryOpImm { dest, .. } => {
             resolve_location(dest, assignments);
         }
@@ -566,6 +568,7 @@ impl MCWriter for X86MCWriter {
             <Self::Features as xlang_backend::mc::MachineFeatures>::Loc,
         >],
         clobbers: Self::Clobbers,
+        tys: Rc<TypeInformation>,
         out: &mut I,
         mut sym_accepter: F,
     ) -> std::io::Result<()> {
@@ -663,7 +666,44 @@ impl MCWriter for X86MCWriter {
                     },
                     _ => panic!("UNresolved location"),
                 },
-                MCInsn::StoreIndirect { dest_ptr, src, cl } => todo!(),
+                MCInsn::StoreIndirect { dest_ptr, src, .. } => todo!(),
+                MCInsn::StoreIndirectImm { dest_ptr, src, .. } => match dest_ptr {
+                    MaybeResolved::Resolved(ty, loc) => match loc {
+                        X86ValLocation::Register(reg) => {
+                            let inner_ty = match ty {
+                                Type::Pointer(pty) => &pty.inner,
+                                _ => panic!("Store indirect to not a pointer"),
+                            };
+                            let size = tys.type_size(inner_ty).unwrap();
+                            eprintln!("{} ({})", ty, size);
+
+                            let size = match size {
+                                1 => X86RegisterClass::Byte,
+                                2 => X86RegisterClass::Word,
+                                4 => X86RegisterClass::Double,
+                                8 => X86RegisterClass::Quad,
+                                _ => todo!(),
+                            };
+
+                            encoder.write_insn(X86Instruction::new(
+                                X86CodegenOpcode::Mov,
+                                vec![
+                                    X86Operand::Memory(
+                                        size,
+                                        None,
+                                        X86MemoryOperand::Indirect {
+                                            reg: *reg,
+                                            disp: None,
+                                        },
+                                    ),
+                                    X86Operand::Immediate(*src as i64),
+                                ],
+                            ))?;
+                        }
+                        loc => todo!("store_indirect({:?})", loc),
+                    },
+                    _ => panic!("unresolved location"),
+                },
                 MCInsn::Trap { kind } => match kind {
                     xlang_backend::expr::Trap::Breakpoint => {
                         encoder.write_insn(X86Instruction::Int3)?

@@ -1,0 +1,13 @@
+public function test(*int(32)) -> int(32){
+    declare _0: int(32);
+    const int(32) 1
+    local _0
+    assign
+    indirect
+    const int(32) 2
+    pivot 1 1
+    assign
+    local _0
+    as_rvalue
+    exit 1
+}

@@ -138,11 +138,6 @@ pub fn classify_type(ty: &Type) -> Option<TypeClass> {
             ..
         }) => Some(TypeClass::Memory),
         Type::Scalar(ScalarType {
-            header: ScalarTypeHeader { bitsize: 64, .. },
-            kind: ScalarTypeKind::LongFloat { .. },
-            ..
-        }) => Some(TypeClass::Integer),
-        Type::Scalar(ScalarType {
             kind: ScalarTypeKind::Float { .. },
             ..
         }) => Some(TypeClass::Integer),

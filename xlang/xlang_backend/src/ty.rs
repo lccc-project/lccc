@@ -11,7 +11,7 @@ use xlang::{
 
 use crate::expr::{LValue, NoOpaque, VStackValue};
 
-fn scalar_align(size: u64, max_align: u16) -> u64 {
+pub(crate) fn scalar_align(size: u64, max_align: u16) -> u64 {
     if size <= (max_align as u64) {
         size.next_power_of_two()
     } else {
@@ -19,7 +19,7 @@ fn scalar_align(size: u64, max_align: u16) -> u64 {
     }
 }
 
-fn align_size(size: u64, align: u64) -> u64 {
+pub(crate) fn align_size(size: u64, align: u64) -> u64 {
     (size.wrapping_neg() & !(align - 1)).wrapping_neg()
 }
 
@@ -307,10 +307,6 @@ impl TypeInformation {
     pub fn type_align(&self, ty: &Type) -> Option<u64> {
         match ty {
             Type::Null | Type::Void | Type::FnType(_) => None,
-            Type::Scalar(ScalarType {
-                kind: ScalarTypeKind::LongFloat,
-                ..
-            }) => Some(self.properties.primitives.ldbl_align.into()),
             Type::Scalar(ScalarType {
                 header: ScalarTypeHeader { bitsize, .. },
                 ..

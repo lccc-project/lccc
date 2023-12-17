@@ -331,6 +331,63 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         self.inner
     }
 
+    /// Obtains the inner `F` from self
+    pub fn is_atomic_lock_free(&self, asize: u64) -> bool {
+        let lockfree_mask = self.properties.primitives.lock_free_atomic_mask
+            | self.properties.arch.lock_free_atomic_masks;
+
+        if asize > (1 << 15) {
+            return false;
+        } else {
+            let bits = (asize.next_power_of_two() - 1).count_ones();
+
+            (lockfree_mask & (1 << bits)) != 0
+        }
+    }
+
+    /// Writes a value according to access class to the pointer in `ptr`
+    pub fn store_val(&mut self, ptr: F::Loc, val: VStackValue<F::Loc>, cl: AccessClass) {
+        if cl.0 & 0xF != 0 {
+            let ty = self.type_of(&val);
+            let size = self.tys.type_size(&ty).unwrap();
+
+            let align = ty::scalar_align(size, self.properties.primitives.max_atomic_align);
+            let asize = ty::align_size(size, align);
+
+            if !self.is_atomic_lock_free(asize) || self.inner.lockfree_use_libatomic(asize) {
+                todo!("libatomic call")
+            }
+        }
+        match val {
+            VStackValue::Constant(Value::Invalid(_)) => {
+                self.inner.write_trap(Trap::Unreachable);
+                self.vstack.push_back(VStackValue::Trapped);
+            }
+            VStackValue::Constant(Value::Uninitialized(_)) | VStackValue::Trapped => {}
+            VStackValue::Constant(val) => {
+                self.inner.store_indirect_imm(val, ptr);
+            }
+            VStackValue::LValue(_, _) => panic!("Cannot store an lvalue"),
+            VStackValue::Pointer(ty, val) => match val {
+                LValue::OpaquePointer(loc) => {
+                    self.inner.store_indirect(ptr, loc, &Type::Pointer(ty))
+                }
+                lval => {
+                    let loc = self.inner.allocate_lvalue(false);
+                    self.move_val(VStackValue::Pointer(ty.clone(), lval), loc.clone());
+                    self.inner.store_indirect(ptr, loc, &Type::Pointer(ty));
+                }
+            },
+            VStackValue::OpaqueScalar(ty, loc) => {
+                self.inner.store_indirect(ptr, loc, &Type::Scalar(ty))
+            }
+            VStackValue::AggregatePieced(_, _) => todo!(),
+            VStackValue::OpaqueAggregate(ty, loc) => self.inner.store_indirect(ptr, loc, &ty),
+            VStackValue::CompareResult(_, _) => todo!(),
+            VStackValue::ArrayRepeat(_, _) => todo!(),
+        }
+    }
+
     /// Moves a given value into the given value location
     pub fn move_val(&mut self, val: VStackValue<F::Loc>, loc: F::Loc) {
         match val {
@@ -483,6 +540,35 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             Type::Product(_) | Type::Aggregate(_) => VStackValue::OpaqueAggregate(ty.clone(), loc),
             Type::Aligned(_, ty) => self.opaque_value(ty, loc),
             Type::Named(_) => VStackValue::OpaqueAggregate(ty.clone(), loc),
+        }
+    }
+
+    /// Determines the type of a vstack value
+    pub fn type_of(&mut self, val: &VStackValue<F::Loc>) -> Type {
+        match val {
+            VStackValue::Constant(val) => match val {
+                Value::Invalid(ty) | Value::Uninitialized(ty) => ty.clone(),
+                Value::GenericParameter(_) => panic!("Generic Parameter held too late"),
+                Value::Integer { ty, .. } => Type::Scalar(*ty),
+                Value::GlobalAddress { ty, .. } => Type::Pointer(PointerType {
+                    inner: Box::new(ty.clone()),
+                    ..Default::default()
+                }),
+                Value::ByteString { .. } => todo!("byte string"),
+                Value::String { ty, .. } => ty.clone(),
+                Value::LabelAddress(_) => Type::Pointer(PointerType {
+                    inner: Box::new(Type::Void),
+                    ..Default::default()
+                }),
+            },
+            VStackValue::LValue(_, _) => panic!("Cannot typeof an lvalue"),
+            VStackValue::Pointer(pty, _) => Type::Pointer(pty.clone()),
+            VStackValue::OpaqueScalar(sty, _) => Type::Scalar(*sty),
+            VStackValue::AggregatePieced(ty, _) => ty.clone(),
+            VStackValue::OpaqueAggregate(ty, _) => ty.clone(),
+            VStackValue::CompareResult(_, _) => todo!("compare result"),
+            VStackValue::Trapped => Type::Null,
+            VStackValue::ArrayRepeat(_, _) => todo!("array repeat"),
         }
     }
 
@@ -1778,9 +1864,9 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 }
             }
             Expr::MemberIndirect(_) => todo!(),
-            Expr::Assign(_) => {
-                let value = self.vstack.pop_back().unwrap();
+            Expr::Assign(cl) => {
                 let lval = self.vstack.pop_back().unwrap();
+                let value = self.vstack.pop_back().unwrap();
 
                 let (_, lval) = match lval {
                     VStackValue::LValue(ty, lval) => (ty, lval),
@@ -1815,7 +1901,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                             }
                         }
                     }
-                    (LValue::OpaquePointer(loc), val) => todo!("store [{:?}] <- {:?}", loc, val),
+                    (LValue::OpaquePointer(loc), val) => self.store_val(loc, val, *cl),
                     (a, b) => todo!("store {:?} <- {:?}", a, b),
                 }
             }
@@ -1882,7 +1968,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 self.push_value(val);
             }
             Expr::CompoundAssign(op, v, acc) => {
-                let [lval, rhs] = self.pop_values_static().unwrap();
+                let [rhs, lval] = self.pop_values_static().unwrap();
 
                 let (ty, lval) = match lval {
                     VStackValue::Trapped => {
