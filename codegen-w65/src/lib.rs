@@ -160,7 +160,7 @@ pub fn classify_type(ty: &Type) -> Option<TypeClass> {
         Type::Aligned(_, _) => todo!(),
         Type::Aggregate(AggregateDefinition { fields, .. }) => {
             let mut infected = TypeClass::Zero;
-            for ty in fields.iter().map(|Pair(_, ty)| ty) {
+            for ty in fields.iter().map(|field| &field.ty) {
                 infected = match (classify_type(ty)?, infected) {
                     (a, TypeClass::Zero) => a,
                     (_, TypeClass::Memory) => TypeClass::Memory,
@@ -939,6 +939,7 @@ impl XLangPlugin for W65CodegenPlugin {
                 xlang_struct::MemberDeclaration::Function(FunctionDeclaration {
                     ty,
                     body: xlang::abi::option::Some(body),
+                    ..
                 }) => {
                     let mut state = FunctionCodegen::new(
                         W65FunctionCodegen {
@@ -965,8 +966,8 @@ impl XLangPlugin for W65CodegenPlugin {
                     self.fns.as_mut().unwrap().insert(name.clone(), state);
                 }
                 xlang_struct::MemberDeclaration::Function(FunctionDeclaration {
-                    ty: _,
                     body: xlang::abi::option::None,
+                    ..
                 })
                 | xlang_struct::MemberDeclaration::Scope(_)
                 | xlang_struct::MemberDeclaration::Empty

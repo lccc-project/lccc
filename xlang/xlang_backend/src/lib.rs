@@ -255,7 +255,6 @@ struct BranchToInfo {
     fallthrough_from: u32,
     branch_from: HashSet<u32>,
 }
-
 /// A type for handling the generation of code for functions.
 pub struct FunctionCodegen<F: FunctionRawCodegen> {
     inner: F,
@@ -418,6 +417,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 self.inner.move_imm(val, loc, &Type::Scalar(ty))
             }
             VStackValue::Constant(Value::GenericParameter(n)) => todo!("%{}", n),
+            VStackValue::Constant(Value::Empty) => panic!("Cannot move an empty value"),
             VStackValue::Pointer(pty, lvalue) => match lvalue {
                 LValue::OpaquePointer(loc2) => self.inner.move_val(loc2, loc),
                 LValue::Temporary(_) => todo!("temporary address"),
@@ -560,6 +560,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     inner: Box::new(Type::Void),
                     ..Default::default()
                 }),
+                Value::Empty => panic!("Cannot use an empty value"),
             },
             VStackValue::LValue(_, _) => panic!("Cannot typeof an lvalue"),
             VStackValue::Pointer(pty, _) => Type::Pointer(pty.clone()),
@@ -647,6 +648,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     self.move_val(VStackValue::Constant(Value::LabelAddress(n)), loc.clone());
                     VStackValue::Pointer(pty, LValue::OpaquePointer(loc))
                 }
+                Value::Empty => panic!("Cannot use an empty value"),
             },
             VStackValue::LValue(ty, LValue::OpaquePointer(loc)) => {
                 VStackValue::LValue(ty, LValue::OpaquePointer(loc))

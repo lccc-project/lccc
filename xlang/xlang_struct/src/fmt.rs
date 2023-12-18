@@ -80,7 +80,8 @@ impl<'b, 'a> IrFormatter<'b, 'a> {
                 self.write_str("}\n")
             }
             MemberDeclaration::Function(f) => {
-                self.write_str("function ")?;
+                self.write_fmt(format_args!("{}", f.linkage))?;
+                self.write_str(" function ")?;
                 p.fmt(self)?;
                 f.ty.fmt(self)?;
 
@@ -124,13 +125,24 @@ impl<'b, 'a> IrFormatter<'b, 'a> {
                 self.write_str("{\n")?;
                 let nested = tabs.nest();
 
-                for Pair(name, ty) in &def.fields {
-                    self.write_fmt(format_args!("{}{}: {},\n", nested, name, ty))?;
+                for fields in &def.fields {
+                    self.write_fmt(format_args!("{}{},\n", nested, fields))?;
                 }
                 tabs.fmt(self)?;
                 self.write_str("}\n")
             }
-            MemberDeclaration::Static(_) => todo!(),
+            MemberDeclaration::Static(st) => {
+                self.write_fmt(format_args!(
+                    "{} static {}{}: {}",
+                    st.linkage, st.specifiers, p, st.ty
+                ))?;
+
+                if st.init != Value::Empty {
+                    self.write_fmt(format_args!("= {}", st.init))?;
+                }
+
+                self.write_str(";\n")
+            }
         }
     }
 }

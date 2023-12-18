@@ -8,13 +8,14 @@ use xlang::abi::string::FromUtf8Error;
 use xlang::{abi::string::String, abi::vec::Vec, prelude::v1::Pair};
 
 use xlang_struct::{
-    AccessClass, AggregateCtor, AggregateDefinition, AggregateKind, AnnotatedElement,
-    AsmConstraint, AsmExpr, AsmOptions, AsmOutput, BinaryOp, Block, BlockItem, BranchCondition,
-    CharFlags, ConversionStrength, Expr, File, FnType, FunctionBody, FunctionDeclaration,
-    HashSwitch, LinearSwitch, MemberDeclaration, OverflowBehaviour, Path, PathComponent,
-    PointerAliasingRule, PointerDeclarationType, PointerKind, PointerType, ScalarType,
-    ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Scope, ScopeMember, StackItem,
-    StringEncoding, Switch, Type, UnaryOp, ValidRangeType, Value, Visibility,
+    AccessClass, AggregateCtor, AggregateDefinition, AggregateField, AggregateFieldSpecifier,
+    AggregateKind, AnnotatedElement, AsmConstraint, AsmExpr, AsmOptions, AsmOutput, BinaryOp,
+    Block, BlockItem, BranchCondition, CharFlags, ConversionStrength, Expr, File, FnType,
+    FunctionBody, FunctionDeclaration, HashSwitch, LinearSwitch, Linkage, MemberDeclaration,
+    OverflowBehaviour, Path, PathComponent, PointerAliasingRule, PointerDeclarationType,
+    PointerKind, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Scope,
+    ScopeMember, StackItem, StringEncoding, Switch, Type, UnaryOp, ValidRangeType, Value,
+    Visibility,
 };
 
 use crate::lexer::{Group, Token};
@@ -386,10 +387,27 @@ pub fn parse_aggregate_body<I: Iterator<Item = Token>>(
             let mut it = tokens.into_iter().peekmore();
 
             let mut fields = Vec::new();
-            loop {
-                let id = match it.next() {
+            'a: loop {
+                let mut specifiers = AggregateFieldSpecifier::empty();
+
+                loop {
+                    match it.peek() {
+                        Some(Token::Ident(id)) if id == "mutable" => {
+                            specifiers |= AggregateFieldSpecifier::MUTABLE;
+                            it.next();
+                        }
+                        None => break 'a,
+                        _ => break,
+                    }
+                }
+
+                let name = match it.next() {
                     Some(Token::Ident(id)) => id,
-                    None => break,
+                    Some(Token::Group(Group::Parenthesis(group))) => match &*group {
+                        [Token::Ident(id)] => id.clone(),
+                        rest => panic!("Unexpected tokens in group {:?}", rest),
+                    },
+                    None => panic!("Unexpected EOF"),
                     Some(tok) => panic!("Unexpected token {:?}", tok),
                 };
 
@@ -399,7 +417,13 @@ pub fn parse_aggregate_body<I: Iterator<Item = Token>>(
                 }
 
                 let ty = parse_type(&mut it).unwrap();
-                fields.push(Pair(id, ty));
+                fields.push(AggregateField {
+                    annotations: AnnotatedElement::default(),
+                    specifiers,
+                    name,
+                    ty,
+                    bitfield_width: Value::Empty,
+                });
                 match it.next() {
                     Some(Token::Sigil(',')) => continue,
                     None => break,
@@ -414,6 +438,122 @@ pub fn parse_aggregate_body<I: Iterator<Item = Token>>(
             })
         }
         tok => panic!("Unexpected token {:?}", tok),
+    }
+}
+
+pub fn parse_function_decl<I: Iterator<Item = Token>>(
+    it: &mut PeekMoreIterator<I>,
+    linkage: Linkage,
+) -> ScopeMember {
+    match it.next().unwrap() {
+        Token::Group(Group::Parenthesis(toks)) => {
+            let mut params = Vec::new();
+            let mut peekable = toks.into_iter().peekmore();
+            let mut variadic = false;
+            loop {
+                match peekable.peek() {
+                    Some(Token::Sigil('.')) => {
+                        peekable.next();
+                        match peekable.next().unwrap() {
+                            Token::Sigil('.') => {}
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+                        match peekable.next().unwrap() {
+                            Token::Sigil('.') => {}
+                            tok => panic!("Unexpected token {:?}", tok),
+                        }
+
+                        if let Some(tok) = peekable.next() {
+                            panic!("Unexpected token {:?}", tok);
+                        }
+                        variadic = true;
+                        break;
+                    }
+                    Some(_) => {
+                        params.push(parse_type(&mut peekable).unwrap());
+                    }
+                    None => break,
+                }
+
+                match peekable.next() {
+                    Some(Token::Sigil(',')) => continue,
+                    Some(tok) => panic!("Unexpected token {:?}", tok),
+                    None => break,
+                }
+            }
+            drop(peekable);
+
+            let ret = match it.peek().unwrap() {
+                Token::Sigil('-') => {
+                    it.next();
+                    assert_eq!(it.next(), Some(Token::Sigil('>')));
+                    parse_type(it).unwrap()
+                }
+
+                _ => Type::Void,
+            };
+
+            match it.next().unwrap() {
+                Token::Sigil(';') => ScopeMember {
+                    member_decl: MemberDeclaration::Function(FunctionDeclaration {
+                        ty: xlang_struct::FnType {
+                            ret,
+                            params,
+                            tag: "".into(),
+                            variadic,
+                        },
+                        body: xlang::abi::option::None,
+                        linkage,
+                    }),
+                    ..ScopeMember::default()
+                },
+                Token::Group(Group::Braces(toks)) => {
+                    let mut peekable = toks.into_iter().peekmore();
+                    let mut locals = Vec::new();
+                    loop {
+                        match peekable.peek() {
+                            Some(Token::Ident(id)) if id == "declare" => {
+                                peekable.next();
+                                match peekable.next().unwrap() {
+                                    Token::Ident(id) if id.starts_with('_') => {
+                                        // Assume there's increasing indecies for now
+                                    }
+                                    tok => panic!("Unrecognized token {:?}", tok),
+                                }
+                                match peekable.next().unwrap() {
+                                    Token::Sigil(':') => {}
+                                    tok => panic!("Unrecognized token {:?}", tok),
+                                }
+                                locals.push(parse_type(&mut peekable).unwrap());
+                                match peekable.next().unwrap() {
+                                    Token::Sigil(';') => {}
+                                    tok => panic!("Unrecognized token {:?}", tok),
+                                }
+                            }
+                            _ => break,
+                        }
+                    }
+                    ScopeMember {
+                        member_decl: MemberDeclaration::Function(FunctionDeclaration {
+                            ty: xlang_struct::FnType {
+                                ret,
+                                params,
+                                tag: "".into(),
+                                variadic,
+                            },
+                            body: xlang::abi::option::Some(FunctionBody {
+                                locals,
+                                block: parse_block(&mut peekable),
+                            }),
+                            linkage,
+                        }),
+                        ..ScopeMember::default()
+                    }
+                }
+                tok => panic!("Unexpected token {:?}", tok),
+            }
+        }
+        tok => panic!("Unexpceted token {:?}", tok),
     }
 }
 
@@ -456,124 +596,35 @@ pub fn parse_scope_member<I: Iterator<Item = Token>>(
             mem.1.annotations = attrs;
             Some(mem)
         }
+        Token::Ident(id)
+            if id == "external" || id == "internal" || id == "const" || id == "weak" =>
+        {
+            let linkage = match &**id {
+                "external" => Linkage::External,
+                "internal" => Linkage::Internal,
+                "const" => Linkage::Constant,
+                "weak" => Linkage::Weak,
+                _ => unreachable!(),
+            };
+
+            it.next();
+            match it.next().unwrap() {
+                Token::Ident(id) if id == "function" => {
+                    it.next();
+                    let name = parse_path(it);
+
+                    Some((name, parse_function_decl(it, linkage)))
+                }
+                Token::Ident(id) if id == "static" => todo!(),
+                tok => panic!("expected static or function, got {:?}", tok),
+            }
+        }
         Token::Ident(id) if id == "function" => {
+            let linkage = Linkage::External;
             it.next();
             let name = parse_path(it);
 
-            match it.next().unwrap() {
-                Token::Group(Group::Parenthesis(toks)) => {
-                    let mut params = Vec::new();
-                    let mut peekable = toks.into_iter().peekmore();
-                    let mut variadic = false;
-                    loop {
-                        match peekable.peek() {
-                            Some(Token::Sigil('.')) => {
-                                peekable.next();
-                                match peekable.next().unwrap() {
-                                    Token::Sigil('.') => {}
-                                    tok => panic!("Unexpected token {:?}", tok),
-                                }
-                                match peekable.next().unwrap() {
-                                    Token::Sigil('.') => {}
-                                    tok => panic!("Unexpected token {:?}", tok),
-                                }
-
-                                if let Some(tok) = peekable.next() {
-                                    panic!("Unexpected token {:?}", tok);
-                                }
-                                variadic = true;
-                                break;
-                            }
-                            Some(_) => {
-                                params.push(parse_type(&mut peekable).unwrap());
-                            }
-                            None => break,
-                        }
-
-                        match peekable.next() {
-                            Some(Token::Sigil(',')) => continue,
-                            Some(tok) => panic!("Unexpected token {:?}", tok),
-                            None => break,
-                        }
-                    }
-                    drop(peekable);
-
-                    let ret = match it.peek().unwrap() {
-                        Token::Sigil('-') => {
-                            it.next();
-                            assert_eq!(it.next(), Some(Token::Sigil('>')));
-                            parse_type(it).unwrap()
-                        }
-
-                        _ => Type::Void,
-                    };
-
-                    match it.next().unwrap() {
-                        Token::Sigil(';') => Some((
-                            name,
-                            ScopeMember {
-                                member_decl: MemberDeclaration::Function(FunctionDeclaration {
-                                    ty: xlang_struct::FnType {
-                                        ret,
-                                        params,
-                                        tag: "".into(),
-                                        variadic,
-                                    },
-                                    body: xlang::abi::option::None,
-                                }),
-                                ..ScopeMember::default()
-                            },
-                        )),
-                        Token::Group(Group::Braces(toks)) => {
-                            let mut peekable = toks.into_iter().peekmore();
-                            let mut locals = Vec::new();
-                            loop {
-                                match peekable.peek() {
-                                    Some(Token::Ident(id)) if id == "declare" => {
-                                        peekable.next();
-                                        match peekable.next().unwrap() {
-                                            Token::Ident(id) if id.starts_with('_') => {
-                                                // Assume there's increasing indecies for now
-                                            }
-                                            tok => panic!("Unrecognized token {:?}", tok),
-                                        }
-                                        match peekable.next().unwrap() {
-                                            Token::Sigil(':') => {}
-                                            tok => panic!("Unrecognized token {:?}", tok),
-                                        }
-                                        locals.push(parse_type(&mut peekable).unwrap());
-                                        match peekable.next().unwrap() {
-                                            Token::Sigil(';') => {}
-                                            tok => panic!("Unrecognized token {:?}", tok),
-                                        }
-                                    }
-                                    _ => break,
-                                }
-                            }
-                            Some((
-                                name,
-                                ScopeMember {
-                                    member_decl: MemberDeclaration::Function(FunctionDeclaration {
-                                        ty: xlang_struct::FnType {
-                                            ret,
-                                            params,
-                                            tag: "".into(),
-                                            variadic,
-                                        },
-                                        body: xlang::abi::option::Some(FunctionBody {
-                                            locals,
-                                            block: parse_block(&mut peekable),
-                                        }),
-                                    }),
-                                    ..ScopeMember::default()
-                                },
-                            ))
-                        }
-                        tok => panic!("Unexpected token {:?}", tok),
-                    }
-                }
-                tok => panic!("Unexpceted token {:?}", tok),
-            }
+            Some((name, parse_function_decl(it, linkage)))
         }
         Token::Ident(id) if id == "static" => {
             it.next();
@@ -852,19 +903,6 @@ pub fn parse_access_class<I: Iterator<Item = Token>>(it: &mut PeekMoreIterator<I
                         acc |= AccessClass::AtomicSeqCst;
                     }
                     tok => panic!("Unexpected token {:?}", tok),
-                }
-
-                match it.peek() {
-                    Some(Token::Ident(id)) if id == "fail" => {
-                        it.next();
-                        match it.next().unwrap() {
-                            Token::Ident(id) if id == "relaxed" => {
-                                acc |= AccessClass::AtomicFailRelaxed;
-                            }
-                            tok => panic!("Unexpected token {:?}", tok),
-                        }
-                    }
-                    _ => {}
                 }
             }
             Some(Token::Ident(id)) if id == "freeze" => {

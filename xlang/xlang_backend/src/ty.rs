@@ -223,19 +223,19 @@ impl TypeInformation {
         let mut base_fields = defn.fields.clone();
 
         if sort_align && defn.kind != AggregateKind::Union {
-            base_fields.sort_by_key(|Pair(_, ty)| self.type_align(ty).unwrap());
+            base_fields.sort_by_key(|field| self.type_align(&field.ty).unwrap());
         }
 
-        for Pair(name, ty) in base_fields {
-            let name = name.to_string();
-            let falign = self.type_align(&ty).unwrap();
+        for field in base_fields {
+            let name = field.name.to_string();
+            let falign = self.type_align(&field.ty).unwrap();
             align = falign.max(align);
-            let fsize = self.type_size(&ty).unwrap();
+            let fsize = self.type_size(&field.ty).unwrap();
 
             assert!(
                 !((falign != 1 || fsize != 0)
                     && is_transparent
-                    && core::mem::replace(&mut transparent_over, Some(ty.clone())).is_some()),
+                    && core::mem::replace(&mut transparent_over, Some(field.ty.clone())).is_some()),
                 "Cannot be transparent over multiple non- 1-ZST fields"
             );
             match defn.kind {
@@ -243,11 +243,11 @@ impl TypeInformation {
                     size = align_size(size, falign);
                     let offset = size;
                     size += fsize;
-                    fields.insert(name, (offset, ty));
+                    fields.insert(name, (offset, field.ty));
                 }
                 AggregateKind::Union => {
                     size = fsize.max(size);
-                    fields.insert(name, (0, ty));
+                    fields.insert(name, (0, field.ty));
                 }
             }
         }

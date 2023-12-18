@@ -11,7 +11,7 @@ use xlang::{
         collection::HashMap, io::WriteAdapter, option::Some as XLangSome, pair::Pair,
         result::Result::Ok as XLangOk, span::Span, string::StringView, try_,
     },
-    ir::{AccessClass, BinaryOp, FnType, PathComponent, PointerKind, Type, UnaryOp},
+    ir::{AccessClass, BinaryOp, FnType, Linkage, PathComponent, PointerKind, Type, UnaryOp},
     plugin::{OutputMode, XLangCodegen, XLangPlugin},
     targets::properties::TargetProperties,
 };
@@ -602,13 +602,26 @@ pub trait MCWriter {
     fn target_matches(&self, name: &str) -> bool;
 }
 
+#[allow(dead_code)] // These will be used more properly later
+enum SectionSpec {
+    GlobalSection,
+    UniqueSection,
+    Comdat(String),
+    Section(String),
+}
+
+struct MCFunctionDecl<W: MCWriter> {
+    linkage: Linkage,
+    body: Option<(SectionSpec, FunctionCodegen<MCFunctionCodegen<W::Features>>)>,
+}
+
 /// Backend that generates MCIR from XIR then writes to a binary file
 pub struct MCBackend<W: MCWriter> {
     properties: Option<&'static TargetProperties<'static>>,
     feature: Span<'static, StringView<'static>>,
     strings: Rc<RefCell<StringMap>>,
     writer: W,
-    functions: HashMap<String, FunctionCodegen<MCFunctionCodegen<W::Features>>>,
+    functions: HashMap<String, MCFunctionDecl<W>>,
     tys: Option<Rc<TypeInformation>>,
 }
 
@@ -647,15 +660,18 @@ impl<W: MCWriter> XLangPlugin for MCBackend<W> {
         for Pair(path, mem) in &ir.root.members {
             match &mem.member_decl {
                 xlang::ir::MemberDeclaration::Function(f) => {
-                    if let XLangSome(body) = &f.body {
-                        let features = self
-                            .writer
-                            .get_features(self.properties.unwrap(), self.feature);
-                        let mangled_name = match &*path.components {
-                            [PathComponent::Root, PathComponent::Text(n)]
-                            | [PathComponent::Text(n)] => n.to_string(),
-                            [PathComponent::Root, rest @ ..] | [rest @ ..] => features.mangle(rest),
-                        };
+                    let features = self
+                        .writer
+                        .get_features(self.properties.unwrap(), self.feature);
+                    let mangled_name = match &*path.components {
+                        [PathComponent::Root, PathComponent::Text(n)]
+                        | [PathComponent::Text(n)] => n.to_string(),
+                        [PathComponent::Root, rest @ ..] | [rest @ ..] => features.mangle(rest),
+                    };
+                    let linkage = f.linkage;
+                    let body = if let XLangSome(body) = &f.body {
+                        let section_spec = SectionSpec::GlobalSection;
+
                         let innercg = MCFunctionCodegen {
                             fn_name: mangled_name.clone(),
                             inner: features,
@@ -680,8 +696,13 @@ impl<W: MCWriter> XLangPlugin for MCBackend<W> {
 
                         fncg.write_function_body(body);
 
-                        self.functions.insert(mangled_name, fncg);
-                    }
+                        Some((section_spec, fncg))
+                    } else {
+                        None
+                    };
+
+                    self.functions
+                        .insert(mangled_name, MCFunctionDecl { linkage, body });
                 }
                 xlang::ir::MemberDeclaration::Static(_) => todo!("static"),
                 _ => {}
@@ -741,38 +762,50 @@ impl<W: MCWriter> XLangCodegen for MCBackend<W> {
         }
 
         for Pair(name, func) in core::mem::take(&mut self.functions) {
-            let mut inner = func.into_inner();
-            let cc = &inner.callconv;
-            let clobbers = self.writer.resolve_locations(&mut inner.mc_insns, &cc.0);
+            let symty = match func.linkage {
+                Linkage::External => binfmt::sym::SymbolKind::Global,
+                Linkage::Internal | Linkage::Constant => binfmt::sym::SymbolKind::Local,
+                Linkage::Weak => binfmt::sym::SymbolKind::Weak,
+            };
 
-            let sym = Symbol::new(
-                name,
-                Some(1),
-                Some(text.offset() as u128),
-                binfmt::sym::SymbolType::Function,
-                binfmt::sym::SymbolKind::Global,
-            );
+            if let Some((_, func)) = func.body {
+                let mut inner = func.into_inner();
+                let cc = &inner.callconv;
+                let clobbers = self.writer.resolve_locations(&mut inner.mc_insns, &cc.0);
 
-            try_!(self
-                .writer
-                .write_machine_code(
-                    &inner.mc_insns,
-                    clobbers,
-                    self.tys.clone().unwrap(),
-                    &mut text,
-                    |label, offset| {
-                        syms.push(Symbol::new(
-                            label,
-                            Some(1),
-                            Some(offset as u128),
-                            binfmt::sym::SymbolType::Function,
-                            binfmt::sym::SymbolKind::Local,
-                        ))
-                    }
-                )
-                .map_err(Into::into));
+                let sym = Symbol::new(
+                    name,
+                    Some(1),
+                    Some(text.offset() as u128),
+                    binfmt::sym::SymbolType::Function,
+                    symty,
+                );
 
-            syms.push(sym);
+                try_!(self
+                    .writer
+                    .write_machine_code(
+                        &inner.mc_insns,
+                        clobbers,
+                        self.tys.clone().unwrap(),
+                        &mut text,
+                        |label, offset| {
+                            syms.push(Symbol::new(
+                                label,
+                                Some(1),
+                                Some(offset as u128),
+                                binfmt::sym::SymbolType::Function,
+                                binfmt::sym::SymbolKind::Local,
+                            ))
+                        }
+                    )
+                    .map_err(Into::into));
+
+                syms.push(sym);
+            } else if func.linkage == Linkage::Weak {
+                let sym = Symbol::new(name, None, None, binfmt::sym::SymbolType::Function, symty);
+
+                syms.push(sym);
+            }
         }
 
         let rodatano = binfile.add_section(rodata).unwrap();

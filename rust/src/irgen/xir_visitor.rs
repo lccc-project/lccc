@@ -1,7 +1,10 @@
 use core::convert::TryInto;
 use core::fmt::Write;
 
-use xlang::ir::{self, AggregateCtor, ScalarTypeKind, ScalarValidity};
+use xlang::ir::{
+    self, AggregateCtor, AggregateField, AggregateFieldSpecifier, AnnotatedElement, ScalarTypeKind,
+    ScalarValidity,
+};
 use xlang::prelude::v1::{HashMap, Pair};
 use xlang::targets::properties::TargetProperties;
 use xlang::{abi::string::String as XLangString, abi::vec::Vec, vec};
@@ -440,7 +443,16 @@ impl<'a> Drop for XirStructDefVisitor<'a> {
             let name = xlang::abi::format!("{}", field);
 
             let pos = offsets.insert_sorted(layout.field_offsets[&field]);
-            fields.insert(Pair(name, ty), pos);
+            fields.insert(
+                AggregateField {
+                    annotations: ir::AnnotatedElement::default(),
+                    specifiers: AggregateFieldSpecifier::empty(),
+                    name,
+                    ty,
+                    bitfield_width: ir::Value::Empty,
+                },
+                pos,
+            );
         }
 
         self.def.fields = fields;

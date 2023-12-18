@@ -126,8 +126,8 @@ impl TypeState<'_> {
             Type::Aggregate(n) => Some(
                 n.fields
                     .iter()
-                    .filter(|Pair(s, _)| s == name)
-                    .map(|Pair(_, ty)| ty)
+                    .filter(|field| field.name == name)
+                    .map(|field| &field.ty)
                     .next()
                     .unwrap(),
             ),
@@ -138,8 +138,8 @@ impl TypeState<'_> {
                         ag.unwrap()
                             .fields
                             .iter()
-                            .filter(|Pair(s, _)| s == name)
-                            .map(|Pair(_, ty)| ty)
+                            .filter(|field| field.name == name)
+                            .map(|field| &field.ty)
                             .next()
                             .unwrap(),
                     )
@@ -162,6 +162,7 @@ fn tycheck_function(x: &mut FunctionDeclaration, tys: &TypeState) {
     if let FunctionDeclaration {
         ty,
         body: XLangSome(body),
+        ..
     } = x
     {
         let local_tys = body.locals.clone();
@@ -288,12 +289,18 @@ fn check_unify(ty1: &Type, ty2: &Type, type_state: &TypeState) {
                 ty1, ty2
             );
 
-            defn1.fields.iter().zip(&defn2.fields).for_each(
-                |(Pair(name1, ty1), Pair(name2, ty2))| {
-                    check_unify(ty1, ty2, type_state);
-                    assert_eq!(name1, name2, "cannot unify types {:?} and {:?}", ty1, ty2);
-                },
-            );
+            defn1
+                .fields
+                .iter()
+                .zip(&defn2.fields)
+                .for_each(|(field1, field2)| {
+                    check_unify(&field1.ty, &field2.ty, type_state);
+                    assert_eq!(
+                        field1.name, field2.name,
+                        "cannot unify types {:?} and {:?}",
+                        ty2, ty2
+                    );
+                });
         }
         (Type::Array(arr1), Type::Array(arr2)) => match (&arr1.len, &arr2.len) {
             (
@@ -409,6 +416,7 @@ fn tycheck_expr(
                     kind: StackValueKind::RValue,
                 });
             }
+            xlang_struct::Value::Empty => panic!("Empty is not allowed"),
         },
         xlang_struct::Expr::Exit { values } => {
             let pos = vstack.len().checked_sub(*values as usize).unwrap();

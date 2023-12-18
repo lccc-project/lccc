@@ -482,11 +482,50 @@ pub enum Linkage {
     Weak,
 }
 
+impl Default for Linkage {
+    fn default() -> Self {
+        Linkage::External
+    }
+}
+
+impl core::fmt::Display for Linkage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::External => f.write_str("external"),
+            Self::Internal => f.write_str("internal"),
+            Self::Weak => f.write_str("weak"),
+            Self::Constant => f.write_str("const"),
+        }
+    }
+}
+
+bitflags::bitflags! {
+    /// Specifiers for a static declaration or definition
+    ///
+    /// Matches the abnf
+    /// ```abnf
+    /// static-specifier := "immut"
+    /// ```
+    #[repr(transparent)]
+    pub struct StaticSpecifier : u16{
+        const IMMUTABLE = 0x001;
+    }
+}
+
+impl core::fmt::Display for StaticSpecifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.contains(Self::IMMUTABLE) {
+            f.write_str("immut ")?;
+        }
+        Ok(())
+    }
+}
+
 /// A `static` (Value) definition
 ///
 /// Matches the abnf
 /// ```abnf
-/// member-declaration /= [<linkage>] "static" <path> ":" <type> ["=" <value>] ";"
+/// member-declaration /= [<linkage>] "static" [*<static-specifier>] <path> ":" <type> ["=" <value>] ";"
 /// ```
 #[repr(C)]
 #[derive(Clone, Debug)]
@@ -501,6 +540,10 @@ pub struct StaticDefinition {
     ///
     /// Matches `[<linkage>]`
     pub linkage: Linkage,
+    /// The specifiers for the `static` declaration
+    ///
+    /// Matches `<static-specifier>`
+    pub specifiers: StaticSpecifier,
 }
 
 impl Default for MemberDeclaration {
@@ -1082,12 +1125,75 @@ pub enum AggregateKind {
     Union,
 }
 
+bitflags::bitflags! {
+    /// The specifiers attached to a aggregate field
+    ///
+    /// Matches the ABNF syntax
+    /// ```abnf
+    /// field-specifier := "mutable"
+    /// ```
+    #[repr(transparent)]
+    pub struct AggregateFieldSpecifier : u32{
+        /// Indicates that the field is writable, regardless of `readonly`, `readshallow`, or top level `immutable binding`
+        const MUTABLE = 0x0001;
+    }
+}
+
+impl core::fmt::Display for AggregateFieldSpecifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.contains(Self::MUTABLE) {
+            f.write_str("mutable ")?;
+        }
+        Ok(())
+    }
+}
+
+/// The definition of an aggregate field.
+///
+/// Matches the ABNF syntax
+/// ```abnf
+/// aggregate-field := <annotated-element> [*<field-specifier>] <ident> ":" <type> [":" <value>]
+/// ```
+#[repr(C)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct AggregateField {
+    /// The annotations on the field
+    /// Matches `<annotated-element>`
+    pub annotations: AnnotatedElement,
+    /// The flags of a field.
+    /// Matches `<field-specifier>`
+    pub specifiers: AggregateFieldSpecifier,
+    ///The name of the field
+    /// Matches `<ident>`
+    pub name: String,
+    /// The type of the field
+    ///
+    /// Matches `<type>`
+    pub ty: Type,
+    /// Matches `<value>` if present
+    pub bitfield_width: Value,
+}
+
+impl core::fmt::Display for AggregateField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.annotations.fmt(f)?;
+        self.specifiers.fmt(f)?;
+        self.name.fmt(f)?;
+        f.write_str(": ")?;
+        self.ty.fmt(f)?;
+        if self.bitfield_width != Value::Empty {
+            f.write_str(": ")?;
+            self.bitfield_width.fmt(f)?;
+        }
+        Ok(())
+    }
+}
+
 /// The definition of an aggregate type.
 ///
 /// Matches the ABNF syntax
 /// ```abnf
 /// aggregate-definition := <annotated-element> "{" [<aggregate-field> [*("," <aggregate-field>)] "}"
-/// aggregate-field := <annotated-element> <name> ":" <type> [":" <value>]
 /// ```
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -1098,7 +1204,7 @@ pub struct AggregateDefinition {
     pub kind: AggregateKind,
     /// The fields of the aggregate.
     /// Matches each `<aggregate-field>`
-    pub fields: Vec<Pair<String, Type>>,
+    pub fields: Vec<AggregateField>,
 }
 
 impl core::fmt::Display for AggregateDefinition {
@@ -1115,12 +1221,10 @@ impl core::fmt::Display for AggregateDefinition {
 
         f.write_str("{")?;
         let mut sep = " ";
-        for Pair(name, ty) in &self.fields {
+        for field in &self.fields {
             f.write_str(sep)?;
             sep = ", ";
-            f.write_str(name)?;
-            f.write_str(": ")?;
-            ty.fmt(f)?;
+            field.fmt(f)?;
         }
         f.write_str(" }")
     }
@@ -1353,6 +1457,13 @@ pub enum Value {
         ty: Type,
     },
     LabelAddress(u32),
+    Empty,
+}
+
+impl Default for Value {
+    fn default() -> Self {
+        Value::Empty
+    }
 }
 
 impl core::fmt::Display for Value {
@@ -1406,6 +1517,7 @@ impl core::fmt::Display for Value {
                 utf8.escape_default()
             )),
             Self::LabelAddress(n) => f.write_fmt(format_args!("label_address @{}", n)),
+            Self::Empty => Ok(()),
         }
     }
 }
@@ -1942,7 +2054,6 @@ impl AccessClass {
     pub const Volatile: Self = Self(0x10);
     pub const Nontemporal: Self = Self(0x20);
     pub const Freeze: Self = Self(0x40);
-    pub const AtomicFailRelaxed: Self = Self(0x80);
 
     pub const ATOMIC_MASK: Self = Self(0xf);
 }
@@ -1967,11 +2078,7 @@ impl std::fmt::Display for AccessClass {
             f.write_str("freeze")?;
             sep = " ";
         }
-        if (bits & 0x80) != 0 {
-            f.write_str(sep)?;
-            f.write_str("fail relaxed")?;
-            sep = " ";
-        }
+
         match atomic {
             0 => {}
             1 => f.write_fmt(format_args!("{}atomic relaxed", sep))?,
@@ -1982,10 +2089,7 @@ impl std::fmt::Display for AccessClass {
             x @ 6..=16 => panic!("unknown atomic({})", x),
             _ => unreachable!(),
         }
-        if (bits & 0x80) != 0 {
-            f.write_str(" ")?;
-            f.write_str("fail relaxed")?;
-        }
+
         Ok(())
     }
 }
@@ -2106,6 +2210,7 @@ pub struct FunctionBody {
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
 pub struct FunctionDeclaration {
     pub ty: FnType,
+    pub linkage: Linkage,
     pub body: Option<FunctionBody>,
 }
 
