@@ -1,0 +1,5 @@
+public function ptr_load(*int(32)) -> int(32){
+    indirect
+    as_rvalue
+    exit 1
+}

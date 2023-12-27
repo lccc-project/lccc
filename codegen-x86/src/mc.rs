@@ -20,7 +20,7 @@ use xlang_backend::{
     mc::{MCInsn, MCWriter, MachineFeatures, MaybeResolved},
     ty::TypeInformation,
 };
-use xlang_struct::{BinaryOp, Type};
+use xlang_struct::{BinaryOp, ScalarType, ScalarTypeKind, Type};
 
 pub enum X86MCInstruction {}
 
@@ -329,12 +329,12 @@ pub struct X86MCWriter {}
 
 fn resolve_location(
     loc: &mut MaybeResolved<X86ValLocation>,
-    assignments: &HashMap<u32, X86ValLocation>,
+    assignments: &HashMap<u32, (Type, X86ValLocation)>,
 ) {
     match loc {
         MaybeResolved::Unresolved(inner) => {
-            if let Some(assign) = assignments.get(&inner.id()) {
-                *loc = MaybeResolved::Resolved(Type::Void, assign.clone())
+            if let Some((ty, assign)) = assignments.get(&inner.id()).cloned() {
+                *loc = MaybeResolved::Resolved(ty, assign)
             }
         }
         MaybeResolved::Resolved(_, _) => {}
@@ -343,7 +343,7 @@ fn resolve_location(
 
 fn resolve_locations_in(
     insn: &mut MCInsn<X86ValLocation>,
-    assignments: &HashMap<u32, X86ValLocation>,
+    assignments: &HashMap<u32, (Type, X86ValLocation)>,
 ) {
     match insn {
         MCInsn::Null => todo!(),
@@ -375,6 +375,10 @@ fn resolve_locations_in(
         MCInsn::LoadSym { loc, .. } => {
             resolve_location(loc, assignments);
         }
+        MCInsn::LoadIndirect { dest, src_ptr, .. } => {
+            resolve_location(dest, assignments);
+            resolve_location(src_ptr, assignments);
+        }
         _ => {}
     }
 }
@@ -382,7 +386,7 @@ fn resolve_locations_in(
 fn allocate_registers_for(
     dest: &mut MaybeResolved<X86ValLocation>,
     clobbers: &mut X86Clobbers,
-    assignments: &mut HashMap<u32, X86ValLocation>,
+    assignments: &mut HashMap<u32, (Type, X86ValLocation)>,
     num: u32,
 ) -> bool {
     let iregs = &[
@@ -403,21 +407,22 @@ fn allocate_registers_for(
     ];
     match dest {
         MaybeResolved::Unresolved(loc) => {
-            if loc.size() == 0 {
+            let ty = loc.type_of().clone();
+            if loc.size_of() == 0 {
                 let id = loc.id();
                 let loc = X86ValLocation::Null;
-                *dest = MaybeResolved::Resolved(Type::Null, loc.clone());
-                assignments.insert(id, loc);
+                *dest = MaybeResolved::Resolved(ty.clone(), loc.clone());
+                assignments.insert(id, (ty, loc));
                 false
-            } else if loc.size() <= 8 {
+            } else if loc.size_of() <= 8 {
                 for reg in iregs {
                     if clobbers.used_regs.contains(reg) {
                         continue;
                     } else {
                         let id = loc.id();
                         let loc = X86ValLocation::Register(*reg);
-                        *dest = MaybeResolved::Resolved(Type::Null, loc.clone());
-                        assignments.insert(id, loc);
+                        *dest = MaybeResolved::Resolved(ty.clone(), loc.clone());
+                        assignments.insert(id, (ty, loc));
                         return false;
                     }
                 }
@@ -433,7 +438,7 @@ fn allocate_registers_for(
 fn allocate_registers_in(
     insn: &mut MCInsn<X86ValLocation>,
     clobbers: &mut X86Clobbers,
-    assignments: &mut HashMap<u32, X86ValLocation>,
+    assignments: &mut HashMap<u32, (Type, X86ValLocation)>,
     num: u32,
 ) -> bool {
     match insn {
@@ -457,6 +462,45 @@ fn allocate_registers_in(
         MCInsn::LoadSym { loc, sym } => allocate_registers_for(loc, clobbers, assignments, num),
         MCInsn::Label(_) => true,
         _ => true,
+    }
+}
+
+fn mov_opcode(cl: X86RegisterClass, align: u64, is_int_vec_hint: bool) -> X86CodegenOpcode {
+    match cl {
+        X86RegisterClass::Byte
+        | X86RegisterClass::ByteRex
+        | X86RegisterClass::Word
+        | X86RegisterClass::Double
+        | X86RegisterClass::Quad
+        | X86RegisterClass::Sreg => X86CodegenOpcode::Mov,
+        X86RegisterClass::Mmx => todo!("mmx"),
+        X86RegisterClass::Xmm => match (align >= 16, is_int_vec_hint) {
+            (true, true) => todo!("movdqa"),
+            (true, false) => todo!("movaps"),
+            (false, true) => todo!("movdqu"),
+            (false, false) => todo!("movups"),
+        },
+        X86RegisterClass::Ymm => match (align >= 32, is_int_vec_hint) {
+            (true, true) => todo!("vmovdqa"),
+            (true, false) => todo!("vmovaps"),
+            (false, true) => todo!("vmovdqu"),
+            (false, false) => todo!("vmovups"),
+        },
+        X86RegisterClass::Zmm => match (align >= 64, is_int_vec_hint) {
+            (true, true) => todo!("vmovdqa"),
+            (true, false) => todo!("vmovaps"),
+            (false, true) => todo!("vmovdqu"),
+            (false, false) => todo!("vmovups"),
+        },
+
+        X86RegisterClass::Cr | X86RegisterClass::Dr | X86RegisterClass::Tr => {
+            panic!("Why are we codegenning to control/debug/trace registers?")
+        }
+
+        X86RegisterClass::AvxMask => todo!("movemask"),
+        X86RegisterClass::Tmm => todo!("tmm handling"),
+        X86RegisterClass::St => panic!("FP Stack needs to be handled specially"),
+        _ => todo!(),
     }
 }
 
@@ -518,7 +562,8 @@ impl MCWriter for X86MCWriter {
                                     }
                                     _ => {}
                                 }
-                                curr_assignments.insert(loc.id(), reg.clone());
+                                curr_assignments
+                                    .insert(loc.id(), (loc.type_of().clone(), reg.clone()));
                                 done = false;
                             }
                             (MaybeResolved::Unresolved(loc), MaybeResolved::Resolved(_, reg)) => {
@@ -528,7 +573,8 @@ impl MCWriter for X86MCWriter {
                                     }
                                     _ => {}
                                 }
-                                curr_assignments.insert(loc.id(), reg.clone());
+                                curr_assignments
+                                    .insert(loc.id(), (loc.type_of().clone(), reg.clone()));
                                 done = false;
                             }
                             (MaybeResolved::Unresolved(l), MaybeResolved::Unresolved(r)) => {
@@ -666,7 +712,89 @@ impl MCWriter for X86MCWriter {
                     },
                     _ => panic!("UNresolved location"),
                 },
-                MCInsn::StoreIndirect { dest_ptr, src, .. } => todo!(),
+                MCInsn::StoreIndirect { dest_ptr, src, .. } => match (dest_ptr, src) {
+                    (MaybeResolved::Resolved(_, ptr), MaybeResolved::Resolved(ty, loc)) => {
+                        match (ptr, loc) {
+                            (X86ValLocation::Null, _) => panic!("Pointer in nowhere"),
+                            (_, X86ValLocation::Null) => {}
+                            (X86ValLocation::Register(ptr), X86ValLocation::Register(reg)) => {
+                                let align = tys.type_align(ty).unwrap();
+
+                                let int_vec_hint = matches!(
+                                    ty,
+                                    Type::Scalar(ScalarType {
+                                        kind: ScalarTypeKind::Integer { .. }
+                                            | ScalarTypeKind::Char { .. }
+                                            | ScalarTypeKind::Fixed { .. },
+                                        ..
+                                    })
+                                );
+
+                                let class = reg.class();
+
+                                let instr = mov_opcode(class, align, int_vec_hint);
+
+                                encoder.write_insn(X86Instruction::new(
+                                    instr,
+                                    vec![
+                                        X86Operand::Memory(
+                                            class,
+                                            None,
+                                            X86MemoryOperand::Indirect {
+                                                reg: *ptr,
+                                                disp: None,
+                                            },
+                                        ),
+                                        X86Operand::Register(*reg),
+                                    ],
+                                ))?;
+                            }
+                        }
+                    }
+                    _ => panic!("Unresolved Location"),
+                },
+                MCInsn::LoadIndirect { dest, src_ptr, .. } => match (src_ptr, dest) {
+                    (MaybeResolved::Resolved(ptr_ty, ptr), MaybeResolved::Resolved(ty, loc)) => {
+                        match (ptr, loc) {
+                            (X86ValLocation::Null, _) => panic!("Pointer in nowhere"),
+                            (_, X86ValLocation::Null) => {}
+                            (X86ValLocation::Register(ptr), X86ValLocation::Register(reg)) => {
+                                eprintln!("{}: {}", ptr_ty, ty);
+                                let align = tys.type_align(ty).unwrap();
+
+                                let int_vec_hint = matches!(
+                                    ty,
+                                    Type::Scalar(ScalarType {
+                                        kind: ScalarTypeKind::Integer { .. }
+                                            | ScalarTypeKind::Char { .. }
+                                            | ScalarTypeKind::Fixed { .. },
+                                        ..
+                                    })
+                                );
+
+                                let class = reg.class();
+
+                                let instr = mov_opcode(class, align, int_vec_hint);
+
+                                encoder.write_insn(X86Instruction::new(
+                                    instr,
+                                    vec![
+                                        X86Operand::Register(*reg),
+                                        X86Operand::Memory(
+                                            class,
+                                            None,
+                                            X86MemoryOperand::Indirect {
+                                                reg: *ptr,
+                                                disp: None,
+                                            },
+                                        ),
+                                    ],
+                                ))?;
+                            }
+                        }
+                    }
+                    _ => panic!("Unresolved Location"),
+                },
                 MCInsn::StoreIndirectImm { dest_ptr, src, .. } => match dest_ptr {
                     MaybeResolved::Resolved(ty, loc) => match loc {
                         X86ValLocation::Register(reg) => {

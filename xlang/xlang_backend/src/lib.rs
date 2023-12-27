@@ -1922,7 +1922,12 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         VStackValue::Trapped
                     }
                     LValue::Temporary(val) => Box::into_inner(val),
-                    LValue::OpaquePointer(loc) => todo!("as_rvalue [{:?}]", loc),
+                    LValue::OpaquePointer(loc) => {
+                        let dst = self.inner.allocate(&ty, false);
+                        self.inner.load_val(loc, dst.clone());
+
+                        self.opaque_value(&ty, dst)
+                    }
 
                     LValue::Local(n) => {
                         let local = self.locals[n as usize].0.clone();

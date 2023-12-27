@@ -159,6 +159,15 @@ pub enum MCInsn<Loc> {
     Label(String),
     /// Unconditional Branch
     UnconditionalBranch(String),
+    /// A Load operation that reads from a pointer
+    LoadIndirect {
+        /// The (immediate) destination location
+        dest: MaybeResolved<Loc>,
+        /// The location with the pointer to load from
+        src_ptr: MaybeResolved<Loc>,
+        /// The Access Class
+        cl: AccessClass,
+    },
 }
 
 impl<Loc> Default for MCInsn<Loc> {
@@ -168,10 +177,11 @@ impl<Loc> Default for MCInsn<Loc> {
 }
 
 /// A location (register) allocated by the backend
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Location {
     id: u32,
     has_addr: bool,
+    ty: Type,
     size: u64,
     align: u64,
 }
@@ -187,13 +197,18 @@ impl Location {
         self.has_addr
     }
 
-    /// The required size of the location
-    pub const fn size(&self) -> u64 {
+    /// Yields the type of the `Location`
+    pub const fn type_of(&self) -> &Type {
+        &self.ty
+    }
+
+    /// Yields the size of the `Location`
+    pub const fn size_of(&self) -> u64 {
         self.size
     }
 
-    /// The required alignment for the location, if it has an address
-    pub const fn align(&self) -> u64 {
+    /// Yields the alignment requirement of the `Location`
+    pub const fn align_of(&self) -> u64 {
         self.align
     }
 }
@@ -207,6 +222,7 @@ impl ValLocation for Location {
         Self {
             id: u32::try_from(n).unwrap(),
             has_addr: false,
+            ty: Type::Null,
             size: 0,
             align: 1,
         }
@@ -329,11 +345,19 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
     }
 
     fn load_val(&mut self, lvalue: Self::Loc, loc: Self::Loc) {
-        todo!()
+        self.mc_insns.push(MCInsn::LoadIndirect {
+            dest: loc,
+            src_ptr: lvalue,
+            cl: AccessClass::Normal,
+        })
     }
 
-    fn store_indirect(&mut self, lvalue: Self::Loc, loc: Self::Loc, ty: &Type) {
-        todo!()
+    fn store_indirect(&mut self, lvalue: Self::Loc, loc: Self::Loc, _: &Type) {
+        self.mc_insns.push(MCInsn::StoreIndirect {
+            dest_ptr: lvalue,
+            src: loc,
+            cl: AccessClass::Normal,
+        })
     }
 
     fn get_callconv(&self) -> &Self::CallConv {
@@ -484,12 +508,18 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
             size,
             align,
             has_addr: needs_addr,
+            ty: ty.clone(),
         })
     }
 
     fn allocate_lvalue(&mut self, needs_addr: bool) -> Self::Loc {
         let size = self.tys.pointer_size(&Type::Void, PointerKind::Default);
         let align = self.tys.pointer_align(&Type::Void, PointerKind::Default);
+
+        let ty = Type::Pointer(xlang::ir::PointerType {
+            inner: xlang::abi::boxed::Box::new(Type::Void),
+            ..Default::default()
+        });
 
         let id = self.next_loc_id;
         self.next_loc_id += 1;
@@ -498,6 +528,7 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
             size,
             align,
             has_addr: needs_addr,
+            ty,
         })
     }
 
