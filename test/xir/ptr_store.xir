@@ -1,0 +1,6 @@
+public function store(*int(32)){
+    indirect
+    const int(32) 0
+    pivot 1
+    assign
+}
