@@ -3,11 +3,20 @@
 //! Crate for structural representation of xlang ir
 //! The types in this crate provide a high-level field of XIR that is easily programatically generatable, consummable, and manipulable.
 //!
-//! Each item in this section describes the syntax for that item in textual XIR. It is assumed that productions from other items are in-scope as non-terminals.
+//! Each item in this section describes the syntax for that item in textual XIR using a modified ABNF. It is assumed that productions from other items are in-scope as non-terminals.
 //! Additionaly, the following non-terminals are defined as unicode properties from Unicode 15.0.0. A character matches the non-terminal if it has that property:
 //! * `XID_Start`
 //! * `XID_Part`
 //! * `White_Space`
+//!
+//! The ABNF Syntax used in this section is the same as specified by [`RFC 5234`](https://datatracker.ietf.org/doc/html/rfc5234), with the following exceptions:
+//! * Non-terminals not enclosed in `<` brackets `>` are not used.
+//! * Non-terminal names match the ABNF
+//! ```abnf
+//! non-terminal := <non-terminal-start> [*<non-terminal-char>]
+//! non-terminal-start := %x41-%5A / %x61-7A / "_"
+//! non-terminal-char := <non-terminal-start> / %x30-39 / "-"
+//! ````
 //!
 
 use std::convert::TryFrom;
@@ -1236,6 +1245,10 @@ impl Default for Type {
     }
 }
 
+/// An Array type.
+///
+///
+///
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ArrayType {

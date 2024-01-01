@@ -545,21 +545,11 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
         todo!()
     }
 
-    fn tailcall_direct(
-        &mut self,
-        value: xlang::abi::string::StringView,
-        ty: &xlang_struct::FnType,
-        params: xlang::vec::Vec<xlang_backend::expr::VStackValue<Self::Loc>>,
-    ) {
+    fn tailcall_direct(&mut self, path: &xlang_struct::Path, realty: &xlang_struct::FnType) {
         todo!()
     }
 
-    fn tailcall_indirect(
-        &mut self,
-        value: Self::Loc,
-        ty: &xlang_struct::FnType,
-        params: xlang::vec::Vec<xlang_backend::expr::VStackValue<Self::Loc>>,
-    ) {
+    fn tailcall_indirect(&mut self, value: Self::Loc, realty: &xlang_struct::FnType) {
         todo!()
     }
 

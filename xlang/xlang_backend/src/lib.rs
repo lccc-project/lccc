@@ -131,21 +131,11 @@ pub trait FunctionRawCodegen {
 
     /// Performs a guaranteed tail call to the target
     /// Note: The signature is assumed to be compatible with the current function
-    fn tailcall_direct(
-        &mut self,
-        value: StringView,
-        ty: &FnType,
-        params: Vec<VStackValue<Self::Loc>>,
-    );
+    fn tailcall_direct(&mut self, value: &Path, realty: &FnType);
 
     /// Performs a guaranteed tail call to the target
     /// Note: The signature is assumed to be compatible with the current function
-    fn tailcall_indirect(
-        &mut self,
-        value: Self::Loc,
-        ty: &FnType,
-        params: Vec<VStackValue<Self::Loc>>,
-    );
+    fn tailcall_indirect(&mut self, value: Self::Loc, realty: &FnType);
 
     /// Performs the exit sequence of a function
     fn leave_function(&mut self);
@@ -700,6 +690,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         realty: &FnType,
         loc: F::Loc,
         vals: Vec<VStackValue<F::Loc>>,
+        is_tailcall: bool,
     ) {
         self.inner.prepare_call_frame(callty, realty);
         if let std::option::Option::Some(place) =
@@ -716,24 +707,29 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
             self.move_val(val, param_loc);
         }
 
-        self.inner.call_indirect(loc);
-        match &callty.ret {
-            Type::Void => {}
-            Type::Scalar(ScalarType {
-                kind: kind @ ScalarTypeKind::Integer { .. },
-                header: header @ ScalarTypeHeader { bitsize: 0, .. },
-            }) if header.validity.contains(ScalarValidity::NONZERO) => {
-                // special case uint nonzero(0)/int nonzero(0)
-                self.push_value(VStackValue::Constant(Value::Uninitialized(Type::Scalar(
-                    ScalarType {
-                        kind: *kind,
-                        header: *header,
-                    },
-                ))));
-            }
-            ty => {
-                let retloc = self.inner.get_callconv().find_return_val(callty);
-                self.push_opaque(ty, retloc);
+        if is_tailcall {
+            self.inner.tailcall_indirect(loc, realty);
+            self.diverged = true;
+        } else {
+            self.inner.call_indirect(loc);
+            match &callty.ret {
+                Type::Void => {}
+                Type::Scalar(ScalarType {
+                    kind: kind @ ScalarTypeKind::Integer { .. },
+                    header: header @ ScalarTypeHeader { bitsize: 0, .. },
+                }) if header.validity.contains(ScalarValidity::NONZERO) => {
+                    // special case uint nonzero(0)/int nonzero(0)
+                    self.push_value(VStackValue::Constant(Value::Uninitialized(Type::Scalar(
+                        ScalarType {
+                            kind: *kind,
+                            header: *header,
+                        },
+                    ))));
+                }
+                ty => {
+                    let retloc = self.inner.get_callconv().find_return_val(callty);
+                    self.push_opaque(ty, retloc);
+                }
             }
         }
     }
@@ -744,8 +740,17 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         callty: &FnType,
         realty: &FnType,
         path: &Path,
-        vals: Vec<VStackValue<F::Loc>>,
+        mut vals: Vec<VStackValue<F::Loc>>,
+        is_tailcall: bool,
     ) {
+        if intrinsic::call_intrinsic(path, self, realty, self.properties, &mut vals) {
+            if is_tailcall {
+                self.write_exit(1);
+                self.diverged = true;
+            }
+            return;
+        }
+
         self.inner.prepare_call_frame(callty, realty);
         if let std::option::Option::Some(place) =
             self.inner.get_callconv().pass_return_place(&callty.ret)
@@ -760,25 +765,29 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     .find_param(callty, realty, i.try_into().unwrap(), false);
             self.move_val(val, param_loc);
         }
-
-        self.inner.call_direct(path, realty);
-        match &callty.ret {
-            Type::Void => {}
-            Type::Scalar(ScalarType {
-                kind: kind @ ScalarTypeKind::Integer { .. },
-                header: header @ ScalarTypeHeader { bitsize: 0, .. },
-            }) if header.validity.contains(ScalarValidity::NONZERO) => {
-                // special case uint nonzero(0)/int nonzero(0)
-                self.push_value(VStackValue::Constant(Value::Invalid(Type::Scalar(
-                    ScalarType {
-                        kind: *kind,
-                        header: *header,
-                    },
-                ))));
-            }
-            ty => {
-                let retloc = self.inner.get_callconv().find_return_val(callty);
-                self.push_opaque(ty, retloc);
+        if is_tailcall {
+            self.inner.tailcall_direct(path, realty);
+            self.diverged = true;
+        } else {
+            self.inner.call_direct(path, realty);
+            match &callty.ret {
+                Type::Void => {}
+                Type::Scalar(ScalarType {
+                    kind: kind @ ScalarTypeKind::Integer { .. },
+                    header: header @ ScalarTypeHeader { bitsize: 0, .. },
+                }) if header.validity.contains(ScalarValidity::NONZERO) => {
+                    // special case uint nonzero(0)/int nonzero(0)
+                    self.push_value(VStackValue::Constant(Value::Invalid(Type::Scalar(
+                        ScalarType {
+                            kind: *kind,
+                            header: *header,
+                        },
+                    ))));
+                }
+                ty => {
+                    let retloc = self.inner.get_callconv().find_return_val(callty);
+                    self.push_opaque(ty, retloc);
+                }
             }
         }
     }
@@ -1705,7 +1714,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                             Type::FnType(ty) => &**ty,
                             _ => fnty,
                         };
-                        self.call_fn(fnty, realty, &item, vals);
+                        self.call_fn(fnty, realty, &item, vals, false);
                     }
                     VStackValue::Constant(Value::Invalid(_))
                     | VStackValue::Constant(Value::Uninitialized(_))
@@ -1721,9 +1730,11 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         };
                         match lvalue {
                             LValue::OpaquePointer(loc) => {
-                                self.call_indirect(fnty, realty, loc, vals)
+                                self.call_indirect(fnty, realty, loc, vals, false)
                             }
-                            LValue::GlobalAddress(path) => self.call_fn(fnty, realty, &path, vals),
+                            LValue::GlobalAddress(path) => {
+                                self.call_fn(fnty, realty, &path, vals, false)
+                            }
                             LValue::TransparentAddr(_) => todo!("call abs"),
                             _ => {
                                 self.inner.write_trap(Trap::Unreachable);
@@ -2479,7 +2490,44 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                     v => panic!("Invalid value for switch {:?}", v),
                 }
             }
-            Expr::Tailcall(_) => todo!("tailcall"),
+            Expr::Tailcall(fnty) => {
+                let vals = self.pop_values(fnty.params.len()).unwrap();
+                let target = self.pop_value().unwrap();
+                match target {
+                    VStackValue::Constant(Value::GlobalAddress { ty, item }) => {
+                        let realty = match &ty {
+                            Type::FnType(ty) => &**ty,
+                            _ => fnty,
+                        };
+                        self.call_fn(fnty, realty, &item, vals, true);
+                    }
+                    VStackValue::Constant(Value::Invalid(_))
+                    | VStackValue::Constant(Value::Uninitialized(_))
+                    | VStackValue::Constant(Value::LabelAddress(_)) => {
+                        self.inner.write_trap(Trap::Unreachable);
+                    }
+                    VStackValue::Pointer(pty, lvalue) => {
+                        let ty = &*pty.inner;
+                        let realty = match &ty {
+                            Type::FnType(ty) => &**ty,
+                            _ => fnty,
+                        };
+                        match lvalue {
+                            LValue::OpaquePointer(loc) => {
+                                self.call_indirect(fnty, realty, loc, vals, true)
+                            }
+                            LValue::GlobalAddress(path) => {
+                                self.call_fn(fnty, realty, &path, vals, true)
+                            }
+                            LValue::TransparentAddr(_) => todo!("call abs"),
+                            _ => {
+                                self.inner.write_trap(Trap::Unreachable);
+                            }
+                        }
+                    }
+                    val => panic!("Invalid value {}", val),
+                }
+            }
             Expr::Asm(asm) => self.write_asm(asm),
             Expr::BeginStorage(n) => {
                 let local = &mut self.locals[(*n) as usize];

@@ -24,6 +24,9 @@ use crate::{
     FunctionCodegen, FunctionRawCodegen,
 };
 
+/// Register Allocation
+pub mod regalloc;
+
 /// Basic Queries about Machine Features
 pub trait MachineFeatures {
     /// The type of Value Locations
@@ -145,6 +148,8 @@ pub enum MCInsn<Loc> {
     },
     /// Calls the given String by address
     CallSym(String),
+    /// Tailcalls the given String by address
+    TailcallSym(String),
     /// Cleans up the frame and does a return
     Return,
     /// Loads the address of a symbol into the given location
@@ -290,6 +295,7 @@ pub struct MCFunctionCodegen<F: MachineFeatures> {
     callconv: CallConvAdaptor<F::CallConv>,
     strings: Rc<RefCell<StringMap>>,
     fn_name: String,
+    fnty: FnType,
 }
 
 #[allow(unused_variables)]
@@ -403,22 +409,23 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
         todo!()
     }
 
-    fn tailcall_direct(
-        &mut self,
-        value: xlang::abi::string::StringView,
-        ty: &xlang::ir::FnType,
-        params: xlang::vec::Vec<crate::expr::VStackValue<Self::Loc>>,
-    ) {
-        todo!()
+    fn tailcall_direct(&mut self, path: &xlang::ir::Path, realty: &xlang::ir::FnType) {
+        let addr = match &*path.components {
+            [PathComponent::Text(a)] | [PathComponent::Root, PathComponent::Text(a)] => {
+                a.clone().to_string()
+            }
+            [PathComponent::Root, rest @ ..] | [rest @ ..] => self.inner.mangle(rest),
+        };
+        if self.callconv.can_tail(realty, &self.fnty) {
+            self.mc_insns.push(MCInsn::TailcallSym(addr))
+        } else {
+            self.mc_insns.push(MCInsn::CallSym(addr));
+            self.mc_insns.push(MCInsn::Return);
+        }
     }
 
-    fn tailcall_indirect(
-        &mut self,
-        value: Self::Loc,
-        ty: &xlang::ir::FnType,
-        params: xlang::vec::Vec<crate::expr::VStackValue<Self::Loc>>,
-    ) {
-        todo!()
+    fn tailcall_indirect(&mut self, value: Self::Loc, realty: &xlang::ir::FnType) {
+        todo!("tailcall_indirect")
     }
 
     fn leave_function(&mut self) {
@@ -716,6 +723,7 @@ impl<W: MCWriter> XLangPlugin for MCBackend<W> {
                                 self.feature,
                                 Rc::clone(&tys),
                             )),
+                            fnty: f.ty.clone(),
                         };
                         let mut fncg = FunctionCodegen::new(
                             innercg,

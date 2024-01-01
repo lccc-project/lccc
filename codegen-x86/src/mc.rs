@@ -862,6 +862,21 @@ impl MCWriter for X86MCWriter {
                         vec![X86Operand::RelOffset(Address::PltSym { name: sym.clone() })],
                     ))?;
                 }
+                MCInsn::TailcallSym(sym) => {
+                    if frame_size > 0 {
+                        encoder.write_insn(X86Instruction::new(
+                            X86CodegenOpcode::Add,
+                            vec![
+                                X86Operand::Register(X86Register::Rsp),
+                                X86Operand::Immediate(frame_size as i64),
+                            ],
+                        ))?;
+                    }
+                    encoder.write_insn(X86Instruction::new(
+                        X86CodegenOpcode::Jmp,
+                        vec![X86Operand::RelOffset(Address::PltSym { name: sym.clone() })],
+                    ))?;
+                }
                 MCInsn::Return => {
                     if frame_size > 0 {
                         encoder.write_insn(X86Instruction::new(

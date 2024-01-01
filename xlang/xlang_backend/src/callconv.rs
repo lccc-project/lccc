@@ -17,6 +17,13 @@ pub trait CallingConvention {
 
     /// Finds the return value location
     fn find_return_val(&self, fnty: &FnType) -> Self::Loc;
+
+    /// Determines whether tailcall is possible
+
+    fn can_tail(&self, fnty: &FnType, base_ty: &FnType) -> bool {
+        self.pass_return_place(&fnty.ret).is_some()
+            || !self.pass_return_place(&base_ty.ret).is_some()
+    }
 }
 
 impl<C: CallingConvention + ?Sized> CallingConvention for &C {
