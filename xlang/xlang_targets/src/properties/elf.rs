@@ -9,7 +9,8 @@ use super::{
         X86_16_FAR_PRIMITIVES, X86_16_NEAR_DATA_FAR_FN_PRIMITIVES, X86_16_NEAR_PRIMITIVES,
         X86_32_PRIMITIVES, X86_64, X86_64_PRIMITIVES,
     },
-    LinkProperties, OperatingSystemProperties, TargetProperties,
+    LinkProperties, OperatingSystemProperties, StackAttributeControlStyle, TargetProperties,
+    UnwindStyle,
 };
 
 pub static BARE_ELF: OperatingSystemProperties = OperatingSystemProperties {
@@ -38,6 +39,8 @@ pub static X86_64_ELF_LINK: LinkProperties = LinkProperties {
     obj_binfmt: const_sv!("elf64-x86_64"),
     lib_binfmt: const_sv!("elf64-x86_64"),
     exec_binfmt: const_sv!("elf64-x86_64"),
+    stack_attribute_control: StackAttributeControlStyle::GnuStack,
+    uwtable_method: UnwindStyle::Itanium,
 };
 
 pub static X32_ELF_LINK: LinkProperties = LinkProperties {
@@ -50,6 +53,8 @@ pub static X32_ELF_LINK: LinkProperties = LinkProperties {
     obj_binfmt: const_sv!("elf32-x86_64"),
     lib_binfmt: const_sv!("elf32-x86_64"),
     exec_binfmt: const_sv!("elf32-x86_64"),
+    stack_attribute_control: StackAttributeControlStyle::GnuStack,
+    uwtable_method: UnwindStyle::Itanium,
 };
 
 pub static X86_32_ELF_LINK: LinkProperties = LinkProperties {
@@ -62,6 +67,8 @@ pub static X86_32_ELF_LINK: LinkProperties = LinkProperties {
     obj_binfmt: const_sv!("elf32-x86"),
     lib_binfmt: const_sv!("elf32-x86"),
     exec_binfmt: const_sv!("elf32-x86"),
+    stack_attribute_control: StackAttributeControlStyle::GnuStack,
+    uwtable_method: UnwindStyle::Itanium,
 };
 
 pub static X86_16_ELF_LINK: LinkProperties = LinkProperties {
@@ -75,6 +82,8 @@ pub static X86_16_ELF_LINK: LinkProperties = LinkProperties {
     obj_binfmt: const_sv!("elf32-x86_16"),
     lib_binfmt: const_sv!("elf32-x86_16"),
     exec_binfmt: const_sv!("elf32-x86_16"),
+    stack_attribute_control: StackAttributeControlStyle::GnuStack,
+    uwtable_method: UnwindStyle::Itanium,
 };
 
 macro_rules! x86_abis{
@@ -290,6 +299,8 @@ pub static CLEVER_ELF_LINK: LinkProperties = LinkProperties {
     obj_binfmt: const_sv!("elf64-clever"),
     lib_binfmt: const_sv!("elf64-clever"),
     exec_binfmt: const_sv!("elf64-clever"),
+    stack_attribute_control: StackAttributeControlStyle::GnuStack,
+    uwtable_method: UnwindStyle::Itanium,
 };
 
 pub static CLEVERILP32_ELF_LINK: LinkProperties = LinkProperties {
@@ -302,6 +313,8 @@ pub static CLEVERILP32_ELF_LINK: LinkProperties = LinkProperties {
     obj_binfmt: const_sv!("elf32-clever"),
     lib_binfmt: const_sv!("elf32-clever"),
     exec_binfmt: const_sv!("elf32-clever"),
+    stack_attribute_control: StackAttributeControlStyle::GnuStack,
+    uwtable_method: UnwindStyle::Itanium,
 };
 
 static CLEVER_ABIS: Span<Pair<StringView, &TargetProperties>> = span![
@@ -341,6 +354,8 @@ pub static W65_ELF_LINK: LinkProperties = LinkProperties {
     obj_binfmt: const_sv!("elf32-w65"),
     lib_binfmt: const_sv!("elf32-w65"),
     exec_binfmt: const_sv!("elf32-w65"),
+    stack_attribute_control: StackAttributeControlStyle::GnuStack,
+    uwtable_method: UnwindStyle::Itanium,
 };
 
 pub static W65_ELF: TargetProperties = TargetProperties {
@@ -364,6 +379,8 @@ pub static HOLEYBYTES_ELF_LINK: LinkProperties = LinkProperties {
     obj_binfmt: const_sv!("elf64-holeybytes"),
     lib_binfmt: const_sv!("elf64-holeybytes"),
     exec_binfmt: const_sv!("elf64-holeybytes"),
+    stack_attribute_control: StackAttributeControlStyle::GnuStack,
+    uwtable_method: UnwindStyle::Itanium,
 };
 
 pub static HOLEYBYTES_ELF: TargetProperties = TargetProperties {

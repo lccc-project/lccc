@@ -198,6 +198,36 @@ pub struct OperatingSystemProperties<'a> {
     pub so_kind: SharedLibraryStyle,
 }
 
+/// How to control stack options
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum StackAttributeControlStyle {
+    /// Use `.note.GNU-stack`
+    GnuStack,
+    /// No option required for non-executable stack
+    NoExec,
+    /// Unknown or cannot specify non-executable stack
+    CveFactory,
+}
+
+/// How unwinding tables are generated
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum UnwindStyle {
+    /// Itanium (DWARF) Unwinding Tables
+    Itanium,
+    /// Windows SEH
+    Seh,
+    /// Setjmp/Longjmp landing Pads
+    SjLj,
+    /// Deterministic
+    Deterministic,
+    /// No unwinding on the target
+    None,
+}
+
 /// Properties for the link step
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -220,6 +250,10 @@ pub struct LinkProperties<'a> {
     pub lib_binfmt: StringView<'a>,
     /// The name of the binfmt or bfd vector to use for executables
     pub exec_binfmt: StringView<'a>,
+    /// The method for disabling executable stack, if needed.
+    pub stack_attribute_control: StackAttributeControlStyle,
+    /// Unwind Table Generation Method
+    pub uwtable_method: UnwindStyle,
 }
 
 /// Properties about primitive types on the target

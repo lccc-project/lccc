@@ -5,7 +5,8 @@ use super::{
         I386, I486, I586, I686, X32_PRIMITIVES, X86_32_PRIMITIVES, X86_64, X86_64_PRIMITIVES,
         X86_64_V2, X86_64_V3, X86_64_V4,
     },
-    LinkProperties, OperatingSystemProperties, TargetProperties,
+    LinkProperties, OperatingSystemProperties, StackAttributeControlStyle, TargetProperties,
+    UnwindStyle,
 };
 
 pub static LINUX: OperatingSystemProperties = OperatingSystemProperties {
@@ -34,6 +35,8 @@ pub static X86_64_LINUX_GNU_LINK: LinkProperties = LinkProperties {
     obj_binfmt: const_sv!("elf64-x86_64"),
     lib_binfmt: const_sv!("elf64-x86_64"),
     exec_binfmt: const_sv!("elf64-x86_64"),
+    stack_attribute_control: StackAttributeControlStyle::GnuStack,
+    uwtable_method: UnwindStyle::Itanium,
 };
 
 pub static X86_64_LINUX_MUSL_LINK: LinkProperties = LinkProperties {
@@ -46,6 +49,8 @@ pub static X86_64_LINUX_MUSL_LINK: LinkProperties = LinkProperties {
     obj_binfmt: const_sv!("elf64-x86_64"),
     lib_binfmt: const_sv!("elf64-x86_64"),
     exec_binfmt: const_sv!("elf64-x86_64"),
+    stack_attribute_control: StackAttributeControlStyle::GnuStack,
+    uwtable_method: UnwindStyle::Itanium,
 };
 
 pub static X32_LINUX_GNU_LINK: LinkProperties = LinkProperties {
@@ -58,6 +63,8 @@ pub static X32_LINUX_GNU_LINK: LinkProperties = LinkProperties {
     obj_binfmt: const_sv!("elf32-x86"),
     lib_binfmt: const_sv!("elf32-x86"),
     exec_binfmt: const_sv!("elf32-x86"),
+    stack_attribute_control: StackAttributeControlStyle::GnuStack,
+    uwtable_method: UnwindStyle::Itanium,
 };
 
 pub static X86_32_LINUX_GNU_LINK: LinkProperties = LinkProperties {
@@ -70,6 +77,8 @@ pub static X86_32_LINUX_GNU_LINK: LinkProperties = LinkProperties {
     obj_binfmt: const_sv!("elf32-x86_64"),
     lib_binfmt: const_sv!("elf32-x86_64"),
     exec_binfmt: const_sv!("elf32-x86_64"),
+    stack_attribute_control: StackAttributeControlStyle::GnuStack,
+    uwtable_method: UnwindStyle::Itanium,
 };
 
 macro_rules! x86_abis{
