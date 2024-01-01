@@ -13,7 +13,7 @@ use xlang::{
     },
     ir::{AccessClass, BinaryOp, FnType, Linkage, PathComponent, PointerKind, Type, UnaryOp},
     plugin::{OutputMode, XLangCodegen, XLangPlugin},
-    targets::properties::TargetProperties,
+    targets::properties::{StackAttributeControlStyle, TargetProperties},
 };
 
 use crate::{
@@ -26,6 +26,21 @@ use crate::{
 
 /// Register Allocation
 pub mod regalloc;
+
+/// Converts the u128 `val` into bytes according to the platform endianness in `props`
+pub fn u128_to_targ_bytes(val: u128, props: &TargetProperties) -> [u8; 16] {
+    match props.arch.byte_order {
+        xlang::targets::properties::ByteOrder::LittleEndian => val.to_le_bytes(),
+        xlang::targets::properties::ByteOrder::BigEndian => val.to_be_bytes(),
+        xlang::targets::properties::ByteOrder::MiddleEndian => {
+            let mut bytes = val.to_be_bytes();
+            for i in 0..8 {
+                bytes.swap(2 * i, 2 * i + 1);
+            }
+            bytes
+        }
+    }
+}
 
 /// Basic Queries about Machine Features
 pub trait MachineFeatures {
@@ -653,6 +668,19 @@ struct MCFunctionDecl<W: MCWriter> {
     body: Option<(SectionSpec, FunctionCodegen<MCFunctionCodegen<W::Features>>)>,
 }
 
+struct MCStaticDef {
+    section: SectionSpec,
+    init: xlang::ir::Value,
+    space: u64,
+    align: u64,
+    specifier: xlang::ir::StaticSpecifier,
+}
+
+struct MCStaticDecl {
+    linkage: Linkage,
+    init: Option<MCStaticDef>,
+}
+
 /// Backend that generates MCIR from XIR then writes to a binary file
 pub struct MCBackend<W: MCWriter> {
     properties: Option<&'static TargetProperties<'static>>,
@@ -660,6 +688,7 @@ pub struct MCBackend<W: MCWriter> {
     strings: Rc<RefCell<StringMap>>,
     writer: W,
     functions: HashMap<String, MCFunctionDecl<W>>,
+    statics: HashMap<String, MCStaticDecl>,
     tys: Option<Rc<TypeInformation>>,
 }
 
@@ -672,6 +701,7 @@ impl<W: MCWriter> MCBackend<W> {
             strings: Rc::new(RefCell::new(StringMap::new())),
             writer: x,
             functions: HashMap::new(),
+            statics: HashMap::new(),
             tys: None,
         }
     }
@@ -706,6 +736,7 @@ impl<W: MCWriter> XLangPlugin for MCBackend<W> {
                         | [PathComponent::Text(n)] => n.to_string(),
                         [PathComponent::Root, rest @ ..] | [rest @ ..] => features.mangle(rest),
                     };
+
                     let linkage = f.linkage;
                     let body = if let XLangSome(body) = &f.body {
                         let section_spec = SectionSpec::GlobalSection;
@@ -743,7 +774,39 @@ impl<W: MCWriter> XLangPlugin for MCBackend<W> {
                     self.functions
                         .insert(mangled_name, MCFunctionDecl { linkage, body });
                 }
-                xlang::ir::MemberDeclaration::Static(_) => todo!("static"),
+                xlang::ir::MemberDeclaration::Static(st) => {
+                    let features = self
+                        .writer
+                        .get_features(self.properties.unwrap(), self.feature);
+                    let mangled_name = match &*path.components {
+                        [PathComponent::Root, PathComponent::Text(n)]
+                        | [PathComponent::Text(n)] => n.to_string(),
+                        [PathComponent::Root, rest @ ..] | [rest @ ..] => features.mangle(rest),
+                    };
+
+                    let linkage = st.linkage;
+
+                    let init = match &st.init {
+                        xlang::ir::Value::Empty => None,
+                        val => {
+                            let section_spec = SectionSpec::GlobalSection;
+                            let space = tys.type_size(&st.ty).unwrap();
+                            let align = tys.type_align(&st.ty).unwrap();
+                            let init: xlang::ir::Value = val.clone();
+                            let specifier = st.specifiers;
+                            Some(MCStaticDef {
+                                section: section_spec,
+                                init,
+                                space,
+                                align,
+                                specifier,
+                            })
+                        }
+                    };
+
+                    self.statics
+                        .insert(mangled_name, MCStaticDecl { linkage, init });
+                }
                 _ => {}
             }
         }
@@ -771,12 +834,15 @@ impl<W: MCWriter> XLangCodegen for MCBackend<W> {
         let props = self.properties.unwrap();
         let binfmt = binfmt::format_by_name(&props.link.obj_binfmt).unwrap();
 
+        let features = self.writer.get_features(props, self.feature);
+
         let mut binfile = binfmt.create_file(FileType::Relocatable);
 
         let mut rodata = Section {
             name: String::from(".rodata"),
             align: 1024,
             ty: binfmt::fmt::SectionType::ProgBits,
+            flags: Some(binfmt::fmt::SectionFlag::Alloc.into()),
             ..Default::default()
         };
 
@@ -784,6 +850,21 @@ impl<W: MCWriter> XLangCodegen for MCBackend<W> {
             name: String::from(".text"),
             align: 1024,
             ty: binfmt::fmt::SectionType::ProgBits,
+            flags: Some(binfmt::fmt::SectionFlag::Alloc | binfmt::fmt::SectionFlag::Executable),
+            ..Default::default()
+        };
+        let mut data = Section {
+            name: String::from(".data"),
+            align: 1024,
+            ty: binfmt::fmt::SectionType::NoBits,
+            flags: Some(binfmt::fmt::SectionFlag::Alloc | binfmt::fmt::SectionFlag::Writable),
+            ..Default::default()
+        };
+        let mut bss = Section {
+            name: String::from(".bss"),
+            align: 1024,
+            ty: binfmt::fmt::SectionType::NoBits,
+            flags: Some(binfmt::fmt::SectionFlag::Alloc | binfmt::fmt::SectionFlag::Writable),
             ..Default::default()
         };
 
@@ -847,13 +928,120 @@ impl<W: MCWriter> XLangCodegen for MCBackend<W> {
             }
         }
 
+        for Pair(name, decl) in core::mem::take(&mut self.statics) {
+            let symty = match decl.linkage {
+                Linkage::External => binfmt::sym::SymbolKind::Global,
+                Linkage::Internal | Linkage::Constant => binfmt::sym::SymbolKind::Local,
+                Linkage::Weak => binfmt::sym::SymbolKind::Weak,
+            };
+
+            if let Some(init) = decl.init {
+                let (secno, section) = match init.section {
+                    SectionSpec::GlobalSection => {
+                        if let xlang::ir::Value::Uninitialized(_) = init.init {
+                            (3, &mut bss)
+                        } else if init
+                            .specifier
+                            .contains(xlang::ir::StaticSpecifier::IMMUTABLE)
+                        {
+                            (0, &mut rodata)
+                        } else {
+                            (2, &mut data)
+                        }
+                    }
+                    _ => todo!(),
+                };
+
+                section.align = section.align.max(init.align as usize);
+                let total_len = section.content.len() + section.tail_size;
+                let size = init.space as usize;
+                if (total_len as u64 & (init.align - 1)) != 0 {
+                    section.tail_size +=
+                        (init.align - (total_len as u64 & (init.align - 1))) as usize;
+                }
+                let sym = Symbol::new(
+                    name,
+                    Some(secno),
+                    Some(section.offset() as u128),
+                    binfmt::sym::SymbolType::Object,
+                    symty,
+                );
+
+                match init.init {
+                    xlang::ir::Value::Invalid(_) | xlang::ir::Value::Uninitialized(_) => {
+                        section.tail_size += size;
+                    }
+                    xlang::ir::Value::GenericParameter(_) => panic!("late generic"),
+                    xlang::ir::Value::Integer { val, .. } => {
+                        let val = u128_to_targ_bytes(val, props);
+
+                        let leading = val.len().min(size);
+
+                        try_!(section.write_all(&val[..leading]).map_err(Into::into));
+                        if leading < size {
+                            try_!(section.write_zeroes(size - leading).map_err(Into::into));
+                        }
+                    }
+                    xlang::ir::Value::GlobalAddress { item, .. } => {
+                        let mangled_name = match &*item.components {
+                            [xlang::ir::PathComponent::Text(name)]
+                            | [xlang::ir::PathComponent::Root, xlang::ir::PathComponent::Text(name)] => {
+                                name.to_string()
+                            }
+                            [xlang::ir::PathComponent::Root, rest @ ..] | rest => {
+                                features.mangle(rest)
+                            }
+                        };
+
+                        try_!(section
+                            .write_addr(
+                                size * 8,
+                                arch_ops::traits::Address::Symbol {
+                                    name: mangled_name,
+                                    disp: 0
+                                },
+                                false
+                            )
+                            .map_err(Into::into));
+                    }
+                    xlang::ir::Value::ByteString { .. } => todo!("byte string"),
+                    xlang::ir::Value::String { .. } => todo!("string"),
+                    xlang::ir::Value::LabelAddress(_) => {
+                        panic!("Cannot use label_address in a global static")
+                    }
+                    xlang::ir::Value::Empty => unreachable!(),
+                }
+                syms.push(sym);
+            } else if decl.linkage == Linkage::Weak {
+                let sym = Symbol::new(name, None, None, binfmt::sym::SymbolType::Object, symty);
+
+                syms.push(sym);
+            }
+        }
+
         let rodatano = binfile.add_section(rodata).unwrap();
         let textno = binfile.add_section(text).unwrap();
+        let datano = binfile.add_section(data).unwrap();
+        let bssno = binfile.add_section(bss).unwrap();
+
+        if let StackAttributeControlStyle::GnuStack = props.link.stack_attribute_control {
+            let note_gnustack = Section {
+                name: String::from(".note.GNU-stack"),
+                align: 1024,
+                ty: binfmt::fmt::SectionType::NoBits,
+                flags: Some(binfmt::fmt::SectionFlags::default()),
+                ..Default::default()
+            };
+
+            binfile.add_section(note_gnustack).unwrap();
+        }
 
         for mut sym in syms {
             match sym.section_mut() {
                 Some(x @ 0) => *x = rodatano,
                 Some(x @ 1) => *x = textno,
+                Some(x @ 2) => *x = datano,
+                Some(x @ 3) => *x = bssno,
                 None => {}
                 Some(x) => panic!("Unexpected section number for symbol {}", x),
             }
