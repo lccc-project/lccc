@@ -16,11 +16,14 @@ use xlang::{
     ir::PathComponent,
 };
 
+use crate::sema::ty::Mutability;
 use crate::sema::{cx, hir::BinaryOp, mir::SsaVarId};
 use crate::sema::{ty, UserTypeKind};
 use crate::{
     interning::Symbol,
-    sema::{mir::BasicBlockId, ty::AbiTag, DefId},
+    lang::LangItem,
+    sema::{intrin::IntrinsicDef, mir::BasicBlockId, ty::AbiTag, DefId},
+    span,
 };
 use crate::{lex::StringType, sema::Definitions};
 
@@ -1163,20 +1166,6 @@ impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
         )))
     }
 
-    fn visit_tailcall(&mut self) -> Option<Box<dyn TailcallVisitor + '_>> {
-        Some(Box::new(XirTailcallVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.cur_fnty,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        )))
-    }
-
     fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
         Some(Box::new(XirJumpVisitor::new(
             self.names,
@@ -1260,113 +1249,6 @@ impl<'a> Drop for XirReturnVisitor<'a> {
     }
 }
 
-pub struct XirTailcallVisitor<'a> {
-    defs: &'a Definitions,
-    names: &'a NameMap,
-    properties: &'a TargetProperties<'a>,
-    deftys: &'a HashMap<DefId, ir::Type>,
-    cur_fnty: &'a mut ir::FnType,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
-    stack_height: &'a mut u32,
-    fnty: Option<ir::FnType>,
-}
-
-impl<'a> XirTailcallVisitor<'a> {
-    pub fn new(
-        defs: &'a Definitions,
-        names: &'a NameMap,
-        properties: &'a TargetProperties<'a>,
-        deftys: &'a HashMap<DefId, ir::Type>,
-        cur_fnty: &'a mut ir::FnType,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
-        stack_height: &'a mut u32,
-    ) -> Self {
-        Self {
-            defs,
-            names,
-            body,
-            deftys,
-            cur_fnty,
-            targs,
-            var_heights,
-            stack_height,
-            fnty: None,
-            properties,
-        }
-    }
-}
-
-impl<'a> TailcallVisitor for XirTailcallVisitor<'a> {
-    fn visit_target(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        Some(Box::new(XirExprVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        )))
-    }
-
-    fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>> {
-        Some(Box::new(XirFunctionTyVisitor::new(
-            self.defs,
-            self.names,
-            self.fnty.insert(ir::FnType::default()),
-            self.properties,
-        )))
-    }
-
-    fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        Some(Box::new(XirExprVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        )))
-    }
-}
-
-impl<'a> Drop for XirTailcallVisitor<'a> {
-    fn drop(&mut self) {
-        let fnty = self.fnty.take().expect("visit_fnty must have been called");
-
-        let is_never = fnty.ret == NEVER;
-
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::CallFunction(fnty)));
-
-        if is_never {
-            self.body
-                .block
-                .items
-                .push(ir::BlockItem::Expr(ir::Expr::Pop(1)));
-            self.body
-                .block
-                .items
-                .push(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Invalid(
-                    self.cur_fnty.ret.clone(),
-                ))));
-        }
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::Exit { values: 1 }))
-    }
-}
-
 pub struct XirCallVisitor<'a> {
     defs: &'a Definitions,
     names: &'a NameMap,
@@ -1379,6 +1261,7 @@ pub struct XirCallVisitor<'a> {
     stack_height: &'a mut u32,
     retplace: Option<SsaVarId>,
     fnty: Option<ir::FnType>,
+    late_invoke_intrin: Option<IntrinsicDef>,
 }
 
 impl<'a> XirCallVisitor<'a> {
@@ -1405,6 +1288,7 @@ impl<'a> XirCallVisitor<'a> {
             retplace: None,
             fnty: None,
             properties,
+            late_invoke_intrin: None,
         }
     }
 }
@@ -1449,14 +1333,232 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
         )))
     }
 
+    fn visit_tailcall(&mut self) {
+        let fnty = self.fnty.take().expect("visit_fnty must have been called");
+
+        let is_never = fnty.ret == NEVER;
+
+        if let Some(intrin) = self.late_invoke_intrin {
+            // Handle late bound intrinsics here
+            match intrin {
+                IntrinsicDef::__builtin_unreachable => {
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Invalid(
+                            fnty.ret,
+                        ))));
+                }
+                IntrinsicDef::impl_id => todo!("impl_id"),
+                IntrinsicDef::type_id => todo!("type_id"),
+                IntrinsicDef::type_name => todo!("type_name"),
+                IntrinsicDef::destroy_at => todo!("destroy_at"),
+                IntrinsicDef::discriminant => todo!("discriminant"),
+
+                IntrinsicDef::construct_in_place => todo!("construct_in_place"),
+                IntrinsicDef::__builtin_read => {
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::AsRValue(
+                            ir::AccessClass::Normal,
+                        )));
+                }
+                IntrinsicDef::__builtin_read_freeze => {
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::AsRValue(
+                            ir::AccessClass::Freeze,
+                        )));
+                }
+                IntrinsicDef::__builtin_read_volatile => {
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::AsRValue(
+                            ir::AccessClass::Volatile,
+                        )));
+                }
+                IntrinsicDef::__builtin_write => {
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Pivot(1, 1)));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Assign(
+                            ir::AccessClass::Normal,
+                        )));
+                }
+                IntrinsicDef::__builtin_write_volatile => {
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Pivot(1, 1)));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Assign(
+                            ir::AccessClass::Normal,
+                        )));
+                }
+                IntrinsicDef::__builtin_size_of => todo!(),
+                IntrinsicDef::__builtin_align_of => todo!(),
+                IntrinsicDef::__builtin_size_of_val => todo!(),
+                IntrinsicDef::__builtin_align_of_val => todo!(),
+
+                IntrinsicDef::__builtin_abort
+                | IntrinsicDef::__builtin_allocate
+                | IntrinsicDef::__builtin_deallocate
+                | IntrinsicDef::transmute
+                | IntrinsicDef::black_box => {
+                    unreachable!("These are handled like regular functions")
+                }
+            }
+            self.body
+                .block
+                .items
+                .push(ir::BlockItem::Expr(ir::Expr::Exit { values: 1 }));
+        } else {
+            // Either we're compatible or we're `!` and don't return
+            self.body
+                .block
+                .items
+                .push(ir::BlockItem::Expr(ir::Expr::Tailcall(fnty)));
+        }
+    }
+
     fn visit_next(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
         let fnty = self.fnty.take().expect("visit_fnty must be called first");
         let retty = fnty.ret.clone();
         *self.stack_height -= fnty.params.len() as u32;
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::CallFunction(fnty)));
+
+        if let Some(intrin) = self.late_invoke_intrin {
+            // Handle late bound intrinsics here
+            // Assume that params are correct - yes, this will bork irgen if the params are wrong
+            match intrin {
+                IntrinsicDef::__builtin_unreachable => {
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Invalid(
+                            retty.clone(),
+                        ))));
+                }
+                IntrinsicDef::impl_id => todo!("impl_id"),
+                IntrinsicDef::type_id => todo!("type_id"),
+                IntrinsicDef::type_name => todo!("type_name"),
+                IntrinsicDef::destroy_at => todo!("destroy_at"),
+                IntrinsicDef::discriminant => todo!("discriminant"),
+
+                IntrinsicDef::construct_in_place => todo!("construct_in_place"),
+                IntrinsicDef::__builtin_read => {
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::AsRValue(
+                            ir::AccessClass::Normal,
+                        )));
+                }
+                IntrinsicDef::__builtin_read_freeze => {
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::AsRValue(
+                            ir::AccessClass::Freeze,
+                        )));
+                }
+                IntrinsicDef::__builtin_read_volatile => {
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::AsRValue(
+                            ir::AccessClass::Volatile,
+                        )));
+                }
+                IntrinsicDef::__builtin_write => {
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Pivot(1, 1)));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Assign(
+                            ir::AccessClass::Normal,
+                        )));
+                }
+                IntrinsicDef::__builtin_write_volatile => {
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Pivot(1, 1)));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Assign(
+                            ir::AccessClass::Normal,
+                        )));
+                }
+                IntrinsicDef::__builtin_size_of => todo!(),
+                IntrinsicDef::__builtin_align_of => todo!(),
+                IntrinsicDef::__builtin_size_of_val => todo!(),
+                IntrinsicDef::__builtin_align_of_val => todo!(),
+
+                IntrinsicDef::__builtin_abort
+                | IntrinsicDef::__builtin_allocate
+                | IntrinsicDef::__builtin_deallocate
+                | IntrinsicDef::transmute
+                | IntrinsicDef::black_box => unreachable!(),
+            }
+        } else {
+            self.body
+                .block
+                .items
+                .push(ir::BlockItem::Expr(ir::Expr::CallFunction(fnty)));
+        }
 
         Some(Box::new(XirNextBlockVisitor {
             inner: XirJumpVisitor::new(
@@ -1471,6 +1573,112 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
             retty,
             targ: None,
         }))
+    }
+
+    fn visit_intrinsic(&mut self, intrin: crate::sema::intrin::IntrinsicDef) {
+        let (item, fnty) = match intrin {
+            // Rust sym calls
+            func @ (crate::sema::intrin::IntrinsicDef::__builtin_allocate
+            | crate::sema::intrin::IntrinsicDef::__builtin_deallocate) => {
+                let layout_ty = self
+                    .defs
+                    .get_lang_item(LangItem::LayoutTy)
+                    .expect("lang item `layout` is required to use `__builtin_alloc`");
+                let u8_ptr = ty::Type::Pointer(
+                    span::synthetic(Mutability::Mut),
+                    Box::new(span::synthetic(ty::Type::Int(ty::IntType::u8))),
+                );
+                let (sym, sig) = match func {
+                    IntrinsicDef::__builtin_allocate => {
+                        let alloc_sym = self.defs.get_lang_item(LangItem::AllocSym).expect(
+                            "lang item `alloc_symbol` is required to use `__builtin_alloc`",
+                        );
+
+                        let fnty = ty::FnType {
+                            safety: span::synthetic(ty::Safety::Unsafe),
+                            constness: span::synthetic(ty::Mutability::Mut),
+                            asyncness: span::synthetic(ty::AsyncType::Normal),
+                            tag: span::synthetic(ty::AbiTag::LCRust(None)),
+                            retty: Box::new(span::synthetic(u8_ptr)),
+                            paramtys: std::vec![span::synthetic(ty::Type::UserType(layout_ty))],
+                            iscvarargs: span::synthetic(false),
+                        };
+
+                        (alloc_sym, fnty)
+                    }
+                    IntrinsicDef::__builtin_deallocate => {
+                        let dealloc_sym = self.defs.get_lang_item(LangItem::DeallocSym).expect(
+                            "lang item `deaalloc_symbol` is required to use `__builtin_alloc`",
+                        );
+
+                        let fnty = ty::FnType {
+                            safety: span::synthetic(ty::Safety::Unsafe),
+                            constness: span::synthetic(ty::Mutability::Mut),
+                            asyncness: span::synthetic(ty::AsyncType::Normal),
+                            tag: span::synthetic(ty::AbiTag::LCRust(None)),
+                            retty: Box::new(span::synthetic(ty::Type::UNIT)),
+                            paramtys: std::vec![
+                                span::synthetic(ty::Type::UserType(layout_ty)),
+                                span::synthetic(u8_ptr),
+                            ],
+                            iscvarargs: span::synthetic(false),
+                        };
+
+                        (dealloc_sym, fnty)
+                    }
+                    _ => unreachable!(),
+                };
+
+                let name = self.names[&sym];
+                let mut ir_fnty = ir::FnType::default();
+                let fnty_vis =
+                    XirFunctionTyVisitor::new(self.defs, self.names, &mut ir_fnty, self.properties);
+
+                super::visitor::visit_fnty(fnty_vis, &sig, &self.defs);
+
+                let path = ir::Path {
+                    components: vec![ir::PathComponent::Text((&name).into())],
+                };
+
+                (path, ir_fnty)
+            }
+
+            // xlang intrinsics
+            xlang_intrin @ (crate::sema::intrin::IntrinsicDef::__builtin_abort
+            | crate::sema::intrin::IntrinsicDef::transmute
+            | crate::sema::intrin::IntrinsicDef::black_box) => {
+                let path = match xlang_intrin {
+                    IntrinsicDef::__builtin_abort => {
+                        ir::simple_path!(__lccc::intrinsics::C::__builtin_trap)
+                    }
+                    IntrinsicDef::transmute => {
+                        ir::simple_path!(__lccc::intrinsics::Rust::__builtin_transmute)
+                    }
+                    IntrinsicDef::black_box => ir::simple_path!(__lccc::xlang::deoptimize),
+                    _ => unreachable!(),
+                };
+
+                (
+                    path,
+                    self.fnty
+                        .as_ref()
+                        .cloned()
+                        .expect("visit_fnty must have been called first"),
+                )
+            }
+
+            // late bound intrinsics (Few of these should survive to irgen?)
+            intrin => return self.late_invoke_intrin = Some(intrin),
+        };
+
+        let ty = ir::Type::FnType((xlang::abi::boxed::Box::new(fnty)));
+
+        let value = ir::Value::GlobalAddress { ty, item };
+
+        self.body
+            .block
+            .items
+            .push(ir::BlockItem::Expr(ir::Expr::Const(value)));
     }
 }
 

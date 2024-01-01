@@ -34,6 +34,8 @@ use crate::{
     sema::{convert_crate, Definitions},
 };
 
+pub const IMPL_ID: &str = concat!("lcrust ", env!("CARGO_PKG_VERSION"));
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum CrateType {
     Bin,

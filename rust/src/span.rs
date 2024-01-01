@@ -176,6 +176,23 @@ impl<T> Spanned<T> {
             Err(e) => Err(e),
         }
     }
+
+    pub fn try_map_span<U, E, F: FnOnce(T) -> Result<U, E>>(self, f: F) -> Result<Spanned<U>, E> {
+        match f(self.body) {
+            Ok(body) => Ok(Spanned {
+                body,
+                span: self.span,
+            }),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+pub const fn synthetic<T>(body: T) -> Spanned<T> {
+    Spanned {
+        body,
+        span: Span::synthetic(),
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -203,6 +220,12 @@ impl HygieneRef {
         let val = ((mode as u64) << 60) | ((edition as u64) << 48) | (xref_id & 0xFFFFFFFFFFFF);
 
         Self(val)
+    }
+
+    pub const fn with_mode(self, mode: HygieneMode) -> Self {
+        let val = self.0;
+
+        Self((val & ((1 << 60) - 1)) | ((mode as u64) << 60))
     }
 
     #[allow(dead_code)]

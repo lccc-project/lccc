@@ -7,6 +7,7 @@ use crate::{
     sema::{
         cx,
         hir::BinaryOp,
+        intrin::IntrinsicDef,
         mir::{self, SsaVarId},
         ty, Attr, Constructor, DefId, DefinitionInner, Definitions, FunctionBody, UserTypeKind,
     },
@@ -109,8 +110,14 @@ pub fn visit_module<V: ModVisitor>(
     }
 
     for Pair(name, def) in &md.values {
+        if let DefinitionInner::Function(_, Some(FunctionBody::Intrinsic(_))) =
+            defs.definition(*def).inner.body
+        {
+            continue;
+        }
         let visitor = visit.visit_value();
         names.push(*name);
+
         visit_value_def(*def, defs, visitor, names);
         names.pop();
     }
@@ -196,9 +203,11 @@ pub fn visit_value_def<V: ValueDefVisitor>(
     if visit.is_none() {
         return;
     }
+
     visit.visit_defid(def);
-    visit.visit_name(names);
     let def = defs.definition(def);
+    visit.visit_name(names);
+
     for attr in &def.attrs {
         visit_attr(visit.visit_attr(), &attr.body);
     }
@@ -207,7 +216,6 @@ pub fn visit_value_def<V: ValueDefVisitor>(
             let visitor = visit.visit_function();
             visit_fndef(visitor, fnty, body, defs);
         }
-        DefinitionInner::Function(_, Some(FunctionBody::Intrinsic(_))) => {}
         x => panic!("Invalid definition: {:?}", x),
     }
 }
@@ -322,7 +330,7 @@ pub fn visit_terminator<V: TerminatorVisitor>(
     match term {
         mir::MirTerminator::Call(info) => visit_call(visitor.visit_call(), info, defs),
         mir::MirTerminator::Jump(info) => visit_jump(visitor.visit_jump(), info),
-        mir::MirTerminator::Tailcall(info) => visit_tailcall(visitor.visit_tailcall(), info, defs),
+        mir::MirTerminator::Tailcall(info) => visit_tailcall(visitor.visit_call(), info, defs),
         mir::MirTerminator::Return(expr) => visit_expr(visitor.visit_return(), expr, defs),
         x => todo!("{:?}", x),
     }
@@ -335,8 +343,11 @@ pub fn visit_call<V: CallVisitor>(mut visitor: V, info: &mir::MirCallInfo, defs:
     }
     visitor.visit_retplace(info.retplace.body);
     visit_fnty(visitor.visit_fnty(), &info.fnty, defs);
-
-    visit_expr(visitor.visit_target(), &info.targ, defs);
+    if let mir::MirExpr::Intrinsic(intrin) = &info.targ.body {
+        visitor.visit_intrinsic(*intrin)
+    } else {
+        visit_expr(visitor.visit_target(), &info.targ, defs);
+    }
 
     for expr in &info.params {
         visit_expr(visitor.visit_param(), expr, defs);
@@ -346,7 +357,7 @@ pub fn visit_call<V: CallVisitor>(mut visitor: V, info: &mir::MirCallInfo, defs:
 }
 
 #[allow(unused_variables, unused_mut)]
-pub fn visit_tailcall<V: TailcallVisitor>(
+pub fn visit_tailcall<V: CallVisitor>(
     mut visitor: V,
     info: &mir::MirTailcallInfo,
     defs: &Definitions,
@@ -356,11 +367,17 @@ pub fn visit_tailcall<V: TailcallVisitor>(
     }
     visit_fnty(visitor.visit_fnty(), &info.fnty, defs);
 
-    visit_expr(visitor.visit_target(), &info.targ, defs);
+    if let mir::MirExpr::Intrinsic(intrin) = &info.targ.body {
+        visitor.visit_intrinsic(*intrin)
+    } else {
+        visit_expr(visitor.visit_target(), &info.targ, defs);
+    }
 
     for expr in &info.params {
         visit_expr(visitor.visit_param(), expr, defs);
     }
+
+    visitor.visit_tailcall()
 }
 
 pub fn visit_jump<V: JumpVisitor>(mut visitor: V, info: &mir::MirJumpInfo) {
@@ -508,7 +525,7 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         mir::MirExpr::Read(_) => todo!(),
         mir::MirExpr::Alloca(_, _, _) => todo!(),
         mir::MirExpr::Retag(_, _, _) => todo!(),
-        mir::MirExpr::Intrinsic(_) => todo!(),
+        mir::MirExpr::Intrinsic(_) => panic!("Cannot use an intrinsic, except to call it"),
         mir::MirExpr::FieldProject(expr, name) => {
             visit_field_access(visitor.visit_field_project(), expr, name, defs)
         }
@@ -736,12 +753,16 @@ def_visitors! {
         fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
     }
 
+
     pub trait CallVisitor {
         fn visit_retplace(&mut self, retplace: mir::SsaVarId);
         fn visit_target(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
         fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>>;
         fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
         fn visit_next(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
+        fn visit_intrinsic(&mut self, intrin: IntrinsicDef);
+        fn visit_tailcall(&mut self);
+
         // TODO: visit unwind
     }
 
@@ -749,8 +770,10 @@ def_visitors! {
         fn visit_target(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
         fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>>;
         fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_intrinsic(&mut self, intrin: IntrinsicDef);
         // TODO: visit unwind
     }
+
 
     pub trait JumpVisitor {
         fn visit_target_bb(&mut self, targbb: mir::BasicBlockId);
@@ -760,7 +783,6 @@ def_visitors! {
     pub trait TerminatorVisitor {
         fn visit_call(&mut self) -> Option<Box<dyn CallVisitor + '_>>;
         fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
-        fn visit_tailcall(&mut self) -> Option<Box<dyn TailcallVisitor + '_>>;
         fn visit_return(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
     }
 

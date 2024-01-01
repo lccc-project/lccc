@@ -82,4 +82,7 @@ define_lang_items! {
     Char: char @ ImplBlock,
     Str: str @ ImplBlock,
     Never: never @ ImplBlock,
+    LayoutTy: layout @ Type,
+    AllocSym: alloc_sym @ Function,
+    DeallocSym: dealloc_sym @ Function,
 }
