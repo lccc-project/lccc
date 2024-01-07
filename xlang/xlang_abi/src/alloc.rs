@@ -589,7 +589,7 @@ unsafe impl<A: ?Sized + Allocator> Allocator for &mut A {
 }
 
 /// An Allocator which allocates memory using `xlang_allocate` and/or `xlang_allocate_array`
-#[allow(clippy::module_name_repetitions)]
+#[allow(clippy::module_name_repetitions, dead_code)]
 // TODO: Should this be changed? No. XLangAlloc is the correct name. This isn't the `Global` or `System` allocator, it's the xlang allocator
 #[derive(Copy, Clone)]
 #[repr(transparent)]

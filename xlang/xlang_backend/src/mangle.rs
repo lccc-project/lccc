@@ -1,6 +1,7 @@
 use std::{fmt::Write, iter::Peekable};
 use xlang::ir::PathComponent;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 enum Token {
     Parens(Vec<Token>),

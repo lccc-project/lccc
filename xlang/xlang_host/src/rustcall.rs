@@ -1,7 +1,7 @@
 use cfg_match::cfg_match;
 
 cfg_match! {
-    all(any(has_feature_c_unwind="stable"),rustcall_is_fastcall) => {
+    all(any(has_feature_c_unwind="stable"), rustcall_is_fastcall) => {
         ///
         /// A macro which allows definining functions, function pointer types, and extern blocks using the `"rustcall"` abi.
         /// This abi matches the ABI used by lcrust v0 for `extern "Rust"` functions, without `#[track_caller]` support.
@@ -13,12 +13,12 @@ cfg_match! {
         /// This is intended to be fixed in the future on as many compilers as possible
         #[allow(clippy::doc_markdown)] // No, clippy, LCRust is not an item, it's the name of the ABI
         #[macro_export]
-        macro_rules! rustcall{
-            (extern "rustcall" fn $($tt:tt)*) => {
-                extern "fastcall-unwind" fn $($tt)*
+        macro_rules! rustcall {
+            ($(#[$meta:meta])* extern "rustcall" fn $($tt:tt)*) => {
+                $(#[$meta])* extern "fastcall-unwind" fn $($tt)*
             };
-            (unsafe extern "rustcall" fn $($tt:tt)*) => {
-                unsafe extern "fastcall-unwind" fn $($tt)*
+            ($(#[$meta:meta])* unsafe extern "rustcall" fn $($tt:tt)*) => {
+                $(#[$meta])* unsafe extern "fastcall-unwind" fn $($tt)*
             };
             ($(#[$meta:meta])* $vis:vis extern "rustcall" fn $($tt:tt)*) => {
                 $(#[$meta])* $vis extern "fastcall-unwind" fn $($tt)*
@@ -26,7 +26,8 @@ cfg_match! {
             ($(#[$meta:meta])*  $vis:vis unsafe extern "rustcall" fn $($tt:tt)*) => {
                 $(#[$meta])* $vis unsafe extern "fastcall-unwind" fn $($tt)*
             };
-            (extern "rustcall" { $($item:item)*}) => {
+            ($(#[$meta:meta])* extern "rustcall" { $($item:item)*}) => {
+                $(#[$meta])*
                 extern "fastcall-unwind" {
                     $($item)*
                 }
@@ -45,13 +46,12 @@ cfg_match! {
         /// This is intended to be fixed in the future on as many compilers as possible
         #[allow(clippy::doc_markdown)] // No, clippy, LCRust is not an item, it's the name of the ABI
         #[macro_export]
-        macro_rules! rustcall{
-
-            (extern "rustcall" fn $($tt:tt)*) => {
-                extern "C-unwind" fn $($tt)*
+        macro_rules! rustcall {
+            ($(#[$meta:meta])* extern "rustcall" fn $($tt:tt)*) => {
+                $(#[$meta])* extern "C-unwind" fn $($tt)*
             };
-            (unsafe extern "rustcall" fn $($tt:tt)*) => {
-                unsafe extern "C-unwind" fn $($tt)*
+            ($(#[$meta:meta])* unsafe extern "rustcall" fn $($tt:tt)*) => {
+                $(#[$meta])* unsafe extern "C-unwind" fn $($tt)*
             };
             ($(#[$meta:meta])* $vis:vis extern "rustcall" fn $($tt:tt)*) => {
                 $(#[$meta])* $vis extern "C-unwind" fn $($tt)*
@@ -59,7 +59,8 @@ cfg_match! {
             ($(#[$meta:meta])*  $vis:vis unsafe extern "rustcall" fn $($tt:tt)*) => {
                 $(#[$meta])* $vis unsafe extern "C-unwind" fn $($tt)*
             };
-            (extern "rustcall" { $($item:item)*}) => {
+            ($(#[$meta:meta])* extern "rustcall" { $($item:item)*}) => {
+                $(#[$meta])*
                 extern "C-unwind" {
                     $($item)*
                 }
@@ -78,20 +79,21 @@ cfg_match! {
         /// This is intended to be fixed in the future on as many compilers as possible
         #[allow(clippy::doc_markdown)] // No, clippy, LCRust is not an item, it's the name of the ABI
         #[macro_export]
-        macro_rules! rustcall{
-            (extern "rustcall" fn $($tt:tt)*) => {
-                extern "fastcall" fn $($tt)*
+        macro_rules! rustcall {
+            ($(#[$meta:meta])* extern "rustcall" fn $($tt:tt)*) => {
+                $(#[$meta])* extern "fastcall" fn $($tt)*
             };
-            (unsafe extern "rustcall" fn $($tt:tt)*) => {
-                unsafe extern "fastcall" fn $($tt)*
+            ($(#[$meta:meta])* unsafe extern "rustcall" fn $($tt:tt)*) => {
+                $(#[$meta])* unsafe extern "fastcall" fn $($tt)*
             };
             ($(#[$meta:meta])* $vis:vis extern "rustcall" fn $($tt:tt)*) => {
                 $(#[$meta])* $vis extern "fastcall" fn $($tt)*
             };
-            ($(#[$meta:meta])*  $vis:vis unsafe extern "rustcall" fn $($tt:tt)*) => {
+            ($(#[$meta:meta])* $vis:vis unsafe extern "rustcall" fn $($tt:tt)*) => {
                 $(#[$meta])* $vis unsafe extern "fastcall" fn $($tt)*
             };
-            (extern "rustcall" { $($item:item)*}) => {
+            ($(#[$meta:meta])* extern "rustcall" { $($item:item)*}) => {
+                $(#[$meta])*
                 extern "fastcall" {
                     $($item)*
                 }
@@ -110,18 +112,17 @@ cfg_match! {
         /// This is intended to be fixed in the future on as many compilers as possible
         #[allow(clippy::doc_markdown)] // No, clippy, LCRust is not an item, it's the name of the ABI
         #[macro_export]
-        macro_rules! rustcall{
-
-            (extern "rustcall" fn $($tt:tt)*) => {
-                extern "C" fn $($tt)*
+        macro_rules! rustcall {
+            ($(#[$meta:meta])* extern "rustcall" fn $($tt:tt)*) => {
+                $(#[$meta])* extern "C" fn $($tt)*
             };
-            (unsafe extern "rustcall" fn $($tt:tt)*) => {
-                unsafe extern "C" fn $($tt)*
+            ($(#[$meta:meta])* unsafe extern "rustcall" fn $($tt:tt)*) => {
+                $(#[$meta])* unsafe extern "C" fn $($tt)*
             };
             ($(#[$meta:meta])* $vis:vis extern "rustcall" fn $($tt:tt)*) => {
                 $(#[$meta])* $vis extern "C" fn $($tt)*
             };
-            ($(#[$meta:meta])*  $vis:vis unsafe extern "rustcall" fn $($tt:tt)*) => {
+            ($(#[$meta:meta])* $vis:vis unsafe extern "rustcall" fn $($tt:tt)*) => {
                 $(#[$meta])* $vis unsafe extern "C" fn $($tt)*
             };
             ($(#[$meta:meta])* extern "rustcall" { $($item:item)*}) => {
