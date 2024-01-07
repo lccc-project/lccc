@@ -3609,8 +3609,9 @@ pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
 pub fn lower_function(defs: &mut Definitions, curmod: DefId, defid: DefId) -> Result<()> {
     let def = defs.definition_mut(defid);
     match &mut def.inner.body {
-        DefinitionInner::Function(_, val @ Some(FunctionBody::ThirBody(_))) => match val.take() {
+        DefinitionInner::Function(fnty, val @ Some(FunctionBody::ThirBody(_))) => match val.take() {
             Some(FunctionBody::ThirBody(block)) => {
+                let fnty = fnty.clone();
                 let localitems = block.body.localitems;
 
                 for &(_, defid) in &localitems {
@@ -3628,6 +3629,7 @@ pub fn lower_function(defs: &mut Definitions, curmod: DefId, defid: DefId) -> Re
                         .flat_map(|Pair(a, b)| Some(Pair(a, b.debug_name?)))
                         .collect(),
                     localitems,
+                    fnty,
                 );
                 let stmts = match block.body.body.body {
                     ThirBlock::Normal(stmts) | ThirBlock::Unsafe(stmts) => stmts,

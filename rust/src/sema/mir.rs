@@ -437,8 +437,9 @@ impl<'a> MirConverter<'a> {
         curmod: DefId,
         hir_var_names: HashMap<HirVarId, Spanned<Symbol>>,
         localitems: Vec<(Symbol, DefId)>,
+        fnty: FnType,
     ) -> Self {
-        Self {
+        let mut result = Self {
             defs,
             at_item,
             curmod,
@@ -452,7 +453,21 @@ impl<'a> MirConverter<'a> {
             nextvar: 0,
             nextbb: 1,
             localitems,
+        };
+
+        for (id, param) in fnty.paramtys.into_iter().enumerate() {
+            let hir_id = HirVarId(id as u32);
+            let newvarid = SsaVarId(result.nextvar.fetch_increment());
+            result.var_names.insert(
+                hir_id,
+                HirVarAssignment {
+                    cur_var: newvarid,
+                    var_kind: SsaVarKind::Register,
+                },
+            );
         }
+
+        result
     }
 
     fn diag_lvalue_kind(val: &ThirExprInner) -> &'static str {
@@ -577,11 +592,16 @@ impl<'a> MirConverter<'a> {
                         at_item: self.at_item,
                         containing_item: self.curmod,
                         relevant_item: self.at_item,
-                        hints: vec![SemaHint {
-                            text: format!("Declared but not initalized here"),
-                            itemref: self.at_item,
-                            refspan: self.hir_def_spans[&hirvar],
-                        }],
+                        hints: self.hir_def_spans.get(&hirvar).map_or_else(
+                            || vec![],
+                            |x| {
+                                vec![SemaHint {
+                                    text: format!("Declared but not initalized here"),
+                                    itemref: self.at_item,
+                                    refspan: *x,
+                                }]
+                            },
+                        ),
                     })
                 }
             }
@@ -761,7 +781,10 @@ impl<'a> MirConverter<'a> {
             super::tyck::ThirExprInner::MemberAccess(_, _) => {
                 panic!("only top level rvalues get lowered by `lower_expr`")
             }
-            super::tyck::ThirExprInner::UnaryExpr(_, _) => todo!("unary expr"),
+            super::tyck::ThirExprInner::UnaryExpr(op, lhs) => Ok(Spanned {
+                span,
+                body: MirExpr::UnaryExpr(op, Box::new(self.lower_expr(*lhs)?)),
+            }),
         }
     }
 

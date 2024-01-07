@@ -1055,7 +1055,7 @@ impl<'a> Inferer<'a> {
                 let l = *l;
 
                 if let Some(gty) = self.inference_set.get_mut(&l) {
-                    let mut gty = core::mem::replace(ty, Type::Never);
+                    let mut gty = core::mem::replace(gty, Type::Never);
 
                     self.unify_types(&mut gty, ty)?;
                     self.inference_set.insert(l, gty);
@@ -1069,7 +1069,7 @@ impl<'a> Inferer<'a> {
                 let l = *l;
 
                 if let Some(gty) = self.inference_set.get_mut(&l) {
-                    let mut gty = core::mem::replace(ty, Type::Never);
+                    let mut gty = core::mem::replace(gty, Type::Never);
 
                     self.unify_types(&mut gty, ty)?;
                     self.inference_set.insert(l, gty);
@@ -1081,7 +1081,7 @@ impl<'a> Inferer<'a> {
             (ty @ Type::Int(_), Type::InferableInt(r)) => {
                 let r = *r;
                 if let Some(gty) = self.inference_set.get_mut(&r) {
-                    let mut gty = core::mem::replace(ty, Type::Never);
+                    let mut gty = core::mem::replace(gty, Type::Never);
 
                     self.unify_types(&mut gty, ty)?;
                     self.inference_set.insert(r, gty);
@@ -1094,7 +1094,7 @@ impl<'a> Inferer<'a> {
                 let r = *r;
 
                 if let Some(gty) = self.inference_set.get_mut(&r) {
-                    let mut gty = core::mem::replace(ty, Type::Never);
+                    let mut gty = core::mem::replace(gty, Type::Never);
 
                     self.unify_types(&mut gty, ty)?;
                     self.inference_set.insert(r, gty);
@@ -1121,11 +1121,12 @@ impl<'a> Inferer<'a> {
         &mut self,
         left: &mut ThirExpr,
     ) -> super::Result<CyclicOperationStatus> {
+        eprintln!("enter: {}", left);
         let mut status = CyclicOperationStatus::Complete;
         match &mut left.inner {
             ThirExprInner::Read(inner) => {
-                status &= self.unify_types(&mut inner.ty, &mut left.ty)?;
                 status &= self.unify_single_expr(inner)?;
+                status &= self.unify_types(&mut inner.ty, &mut left.ty)?;
             }
             ThirExprInner::Unreachable => {}
             ThirExprInner::Var(_) => {}
@@ -1185,10 +1186,13 @@ impl<'a> Inferer<'a> {
                 status &= self.unify_single_expr(expr)?;
             }
             ThirExprInner::BinaryExpr(_, lhs, rhs) => {
-                status &= self.unify_types(&mut left.ty, &mut lhs.ty)?;
-                status &= self.unify_types(&mut lhs.ty, &mut rhs.ty)?;
                 status &= self.unify_single_expr(lhs)?;
                 status &= self.unify_single_expr(rhs)?;
+                println!("{}, {}", left.ty, lhs.ty);
+                status &= self.unify_types(&mut left.ty, &mut lhs.ty)?;
+                println!("{}, {}", left.ty, lhs.ty);
+                status &= self.unify_types(&mut lhs.ty, &mut rhs.ty)?;
+                println!("{}, {}", left.ty, lhs.ty);
             }
             ThirExprInner::Array(_elements) => {
                 todo!("array")
@@ -1201,6 +1205,7 @@ impl<'a> Inferer<'a> {
                 status &= self.unify_single_expr(val)?;
             }
         }
+        eprintln!("exit: {}", left);
 
         Ok(status)
     }
