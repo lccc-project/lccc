@@ -3741,13 +3741,13 @@ pub fn convert_crate(
         let body = if retty == Type::Never {
             mir::mir! {
                 @0: { []
-                    tailcall # <main> : <fnty>()
+                    tailcall #<main>: <fnty>()
                 }
             }
         } else {
             mir::mir! {
                 @0: { []
-                    call _0 = # <main> : <fnty>() next @1 []
+                    call _0 = #<main>: <fnty>() next @1 []
                 }
                 @1: { [_0]
                     store dead _0;

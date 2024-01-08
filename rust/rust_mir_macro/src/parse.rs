@@ -40,19 +40,18 @@ pub fn do_punct<I: Iterator<Item = TokenTree>>(
         while let Some(TokenTree::Punct(c)) = tree.peek_next() {
             tok.push(c.as_char());
             let _ = span.get_or_insert(c.span());
+            if tok == punct {
+                return Ok(span.unwrap());
+            }
             if c.spacing() != Spacing::Joint {
                 break;
             }
         }
 
-        if tok != punct {
-            return Err(Error {
-                text: format!("Expected {}, got `{}`", punct, tok),
-                span: span.unwrap_or_else(Span::call_site),
-            });
-        }
-
-        return Ok(span.unwrap());
+        return Err(Error {
+            text: format!("Expected {}, got `{}`", punct, tok),
+            span: span.unwrap_or_else(Span::call_site),
+        });
     })
 }
 
