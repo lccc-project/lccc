@@ -18,6 +18,8 @@ use super::{
 
 pub mod mir_macro;
 
+pub use mir_macro::{mir, mir_basic_block, mir_expr, mir_fnty, mir_stmt, mir_type};
+
 pub use crate::sema::hir::{BinaryOp, UnaryOp};
 
 include!("mir_defs.rs");
@@ -36,6 +38,11 @@ impl BasicBlockId {
     pub const fn id(self) -> u32 {
         self.0
     }
+
+    #[doc(hidden)]
+    pub const fn __new_unchecked(x: u32) -> Self {
+        Self(x)
+    }
 }
 
 impl core::borrow::Borrow<u32> for BasicBlockId {
@@ -47,6 +54,11 @@ impl core::borrow::Borrow<u32> for BasicBlockId {
 impl SsaVarId {
     pub const fn id(self) -> u32 {
         self.0
+    }
+
+    #[doc(hidden)]
+    pub const fn __new_unchecked(x: u32) -> Self {
+        Self(x)
     }
 }
 

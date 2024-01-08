@@ -36,42 +36,46 @@ macro_rules! parse_safety {
     };
 }
 
+#[macro_export]
+#[doc(hidden)]
 macro_rules! parse_tag {
     () => {
-        AbiTag::Rust
+        $crate::sema::ty::AbiTag::Rust
     };
     (extern "Rust") => {
-        AbiTag::Rust
+        $crate::sema::ty::AbiTag::Rust
     };
     (extern "rust-call") => {
-        AbiTag::RustCall
+        $crate::sema::ty::AbiTag::RustCall
     };
     (extern "rust-intrinsic") => {
-        AbiTag::RustIntrinsic
+        $crate::sema::ty::AbiTag::RustIntrinsic
     };
     (extern "lcrust") => {
-        AbiTag::LCRust(None)
+        $crate::sema::ty::AbiTag::LCRust(None)
     };
     (extern "lcrust-v0") => {
-        AbiTag::LCRust(Some(0))
+        $crate::sema::ty::AbiTag::LCRust(Some(0))
     };
     (extern "C") => {
-        AbiTag::C { unwind: false }
+        $crate::sema::ty::AbiTag::C { unwind: false }
     };
     (extern "C-unwind") => {
-        AbiTag::C { unwind: true }
+        $crate::sema::ty::AbiTag::C { unwind: true }
     };
     (extern "system") => {
-        AbiTag::System { unwind: false }
+        $crate::sema::ty::AbiTag::System { unwind: false }
     };
     (extern "system-unwind") => {
-        AbiTag::System { unwind: true }
+        $crate::sema::ty::AbiTag::System { unwind: true }
     };
     (extern $lit:literal) => {{
         compile_error!(concat!("unrecognized abi tag `", stringify!($lit), "`"));
         loop {}
     }};
 }
+#[doc(hidden)]
+pub use parse_tag as __parse_tag;
 
 macro_rules! parse_cvarargs {
     () => {
@@ -111,7 +115,7 @@ macro_rules! parse_type_inner {
         Type::Never
     };
     ($(unsafe $(@$_vol:tt)?)? $(extern $lit:literal)? fn($($param:ty),* $(, $(... $(@$_vol2:tt)?)?)?) -> $ret:ty) => {
-        Type::FnType {
+        Type::FnType (FnType{
             safety: spanned!(parse_safety!($(unsafe $($_vol)?)?)),
             constness: spanned!(Mutability::Const),
             asyncness: spanned!(ty::AsyncType::Normal),
@@ -119,7 +123,7 @@ macro_rules! parse_type_inner {
             retty: spanned!(box parse_type!($ret)),
             paramtys: vec![$(spanned!($param)),*],
             iscvarargs: spanned!(parse_cvarargs!($($(... $($_vol2)?)?)?))
-        }
+        })
     };
 }
 

@@ -142,6 +142,14 @@ define_xlang_intrinsics! {
 
         let ret = codegen.opaque_value(ret, loc);
         codegen.push_value(ret);
+    },
+    __lccc::xlang::likely |codegen, _, _, params| => {
+        let value = params.into_iter().next().unwrap();
+        codegen.push_value(value);
+    },
+    __lccc::xlang::unlikely |codegen, _, _, params| => {
+        let value = params.into_iter().next().unwrap();
+        codegen.push_value(value);
     }
 }
 

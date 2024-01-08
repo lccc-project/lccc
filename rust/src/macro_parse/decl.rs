@@ -12,7 +12,7 @@ use crate::{
         do_lexeme_class, do_lexeme_classes, do_lexeme_group, do_lexeme_token, do_token_classes,
         IntoRewinder,
     },
-    span::{HygieneRef, RustEdition, Span, Spanned},
+    span::{HygieneMode, HygieneRef, RustEdition, Span, Spanned},
 };
 
 use super::ErrorCode;
@@ -829,4 +829,41 @@ pub fn compile_macro_arm(x: MacroArm, hygiene: HygieneRef) -> Result<CompiledMac
     };
 
     Ok(CompiledMacroArm { input, expansion })
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct CompiledMacro {
+    pub name: Spanned<Symbol>,
+    pub arms: Vec<Spanned<CompiledMacroArm>>,
+}
+
+pub fn compile_macro_rules(mr: Spanned<ast::MacroRules>) -> Result<Spanned<CompiledMacro>> {
+    let hygiene = mr.span.hygiene.with_mode(HygieneMode::MixedSite);
+    mr.try_map_span(|mr| {
+        let name = mr.name;
+        let mut tokens = mr.body.body.body.into_iter().peekmore();
+        let mut arms = Vec::new();
+        loop {
+            match do_macro_arm(&mut tokens) {
+                Ok(arm) => arms.push(arm),
+                Err(e) => match do_lexeme_class(&mut tokens, LexemeClass::Eof) {
+                    Ok(_) => break,
+                    Err(_) => Err(e)?,
+                },
+            }
+        }
+
+        let arms = arms
+            .into_iter()
+            .map(|arm| arm.try_map_span(|arm| compile_macro_arm(arm, hygiene)))
+            .collect::<Result<Vec<_>>>()?;
+
+        let ret = CompiledMacro { name, arms };
+        Ok(ret)
+    })
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ExpansionContext {
+    pub repetition_counts: Vec<u32>,
 }

@@ -201,6 +201,9 @@ impl core::fmt::Display for AbiTag {
     }
 }
 
+#[doc(hidden)]
+pub use super::intrin::__parse_tag;
+
 pub fn convert_tag(tag: Spanned<Symbol>, curmod: DefId, at_item: DefId) -> super::Result<AbiTag> {
     let span = tag.span;
     let mut tag = &**tag;
@@ -288,6 +291,7 @@ pub fn convert_tag(tag: Spanned<Symbol>, curmod: DefId, at_item: DefId) -> super
         }),
         ("C", unwind) => Ok(AbiTag::C { unwind }),
         ("system", unwind) => Ok(AbiTag::System { unwind }),
+        ("cdecl", unwind) => Ok(AbiTag::Cdecl { unwind }),
         ("stdcall", unwind) => Ok(AbiTag::Stdcall { unwind }),
         ("fastcall", unwind) => Ok(AbiTag::Fastcall { unwind }),
         ("thiscall", unwind) => Ok(AbiTag::Thiscall { unwind }),

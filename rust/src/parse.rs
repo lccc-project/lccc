@@ -5,12 +5,13 @@ use peekmore::{PeekMore, PeekMoreIterator};
 use crate::{
     ast::{
         AsyncBlock, Attr, AttrInput, Auto, BinaryOp, Block, CaptureSpec, Closure, ClosureParam,
-        CompoundBlock, CondBlock, ConstParam, Constructor, ConstructorExpr, Expr, ExternBlock,
-        FieldInit, Function, GenericBound, GenericParam, GenericParams, IfBlock, ImplBlock, Item,
-        ItemBody, ItemValue, Label, LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind,
-        Mod, Param, Path, PathSegment, Pattern, Safety, SelfParam, SimplePath, SimplePathSegment,
-        Spanned, Statement, StructCtor, StructField, StructKind, TraitDef, TupleCtor, TupleField,
-        Type, TypeParam, UnaryOp, UserType, UserTypeBody, Visibility, WhereClause,
+        CompoundBlock, CondBlock, ConstParam, Constructor, ConstructorExpr, EnumVariant, Expr,
+        ExternBlock, FieldInit, Function, GenericBound, GenericParam, GenericParams, IfBlock,
+        ImplBlock, Item, ItemBody, ItemValue, Label, LetStatement, Lifetime, LifetimeParam,
+        Literal, LiteralKind, Mod, Param, Path, PathSegment, Pattern, Safety, SelfParam,
+        SimplePath, SimplePathSegment, Spanned, Statement, StructCtor, StructField, StructKind,
+        TraitDef, TupleCtor, TupleField, Type, TypeParam, UnaryOp, UserType, UserTypeBody,
+        Visibility, WhereClause,
     },
     interning::Symbol,
     lex::{
@@ -765,8 +766,88 @@ pub fn do_user_type_enum(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<UserType>> {
     let mut tree = tree.into_rewinder();
-    let _kw_enum = do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::Enum))?;
-    todo!()
+    let kw_enum = do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::Enum))?;
+    let start_span = kw_enum.span;
+
+    let (span, id) = do_lexeme_token(&mut tree, LexemeClass::Identifier)?;
+
+    let name = Spanned {
+        body: id.body,
+        span,
+    };
+
+    let generics = do_generic_params(&mut tree).ok();
+
+    let where_clauses = do_where_clauses(&mut tree).ok();
+
+    let (gr, endspan) = do_lexeme_group(&mut tree, Some(GroupType::Braces))?;
+
+    let mut inner_tree = gr.body.into_iter().peekmore();
+
+    let mut variants = Vec::new();
+    loop {
+        if do_lexeme_class(&mut inner_tree, LexemeClass::Eof).is_ok() {
+            break;
+        }
+        let mut attrs = Vec::new();
+        loop {
+            match do_external_attr(&mut inner_tree) {
+                Ok(attr) => attrs.push(attr),
+                Err(_) => break,
+            }
+        }
+
+        let (startspan, var_id) = do_lexeme_token(&mut inner_tree, LexemeClass::Identifier)?;
+
+        let var_name = Spanned {
+            body: var_id.body,
+            span: startspan,
+        };
+
+        let ctor = do_constructor(&mut inner_tree).unwrap_or_else(|_| Spanned {
+            body: Constructor::Unit,
+            span: startspan.after(),
+        });
+
+        let (endspan, discriminant) = match do_lexeme_token(&mut inner_tree, punct![=]) {
+            Ok(_) => {
+                let expr = do_expression(&mut inner_tree)?;
+
+                (expr.span, Some(expr))
+            }
+            Err(_) => (startspan, None),
+        };
+
+        let body = EnumVariant {
+            attrs,
+            ctor,
+            discriminant,
+        };
+
+        let span = Span::between(startspan, endspan);
+        variants.push(Spanned { body, span });
+
+        match do_lexeme_classes(&mut inner_tree, &[LexemeClass::Eof, punct!(,)])? {
+            (_, LexemeClass::Eof) => break,
+            (_, punct!(,)) => continue,
+            _ => unreachable!(),
+        }
+    }
+
+    let body = UserTypeBody::Enum(variants);
+
+    let span = Span::between(start_span, endspan);
+
+    let utype = UserType {
+        name,
+        generics,
+        where_clauses,
+        body,
+    };
+
+    tree.accept();
+
+    Ok(Spanned { body: utype, span })
 }
 
 pub fn do_item_user_type(

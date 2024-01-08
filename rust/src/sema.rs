@@ -3609,51 +3609,53 @@ pub fn tycheck_values(defs: &mut Definitions, curmod: DefId) -> Result<()> {
 pub fn lower_function(defs: &mut Definitions, curmod: DefId, defid: DefId) -> Result<()> {
     let def = defs.definition_mut(defid);
     match &mut def.inner.body {
-        DefinitionInner::Function(fnty, val @ Some(FunctionBody::ThirBody(_))) => match val.take() {
-            Some(FunctionBody::ThirBody(block)) => {
-                let fnty = fnty.clone();
-                let localitems = block.body.localitems;
+        DefinitionInner::Function(fnty, val @ Some(FunctionBody::ThirBody(_))) => {
+            match val.take() {
+                Some(FunctionBody::ThirBody(block)) => {
+                    let fnty = fnty.clone();
+                    let localitems = block.body.localitems;
 
-                for &(_, defid) in &localitems {
-                    lower_function(defs, curmod, defid)?;
-                }
-
-                let mut lowerer = mir::MirConverter::new(
-                    defs,
-                    defid,
-                    curmod,
-                    block
-                        .body
-                        .vardefs
-                        .into_iter()
-                        .flat_map(|Pair(a, b)| Some(Pair(a, b.debug_name?)))
-                        .collect(),
-                    localitems,
-                    fnty,
-                );
-                let stmts = match block.body.body.body {
-                    ThirBlock::Normal(stmts) | ThirBlock::Unsafe(stmts) => stmts,
-                    _ => unreachable!(),
-                };
-
-                for stmt in stmts {
-                    lowerer.write_statement(stmt)?;
-                }
-
-                let body = lowerer.finish();
-
-                match &mut defs.definition_mut(defid).inner.body {
-                    DefinitionInner::Function(_, ibody) => {
-                        *ibody = Some(FunctionBody::MirBody(Spanned {
-                            span: block.span,
-                            body,
-                        }));
+                    for &(_, defid) in &localitems {
+                        lower_function(defs, curmod, defid)?;
                     }
-                    _ => unreachable!(),
+
+                    let mut lowerer = mir::MirConverter::new(
+                        defs,
+                        defid,
+                        curmod,
+                        block
+                            .body
+                            .vardefs
+                            .into_iter()
+                            .flat_map(|Pair(a, b)| Some(Pair(a, b.debug_name?)))
+                            .collect(),
+                        localitems,
+                        fnty,
+                    );
+                    let stmts = match block.body.body.body {
+                        ThirBlock::Normal(stmts) | ThirBlock::Unsafe(stmts) => stmts,
+                        _ => unreachable!(),
+                    };
+
+                    for stmt in stmts {
+                        lowerer.write_statement(stmt)?;
+                    }
+
+                    let body = lowerer.finish();
+
+                    match &mut defs.definition_mut(defid).inner.body {
+                        DefinitionInner::Function(_, ibody) => {
+                            *ibody = Some(FunctionBody::MirBody(Spanned {
+                                span: block.span,
+                                body,
+                            }));
+                        }
+                        _ => unreachable!(),
+                    }
                 }
+                _ => unreachable!(),
             }
-            _ => unreachable!(),
-        },
+        }
         _ => {}
     }
     Ok(())
@@ -3737,112 +3739,24 @@ pub fn convert_crate(
         let retty = fnty.retty.body.clone();
 
         let body = if retty == Type::Never {
-            let tailcall = mir::MirTailcallInfo {
-                targ: Spanned {
-                    body: mir::MirExpr::Const(main),
-                    span: main_span,
-                },
-                fnty,
-                params: vec![],
-                unwind: None,
-            };
-
-            let block = mir::MirBasicBlock {
-                id: first_block,
-                stmts: vec![],
-                term: Spanned {
-                    body: mir::MirTerminator::Tailcall(tailcall),
-                    span: main_span,
-                },
-                incoming_vars: vec![],
-            };
-
-            mir::MirFunctionBody {
-                bbs: vec![block],
-                vardbg_info: HashMap::new(),
-                localitems: Vec::new(),
+            mir::mir! {
+                @0: { []
+                    tailcall # <main> : <fnty>()
+                }
             }
         } else {
-            let var = mir::SsaVarId(0);
-            let second_block = mir::BasicBlockId(1);
-            let jmp = mir::MirJumpInfo {
-                targbb: second_block,
-                remaps: vec![],
-            };
-            let call = mir::MirCallInfo {
-                retplace: Spanned {
-                    body: var,
-                    span: main_span,
-                },
-                targ: Spanned {
-                    body: mir::MirExpr::Const(main),
-                    span: main_span,
-                },
-                fnty,
-                params: vec![],
-                next: jmp,
-                unwind: None,
-            };
-
-            let first_block = mir::MirBasicBlock {
-                id: first_block,
-                stmts: vec![],
-                term: Spanned {
-                    body: mir::MirTerminator::Call(call),
-                    span: main_span,
-                },
-                incoming_vars: vec![],
-            };
-
-            // TODO: Call Terminator trait
-
-            let second_block = mir::MirBasicBlock {
-                id: second_block,
-                stmts: vec![],
-                term: Spanned {
-                    body: mir::MirTerminator::Return(Spanned {
-                        body: mir::MirExpr::ConstInt(ity, 0),
-                        span: main_span,
-                    }),
-                    span: main_span,
-                },
-                incoming_vars: vec![var],
-            };
-
-            mir::MirFunctionBody {
-                bbs: vec![first_block, second_block],
-                vardbg_info: HashMap::new(),
-                localitems: Vec::new(),
+            mir::mir! {
+                @0: { []
+                    call _0 = # <main> : <fnty>() next @1 []
+                }
+                @1: { [_0]
+                    store dead _0;
+                    return 0_i32
+                }
             }
         };
 
-        let fnty = ty::FnType {
-            safety: Spanned {
-                body: Safety::Unsafe,
-                span: main_span,
-            },
-            constness: Spanned {
-                body: Mutability::Mut,
-                span: main_span,
-            },
-            asyncness: Spanned {
-                body: ty::AsyncType::Normal,
-                span: main_span,
-            },
-            tag: Spanned {
-                body: ty::AbiTag::LCRust(Some(0)),
-                span: main_span,
-            },
-            retty: Box::new(Spanned {
-                body: Type::Int(ity),
-                span: main_span,
-            }),
-            paramtys: vec![],
-            iscvarargs: Spanned {
-                body: false,
-                span: main_span,
-            },
-        };
+        let fnty = mir::mir_fnty!(unsafe extern "lcrust-v0" fn() -> i32);
         let def = defs.definition_mut(lccc_main);
 
         def.inner = Spanned {

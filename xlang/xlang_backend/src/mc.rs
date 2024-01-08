@@ -27,6 +27,9 @@ use crate::{
 /// Register Allocation
 pub mod regalloc;
 
+/// Calling Convention Abstraction
+pub mod callconv;
+
 /// Converts the u128 `val` into bytes according to the platform endianness in `props`
 pub fn u128_to_targ_bytes(val: u128, props: &TargetProperties) -> [u8; 16] {
     match props.arch.byte_order {

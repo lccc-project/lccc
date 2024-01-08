@@ -63,18 +63,22 @@ impl<I: Iterator<Item = char>> PeekMoreIterator<Speekable<I>> {
 
 impl<I: Iterator> PeekMoreIterator<I> {
     pub fn peek(&mut self) -> Option<&I::Item> {
-        if self.cursor < self.buf.len() {
-            Some(&self.buf[self.cursor])
+        if self.cursor == 0 {
+            self.cursor = 1;
+        }
+
+        if self.cursor <= self.buf.len() {
+            Some(&self.buf[self.cursor - 1])
         } else {
             let val = self.inner.next()?;
-            self.cursor = self.buf.len();
             self.buf.push_back(val);
-            Some(&self.buf[self.cursor])
+            self.cursor = self.buf.len();
+            Some(&self.buf[self.cursor - 1])
         }
     }
 
     pub fn peek_next(&mut self) -> Option<&I::Item> {
-        if self.cursor < self.buf.len() {
+        if self.cursor <= self.buf.len() {
             self.cursor += 1;
         }
         self.peek()
@@ -91,6 +95,7 @@ impl<I: Iterator> PeekMoreIterator<I> {
     pub fn clear_mark(&mut self) {
         self.mark.pop();
     }
+
     pub fn rewind(&mut self) {
         if let Some(mark) = self.mark.pop() {
             self.cursor = mark;
@@ -100,8 +105,12 @@ impl<I: Iterator> PeekMoreIterator<I> {
         self.cursor = 0;
     }
     pub fn consume_peaked(&mut self) {
-        let count = self.cursor;
+        if self.cursor == self.buf.len() {
+            self.buf.clear();
+        }
+        let count = self.cursor.saturating_sub(1);
         drop(self.buf.drain(..count));
+        self.cursor = 0;
         self.mark.clear();
     }
 }
@@ -135,6 +144,7 @@ impl<T: Iterator> Rewinder<'_, T> {
 
 impl<'a, T: Iterator> From<&'a mut PeekMoreIterator<T>> for Rewinder<'a, T> {
     fn from(inner: &'a mut PeekMoreIterator<T>) -> Self {
+        inner.mark();
         Self { inner }
     }
 }

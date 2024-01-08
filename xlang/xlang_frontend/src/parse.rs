@@ -17,7 +17,7 @@ pub fn do_alternation<C, I: Iterator, F: IntoIterator, R, S>(
     state: &S,
 ) -> C
 where
-    C: Try,
+    C: Try + core::fmt::Debug,
     F::Item: FnOnce(&mut PeekMoreIterator<I>, &S) -> C,
     R: FnMut(C::Residual, C::Residual) -> C::Residual,
 {

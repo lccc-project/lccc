@@ -1,6 +1,6 @@
 use parse::Error;
 use proc_macro::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
-use xlang_frontend::iter::Peekmore;
+use xlang_frontend::iter::{PeekMoreIterator, Peekmore};
 
 // mod ast;
 mod parse;
@@ -57,37 +57,76 @@ fn write_error(e: Error) -> TokenStream {
     let mut inner = TokenStream::new();
     let st = Literal::string(&e.text);
     inner.extend([TokenTree::Literal(st)]);
-    ts
+
+    ts.extend([
+        TokenTree::Punct(bang),
+        TokenTree::Group(Group::new(Delimiter::Parenthesis, inner)),
+        TokenTree::Punct(Punct::new(';', Spacing::Alone)),
+    ]);
+
+    let mut outer = TokenStream::new();
+    outer.extend([TokenTree::Group(Group::new(Delimiter::Brace, ts))]);
+    outer
+}
+
+fn eval_mir<I: Iterator<Item = TokenTree>>(
+    mut it: I,
+    entry: fn(&mut PeekMoreIterator<I>, &TokenStream) -> parse::Result<TokenStream>,
+) -> TokenStream {
+    let wrapped_dollar_crate = it.next().expect("You must provide the wrapped `$crate`");
+
+    let dollar_crate = match wrapped_dollar_crate {
+        TokenTree::Group(g) => g.stream(),
+        _ => panic!("Invalid mir_impl invocation"),
+    };
+
+    let mut tree = it.peekmore();
+    match entry(&mut tree, &dollar_crate) {
+        Ok(ts) => {
+            if let Some(tok) = tree.peek_next() {
+                write_error(Error {
+                    text: format!("Unexpected garbage after input `{}`", tok),
+                    span: tok.span(),
+                })
+            } else {
+                ts
+            }
+        }
+        Err(e) => write_error(e),
+    }
 }
 
 #[proc_macro]
 pub fn mir_impl(tt: TokenStream) -> TokenStream {
-    let mut iter = tt.into_iter();
-
-    let wrapped_dollar_crate = iter.next().unwrap();
-
-    let dollar_crate = match wrapped_dollar_crate {
-        TokenTree::Group(g) => g.stream(),
-        _ => panic!("Invalid mir_impl invocation"),
-    };
-
-    todo!()
+    eval_mir(tt.into_iter(), parse::do_mir_fnbody)
 }
 
 #[proc_macro]
 pub fn mir_type_impl(tt: TokenStream) -> TokenStream {
-    let mut iter = tt.into_iter();
+    eval_mir(tt.into_iter(), parse::do_type)
+}
 
-    let wrapped_dollar_crate = iter.next().unwrap();
+#[proc_macro]
+pub fn mir_expr_impl(tt: TokenStream) -> TokenStream {
+    eval_mir(tt.into_iter(), parse::do_expr)
+}
 
-    let dollar_crate = match wrapped_dollar_crate {
-        TokenTree::Group(g) => g.stream(),
-        _ => panic!("Invalid mir_impl invocation"),
-    };
+#[proc_macro]
+pub fn mir_fnty_impl(tt: TokenStream) -> TokenStream {
+    eval_mir(tt.into_iter(), parse::do_fnty)
+}
 
-    let mut tree = iter.peekmore();
-    match parse::do_type(&mut tree, &dollar_crate) {
-        Ok(ts) => ts,
-        Err(e) => write_error(e),
-    }
+#[proc_macro]
+pub fn mir_term_impl(tt: TokenStream) -> TokenStream {
+    eval_mir(tt.into_iter(), parse::do_terminator)
+}
+
+#[proc_macro]
+pub fn mir_stmt_impl(tt: TokenStream) -> TokenStream {
+    eval_mir(tt.into_iter(), parse::do_statement)
+}
+
+#[proc_macro]
+pub fn mir_basic_block_impl(tt: TokenStream) -> TokenStream {
+    eval_mir(tt.into_iter(), parse::do_basic_block)
 }

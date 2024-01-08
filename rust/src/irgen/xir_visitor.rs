@@ -1433,7 +1433,9 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
                 | IntrinsicDef::__builtin_allocate
                 | IntrinsicDef::__builtin_deallocate
                 | IntrinsicDef::transmute
-                | IntrinsicDef::black_box => {
+                | IntrinsicDef::black_box
+                | IntrinsicDef::__builtin_likely
+                | IntrinsicDef::__builtin_unlikely => {
                     unreachable!("These are handled like regular functions")
                 }
             }
@@ -1551,7 +1553,9 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
                 | IntrinsicDef::__builtin_allocate
                 | IntrinsicDef::__builtin_deallocate
                 | IntrinsicDef::transmute
-                | IntrinsicDef::black_box => unreachable!(),
+                | IntrinsicDef::black_box
+                | IntrinsicDef::__builtin_likely
+                | IntrinsicDef::__builtin_unlikely => unreachable!(),
             }
         } else {
             self.body
@@ -1575,11 +1579,10 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
         }))
     }
 
-    fn visit_intrinsic(&mut self, intrin: crate::sema::intrin::IntrinsicDef) {
+    fn visit_intrinsic(&mut self, intrin: IntrinsicDef) {
         let (item, fnty) = match intrin {
             // Rust sym calls
-            func @ (crate::sema::intrin::IntrinsicDef::__builtin_allocate
-            | crate::sema::intrin::IntrinsicDef::__builtin_deallocate) => {
+            func @ (IntrinsicDef::__builtin_allocate | IntrinsicDef::__builtin_deallocate) => {
                 let layout_ty = self
                     .defs
                     .get_lang_item(LangItem::LayoutTy)
@@ -1644,9 +1647,11 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
             }
 
             // xlang intrinsics
-            xlang_intrin @ (crate::sema::intrin::IntrinsicDef::__builtin_abort
-            | crate::sema::intrin::IntrinsicDef::transmute
-            | crate::sema::intrin::IntrinsicDef::black_box) => {
+            xlang_intrin @ (IntrinsicDef::__builtin_abort
+            | IntrinsicDef::transmute
+            | IntrinsicDef::black_box
+            | IntrinsicDef::__builtin_likely
+            | IntrinsicDef::__builtin_unlikely) => {
                 let path = match xlang_intrin {
                     IntrinsicDef::__builtin_abort => {
                         ir::simple_path!(__lccc::intrinsics::C::__builtin_trap)
@@ -1655,6 +1660,8 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
                         ir::simple_path!(__lccc::intrinsics::Rust::__builtin_transmute)
                     }
                     IntrinsicDef::black_box => ir::simple_path!(__lccc::xlang::deoptimize),
+                    IntrinsicDef::__builtin_likely => ir::simple_path!(__lccc::xlang::likely),
+                    IntrinsicDef::__builtin_unlikely => ir::simple_path!(__lccc::xlang::unlikely),
                     _ => unreachable!(),
                 };
 

@@ -24,4 +24,7 @@ def_intrinsics! {
 
     intrin __builtin_size_of_val<type>(*const Var<0>) -> usize;
     intrin __builtin_align_of_val<type>(*const Var<0>) -> usize;
+
+    intrin __builtin_likely(bool) -> bool;
+    intrin __builtin_unlikely(bool) -> bool;
 }
