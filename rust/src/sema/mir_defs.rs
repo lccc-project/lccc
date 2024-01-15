@@ -116,6 +116,15 @@ pub enum MirTerminator {
     ResumeUnwind,
     DropInPlace(MirDropInfo),
     Branch(MirBranchInfo),
+    SwitchInt(MirSwitchIntInfo),
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct MirSwitchIntInfo {
+    pub expr: Spanned<MirExpr>,
+    pub ty: IntType,
+    pub cases: Vec<(u128, MirJumpInfo)>,
+    pub default: Option<MirJumpInfo>,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]

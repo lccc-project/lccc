@@ -21,6 +21,8 @@ use super::{
 
 pub mod mir_macro;
 
+pub mod match_lower;
+
 pub use mir_macro::{mir, mir_basic_block, mir_expr, mir_fnty, mir_stmt, mir_type};
 
 pub use crate::sema::hir::{BinaryOp, UnaryOp};
@@ -372,6 +374,19 @@ impl MirFunctionBody {
                 f.write_str("} else ")?;
                 branch.else_block.fmt(f)
             }
+            MirTerminator::SwitchInt(s) => {
+                let nested = tabs.nest();
+                f.write_fmt(format_args!("switch {}: {} ", s.expr.body, s.ty))?;
+                if let Some(default) = &s.default {
+                    f.write_fmt(format_args!("default {} ", default))?;
+                }
+                f.write_str("{\n")?;
+                for (val, jmp) in &s.cases {
+                    f.write_fmt(format_args!("{}{} => {}\n", nested, val, jmp))?;
+                }
+                tabs.fmt(f)?;
+                f.write_str("}")
+            }
         }
     }
 }
@@ -501,6 +516,37 @@ impl<'a> MirConverter<'a> {
             | ThirExprInner::Array(_)
             | ThirExprInner::UnaryExpr(_, _)
             | ThirExprInner::Index(_, _) => todo!(),
+        }
+    }
+
+    fn lower_register(
+        &mut self,
+        val: Spanned<ThirExpr>,
+        force_lvalue: bool,
+    ) -> super::Result<(Spanned<MirExpr>, SsaVarKind, SsaVarId)> {
+        match val.cat {
+            super::tyck::ValueCategory::Lvalue(_, _) => {
+                let ty = val.ty.clone();
+                let (val, kind) = self.lower_lvalue_subexpr(val, force_lvalue)?;
+
+                match val {
+                    Spanned {
+                        body: MirExpr::Var(var),
+                        span,
+                    } => Ok((
+                        Spanned {
+                            body: MirExpr::Var(var),
+                            span,
+                        },
+                        kind,
+                        var,
+                    )),
+                    val => todo!("Not in a register {}", val.body),
+                }
+            }
+            super::tyck::ValueCategory::Rvalue => {
+                todo!("rvalue")
+            }
         }
     }
 
@@ -1119,158 +1165,314 @@ impl<'a> MirConverter<'a> {
                 });
                 self.basic_blocks.push(bb);
             }
-            ThirStatement::Block(blk) => {
-                let newbb = BasicBlockId(self.nextbb.fetch_increment());
-                let (jmp, assignments, incoming) = self.make_jump(newbb);
+            ThirStatement::Block(blk) => match blk.body {
+                super::tyck::ThirBlock::Normal(stmts) | super::tyck::ThirBlock::Unsafe(stmts) => {
+                    let newbb = BasicBlockId(self.nextbb.fetch_increment());
+                    let (jmp, assignments, incoming) = self.make_jump(newbb);
+                    let term = MirTerminator::Jump(jmp);
 
-                match blk.body {
-                    super::tyck::ThirBlock::Normal(stmts)
-                    | super::tyck::ThirBlock::Unsafe(stmts) => {
-                        let term = MirTerminator::Jump(jmp);
+                    let bb = self.cur_basic_block.finish_and_reset(Spanned {
+                        body: term,
+                        span: blk.span,
+                    });
+                    self.basic_blocks.push(bb);
+                    self.cur_basic_block.id = newbb;
+                    self.cur_basic_block.incoming_vars = incoming;
+                    self.var_names = assignments;
+                    for stmt in stmts {
+                        self.write_statement(stmt)?;
+                    }
 
-                        let bb = self.cur_basic_block.finish_and_reset(Spanned {
-                            body: term,
-                            span: blk.span,
-                        });
-                        self.basic_blocks.push(bb);
+                    if self.cur_basic_block.id == BasicBlockId::UNUSED {
+                        return Ok(());
+                    }
+
+                    let newbb = BasicBlockId(self.nextbb.fetch_increment());
+                    let (jmp, assignments, incoming) = self.make_jump(newbb);
+
+                    let term = MirTerminator::Jump(jmp);
+
+                    let bb = self.cur_basic_block.finish_and_reset(Spanned {
+                        body: term,
+                        span: blk.span,
+                    });
+                    self.basic_blocks.push(bb);
+
+                    self.cur_basic_block.id = newbb;
+                    self.cur_basic_block.incoming_vars = incoming;
+                    self.var_names = assignments;
+                }
+                super::tyck::ThirBlock::Loop(stmts) => {
+                    let newbb = BasicBlockId(self.nextbb.fetch_increment());
+                    let (jmp, assignments, incoming) = self.make_jump(newbb);
+                    let term = MirTerminator::Jump(jmp);
+
+                    let bb = self.cur_basic_block.finish_and_reset(Spanned {
+                        body: term.clone(),
+                        span: blk.span,
+                    });
+                    self.basic_blocks.push(bb);
+                    self.cur_basic_block.id = newbb;
+                    self.var_names = assignments;
+                    for stmt in stmts {
+                        self.write_statement(stmt)?;
+                    }
+
+                    if self.cur_basic_block.id == BasicBlockId::UNUSED {
+                        return Ok(());
+                    }
+
+                    let bb = self.cur_basic_block.finish_and_reset(Spanned {
+                        body: term,
+                        span: blk.span,
+                    });
+                    self.basic_blocks.push(bb);
+                }
+                super::tyck::ThirBlock::If {
+                    cond,
+                    block,
+                    elseifs,
+                    elseblock,
+                } => {
+                    let mut mir_conds = Vec::new();
+
+                    let newbb = BasicBlockId(self.nextbb.fetch_increment());
+                    let (basejmp, baseassignments, baseincoming) = self.make_jump(newbb);
+
+                    let basecond = self.lower_expr(cond)?;
+
+                    mir_conds.push((basecond, basejmp));
+
+                    let mut branches = Vec::new();
+
+                    branches.push((newbb, baseassignments, baseincoming, block));
+
+                    for (cond, block) in elseifs {
+                        let newbb = BasicBlockId(self.nextbb.fetch_increment());
+                        let (condjmp, condassignments, condincoming) = self.make_jump(newbb);
+                        branches.push((newbb, condassignments, condincoming, block));
+
+                        let cond = self.lower_expr(cond)?;
+                        mir_conds.push((cond, condjmp));
+                    }
+
+                    let elsebb = BasicBlockId(self.nextbb.fetch_increment());
+                    let (elsejmp, elseassignments, elseincoming) = self.make_jump(elsebb);
+
+                    branches.push((elsebb, elseassignments, elseincoming, elseblock));
+
+                    let term = MirTerminator::Branch(MirBranchInfo {
+                        conds: mir_conds,
+                        else_block: elsejmp,
+                    });
+
+                    let endbb = BasicBlockId(self.nextbb.fetch_increment());
+
+                    let bb = self.cur_basic_block.finish_and_reset(Spanned {
+                        body: term,
+                        span: blk.span,
+                    });
+
+                    self.basic_blocks.push(bb);
+
+                    let mut next_assigns = Vec::with_capacity(branches.len());
+                    let mut builders = Vec::new();
+
+                    for (newbb, assignments, incoming, block) in branches {
                         self.cur_basic_block.id = newbb;
                         self.cur_basic_block.incoming_vars = incoming;
                         self.var_names = assignments;
-                        for stmt in stmts {
-                            self.write_statement(stmt)?;
+                        for stat in block {
+                            self.write_statement(stat)?;
                         }
 
-                        if self.cur_basic_block.id == BasicBlockId::UNUSED {
-                            return Ok(());
+                        let bb = core::mem::replace(
+                            &mut self.cur_basic_block,
+                            UnbuiltBasicBlock::unused(),
+                        );
+
+                        if bb.id != BasicBlockId::UNUSED {
+                            builders.push(bb);
+                            next_assigns.push(core::mem::take(&mut self.var_names));
                         }
+                    }
 
-                        let newbb = BasicBlockId(self.nextbb.fetch_increment());
-                        let (jmp, assignments, incoming) = self.make_jump(newbb);
+                    let (jumps, endassignments, endincoming) =
+                        self.make_many_jumps(&next_assigns, endbb);
 
-                        let term = MirTerminator::Jump(jmp);
-
-                        let bb = self.cur_basic_block.finish_and_reset(Spanned {
+                    for (mut builder, (init, jump)) in builders.into_iter().zip(jumps) {
+                        builder.stmts.extend(init.into_iter().map(synthetic));
+                        let term = MirTerminator::Jump(jump);
+                        self.basic_blocks.push(builder.finish(Spanned {
                             body: term,
                             span: blk.span,
-                        });
-                        self.basic_blocks.push(bb);
+                        }));
+                    }
+
+                    self.cur_basic_block.id = endbb;
+                    self.cur_basic_block.incoming_vars = endincoming;
+                    self.var_names = endassignments;
+                }
+                super::tyck::ThirBlock::Match(m) => {
+                    let (discriminee, pat_var_kind, pat_var) =
+                        self.lower_register(m.discriminee, false)?;
+                    let assignments = self.var_names.clone();
+                    let mut end_blocks = Vec::new();
+                    let mut match_builder = match_lower::MatchBuilder::new(self.defs);
+                    let mut end_assign_set = Vec::new();
+                    let mut arm_jumps = Vec::new();
+                    let mut cur_bb =
+                        core::mem::replace(&mut self.cur_basic_block, UnbuiltBasicBlock::unused());
+                    for arm in m.arms {
+                        match_builder.write_arm(arm.discrim.body.matcher)?;
+
+                        if let Some(guard) = arm.guard {
+                            todo!("match guard")
+                        }
+                        let newbb = BasicBlockId(self.nextbb.fetch_increment());
+
+                        let (mut jmp, assigns, incoming) = self.make_jump(newbb);
 
                         self.cur_basic_block.id = newbb;
                         self.cur_basic_block.incoming_vars = incoming;
-                        self.var_names = assignments;
-                    }
-                    super::tyck::ThirBlock::Loop(stmts) => {
-                        let term = MirTerminator::Jump(jmp);
 
-                        let bb = self.cur_basic_block.finish_and_reset(Spanned {
-                            body: term.clone(),
-                            span: blk.span,
-                        });
-                        self.basic_blocks.push(bb);
-                        self.cur_basic_block.id = newbb;
-                        self.var_names = assignments;
-                        for stmt in stmts {
-                            self.write_statement(stmt)?;
-                        }
+                        self.var_names = assigns;
 
-                        if self.cur_basic_block.id == BasicBlockId::UNUSED {
-                            return Ok(());
-                        }
+                        let mut binding_var = None;
 
-                        let bb = self.cur_basic_block.finish_and_reset(Spanned {
-                            body: term,
-                            span: blk.span,
-                        });
-                        self.basic_blocks.push(bb);
-                    }
-                    super::tyck::ThirBlock::If {
-                        cond,
-                        block,
-                        elseifs,
-                        elseblock,
-                    } => {
-                        let mut mir_conds = Vec::new();
+                        for binding in arm.discrim.body.bindings {
+                            let mut binding_var = if let Some(binding_var) = binding_var {
+                                binding_var
+                            } else {
+                                let var = SsaVarId(self.nextvar.fetch_increment());
+                                self.cur_basic_block.incoming_vars.push(var);
+                                jmp.remaps.push((pat_var, var));
+                                binding_var = Some(var);
+                                var
+                            };
 
-                        let newbb = BasicBlockId(self.nextbb.fetch_increment());
-                        let (basejmp, baseassignments, baseincoming) = self.make_jump(newbb);
+                            if binding.path.elements.len() != 0 {
+                                let real_binding_var = SsaVarId(self.nextvar.fetch_increment());
+                                let mut init_expr = Spanned {
+                                    body: MirExpr::Var(binding_var),
+                                    span: binding.span,
+                                };
+                                for elemen in binding.body.path.elements {
+                                    match elemen {
+                                        crate::sema::hir::PatternPathFragment::Field(field) => {
+                                            match pat_var_kind {
+                                                SsaVarKind::Register => {
+                                                    init_expr = Spanned {
+                                                        body: MirExpr::GetSubobject(
+                                                            Box::new(init_expr),
+                                                            field,
+                                                        ),
+                                                        span: binding.span,
+                                                    }
+                                                }
+                                                SsaVarKind::Alloca => {
+                                                    init_expr = Spanned {
+                                                        body: MirExpr::FieldProject(
+                                                            Box::new(init_expr),
+                                                            field,
+                                                        ),
+                                                        span: binding.span,
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        crate::sema::hir::PatternPathFragment::SliceElement(_) => {
+                                            todo!("slice element")
+                                        }
+                                        crate::sema::hir::PatternPathFragment::SliceHead(_) => {
+                                            todo!("slice head")
+                                        }
+                                        crate::sema::hir::PatternPathFragment::SliceTail(_) => {
+                                            todo!("slice tail")
+                                        }
+                                    }
+                                }
+                                let mut ty = self.hir_var_map[&*binding.body.var].ty.clone();
+                                if pat_var_kind == SsaVarKind::Alloca {
+                                    let mt = self.hir_var_map[&*binding.body.var].mt;
+                                    ty = Spanned {
+                                        body: Type::Pointer(mt, Box::new(ty)),
+                                        span: binding.span,
+                                    };
+                                }
 
-                        let basecond = self.lower_expr(cond)?;
-
-                        mir_conds.push((basecond, basejmp));
-
-                        let mut branches = Vec::new();
-
-                        branches.push((newbb, baseassignments, baseincoming, block));
-
-                        for (cond, block) in elseifs {
-                            let newbb = BasicBlockId(self.nextbb.fetch_increment());
-                            let (condjmp, condassignments, condincoming) = self.make_jump(newbb);
-                            branches.push((newbb, condassignments, condincoming, block));
-
-                            let cond = self.lower_expr(cond)?;
-                            mir_conds.push((cond, condjmp));
-                        }
-
-                        let elsebb = BasicBlockId(self.nextbb.fetch_increment());
-                        let (elsejmp, elseassignments, elseincoming) = self.make_jump(elsebb);
-
-                        branches.push((elsebb, elseassignments, elseincoming, elseblock));
-
-                        let term = MirTerminator::Branch(MirBranchInfo {
-                            conds: mir_conds,
-                            else_block: elsejmp,
-                        });
-
-                        let endbb = BasicBlockId(self.nextbb.fetch_increment());
-
-                        let bb = self.cur_basic_block.finish_and_reset(Spanned {
-                            body: term,
-                            span: blk.span,
-                        });
-
-                        self.basic_blocks.push(bb);
-
-                        let mut next_assigns = Vec::with_capacity(branches.len());
-                        let mut builders = Vec::new();
-
-                        for (newbb, assignments, incoming, block) in branches {
-                            self.cur_basic_block.id = newbb;
-                            self.cur_basic_block.incoming_vars = incoming;
-                            self.var_names = assignments;
-                            for stat in block {
-                                self.write_statement(stat)?;
+                                self.cur_basic_block.stmts.push(Spanned {
+                                    body: MirStatement::Declare {
+                                        var: Spanned {
+                                            body: real_binding_var,
+                                            span: binding.span,
+                                        },
+                                        ty,
+                                        init: init_expr,
+                                    },
+                                    span: binding.span,
+                                });
+                                binding_var = real_binding_var;
                             }
 
-                            let bb = core::mem::replace(
-                                &mut self.cur_basic_block,
-                                UnbuiltBasicBlock::unused(),
+                            self.var_names.insert(
+                                binding.body.var.body,
+                                HirVarAssignment {
+                                    cur_var: binding_var,
+                                    var_kind: pat_var_kind,
+                                },
                             );
-
-                            if bb.id != BasicBlockId::UNUSED {
-                                builders.push(bb);
-                                next_assigns.push(core::mem::take(&mut self.var_names));
-                            }
                         }
+                        arm_jumps.push(jmp);
+                        for stmt in arm.expansion.body {
+                            self.write_statement(stmt)?;
+                        }
+                        let end_assigns =
+                            core::mem::replace(&mut self.var_names, assignments.clone());
+                        let end_block = core::mem::replace(
+                            &mut self.cur_basic_block,
+                            UnbuiltBasicBlock::unused(),
+                        );
 
-                        let (jumps, endassignments, endincoming) =
-                            self.make_many_jumps(&next_assigns, endbb);
+                        if end_block.id != BasicBlockId::UNUSED {
+                            end_blocks.push(end_block);
+                            end_assign_set.push(end_assigns);
+                        }
+                    }
 
-                        for (mut builder, (init, jump)) in builders.into_iter().zip(jumps) {
-                            builder.stmts.extend(init.into_iter().map(synthetic));
-                            let term = MirTerminator::Jump(jump);
-                            self.basic_blocks.push(builder.finish(Spanned {
-                                body: term,
-                                span: blk.span,
+                    let term = match_builder.build_match_term(discriminee, arm_jumps);
+
+                    self.basic_blocks.push(cur_bb.finish(Spanned {
+                        body: term,
+                        span: blk.span,
+                    }));
+
+                    if !end_blocks.is_empty() {
+                        let end_block_id = BasicBlockId(self.nextbb.fetch_increment());
+                        self.cur_basic_block.id = end_block_id;
+
+                        let (jumps, assigns, incoming) =
+                            self.make_many_jumps(&end_assign_set, end_block_id);
+                        self.cur_basic_block.incoming_vars = incoming;
+
+                        self.var_names = assigns;
+
+                        for (mut end_block, (init_stats, jmp)) in end_blocks.into_iter().zip(jumps)
+                        {
+                            let span = blk.span;
+                            end_block.stmts.extend(
+                                init_stats
+                                    .into_iter()
+                                    .map(|stat| Spanned { body: stat, span }),
+                            );
+                            self.basic_blocks.push(end_block.finish(Spanned {
+                                body: MirTerminator::Jump(jmp),
+                                span,
                             }));
                         }
-
-                        self.cur_basic_block.id = endbb;
-                        self.cur_basic_block.incoming_vars = endincoming;
-                        self.var_names = endassignments;
                     }
-                    super::tyck::ThirBlock::Match(_) => todo!("match"),
                 }
-            }
+            },
             ThirStatement::Discard(expr) => {
                 let expr = self.lower_expr(expr)?;
 
@@ -1401,7 +1603,8 @@ impl<'a> MirConverter<'a> {
         Ok(())
     }
 
-    pub fn finish(self) -> MirFunctionBody {
+    pub fn finish(mut self) -> MirFunctionBody {
+        self.basic_blocks.sort_by_key(|bb| bb.id.0);
         MirFunctionBody {
             bbs: self.basic_blocks,
             vardbg_info: self.mir_debug_map,
