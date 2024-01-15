@@ -13,6 +13,12 @@ use crate::hash::{BuildHasherDefault, XLangHasher};
 use crate::ptr::Unique;
 use crate::vec::Vec;
 
+/// A [`Trait`] for maps and sets, that allows you to check for whether a particular key is present
+pub trait Searchable<Q: ?Sized> {
+    /// Searches [`Self`] for the given `key`.
+    fn contains_key(&self, key: &Q) -> bool;
+}
+
 #[repr(C)]
 struct HashMapSlot<K, V> {
     ecount: usize,
@@ -379,6 +385,14 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         None
     }
 
+    /// Checks whether the given key is present in the map
+    pub fn contains_key<Q: ?Sized + Hash + Eq>(&self, key: &Q) -> bool
+    where
+        K: Borrow<Q>,
+    {
+        self.get(key).is_some()
+    }
+
     /// Removes an entry by Key from this map, and returns the Key and Value
     #[allow(clippy::cast_possible_truncation)]
     pub fn remove<Q: ?Sized + Hash + Eq>(&mut self, key: &Q) -> Option<Pair<K, V>>
@@ -415,6 +429,39 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
             }
         }
         None
+    }
+
+    /// Removes all elements of [`Self`] that are not present in `keyes`
+    pub fn retain_all<C: Searchable<K>>(&mut self, keys: &C) {
+        for bucket in 0..self.buckets {
+            let bucket = unsafe { &mut *(self.htab.as_ptr().add(bucket)) };
+
+            for i in 0..bucket.ecount {
+                let key_val = unsafe { &*bucket.entries.get_unchecked(i).as_ptr() };
+                if !keys.contains_key(&key_val.0) {
+                    bucket.entries.swap(i, bucket.ecount - 1);
+                    unsafe {
+                        core::ptr::drop_in_place(
+                            bucket
+                                .entries
+                                .get_unchecked_mut(bucket.ecount - 1)
+                                .as_mut_ptr(),
+                        )
+                    }
+                    bucket.ecount -= 1;
+                }
+            }
+        }
+    }
+}
+
+impl<K: Hash + Eq, V, H: BuildHasher, A: Allocator, Q: ?Sized + Hash + Eq> Searchable<Q>
+    for HashMap<K, V, H, A>
+where
+    Q: Borrow<K>,
+{
+    fn contains_key(&self, key: &Q) -> bool {
+        HashMap::contains_key(self, key.borrow())
     }
 }
 
@@ -880,6 +927,24 @@ impl<K: Eq + Hash, H: BuildHasher, A: Allocator> HashSet<K, H, A> {
         self.inner.remove(val).map(|Pair(k, _)| k)
     }
 }
+
+impl<K: Eq + Hash, H: BuildHasher, A: Allocator> HashSet<K, H, A> {
+    /// Removes a value from the set and returns it if present
+    pub fn retain_all<C: Searchable<K>>(&mut self, keys: &C) {
+        self.inner.retain_all(keys)
+    }
+}
+
+impl<K: Eq + Hash, H: BuildHasher, A: Allocator, Q: ?Sized + Hash + Default> Searchable<Q>
+    for HashSet<K, H, A>
+where
+    Q: Borrow<K>,
+{
+    fn contains_key(&self, key: &Q) -> bool {
+        HashSet::contains(self, key.borrow())
+    }
+}
+
 impl<K: Eq + Hash, H: BuildHasher + Default, A: Allocator + Default> FromIterator<K>
     for HashSet<K, H, A>
 {

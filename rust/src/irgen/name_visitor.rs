@@ -301,30 +301,30 @@ impl<'a, 'b> NameTypeVisitor<'a, 'b> {
 
 impl<'a, 'b> TypeVisitor for NameTypeVisitor<'a, 'b> {
     fn visit_array(&mut self) -> Option<Box<dyn ArrayTyVisitor + '_>> {
-        todo!()
+        todo!("visit_array")
     }
 
     fn visit_int(&mut self) -> Option<Box<dyn IntTyVisitor + '_>> {
-        todo!()
+        todo!("visit_int")
     }
 
     fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>> {
-        todo!()
+        todo!("visit_tuple")
     }
 
     fn visit_pointer(&mut self) -> Option<Box<dyn PointerTyVisitor + '_>> {
-        todo!()
+        todo!("visit_pointer")
     }
 
     fn visit_reference(&mut self) -> Option<Box<dyn ReferenceTyVisitor + '_>> {
-        todo!()
+        todo!("visit_reference")
     }
 
     fn visit_never(&mut self) {
-        todo!()
+        todo!("visit_never")
     }
 
     fn visit_user_type(&mut self, defid: DefId) {
-        todo!()
+        todo!("visit_defid")
     }
 }

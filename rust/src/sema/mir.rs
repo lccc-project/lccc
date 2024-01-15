@@ -1047,9 +1047,7 @@ impl<'a> MirConverter<'a> {
         }
 
         for assign_set in assign_sets {
-            assign_set
-                .keys()
-                .for_each(|key| drop(gather_set.remove(key)))
+            gather_set.retain_all(assign_set);
         }
         let mut var_order = vec![];
         let mut incoming = vec![];
