@@ -4,7 +4,6 @@ use std::{alloc::Layout, hash::Hasher, sync::atomic::AtomicUsize};
 
 use lccc_siphash::SipHasher;
 use xlang_abi::{const_sv, span::Span, string::StringView};
-use xlang_targets::properties::TargetProperties;
 
 static RAND_GEN: xlang_abi::sync::OnceCell<std::sync::Mutex<SipHasher<2, 4>>> =
     xlang_abi::sync::OnceCell::new();
@@ -132,14 +131,6 @@ pub extern "C" fn xlang_on_allocation_failure(size: usize, align: usize) -> ! {
         size, align
     );
     std::process::abort()
-}
-
-#[no_mangle]
-pub extern "C" fn xlang_get_target_properties(
-    targ: StringView,
-) -> Option<&'static TargetProperties<'static>> {
-    #[allow(deprecated)]
-    xlang_targets::properties::__get_properties(targ)
 }
 
 xlang_abi::rustcall! {

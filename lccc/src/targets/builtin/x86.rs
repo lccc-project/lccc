@@ -1,12 +1,11 @@
-use xlang_abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
+use xlang::abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
 
-use crate::properties::MachineProperties;
-
-use super::{
+use xlang::targets::properties::{
     asm::AsmScalar,
     asm::AsmScalarKind::{Float, Integer, Vector},
     builtins::BuiltinSignature,
-    AbiProperties, ArchProperties, AsmProperties, FloatFormat, PrimitiveProperties,
+    AbiProperties, ArchProperties, AsmProperties, ByteOrder, FloatFormat, MachineProperties,
+    PrimitiveProperties,
 };
 
 macro_rules! x86_machines{
@@ -15,7 +14,7 @@ macro_rules! x86_machines{
     } => {
         mod machines{
             $(pub static $mach: super::MachineProperties = super::MachineProperties{
-                default_features: xlang_abi::span![$(xlang_abi::const_sv!($feature)),*]
+                default_features: xlang::abi::span![$(xlang::abi::const_sv!($feature)),*]
             };)*
         }
 
@@ -571,10 +570,8 @@ pub const X86_VECTOR_ABI_FEATURES: Span<Pair<u16, StringView>> = span![
     Pair(64, const_sv!("avx512f")),
     Pair(1024, const_sv!("amx-tile"))
 ];
-pub const X86_FLOAT_ABI_FEATURES: Span<Pair<super::FloatFormat, StringView>> = span![Pair(
-    super::FloatFormat::X87DoubleExtended,
-    const_sv!("x87")
-),];
+pub const X86_FLOAT_ABI_FEATURES: Span<Pair<FloatFormat, StringView>> =
+    span![Pair(FloatFormat::X87DoubleExtended, const_sv!("x87")),];
 
 pub static X86_64_ABI_PROPERTIES: AbiProperties = AbiProperties {
     vector_default_feature: const_sv!(""), // An empty string will never be settable with `-m`
@@ -598,7 +595,7 @@ pub static X86_64: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64,
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
-    byte_order: super::ByteOrder::LittleEndian,
+    byte_order: ByteOrder::LittleEndian,
     asm_propreties: &X86_64_ASM_PROPERTIES,
     tag_names: X86_64_TAG_NAMES,
     width: 64,
@@ -612,7 +609,7 @@ pub static X86_64_V2: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64_V2,
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
-    byte_order: super::ByteOrder::LittleEndian,
+    byte_order: ByteOrder::LittleEndian,
     asm_propreties: &X86_64_ASM_PROPERTIES,
     tag_names: X86_64_TAG_NAMES,
     width: 64,
@@ -626,7 +623,7 @@ pub static X86_64_V3: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64_V3,
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
-    byte_order: super::ByteOrder::LittleEndian,
+    byte_order: ByteOrder::LittleEndian,
     asm_propreties: &X86_64_ASM_PROPERTIES,
     tag_names: X86_64_TAG_NAMES,
     width: 64,
@@ -640,7 +637,7 @@ pub static X86_64_V4: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MX86_64_V4,
     arch_names: span![const_sv!("x86_64"), const_sv!("x86-64")],
-    byte_order: super::ByteOrder::LittleEndian,
+    byte_order: ByteOrder::LittleEndian,
     asm_propreties: &X86_64_ASM_PROPERTIES,
     tag_names: X86_64_TAG_NAMES,
     width: 64,
@@ -654,7 +651,7 @@ pub static I386: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MI386,
     arch_names: span![const_sv!("i386"), const_sv!("x86")],
-    byte_order: super::ByteOrder::LittleEndian,
+    byte_order: ByteOrder::LittleEndian,
     asm_propreties: &X86_32_ASM_PROPERTIES,
     tag_names: X86_32_TAG_NAMES,
     width: 32,
@@ -668,7 +665,7 @@ pub static I486: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MI486,
     arch_names: span![const_sv!("i486"), const_sv!("x86")],
-    byte_order: super::ByteOrder::LittleEndian,
+    byte_order: ByteOrder::LittleEndian,
     asm_propreties: &X86_32_ASM_PROPERTIES,
     tag_names: X86_32_TAG_NAMES,
     width: 32,
@@ -681,7 +678,7 @@ pub static I586: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MI586,
     arch_names: span![const_sv!("i586"), const_sv!("x86")],
-    byte_order: super::ByteOrder::LittleEndian,
+    byte_order: ByteOrder::LittleEndian,
     asm_propreties: &X86_32_ASM_PROPERTIES,
     tag_names: X86_32_TAG_NAMES,
     width: 32,
@@ -695,7 +692,7 @@ pub static I686: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MI686,
     arch_names: span![const_sv!("i686"), const_sv!("x86")],
-    byte_order: super::ByteOrder::LittleEndian,
+    byte_order: ByteOrder::LittleEndian,
     asm_propreties: &X86_32_ASM_PROPERTIES,
     tag_names: X86_32_TAG_NAMES,
     width: 32,
@@ -709,7 +706,7 @@ pub static I86: ArchProperties = ArchProperties {
     machines: X86_MACHINES,
     default_machine: &machines::MI86,
     arch_names: span![const_sv!("i86"), const_sv!("i8086")],
-    byte_order: super::ByteOrder::LittleEndian,
+    byte_order: ByteOrder::LittleEndian,
     asm_propreties: &X86_16_ASM_PROPERTIES,
     tag_names: X86_16_TAG_NAMES,
     width: 16,

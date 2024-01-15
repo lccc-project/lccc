@@ -5,6 +5,10 @@ pub mod exports;
 
 pub mod argparse;
 
+pub mod session;
+
+pub mod targets;
+
 use std::{
     borrow::Borrow,
     hash::{BuildHasher, Hash},
@@ -56,6 +60,11 @@ pub enum OptimizeLevel {
     Zize,
     Fast,
     Extra,
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DebugLevel {
+    None,
 }
 
 pub fn init_rng(x: u64) {

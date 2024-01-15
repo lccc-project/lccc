@@ -842,6 +842,14 @@ impl<K, H: BuildHasher, A: Allocator> HashSet<K, H, A> {
     }
 }
 
+impl<K, H: BuildHasher, A: Allocator> IntoIterator for HashSet<K, H, A> {
+    type Item = K;
+    type IntoIter = SetIntoIter<K, A>;
+    fn into_iter(self) -> Self::IntoIter {
+        SetIntoIter(self.inner.into_iter())
+    }
+}
+
 impl<K: Eq + Hash, H: BuildHasher, A: Allocator> HashSet<K, H, A> {
     ///
     /// Checks if `self` contains the given val.
@@ -909,7 +917,7 @@ macro_rules! set{
     }}
 }
 
-/// An [`Iterator`] over the values in a [`HashSet`]
+/// An [`Iterator`] over the (borrowed) values in a [`HashSet`]
 pub struct SetIter<'a, K>(Keys<'a, K, ()>);
 
 impl<'a, K> Iterator for SetIter<'a, K> {
@@ -917,6 +925,17 @@ impl<'a, K> Iterator for SetIter<'a, K> {
 
     fn next(&mut self) -> Option<&'a K> {
         self.0.next()
+    }
+}
+
+/// An [`Iterator`] over the (owned) values in a [`HashSet`]
+pub struct SetIntoIter<K, A: Allocator = XLangAlloc>(IntoIter<K, (), A>);
+
+impl<K, A: Allocator> Iterator for SetIntoIter<K, A> {
+    type Item = K;
+
+    fn next(&mut self) -> Option<K> {
+        self.0.next().map(|Pair(k, _)| k)
     }
 }
 

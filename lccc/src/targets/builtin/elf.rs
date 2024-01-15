@@ -1,4 +1,7 @@
-use xlang_abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
+use xlang::{
+    abi::{const_sv, pair::Pair, span, span::Span, string::StringView},
+    targets::properties::{ArchiverFlavor, LinkerFlavor, SharedLibraryStyle},
+};
 
 use super::{
     clever::{CLEVER, CLEVERILP32_PRIMITIVES, CLEVER_PRIMITIVES},
@@ -9,6 +12,9 @@ use super::{
         X86_16_FAR_PRIMITIVES, X86_16_NEAR_DATA_FAR_FN_PRIMITIVES, X86_16_NEAR_PRIMITIVES,
         X86_32_PRIMITIVES, X86_64, X86_64_PRIMITIVES,
     },
+};
+
+use xlang::targets::properties::{
     LinkProperties, OperatingSystemProperties, StackAttributeControlStyle, TargetProperties,
     UnwindStyle,
 };
@@ -23,10 +29,10 @@ pub static BARE_ELF: OperatingSystemProperties = OperatingSystemProperties {
     shared_suffix: const_sv!(".so"),
     exec_suffix: const_sv!(""),
     obj_suffix: const_sv!(".o"),
-    ld_flavour: super::LinkerFlavor::Ld,
-    ar_flavour: super::ArchiverFlavor::Ar,
+    ld_flavour: LinkerFlavor::Ld,
+    ar_flavour: ArchiverFlavor::Ar,
     base_dirs: span![const_sv!("/")],
-    so_kind: super::SharedLibraryStyle::Linkable,
+    so_kind: SharedLibraryStyle::Linkable,
 };
 
 pub static X86_64_ELF_LINK: LinkProperties = LinkProperties {
@@ -94,8 +100,8 @@ macro_rules! x86_abis{
     } => {
         $(
             mod $group {
-                use xlang_abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
-                use crate::properties::{TargetProperties};
+                use xlang::abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
+                use xlang::targets::properties::TargetProperties;
                 use super::*;
                 pub static ABIS: Span<Pair<StringView,&TargetProperties>> = span![
                     $(Pair(const_sv!($group_names),&$group_ref),)*

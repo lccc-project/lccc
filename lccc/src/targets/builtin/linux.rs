@@ -1,12 +1,13 @@
-use xlang_abi::{const_sv, span, string::StringView};
+use xlang::abi::{const_sv, span, string::StringView};
 
-use super::{
-    x86::{
-        I386, I486, I586, I686, X32_PRIMITIVES, X86_32_PRIMITIVES, X86_64, X86_64_PRIMITIVES,
-        X86_64_V2, X86_64_V3, X86_64_V4,
-    },
-    LinkProperties, OperatingSystemProperties, StackAttributeControlStyle, TargetProperties,
-    UnwindStyle,
+use super::x86::{
+    I386, I486, I586, I686, X32_PRIMITIVES, X86_32_PRIMITIVES, X86_64, X86_64_PRIMITIVES,
+    X86_64_V2, X86_64_V3, X86_64_V4,
+};
+
+use xlang::targets::properties::{
+    ArchiverFlavor, LinkProperties, LinkerFlavor, OperatingSystemProperties, SharedLibraryStyle,
+    StackAttributeControlStyle, TargetProperties, UnwindStyle,
 };
 
 pub static LINUX: OperatingSystemProperties = OperatingSystemProperties {
@@ -19,10 +20,10 @@ pub static LINUX: OperatingSystemProperties = OperatingSystemProperties {
     shared_suffix: const_sv!(".so"),
     exec_suffix: StringView::empty(),
     obj_suffix: const_sv!(".o"),
-    ld_flavour: super::LinkerFlavor::Ld,
-    ar_flavour: super::ArchiverFlavor::Ar,
+    ld_flavour: LinkerFlavor::Ld,
+    ar_flavour: ArchiverFlavor::Ar,
     base_dirs: span![const_sv!("/"), const_sv!("/usr"), const_sv!("/usr/local")],
-    so_kind: super::SharedLibraryStyle::Linkable,
+    so_kind: SharedLibraryStyle::Linkable,
 };
 
 pub static X86_64_LINUX_GNU_LINK: LinkProperties = LinkProperties {
@@ -89,8 +90,8 @@ macro_rules! x86_abis{
     } => {
         $(mod $os_abi{$(
             pub mod $group {
-                use xlang_abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
-                use crate::properties::{TargetProperties};
+                use xlang::abi::{const_sv, pair::Pair, span, span::Span, string::StringView};
+                use xlang::targets::properties::{TargetProperties};
                 use super::super::*;
                 pub static ABIS: Span<Pair<StringView,&TargetProperties>> = span![
                     $(Pair(const_sv!($group_names),&$group_ref),)*

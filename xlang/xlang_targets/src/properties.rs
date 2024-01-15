@@ -241,7 +241,7 @@ pub struct LinkProperties<'a> {
     /// The object files to be included after other link inputs when linking executables on this target
     pub endfiles: Span<'a, StringView<'a>>,
     /// Additional object formats that are supported on this target (the default one is extracted from the target tuple)
-    pub available_formats: Span<'a, target_tuples::ObjectFormat>,
+    pub available_formats: Span<'a, StringView<'a>>,
     /// The name of the ELF interpreter when producing ELF files.
     pub interp: StringView<'a>,
     /// The name of the binfmt or bfd vector to use for objects
@@ -329,74 +329,4 @@ pub struct TargetProperties<'a> {
 
     /// Default call abi for system apis. Usually not different from `default_tag_name`
     pub system_tag_name: StringView<'a>,
-}
-
-mod clever;
-mod elf;
-mod holeybytes;
-mod linux;
-mod w65;
-mod x86;
-
-#[doc(hidden)]
-#[deprecated(
-    note = "internal interface that doesn't get linked in via xlang_interface. Use [`get_properties`] or [`xlang_get_properties`] instead"
-)]
-#[must_use]
-pub fn __get_properties(targ: StringView) -> Option<&'static TargetProperties<'static>> {
-    target_tuples::match_targets! {
-        match (target_tuples::Target::parse(&targ)){
-            x86_64-*-linux-gnu => Some(&linux::X86_64_LINUX_GNU),
-            x86_64v2-*-linux-gnu => Some(&linux::X86_64_V2_LINUX_GNU),
-            x86_64v3-*-linux-gnu => Some(&linux::X86_64_V3_LINUX_GNU),
-            x86_64v4-*-linux-gnu => Some(&linux::X86_64_V4_LINUX_GNU),
-            x86_64-*-linux-musl => Some(&linux::X86_64_LINUX_MUSL),
-            x86_64-*-elf => Some(&elf::X86_64_ELF),
-            x86_64-*-linux-gnux32 => Some(&linux::X32_LINUX_GNU),
-            clever-*-elf => Some(&elf::CLEVER_ELF),
-            i386-*-linux-gnu => Some(&linux::I386_LINUX_GNU),
-            i486-*-linux-gnu => Some(&linux::I486_LINUX_GNU),
-            i586-*-linux-gnu => Some(&linux::I586_LINUX_GNU),
-            i686-*-linux-gnu => Some(&linux::I686_LINUX_GNU),
-            i386-*-elf => Some(&elf::I386_ELF),
-            i486-*-elf => Some(&elf::I486_ELF),
-            i586-*-elf => Some(&elf::I586_ELF),
-            i686-*-elf => Some(&elf::I686_ELF),
-            w65-*-elf => Some(&elf::W65_ELF),
-            w65-*-snes-elf => Some(&elf::W65_ELF),
-            i86-*-near => Some(&elf::I86_NEAR_ELF),
-            holeybytes-*-elf => Some(&elf::HOLEYBYTES_ELF),
-            * => None
-        }
-    }
-}
-
-#[cfg(not(any(miri, test)))]
-extern "C" {
-    /// Direct call to xlang_interface to get the target properties of the target (consistently)
-    /// It is recommended to use the wrapper [`self::get_properties`] instead of this function
-    ///
-    /// ## SAFETY
-    /// This function is always safe to call when xlang_interface is linked.
-    /// No undefined behaviour is observed when calling this function
-    pub fn xlang_get_target_properties(
-        targ: StringView,
-    ) -> Option<&'static TargetProperties<'static>>;
-}
-
-#[cfg(any(miri, test))]
-#[allow(deprecated, missing_docs)]
-pub unsafe extern "C" fn xlang_get_target_properties(
-    targ: StringView,
-) -> Option<&'static TargetProperties<'static>> {
-    __get_properties(targ)
-}
-
-///
-/// Safe version of [`xlang_get_target_properties`].
-///
-/// Returns the properties for the given target, or None if the target is not known.
-#[must_use]
-pub fn get_properties(targ: StringView) -> Option<&'static TargetProperties<'static>> {
-    unsafe { xlang_get_target_properties(targ) }
 }

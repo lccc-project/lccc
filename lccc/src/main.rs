@@ -324,7 +324,7 @@ fn main() {
 
     let xtarget = StringView::new(target.get_name());
     println!("building for {:?}", xtarget);
-    let properties = xlang::targets::properties::get_properties(xtarget).unwrap();
+    let properties = lccc::targets::get_properties(xtarget).unwrap();
 
     let arch_mach = match arch_machine {
         Some("generic") | None => properties.arch.default_machine,

@@ -735,6 +735,5 @@ dependencies = [
 name = "xlang_targets"
 version = "0.2.0"
 dependencies = [
- "target-tuples",
  "xlang_abi",
 ]

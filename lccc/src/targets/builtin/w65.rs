@@ -1,15 +1,15 @@
-use xlang_abi::{
+use xlang::abi::{
     const_sv,
     pair::Pair,
     string::StringView,
     {span, span::Span},
 };
 
-use super::{
+use xlang::targets::properties::{
     asm::AsmScalar,
     asm::AsmScalarKind::{ClobberOnly, Float, Integer},
     builtins::BuiltinSignature,
-    ArchProperties, AsmProperties, MachineProperties, PrimitiveProperties,
+    ArchProperties, AsmProperties, ByteOrder, FloatFormat, MachineProperties, PrimitiveProperties,
 };
 
 macro_rules! w65_machines{
@@ -18,7 +18,7 @@ macro_rules! w65_machines{
     } => {
         mod machines{
             $(pub static $mach: super::MachineProperties = super::MachineProperties{
-                default_features: xlang_abi::span![$(xlang_abi::const_sv!($feature)),*]
+                default_features: xlang::abi::span![$(xlang_abi::const_sv!($feature)),*]
             };)*
         }
 
@@ -138,7 +138,7 @@ pub static W65: ArchProperties = ArchProperties {
         const_sv!("65c816"),
         const_sv!("wdc65c816")
     ],
-    byte_order: super::ByteOrder::LittleEndian,
+    byte_order: ByteOrder::LittleEndian,
     asm_propreties: &W65_ASSEMBLY,
     tag_names: span![const_sv!("C"), const_sv!("w65-interrupt")],
     width: 16,
@@ -159,6 +159,6 @@ pub static W65_PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
     lock_free_atomic_mask: 0x3,
     sizebits: 16,
     ldbl_align: 4,
-    ldbl_format: super::FloatFormat::Ieee754(64),
+    ldbl_format: FloatFormat::Ieee754(64),
     max_atomic_align: 2,
 };

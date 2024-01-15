@@ -11,5 +11,4 @@ ABI Safe Interfaces for target triples and discovering compiler-required informa
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-target-tuples = "0.5.5"
 xlang_abi = {path="../xlang_abi",version="0.2.0"}

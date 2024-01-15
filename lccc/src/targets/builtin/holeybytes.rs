@@ -1,9 +1,10 @@
 use {
-    super::{
+    xlang::abi::{const_sv, pair::Pair, span},
+    xlang::targets::properties::{
         asm::{AsmScalar, AsmScalarKind},
-        ArchProperties, AsmProperties, MachineProperties, PrimitiveProperties,
+        ArchProperties, AsmProperties, ByteOrder, FloatFormat, MachineProperties,
+        PrimitiveProperties,
     },
-    xlang_abi::{const_sv, pair::Pair, span},
 };
 
 macro_rules! constraints {
@@ -37,7 +38,7 @@ pub static PRIMITIVES: PrimitiveProperties = PrimitiveProperties {
     lock_free_atomic_mask: 0xff,
     max_atomic_align: 16,
     ldbl_align: 16,
-    ldbl_format: super::FloatFormat::Ieee754(128),
+    ldbl_format: FloatFormat::Ieee754(128),
 };
 
 pub static MACHINE_GENERIC: MachineProperties = MachineProperties {
@@ -84,7 +85,7 @@ pub static HOLEYBYTES: ArchProperties = ArchProperties {
     machines: span![Pair(const_sv!("generic"), &MACHINE_GENERIC)],
     default_machine: &MACHINE_GENERIC,
     arch_names: span![const_sv!("holeybytes")],
-    byte_order: super::ByteOrder::LittleEndian,
+    byte_order: ByteOrder::LittleEndian,
     asm_propreties: &ASM,
     tag_names: span![const_sv!("C")],
     width: 64,
