@@ -1,18 +1,21 @@
-use xlang::abi::{collection::HashMap, pair::Pair};
+use xlang::abi::{
+    collection::{HashMap, HashSet},
+    pair::Pair,
+};
 
 use crate::{
     ast::{Mutability, StringType},
     helpers::{FetchIncrement, TabPrinter},
     interning::Symbol,
     lex::Error,
-    span::Span,
+    span::{synthetic, Span},
 };
 
 use super::{
     hir::HirVarId,
     intrin::IntrinsicDef,
     ty::{FieldName, FnType, IntType, Type},
-    tyck::{Movability, ThirExpr, ThirExprInner, ThirStatement},
+    tyck::{Movability, ThirExpr, ThirExprInner, ThirStatement, ThirVarDef},
     DefId, Definitions, SemaHint, Spanned,
 };
 
@@ -434,7 +437,7 @@ pub struct MirConverter<'a> {
     cur_basic_block: UnbuiltBasicBlock,
     var_names: HashMap<HirVarId, HirVarAssignment>,
     moved_from_locs: HashMap<HirVarId, Span>,
-    hir_var_names: HashMap<HirVarId, Spanned<Symbol>>,
+    hir_var_map: HashMap<HirVarId, ThirVarDef>,
     hir_def_spans: HashMap<HirVarId, Span>,
     mir_debug_map: HashMap<SsaVarId, Spanned<Symbol>>,
     nextvar: u32,
@@ -447,7 +450,7 @@ impl<'a> MirConverter<'a> {
         defs: &'a Definitions,
         at_item: DefId,
         curmod: DefId,
-        hir_var_names: HashMap<HirVarId, Spanned<Symbol>>,
+        hir_var_map: HashMap<HirVarId, ThirVarDef>,
         localitems: Vec<(Symbol, DefId)>,
         fnty: FnType,
     ) -> Self {
@@ -459,7 +462,7 @@ impl<'a> MirConverter<'a> {
             cur_basic_block: UnbuiltBasicBlock::new(),
             var_names: HashMap::new(),
             moved_from_locs: HashMap::new(),
-            hir_var_names,
+            hir_var_map,
             hir_def_spans: HashMap::new(),
             mir_debug_map: HashMap::new(),
             nextvar: 0,
@@ -517,8 +520,9 @@ impl<'a> MirConverter<'a> {
             ThirExprInner::Var(hirvar) => {
                 if let Some(loc) = self.moved_from_locs.get(&hirvar).copied() {
                     let name = self
-                        .hir_var_names
+                        .hir_var_map
                         .get(&hirvar)
+                        .and_then(|val| val.debug_name)
                         .map(|val| val.body)
                         .unwrap_or_else(|| {
                             Symbol::intern_by_val(format!("{{internal variable {}}}", hirvar))
@@ -588,8 +592,9 @@ impl<'a> MirConverter<'a> {
                     }
                 } else {
                     let name = self
-                        .hir_var_names
+                        .hir_var_map
                         .get(&hirvar)
+                        .and_then(|val| val.debug_name)
                         .map(|val| val.body)
                         .unwrap_or_else(|| {
                             Symbol::intern_by_val(format!("{{internal variable {}}}", hirvar))
@@ -597,7 +602,10 @@ impl<'a> MirConverter<'a> {
 
                     Err(super::Error {
                         span,
-                        text: format!("Variable `{}` is used but is not initialized", name),
+                        text: format!(
+                            "Variable `{}` (`{}`) is used but is not initialized",
+                            name, hirvar
+                        ),
                         category: super::ErrorCategory::BorrowckError(
                             BorrowckErrorCategory::NotAssigned,
                         ),
@@ -840,8 +848,9 @@ impl<'a> MirConverter<'a> {
                 if let Some(assign) = self.var_names.get_mut(&hirvar) {
                     if mt != Mutability::Mut {
                         let name = self
-                            .hir_var_names
+                            .hir_var_map
                             .get(&hirvar)
+                            .and_then(|val| val.debug_name)
                             .map(|val| val.body)
                             .unwrap_or_else(|| {
                                 Symbol::intern_by_val(format!("{{internal variable {}}}", hirvar))
@@ -1011,6 +1020,84 @@ impl<'a> MirConverter<'a> {
         )
     }
 
+    fn make_many_jumps(
+        &mut self,
+        assign_sets: &Vec<HashMap<HirVarId, HirVarAssignment>>,
+        targbb: BasicBlockId,
+    ) -> (
+        Vec<(Vec<MirStatement>, MirJumpInfo)>,
+        HashMap<HirVarId, HirVarAssignment>,
+        Vec<SsaVarId>,
+    ) {
+        let mut gather_set = HashSet::<HirVarId>::new();
+        let mut placement = HashMap::<HirVarId, SsaVarKind>::new();
+
+        for assign_set in assign_sets {
+            gather_set.extend(assign_set.keys().copied());
+
+            assign_set.iter().for_each(|&Pair(key, assign)| {
+                match (
+                    placement.get_or_insert_mut(key, assign.var_kind),
+                    assign.var_kind,
+                ) {
+                    (val @ SsaVarKind::Register, SsaVarKind::Alloca) => *val = SsaVarKind::Alloca,
+                    _ => {}
+                }
+            });
+        }
+
+        for assign_set in assign_sets {
+            assign_set
+                .keys()
+                .for_each(|key| drop(gather_set.remove(key)))
+        }
+        let mut var_order = vec![];
+        let mut incoming = vec![];
+        let mut new_assignments = HashMap::new();
+
+        for var in gather_set {
+            var_order.push(var);
+            let new_var = SsaVarId(self.nextvar.fetch_increment());
+            incoming.push(new_var);
+            let assign = HirVarAssignment {
+                cur_var: new_var,
+                var_kind: placement[&var],
+            };
+            new_assignments.insert(var, assign);
+        }
+
+        let mut jump_map = Vec::new();
+
+        for assign_set in assign_sets {
+            let mut remaps = Vec::new();
+            let mut reinit_stat = Vec::new();
+            for &var in &var_order {
+                let assign = assign_set[&var];
+                let new_var = new_assignments[&var].cur_var;
+                if assign.var_kind != placement[&var] {
+                    let ThirVarDef { ty, mt, .. } = self.hir_var_map[&var].clone();
+                    let mut var = SsaVarId(self.nextvar.fetch_increment());
+                    reinit_stat.push(MirStatement::Declare {
+                        var: synthetic(var),
+                        ty: ty.clone(),
+                        init: synthetic(MirExpr::Alloca(
+                            *mt,
+                            ty.body,
+                            Box::new(synthetic(MirExpr::Var(assign.cur_var))),
+                        )),
+                    });
+                    remaps.push((var, new_var));
+                } else {
+                    remaps.push((assign.cur_var, new_var));
+                }
+            }
+
+            jump_map.push((reinit_stat, MirJumpInfo { targbb, remaps }))
+        }
+
+        (jump_map, new_assignments, incoming)
+    }
+
     pub fn write_statement(&mut self, thir_stat: Spanned<ThirStatement>) -> super::Result<()> {
         if self.cur_basic_block.id == BasicBlockId::UNUSED {
             return Ok(()); // short circuit out if we're unreachable
@@ -1145,7 +1232,8 @@ impl<'a> MirConverter<'a> {
 
                         self.basic_blocks.push(bb);
 
-                        let (_, endassignments, endincoming) = self.make_jump(endbb);
+                        let mut next_assigns = Vec::with_capacity(branches.len());
+                        let mut builders = Vec::new();
 
                         for (newbb, assignments, incoming, block) in branches {
                             self.cur_basic_block.id = newbb;
@@ -1155,22 +1243,34 @@ impl<'a> MirConverter<'a> {
                                 self.write_statement(stat)?;
                             }
 
-                            let jmp = self.make_jump_with_assigns(endbb, &endassignments);
+                            let bb = core::mem::replace(
+                                &mut self.cur_basic_block,
+                                UnbuiltBasicBlock::unused(),
+                            );
 
-                            let term = MirTerminator::Jump(jmp);
+                            if bb.id != BasicBlockId::UNUSED {
+                                builders.push(bb);
+                                next_assigns.push(core::mem::take(&mut self.var_names));
+                            }
+                        }
 
-                            let bb = self.cur_basic_block.finish_and_reset(Spanned {
+                        let (jumps, endassignments, endincoming) =
+                            self.make_many_jumps(&next_assigns, endbb);
+
+                        for (mut builder, (init, jump)) in builders.into_iter().zip(jumps) {
+                            builder.stmts.extend(init.into_iter().map(synthetic));
+                            let term = MirTerminator::Jump(jump);
+                            self.basic_blocks.push(builder.finish(Spanned {
                                 body: term,
                                 span: blk.span,
-                            });
-
-                            self.basic_blocks.push(bb);
+                            }));
                         }
 
                         self.cur_basic_block.id = endbb;
                         self.cur_basic_block.incoming_vars = endincoming;
                         self.var_names = endassignments;
                     }
+                    super::tyck::ThirBlock::Match(_) => todo!("match"),
                 }
             }
             ThirStatement::Discard(expr) => {

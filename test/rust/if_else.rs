@@ -4,16 +4,16 @@ extern "C" {
 
 pub fn test_number(x: i32) {
     if x < 0 {
-        puts("Number is negative");
+        puts(b"Number is negative\0" as *const u8);
     } else if x > 0 {
-        puts("Number is positive");
+        puts(b"Number is positive\0" as *const u8);
     } else {
-        puts("Number is zero");
+        puts(b"Number is zero\0" as *const u8);
     }
     puts(if x % 2 == 0 {
-        "Number is even"
+        b"Number is even\0" as *const u8
     } else {
-        "Number is odd"
+        b"Number is odd\0" as *const u8
     });
 }
 

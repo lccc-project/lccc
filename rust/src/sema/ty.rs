@@ -86,8 +86,8 @@ pub enum Type {
     Str,
     Never,
     Tuple(Vec<Spanned<Type>>),
-    FnPtr(FnType),
-    FnItem(FnType, DefId),
+    FnPtr(Box<FnType>),
+    FnItem(Box<FnType>, DefId),
     UserType(DefId),
     IncompleteAlias(DefId),
     Pointer(Spanned<Mutability>, Box<Spanned<Type>>),
@@ -95,7 +95,7 @@ pub enum Type {
     Inferable(InferId),
     InferableInt(InferId),
     Reference(
-        Option<Spanned<SemaLifetime>>,
+        Option<Box<Spanned<SemaLifetime>>>,
         Spanned<Mutability>,
         Box<Spanned<Type>>,
     ),
@@ -224,10 +224,7 @@ pub fn convert_tag(tag: Spanned<Symbol>, curmod: DefId, at_item: DefId) -> super
             let x = &x[8..];
 
             let ver = x.parse::<u16>().map_err(|_| {
-                let new_span = span.with_start(Pos {
-                    row: span.start.row + 8,
-                    ..span.start
-                });
+                let new_span = span.with_start(Pos::new(span.start.row(), span.start.col() + 8));
                 super::Error {
                     span,
                     text: format!("Unknown abi {}", tag),

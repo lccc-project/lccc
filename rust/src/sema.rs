@@ -110,6 +110,7 @@ pub enum ErrorCategory {
     InvalidFunction,
     InvalidExpression,
     InvalidAttr,
+    InvalidLiteral,
     BasicCoherenceError,
     TycheckError(tyck::TycheckErrorCategory),
     BorrowckError(mir::BorrowckErrorCategory),
@@ -3517,7 +3518,9 @@ pub fn tycheck_function(defs: &mut Definitions, curmod: DefId, defid: DefId) -> 
                 let (stmts, safety) = match block.body.body.body {
                     hir::HirBlock::Normal(stmts) => (stmts, Safety::Safe),
                     hir::HirBlock::Unsafe(stmts) => (stmts, Safety::Unsafe),
-                    hir::HirBlock::If { .. } | hir::HirBlock::Loop(_) => unreachable!(),
+                    hir::HirBlock::If { .. } | hir::HirBlock::Loop(_) | hir::HirBlock::Match(_) => {
+                        unreachable!()
+                    }
                 };
 
                 let mut converter = tyck::ThirConverter::new(
@@ -3623,12 +3626,7 @@ pub fn lower_function(defs: &mut Definitions, curmod: DefId, defid: DefId) -> Re
                         defs,
                         defid,
                         curmod,
-                        block
-                            .body
-                            .vardefs
-                            .into_iter()
-                            .flat_map(|Pair(a, b)| Some(Pair(a, b.debug_name?)))
-                            .collect(),
+                        block.body.vardefs,
                         localitems,
                         fnty,
                     );

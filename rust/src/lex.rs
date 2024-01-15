@@ -208,7 +208,7 @@ macro_rules! punctuation {
     {
         $($tok:tt => $name:ident),* $(,)?
     } => {
-        #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+        #[derive(Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Punctuation {
             $($name),*
         }
@@ -225,6 +225,22 @@ macro_rules! punctuation {
             pub const fn symbol(&self) -> &'static str {
                 match self {
                     $(Self::$name => ::core::stringify!($tok)),*
+                }
+            }
+        }
+
+        impl core::fmt::Debug for Punctuation{
+            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result{
+                match self{
+                    $(Self::$name => f.write_str(::core::stringify!($tok))),*
+                }
+            }
+        }
+
+        impl core::fmt::Display for Punctuation{
+            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result{
+                match self{
+                    $(Self::$name => f.write_str(::core::stringify!($tok))),*
                 }
             }
         }
@@ -254,7 +270,7 @@ macro_rules! keywords{
     {
         $($tok:tt => $name:ident),* $(,)?
     } => {
-        #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+        #[derive(Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Keyword {
             $($name),*
         }
@@ -270,6 +286,22 @@ macro_rules! keywords{
             pub const fn symbol(&self) -> &'static str {
                 match self {
                     $(Self::$name => ::core::stringify!($tok)),*
+                }
+            }
+        }
+
+        impl core::fmt::Debug for Keyword{
+            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result{
+                match self{
+                    $(Self::$name => f.write_str(::core::stringify!($tok))),*
+                }
+            }
+        }
+
+        impl core::fmt::Display for Keyword{
+            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result{
+                match self{
+                    $(Self::$name => f.write_str(::core::stringify!($tok))),*
                 }
             }
         }
@@ -418,7 +450,7 @@ keywords! {
     tt => Tt,
     ty => Ty,
     vis => Vis,
-
+    _ => Underscore,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]

@@ -35,7 +35,7 @@ fn generate_compile_error(ts: &mut TokenStream, error_msg: Arguments, span: Span
     ts.extend(tokens);
 }
 
-fn generate_nzu64_ctor(ts: &mut TokenStream, val: u64, span: Span) {
+fn generate_nzu32_ctor(ts: &mut TokenStream, val: u32, span: Span) {
     assert_ne!(val, 0);
     let unsafekw = TokenTree::Ident(Ident::new("unsafe", span));
 
@@ -49,13 +49,13 @@ fn generate_nzu64_ctor(ts: &mut TokenStream, val: u64, span: Span) {
     let num = TokenTree::Ident(Ident::new("num", span));
     let colon5 = TokenTree::Punct(Punct::new(':', proc_macro::Spacing::Joint));
     let colon6 = TokenTree::Punct(Punct::new(':', proc_macro::Spacing::Alone));
-    let nonzerousize = TokenTree::Ident(Ident::new("NonZeroU64", span));
+    let nonzerousize = TokenTree::Ident(Ident::new("NonZeroU32", span));
     let colon7 = TokenTree::Punct(Punct::new(':', proc_macro::Spacing::Joint));
     let colon8 = TokenTree::Punct(Punct::new(':', proc_macro::Spacing::Alone));
     let new_unchecked = TokenTree::Ident(Ident::new("new_unchecked", span));
 
     let mut new_unchecked_inner = TokenStream::new();
-    new_unchecked_inner.extend([TokenTree::Literal(Literal::u64_suffixed(val))]);
+    new_unchecked_inner.extend([TokenTree::Literal(Literal::u32_suffixed(val))]);
 
     let new_unchecked_params = TokenTree::Group(Group::new(
         proc_macro::Delimiter::Parenthesis,
@@ -83,7 +83,7 @@ fn generate_nzu64_ctor(ts: &mut TokenStream, val: u64, span: Span) {
     ts.extend([unsafekw, unsafeblk]);
 }
 
-fn generate_const(ts: &mut TokenStream, name: Ident, id: u64, span: Span) {
+fn generate_const(ts: &mut TokenStream, name: Ident, id: u32, span: Span) {
     let pubkw = TokenTree::Ident(Ident::new("pub", span));
     let constkw = TokenTree::Ident(Ident::new("const", span));
 
@@ -99,7 +99,7 @@ fn generate_const(ts: &mut TokenStream, name: Ident, id: u64, span: Span) {
 
     let mut ctorinner = TokenStream::new();
 
-    generate_nzu64_ctor(&mut ctorinner, id, span);
+    generate_nzu32_ctor(&mut ctorinner, id, span);
 
     let ctorparens = TokenTree::Group(Group::new(proc_macro::Delimiter::Parenthesis, ctorinner));
 
@@ -110,19 +110,19 @@ fn generate_const(ts: &mut TokenStream, name: Ident, id: u64, span: Span) {
     ]);
 }
 
-fn generate_const_u64(ts: &mut TokenStream, name: Ident, val: u64, span: Span) {
+fn generate_const_u32(ts: &mut TokenStream, name: Ident, val: u32, span: Span) {
     let constkw = TokenTree::Ident(Ident::new("const", span));
     let nameid = TokenTree::Ident(name);
     let colon0 = TokenTree::Punct(Punct::new(':', proc_macro::Spacing::Alone));
-    let ty = TokenTree::Ident(Ident::new("u64", span));
+    let ty = TokenTree::Ident(Ident::new("u32", span));
     let equals = TokenTree::Punct(Punct::new('=', proc_macro::Spacing::Alone));
-    let lit = TokenTree::Literal(Literal::u64_suffixed(val));
+    let lit = TokenTree::Literal(Literal::u32_suffixed(val));
     let semi = TokenTree::Punct(Punct::new(';', proc_macro::Spacing::Alone));
 
     ts.extend([constkw, nameid, colon0, ty, equals, lit, semi]);
 }
 
-fn generate_init(ts: &mut TokenStream, val: &str, id: u64, span: Span) {
+fn generate_init(ts: &mut TokenStream, val: &str, id: u32, span: Span) {
     let insert_static_symbol = TokenTree::Ident(Ident::new("insert_static_symbol", span));
 
     let mut call_params = TokenStream::new();
@@ -137,7 +137,7 @@ fn generate_init(ts: &mut TokenStream, val: &str, id: u64, span: Span) {
 
     call_params.extend([strtok, comma]);
 
-    generate_nzu64_ctor(&mut call_params, id, span);
+    generate_nzu32_ctor(&mut call_params, id, span);
 
     let call_parens = TokenTree::Group(Group::new(proc_macro::Delimiter::Parenthesis, call_params));
 
@@ -173,7 +173,7 @@ pub fn gen_sym_map(ts: TokenStream) -> TokenStream {
 
     let tspan = Span::call_site();
 
-    let mut cur_id = 1u64;
+    let mut cur_id = 1u32;
 
     let mut keys = Vec::new();
     let mut map = HashMap::new();
@@ -297,7 +297,7 @@ pub fn gen_sym_map(ts: TokenStream) -> TokenStream {
         generate_const(&mut output_stream, name, id, span)
     }
 
-    generate_const_u64(
+    generate_const_u32(
         &mut output_stream,
         Ident::new("INIT_DYN_VAL", tspan),
         cur_id,

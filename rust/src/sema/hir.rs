@@ -3,7 +3,7 @@ use xlang::abi::collection::HashMap;
 use crate::ast::{self, Literal, LiteralKind, Mutability, Safety, StringType};
 use crate::helpers::{FetchIncrement, TabPrinter};
 use crate::interning::Symbol;
-use crate::span::Span;
+use crate::span::{synthetic, Span};
 
 use super::ty::{self, FieldName, IntType, Type};
 
@@ -24,6 +24,28 @@ impl core::fmt::Debug for HirVarId {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.write_fmt(format_args!("_H{}", self.0))
     }
+}
+
+pub fn parse_int_literal(
+    val: Spanned<Symbol>,
+    at_item: DefId,
+    containing_item: DefId,
+) -> super::Result<u128> {
+    let Spanned { body, span } = val;
+
+    body.parse().map_err(|_| super::Error {
+        span,
+        text: format!("Integer Literal `{}` is invalid", body),
+        category: super::ErrorCategory::InvalidLiteral,
+        at_item,
+        containing_item,
+        relevant_item: at_item,
+        hints: vec![super::SemaHint {
+            text: format!("The largest value Rust can represent is `{}`", u128::MAX),
+            itemref: DefId::ROOT,
+            refspan: span,
+        }],
+    })
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -181,6 +203,138 @@ pub enum HirBlock {
         elseifs: Vec<(Spanned<HirExpr>, HirSimpleBlock)>,
         elseblock: HirSimpleBlock,
     },
+    Match(HirMatch),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum HirPatternMatcher {
+    Hole,
+    ConstInt(u128, Option<Spanned<IntType>>),
+    Const(DefId),
+}
+
+impl core::fmt::Display for HirPatternMatcher {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Self::Hole => f.write_str("_"),
+            Self::ConstInt(val, intty) => {
+                val.fmt(f)?;
+                if let Some(intty) = intty {
+                    f.write_str("_")?;
+                    intty.body.fmt(f)?;
+                }
+                Ok(())
+            }
+            Self::Const(def) => def.fmt(f),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum BindingMode {
+    Ref,
+    Unref,
+}
+
+impl core::fmt::Display for BindingMode {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Self::Ref => f.write_str("ref "),
+            Self::Unref => f.write_str("&"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum PatternPathFragment {
+    Field(FieldName),
+    SliceElement(u32),
+    SliceHead(u32),
+    SliceTail(u32),
+}
+
+impl core::fmt::Display for PatternPathFragment {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Field(fname) => f.write_fmt(format_args!(".{}", fname)),
+            Self::SliceElement(idx) => f.write_fmt(format_args!("[{}]", idx)),
+            Self::SliceHead(tail_size) => f.write_fmt(format_args!("[..-{}]", tail_size)),
+            Self::SliceTail(head_size) => f.write_fmt(format_args!("[{}..]", head_size)),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct HirPatternPath {
+    pub elements: Vec<PatternPathFragment>,
+}
+
+impl core::fmt::Display for HirPatternPath {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        for elem in &self.elements {
+            elem.fmt(f)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct HirPatternBinding {
+    pub path: HirPatternPath,
+    pub mode: Option<Spanned<BindingMode>>,
+    pub mutability: Spanned<Mutability>,
+    pub var: Spanned<HirVarId>,
+}
+
+impl core::fmt::Display for HirPatternBinding {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        self.path.fmt(f)?;
+        f.write_str(": ")?;
+        if let Some(mode) = &self.mode {
+            mode.body.fmt(f)?;
+        }
+
+        if let Mutability::Mut = self.mutability.body {
+            f.write_str("mut ")?;
+        }
+        self.var.body.fmt(f)
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct HirPattern {
+    pub matcher: Spanned<HirPatternMatcher>,
+    pub bindings: Vec<Spanned<HirPatternBinding>>,
+}
+
+impl core::fmt::Display for HirPattern {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        self.matcher.fmt(f)?;
+
+        f.write_str(" @ {")?;
+
+        let mut sep = "";
+
+        for binding in &self.bindings {
+            f.write_str(sep)?;
+            sep = ", ";
+            binding.body.fmt(f)?;
+        }
+        f.write_str("}")
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct HirMatchArm {
+    pub pattern: Spanned<HirPattern>,
+    pub guard: Option<Spanned<HirExpr>>,
+    pub expansion: Spanned<HirSimpleBlock>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct HirMatch {
+    pub discriminee: Spanned<HirExpr>,
+    pub arms: Vec<HirMatchArm>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -291,6 +445,30 @@ impl HirFunctionBody {
                         for stmt in elseblock {
                             self.display_statement(stmt, f, nested)?;
                         }
+                    }
+                    tabs.fmt(f)?;
+                    f.write_str("}\n")
+                }
+                HirBlock::Match(m) => {
+                    tabs.fmt(f)?;
+                    let nested = tabs.nest();
+                    write!(f, "match {} {{\n", m.discriminee.body)?;
+                    for arm in &m.arms {
+                        nested.fmt(f)?;
+                        let subnested = nested.nest();
+                        arm.pattern.body.fmt(f)?;
+
+                        if let Some(guard) = &arm.guard {
+                            write!(f, "if {}", guard.body)?;
+                        }
+
+                        f.write_str(" => {\n")?;
+
+                        for stmt in &arm.expansion.body {
+                            self.display_statement(stmt, f, subnested)?;
+                        }
+                        nested.fmt(f)?;
+                        f.write_str("}\n")?;
                     }
                     tabs.fmt(f)?;
                     f.write_str("}\n")
@@ -585,9 +763,91 @@ impl<'a> HirLowerer<'a> {
         }
     }
 
-    pub fn desugar_stmt(
+    fn build_pattern(
         &mut self,
-        mut ret: Option<&mut dyn FnMut(Spanned<HirExpr>) -> HirStatement>,
+        pat: &Spanned<ast::Pattern>,
+        mut path: Vec<PatternPathFragment>,
+        mut bindings: &mut Vec<Spanned<HirPatternBinding>>,
+        binding_name_map: &mut HashMap<Symbol, HirVarId>,
+    ) -> super::Result<Spanned<HirPatternMatcher>> {
+        match &pat.body {
+            ast::Pattern::BareId(id) => {
+                if let Some(cn) = self.localvalues.get(&id.body) {
+                    todo!("const pattern")
+                } else if let Ok(cn) =
+                    self.defs
+                        .find_value_in_mod(self.curmod, self.curmod, *id, self.atitem)
+                {
+                    todo!("const pattern")
+                } else {
+                    let var = *binding_name_map.get_or_insert_with_mut(id.body, |_| {
+                        HirVarId(self.nexthirvarid.fetch_increment())
+                    });
+                    let binding = HirPatternBinding {
+                        path: HirPatternPath { elements: path },
+                        mode: None,
+                        mutability: synthetic(Mutability::Const),
+                        var: id.copy_span(|_| var),
+                    };
+                    bindings.push(Spanned {
+                        body: binding,
+                        span: id.span,
+                    });
+                    Ok(Spanned {
+                        body: HirPatternMatcher::Hole,
+                        span: pat.span,
+                    })
+                }
+            }
+            ast::Pattern::Const(_) => todo!(),
+            ast::Pattern::Binding(_) => todo!(),
+            ast::Pattern::Discard => Ok(Spanned {
+                body: HirPatternMatcher::Hole,
+                span: pat.span,
+            }),
+            ast::Pattern::Tuple(_) => todo!(),
+            ast::Pattern::Ref(_, _) => todo!(),
+            ast::Pattern::OrPattern(_) => todo!(),
+            ast::Pattern::RangePattern(_, _) => todo!(),
+            ast::Pattern::RangeInclusivePattern(_, _) => todo!(),
+            ast::Pattern::LiteralPattern(lit) => match lit.lit_kind {
+                LiteralKind::String(_) => todo!(),
+                LiteralKind::Char(_) => todo!(),
+                LiteralKind::Int(intty) => {
+                    let intty = intty
+                        .map(|sym| ty::parse_int_suffix(sym, self.atitem, self.curmod))
+                        .transpose()?;
+                    let val = parse_int_literal(lit.val, self.atitem, self.curmod)?;
+
+                    Ok(Spanned {
+                        body: HirPatternMatcher::ConstInt(val, intty),
+                        span: pat.span,
+                    })
+                }
+                LiteralKind::Float(_) => todo!(),
+                LiteralKind::Bool => todo!(),
+            },
+        }
+    }
+
+    pub fn desugar_pattern(
+        &mut self,
+        pat: &Spanned<ast::Pattern>,
+        binding_name_map: &mut HashMap<Symbol, HirVarId>,
+    ) -> super::Result<Spanned<HirPattern>> {
+        let path = vec![];
+        let mut bindings = vec![];
+        let matcher = self.build_pattern(pat, path, &mut bindings, binding_name_map)?;
+
+        Ok(Spanned {
+            body: HirPattern { matcher, bindings },
+            span: pat.span,
+        })
+    }
+
+    pub fn desugar_stmt<'b>(
+        &mut self,
+        mut ret: Option<&'b mut dyn FnMut(Spanned<HirExpr>) -> HirStatement>,
         stmt: &Spanned<ast::Statement>,
     ) -> super::Result<()> {
         match &stmt.body {
@@ -849,14 +1109,90 @@ impl<'a> HirLowerer<'a> {
                     self.nexthirvarid = lowerer.nexthirvarid;
                 }
                 ast::CompoundBlock::For(_) => todo!("for"),
+                ast::CompoundBlock::Match(m) => {
+                    let expr = self.desugar_expr(&m.discriminee)?;
+                    let mut arms = vec![];
+                    for arm in &m.arms {
+                        let mut binding_name_map = HashMap::new();
+                        let pattern = self.desugar_pattern(&arm.discrim, &mut binding_name_map)?;
+
+                        if let Some(guard) = &arm.guard {
+                            todo!("match guard")
+                        }
+
+                        let mut lowerer = HirLowerer::new(
+                            self.defs,
+                            self.atitem,
+                            self.curmod,
+                            self.vardebugmap,
+                            self.selfty,
+                            self.localitems,
+                        );
+
+                        lowerer.nexthirvarid = self.nexthirvarid;
+                        lowerer.varnames = self.varnames.clone();
+                        lowerer.varnames.extend(binding_name_map);
+                        lowerer.localtypes = self.localtypes.clone();
+                        lowerer.localvalues = self.localvalues.clone();
+
+                        match &arm.value.body {
+                            ast::MatchArmValue::Expr(e) => {
+                                let expr = lowerer.desugar_expr(e)?;
+                                let span = expr.span;
+                                let stmt = if let Some(ret) = &mut ret {
+                                    ret(expr)
+                                } else {
+                                    HirStatement::Discard(expr)
+                                };
+                                lowerer.stmts.push(Spanned { body: stmt, span });
+                            }
+                            ast::MatchArmValue::Block(blk) => {
+                                lowerer.desugar_block(
+                                    if let Some(ret) = &mut ret {
+                                        Some(ret)
+                                    } else {
+                                        None
+                                    },
+                                    blk,
+                                )?;
+                            }
+                        }
+
+                        let expansion = Spanned {
+                            body: lowerer.stmts,
+                            span: arm.value.span,
+                        };
+
+                        self.nexthirvarid = lowerer.nexthirvarid;
+
+                        let arm = HirMatchArm {
+                            pattern,
+                            guard: None,
+                            expansion,
+                        };
+
+                        arms.push(arm);
+                    }
+                    let stmt = HirMatch {
+                        discriminee: expr,
+                        arms,
+                    };
+
+                    let match_block = m.copy_span(|_| HirBlock::Match(stmt));
+
+                    self.stmts.push(Spanned {
+                        body: HirStatement::Block(match_block),
+                        span: m.span,
+                    });
+                }
             },
         }
         Ok(())
     }
 
-    pub fn desugar_block(
+    pub fn desugar_block<'b>(
         &mut self,
-        ret: Option<&mut dyn FnMut(Spanned<HirExpr>) -> HirStatement>,
+        ret: Option<&'b mut dyn FnMut(Spanned<HirExpr>) -> HirStatement>,
         blk: &Spanned<ast::Block>,
     ) -> super::Result<()> {
         let mut stmts = blk.stmts.as_slice();

@@ -10,51 +10,38 @@ use crate::{
     interning::{self, Symbol},
 };
 
-#[derive(Clone, Copy, Hash, Eq, Default)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Pos {
-    pub row: u32,
-    pub col: u32,
+    row_col: u32,
 }
 
 impl Pos {
     pub const fn new(row: u32, col: u32) -> Self {
-        Self { row, col }
+        [()][(row > 0xFFFFF) as usize];
+        [()][(col > 0xFFF) as usize];
+        Self {
+            row_col: row | (col << 20),
+        }
     }
 
     pub const fn synthetic() -> Self {
-        Self { row: !0, col: !0 }
+        Self { row_col: !0 }
     }
 
     #[allow(dead_code)]
     pub const fn row(self) -> u32 {
-        self.row
+        self.row_col & 0xFFFFF
     }
 
     #[allow(dead_code)]
     pub const fn col(self) -> u32 {
-        self.col
+        self.row_col >> 20
     }
 }
 
 impl fmt::Debug for Pos {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.row, self.col)
-    }
-}
-
-impl PartialEq for Pos {
-    fn eq(&self, other: &Self) -> bool {
-        self.row == other.row && self.col == other.col
-    }
-}
-
-impl PartialOrd for Pos {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match self.row.cmp(&other.row) {
-            Ordering::Equal => {}
-            x => return Some(x),
-        }
-        Some(self.col.cmp(&other.col))
+        write!(f, "{}:{}", self.row(), self.col())
     }
 }
 
@@ -164,6 +151,13 @@ impl<T> Spanned<T> {
         }
     }
 
+    pub fn map_span<U, F: FnOnce(T) -> U>(self, f: F) -> Spanned<U> {
+        Spanned {
+            body: f(self.body),
+            span: self.span,
+        }
+    }
+
     pub fn try_copy_span<U, E, F: FnOnce(&T) -> Result<U, E>>(
         &self,
         f: F,
@@ -196,7 +190,7 @@ pub const fn synthetic<T>(body: T) -> Spanned<T> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct HygieneRef(pub u64);
+pub struct HygieneRef(u32);
 
 impl Default for HygieneRef {
     fn default() -> Self {
@@ -206,43 +200,43 @@ impl Default for HygieneRef {
 
 impl HygieneRef {
     pub const fn synthetic() -> Self {
-        Self::new(0xFFFFFFFFFFFF, HygieneMode::DefSite, RustEdition::Rust2021)
+        Self::new(0xFFFFFF, HygieneMode::DefSite, RustEdition::Rust2021)
     }
 
     pub const fn simple_with_edition(edition: RustEdition) -> Self {
         Self::new(0, HygieneMode::CallSite, edition)
     }
 
-    pub const fn new(xref_id: u64, mode: HygieneMode, edition: RustEdition) -> Self {
+    pub const fn new(xref_id: u32, mode: HygieneMode, edition: RustEdition) -> Self {
         let mode = mode as u8;
-        let edition = edition as u16;
+        let edition = edition as u8;
 
-        let val = ((mode as u64) << 60) | ((edition as u64) << 48) | (xref_id & 0xFFFFFFFFFFFF);
+        let val = ((mode as u32) << 30) | ((edition as u32) << 24);
 
-        Self(val)
+        Self(xref_id | val)
     }
 
     pub const fn with_mode(self, mode: HygieneMode) -> Self {
         let val = self.0;
 
-        Self((val & ((1 << 60) - 1)) | ((mode as u64) << 60))
+        Self((val & ((1 << 30) - 1)) | ((mode as u32) << 30))
     }
 
     #[allow(dead_code)]
-    pub const fn xref_id(self) -> u64 {
-        self.0 & 0xFFFFFFFFFFFF
+    pub const fn xref_id(self) -> u32 {
+        self.0 & 0xFFFFFF
     }
 
     #[allow(dead_code)]
     pub const fn mode(self) -> Option<HygieneMode> {
-        let val = self.0 >> 60;
+        let val = self.0 >> 30;
 
         HygieneMode::from_val(val as u8)
     }
 
     #[allow(dead_code)]
     pub const fn edition(self) -> Option<RustEdition> {
-        let val = (self.0 >> 48) & 0xFFF;
+        let val = (self.0 >> 24) & 0x3F;
 
         RustEdition::from_val(val as u16)
     }
@@ -352,11 +346,11 @@ impl<I: Iterator<Item = char>> Speekable<I> {
             } else if let Some(c) = c {
                 let idx = self.index.fetch_increment();
                 let next_pos = match c {
-                    '\n' => Pos::new(self.pos.row + 1, 1),
-                    _ => Pos::new(self.pos.row, self.pos.col + 1),
+                    '\n' => Pos::new(self.pos.row() + 1, 1),
+                    _ => Pos::new(self.pos.row(), self.pos.col() + 1),
                 };
 
-                if next_pos.row != self.pos.row {
+                if next_pos.row() != self.pos.row() {
                     self.row_map.push(idx);
                 }
 

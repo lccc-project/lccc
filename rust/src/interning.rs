@@ -1,6 +1,7 @@
 use core::borrow::Borrow;
 use core::convert::AsRef;
-use core::num::NonZeroU64;
+use core::convert::TryInto;
+use core::num::NonZeroU32;
 use core::ops::Deref;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
@@ -10,7 +11,7 @@ use xlang::abi::string::StringView;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct Symbol(NonZeroU64);
+pub struct Symbol(NonZeroU32);
 
 impl Default for Symbol {
     fn default() -> Self {
@@ -85,8 +86,8 @@ impl core::fmt::Debug for Symbol {
 static COUNTER: AtomicUsize = AtomicUsize::new(INIT_DYN_VAL as usize);
 
 lazy_static::lazy_static! {
-    static ref MAP: RwLock<(FxHashMap<&'static str, NonZeroU64>,FxHashMap<NonZeroU64,&'static str>)> = {
-        let mut map: (FxHashMap<&'static str, NonZeroU64>,FxHashMap<NonZeroU64,&'static str>) = Default::default();
+    static ref MAP: RwLock<(FxHashMap<&'static str, NonZeroU32>,FxHashMap<NonZeroU32,&'static str>)> = {
+        let mut map: (FxHashMap<&'static str, NonZeroU32>,FxHashMap<NonZeroU32,&'static str>) = Default::default();
 
         init_static_symbols(&mut map);
 
@@ -96,13 +97,13 @@ lazy_static::lazy_static! {
 
 // Do not remove
 type InitBlob = (
-    FxHashMap<&'static str, NonZeroU64>,
-    FxHashMap<NonZeroU64, &'static str>,
+    FxHashMap<&'static str, NonZeroU32>,
+    FxHashMap<NonZeroU32, &'static str>,
 );
 
 // Do not remove
 #[allow(dead_code)]
-fn insert_static_symbol(map: &mut InitBlob, x: &'static str, key: NonZeroU64) {
+fn insert_static_symbol(map: &mut InitBlob, x: &'static str, key: NonZeroU32) {
     map.0.insert(x, key);
     map.1.insert(key, x);
 }
@@ -155,13 +156,15 @@ impl Symbol {
                 .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |val| {
                     <usize>::checked_add(val, 1)
                 })
-                .expect("Overflowed number of symbols") as u64;
+                .expect("Overflowed number of symbols")
+                .try_into()
+                .expect("Overflowed number of symbols");
 
             let leaked = Box::leak(st.into_boxed_str());
 
             let mut guard = MAP.write();
 
-            let sym = unsafe { NonZeroU64::new_unchecked(val) };
+            let sym = unsafe { NonZeroU32::new_unchecked(val) };
             guard.0.insert(leaked, sym);
             guard.1.insert(sym, leaked);
             drop(guard);
@@ -178,10 +181,12 @@ impl Symbol {
                 .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |val| {
                     <usize>::checked_add(val, 1)
                 })
-                .expect("Overflowed number of symbols") as u64;
+                .expect("Overflowed number of symbols")
+                .try_into()
+                .expect("Overflowed number of symbols");
             let leaked = Box::leak(Box::<str>::from(st));
             let mut guard = MAP.write();
-            let sym = unsafe { NonZeroU64::new_unchecked(val) };
+            let sym = unsafe { NonZeroU32::new_unchecked(val) };
             guard.0.insert(leaked, sym);
             guard.1.insert(sym, leaked);
             drop(guard);

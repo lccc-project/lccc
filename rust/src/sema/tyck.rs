@@ -7,12 +7,12 @@ use crate::{
     span::Span,
 };
 
-pub use super::hir::{BinaryOp, UnaryOp};
+pub use super::hir::{BinaryOp, PatternPathFragment, UnaryOp};
 pub use super::ty::Type;
 
 use super::{
     cx::ConstExpr,
-    hir::HirVarId,
+    hir::{HirPatternBinding, HirVarId},
     ty::{FieldName, FnType, IntType, SemaLifetime},
     DefId, DefinitionInner, Definitions, Error, ErrorCategory, Result, SemaHint, Spanned,
 };
@@ -42,6 +42,67 @@ pub enum Movability {
 pub enum ValueCategory {
     Rvalue,
     Lvalue(Movability, Mutability),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ThirPattern {
+    pub matcher: Spanned<ThirPatternMatcher>,
+    pub bindings: Vec<Spanned<HirPatternBinding>>,
+}
+
+impl core::fmt::Display for ThirPattern {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        self.matcher.fmt(f)?;
+
+        f.write_str(" @ {")?;
+
+        let mut sep = "";
+
+        for binding in &self.bindings {
+            f.write_str(sep)?;
+            sep = ", ";
+            binding.body.fmt(f)?;
+        }
+        f.write_str("}")
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ThirPatternMatcher {
+    pub ty: Type,
+    pub inner: ThirMatcherInner,
+}
+
+impl core::fmt::Display for ThirPatternMatcher {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        self.inner.fmt(f)?;
+        f.write_str(": ")?;
+        self.ty.fmt(f)
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum ThirMatcherInner {
+    Hole,
+    ConstInt(u128, Option<Spanned<IntType>>),
+    Const(DefId),
+}
+
+impl core::fmt::Display for ThirMatcherInner {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Self::Hole => f.write_str("_"),
+            Self::ConstInt(val, intty) => {
+                val.fmt(f)?;
+                if let Some(intty) = intty {
+                    f.write_str("_")?;
+                    intty.body.fmt(f)?;
+                }
+                Ok(())
+            }
+            Self::Const(def) => def.fmt(f),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -222,6 +283,19 @@ pub enum ThirStatement {
 type ThirSimpleBlock = Vec<Spanned<ThirStatement>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ThirMatch {
+    pub discriminee: Spanned<ThirExpr>,
+    pub arms: Vec<ThirMatchArm>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ThirMatchArm {
+    pub discrim: Spanned<ThirPattern>,
+    pub guard: Option<Spanned<ThirExpr>>,
+    pub expansion: Spanned<ThirSimpleBlock>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ThirBlock {
     Normal(ThirSimpleBlock),
     Unsafe(ThirSimpleBlock),
@@ -232,6 +306,7 @@ pub enum ThirBlock {
         elseifs: Vec<(Spanned<ThirExpr>, ThirSimpleBlock)>,
         elseblock: ThirSimpleBlock,
     },
+    Match(ThirMatch),
 }
 
 impl ThirBlock {
@@ -356,6 +431,30 @@ impl ThirFunctionBody {
                     tabs.fmt(f)?;
                     f.write_str("}\n")
                 }
+                ThirBlock::Match(m) => {
+                    tabs.fmt(f)?;
+                    let nested = tabs.nest();
+                    write!(f, "match {} {{\n", m.discriminee.body)?;
+                    for arm in &m.arms {
+                        nested.fmt(f)?;
+                        let subnested = nested.nest();
+                        arm.discrim.body.fmt(f)?;
+
+                        if let Some(guard) = &arm.guard {
+                            write!(f, "if {}", guard.body)?;
+                        }
+
+                        f.write_str(" => {\n")?;
+
+                        for stmt in &arm.expansion.body {
+                            self.display_statement(stmt, f, subnested)?;
+                        }
+                        nested.fmt(f)?;
+                        f.write_str("}\n")?;
+                    }
+                    tabs.fmt(f)?;
+                    f.write_str("}\n")
+                }
             },
             ThirStatement::Discard(expr) => f.write_fmt(format_args!("{}{};\n", tabs, expr.body)),
             ThirStatement::Call {
@@ -416,8 +515,8 @@ impl ThirFunctionBody {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ThirVarDef {
-    mt: Spanned<Mutability>,
-    ty: Spanned<Type>,
+    pub mt: Spanned<Mutability>,
+    pub ty: Spanned<Type>,
     pub debug_name: Option<Spanned<Symbol>>,
 }
 
@@ -570,10 +669,10 @@ impl<'a> ThirConverter<'a> {
                 };
 
                 let ty = Type::Reference(
-                    Some(Spanned {
+                    Some(Box::new(Spanned {
                         body: SemaLifetime::Static,
                         span: tyspan,
-                    }),
+                    })),
                     Spanned {
                         body: Mutability::Const,
                         span: tyspan,
@@ -596,9 +695,10 @@ impl<'a> ThirConverter<'a> {
                 let def = self.defs.definition(*defid);
 
                 let (ty, cat) = match &def.inner.body {
-                    super::DefinitionInner::Function(fnty, _) => {
-                        (Type::FnItem(fnty.clone(), *defid), ValueCategory::Rvalue)
-                    }
+                    super::DefinitionInner::Function(fnty, _) => (
+                        Type::FnItem(Box::new(fnty.clone()), *defid),
+                        ValueCategory::Rvalue,
+                    ),
                     _ => unreachable!("Not a value"),
                 };
 
@@ -794,6 +894,90 @@ impl<'a> ThirConverter<'a> {
         })
     }
 
+    fn convert_matcher(
+        &mut self,
+        matcher: &Spanned<hir::HirPatternMatcher>,
+        path: Vec<PatternPathFragment>,
+        path_ty_map: &mut HashMap<Vec<PatternPathFragment>, Type>,
+    ) -> super::Result<Spanned<ThirPatternMatcher>> {
+        let matcher = match &matcher.body {
+            hir::HirPatternMatcher::Hole => {
+                let infer = InferId(self.next_infer.fetch_increment());
+                let ty = Type::Inferable(infer);
+
+                Spanned {
+                    body: ThirPatternMatcher {
+                        inner: ThirMatcherInner::Hole,
+                        ty,
+                    },
+                    span: matcher.span,
+                }
+            }
+            hir::HirPatternMatcher::ConstInt(val, None) => {
+                let infer = InferId(self.next_infer.fetch_increment());
+                let ty = Type::InferableInt(infer);
+
+                Spanned {
+                    body: ThirPatternMatcher {
+                        inner: ThirMatcherInner::ConstInt(*val, None),
+                        ty,
+                    },
+                    span: matcher.span,
+                }
+            }
+            hir::HirPatternMatcher::ConstInt(val, Some(intty)) => {
+                let ty = Type::Int(**intty);
+
+                Spanned {
+                    body: ThirPatternMatcher {
+                        inner: ThirMatcherInner::ConstInt(*val, Some(*intty)),
+                        ty,
+                    },
+                    span: matcher.span,
+                }
+            }
+            hir::HirPatternMatcher::Const(defid) => todo!("{}", defid),
+        };
+        path_ty_map.insert(path, matcher.ty.clone());
+
+        Ok(matcher)
+    }
+
+    pub fn convert_pattern(
+        &mut self,
+        pat: &Spanned<hir::HirPattern>,
+    ) -> super::Result<Spanned<ThirPattern>> {
+        let mut path_ty_map = HashMap::new();
+        let matcher = self.convert_matcher(&pat.matcher, vec![], &mut path_ty_map)?;
+
+        let bindings = pat.bindings.clone();
+
+        for binding in &bindings {
+            let var = binding.var;
+
+            let ty = Spanned {
+                body: path_ty_map[&binding.path.elements].clone(),
+                span: var.span,
+            };
+
+            if let Some(mode) = binding.mode {
+                todo!("binding mode {}", mode.body)
+            }
+
+            let mt = binding.mutability;
+
+            let def = ThirVarDef {
+                mt,
+                ty,
+                debug_name: self.dbgnames.get(&*var).copied(),
+            };
+
+            self.var_defs.insert(*var, def);
+        }
+
+        Ok(pat.copy_span(|_| ThirPattern { matcher, bindings }))
+    }
+
     pub fn write_statement(&mut self, stmt: &Spanned<hir::HirStatement>) -> super::Result<()> {
         let stmt = self.convert_statement(stmt)?;
 
@@ -901,6 +1085,40 @@ impl<'a> ThirConverter<'a> {
                             .map(|stmt| self.convert_statement(stmt))
                             .collect::<Result<_>>()?,
                     }),
+                    hir::HirBlock::Match(m) => {
+                        let discriminee = self.convert_expr(&m.discriminee)?;
+
+                        let arms = m
+                            .arms
+                            .iter()
+                            .map(|arm| {
+                                let discrim = self.convert_pattern(&arm.pattern)?;
+
+                                let guard = arm
+                                    .guard
+                                    .as_ref()
+                                    .map(|guard| self.convert_expr(guard))
+                                    .transpose()?;
+
+                                let expansion = arm.expansion.try_copy_span(|expansion| {
+                                    expansion
+                                        .iter()
+                                        .map(|stmt| self.convert_statement(stmt))
+                                        .collect::<Result<_>>()
+                                })?;
+
+                                Ok(ThirMatchArm {
+                                    discrim,
+                                    guard,
+                                    expansion,
+                                })
+                            })
+                            .collect::<Result<_>>()?;
+
+                        let m = ThirMatch { discriminee, arms };
+
+                        Ok(ThirBlock::Match(m))
+                    }
                 }
             })?)),
             hir::HirStatement::Discard(expr) => {
@@ -1223,6 +1441,47 @@ impl<'a> Inferer<'a> {
         Ok(status)
     }
 
+    pub fn unify_single_matcher(
+        &mut self,
+        left: &mut ThirPatternMatcher,
+    ) -> super::Result<CyclicOperationStatus> {
+        let mut status = CyclicOperationStatus::Complete;
+
+        match &mut left.inner {
+            ThirMatcherInner::Hole | ThirMatcherInner::ConstInt(_, None) => {}
+            ThirMatcherInner::ConstInt(_, Some(intty)) => {
+                let mut ty = Type::Int(**intty);
+
+                status &= self.unify_types(&mut left.ty, &mut ty)?;
+            }
+            ThirMatcherInner::Const(_) => todo!(),
+        }
+
+        Ok(status)
+    }
+
+    pub fn propagate_matcher(
+        &mut self,
+        left: &mut ThirPatternMatcher,
+    ) -> super::Result<CyclicOperationStatus> {
+        let mut status = self.propagate_type(&mut left.ty)?;
+
+        Ok(status)
+    }
+
+    pub fn unify_discriminated_expr(
+        &mut self,
+        left: &mut ThirExpr,
+        right: &mut ThirPattern,
+    ) -> super::Result<CyclicOperationStatus> {
+        let mut status = self.unify_types(&mut left.ty, &mut right.matcher.ty)?;
+
+        status &= self.unify_single_expr(left)?;
+        status &= self.unify_single_matcher(&mut right.matcher)?;
+
+        Ok(status)
+    }
+
     pub fn unify_statement(
         &mut self,
         stmt: &mut ThirStatement,
@@ -1330,6 +1589,16 @@ impl<'a> Inferer<'a> {
                     status &= self.unify_statement(stmt)?;
                 }
             }
+            ThirBlock::Match(m) => {
+                for arm in &mut m.arms {
+                    status &=
+                        self.unify_discriminated_expr(&mut m.discriminee, &mut arm.discrim)?;
+
+                    for stmt in &mut arm.expansion.body {
+                        status &= self.unify_statement(stmt)?;
+                    }
+                }
+            }
         }
         Ok(status)
     }
@@ -1360,6 +1629,15 @@ impl<'a> Inferer<'a> {
                 }
                 for stmt in elseblock {
                     status &= self.propagate_statement(stmt)?;
+                }
+            }
+            ThirBlock::Match(m) => {
+                status &= self.propagate_expr(&mut m.discriminee)?;
+                for arm in &mut m.arms {
+                    status &= self.propagate_matcher(&mut arm.discrim.matcher)?;
+                    for stmt in &mut arm.expansion.body {
+                        status &= self.propagate_statement(stmt)?;
+                    }
                 }
             }
         }

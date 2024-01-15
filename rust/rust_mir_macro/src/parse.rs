@@ -195,6 +195,18 @@ fn write_option(inner: Option<TokenStream>, span: Span) -> TokenStream {
     ts
 }
 
+fn write_boxed(inner: TokenStream, span: Span) -> TokenStream {
+    let mut output = TokenStream::new();
+    let g = Group::new(Delimiter::Parenthesis, inner);
+    write_global_path(
+        &mut output,
+        Span::call_site(),
+        ["std", "boxed", "Box", "new"],
+    );
+    output.extend([TokenTree::Group(g)]);
+    output
+}
+
 fn write_spanned(
     inner: TokenStream,
     span: Span,
@@ -496,6 +508,8 @@ pub fn do_type_fnptr<I: Iterator<Item = TokenTree>>(
         dollar_crate,
         ["sema", "ty", "Type", "FnPtr"],
     );
+
+    let inner = write_boxed(inner, Span::call_site());
 
     token_stream.extend([TokenTree::Group(Group::new(Delimiter::Parenthesis, inner))]);
 
@@ -1088,6 +1102,8 @@ pub fn do_term_tailcall<I: Iterator<Item = TokenTree>>(
 
         let fnty = do_fnty(tree, dollar_crate)?;
 
+        let fnty = write_boxed(fnty, span);
+
         let mut params = TokenStream::new();
 
         let mut inner_tree = do_group(tree, Some(Delimiter::Parenthesis))?
@@ -1173,6 +1189,8 @@ pub fn do_term_call<I: Iterator<Item = TokenTree>>(
         do_punct(tree, ":")?;
 
         let fnty = do_fnty(tree, dollar_crate)?;
+
+        let fnty = write_boxed(fnty, span);
 
         let mut params = TokenStream::new();
 

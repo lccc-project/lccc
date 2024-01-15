@@ -146,7 +146,7 @@ pub struct MirDropInfo {
 pub struct MirCallInfo {
     pub retplace: Spanned<SsaVarId>, // id of the return place, which is made live in the next basic block
     pub targ: Spanned<MirExpr>,
-    pub fnty: FnType,
+    pub fnty: Box<FnType>,
     pub params: Vec<Spanned<MirExpr>>,
     pub next: MirJumpInfo,
     pub unwind: Option<MirJumpInfo>,
@@ -155,7 +155,7 @@ pub struct MirCallInfo {
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct MirTailcallInfo {
     pub targ: Spanned<MirExpr>,
-    pub fnty: FnType,
+    pub fnty: Box<FnType>,
     pub params: Vec<Spanned<MirExpr>>,
     pub unwind: Option<MirJumpInfo>,
 }

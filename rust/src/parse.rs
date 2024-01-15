@@ -4,14 +4,14 @@ use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
     ast::{
-        AsyncBlock, Attr, AttrInput, Auto, BinaryOp, Block, CaptureSpec, Closure, ClosureParam,
-        CompoundBlock, CondBlock, ConstParam, Constructor, ConstructorExpr, EnumVariant, Expr,
-        ExternBlock, FieldInit, Function, GenericBound, GenericParam, GenericParams, IfBlock,
-        ImplBlock, Item, ItemBody, ItemValue, Label, LetStatement, Lifetime, LifetimeParam,
-        Literal, LiteralKind, Mod, Param, Path, PathSegment, Pattern, Safety, SelfParam,
-        SimplePath, SimplePathSegment, Spanned, Statement, StructCtor, StructField, StructKind,
-        TraitDef, TupleCtor, TupleField, Type, TypeParam, UnaryOp, UserType, UserTypeBody,
-        Visibility, WhereClause,
+        AsyncBlock, Attr, AttrInput, Auto, BinaryOp, BindingPattern, Block, CaptureSpec, Closure,
+        ClosureParam, CompoundBlock, CondBlock, ConstParam, Constructor, ConstructorExpr,
+        EnumVariant, Expr, ExternBlock, FieldInit, Function, GenericBound, GenericParam,
+        GenericParams, IfBlock, ImplBlock, Item, ItemBody, ItemValue, Label, LetStatement,
+        Lifetime, LifetimeParam, Literal, LiteralKind, MatchArm, MatchArmValue, MatchBlock, Mod,
+        Param, Path, PathSegment, Pattern, Safety, SelfParam, SimplePath, SimplePathSegment,
+        Spanned, Statement, StructCtor, StructField, StructKind, TraitDef, TupleCtor, TupleField,
+        Type, TypeParam, UnaryOp, UserType, UserTypeBody, Visibility, WhereClause,
     },
     interning::Symbol,
     lex::{
@@ -912,15 +912,118 @@ pub fn do_if_block(
     })
 }
 
-pub fn do_compound_block(
+pub fn do_match(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<MatchBlock>> {
+    let mut tree = tree.into_rewinder();
+    let Lexeme {
+        span: start_span, ..
+    } = do_lexeme_class(&mut tree, LexemeClass::Keyword(Keyword::Match))?;
+
+    let discriminee = Box::new(do_expression_without_constructor(&mut tree)?);
+
+    let (inner, gspan) = do_lexeme_group(&mut tree, Some(GroupType::Braces))?;
+
+    let mut inner_tree = inner.body.into_iter().peekmore();
+
+    let mut arms = Vec::new();
+
+    loop {
+        if do_lexeme_class(&mut inner_tree, LexemeClass::Eof).is_ok() {
+            break;
+        }
+        let discrim = do_pattern(&mut inner_tree)?;
+
+        let guard = match do_lexeme_class(&mut inner_tree, LexemeClass::Keyword(Keyword::If)) {
+            Ok(_) => Some(do_expression(&mut inner_tree)?),
+            Err(_) => None,
+        };
+
+        do_lexeme_class(&mut inner_tree, punct!(=>))?;
+
+        match do_block(&mut inner_tree) {
+            Ok(block) => {
+                let span = Span::between(discrim.span, block.span);
+                let _ = do_lexeme_class(&mut inner_tree, punct!(,));
+                let bspan = block.span;
+                let value = block.map_span(|blk| {
+                    MatchArmValue::Block(Spanned {
+                        body: blk,
+                        span: bspan,
+                    })
+                });
+                arms.push(Spanned {
+                    span,
+                    body: MatchArm {
+                        discrim,
+                        guard,
+                        value,
+                    },
+                });
+            }
+            Err(e) => match do_expression(&mut inner_tree) {
+                Ok(expr) => {
+                    let span = Span::between(discrim.span, expr.span);
+                    let espan = expr.span;
+                    let value = expr.map_span(|block| {
+                        MatchArmValue::Expr(Spanned {
+                            body: block,
+                            span: espan,
+                        })
+                    });
+                    arms.push(Spanned {
+                        span,
+                        body: MatchArm {
+                            discrim,
+                            guard,
+                            value,
+                        },
+                    });
+
+                    match do_lexeme_classes(&mut inner_tree, &[punct!(,), LexemeClass::Eof]) {
+                        Ok((_, punct!(,))) => continue,
+                        Ok((_, LexemeClass::Eof)) => break,
+                        Ok((_, _)) => unreachable!(),
+                        Err(e) => return Err(e),
+                    }
+                }
+                Err(d) => return Err(e | d),
+            },
+        }
+    }
+
+    let span = Span::between(start_span, gspan);
+
+    let body = MatchBlock { discriminee, arms };
+    tree.accept();
+    Ok(Spanned { body, span })
+}
+
+pub fn do_compound_block_if(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<CompoundBlock>> {
-    if let Ok(if_block) = do_if_block(tree) {
-        return Ok(Spanned {
-            span: if_block.span,
-            body: CompoundBlock::If(if_block),
-        });
-    }
+    let if_block = do_if_block(tree)?;
+
+    Ok(Spanned {
+        span: if_block.span,
+        body: CompoundBlock::If(if_block),
+    })
+}
+
+pub fn do_compound_block_match(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<CompoundBlock>> {
+    let match_block = do_match(tree)?;
+
+    Ok(Spanned {
+        span: match_block.span,
+        body: CompoundBlock::Match(match_block),
+    })
+}
+
+pub fn do_keyword_block(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<CompoundBlock>> {
     let mut tree = tree.into_rewinder();
     let (
         Lexeme {
@@ -945,6 +1048,31 @@ pub fn do_compound_block(
         },
         span,
     })
+}
+
+pub fn do_simple_block(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<CompoundBlock>> {
+    let block = do_block(tree)?;
+    let span = block.span;
+    Ok(Spanned {
+        body: CompoundBlock::SimpleBlock(block),
+        span,
+    })
+}
+
+pub fn do_compound_block(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<CompoundBlock>> {
+    do_alternation(
+        tree,
+        &[
+            do_compound_block_if,
+            do_compound_block_match,
+            do_keyword_block,
+            do_simple_block,
+        ],
+    )
 }
 
 pub fn do_let_statement(
@@ -1565,7 +1693,7 @@ pub fn do_closure<const ALLOW_CONSTRUCTOR: bool>(
                     Err(_) => {}
                 }
 
-                let pat = do_pattern(&mut tree)?;
+                let pat = do_pattern_param(&mut tree)?; // No | patterns
                 let mut param_span = pat.span;
                 let ty = match do_lexeme_token(&mut tree, punct!(:)) {
                     Ok(_) => {
@@ -2352,27 +2480,136 @@ pub fn do_type(tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>) -> Res
     do_type_no_bounds(tree)
 }
 
+pub fn do_pattern_binding(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Pattern>> {
+    let mut tree = tree.into_rewinder();
+
+    let mt = match do_lexeme_class(&mut tree, keyword!(mut)) {
+        Ok(lex) => Some(Spanned {
+            body: Mutability::Mut,
+            span: lex.span,
+        }),
+        Err(_) => None,
+    };
+
+    let (span, tok) = do_lexeme_token(&mut tree, LexemeClass::Identifier)?;
+
+    let id = Spanned {
+        span,
+        body: tok.body,
+    };
+
+    let binding = match do_lexeme_classes(&mut tree, &[punct!(@), punct!(::)]) {
+        Ok((lex, punct!(@))) => Some(Box::new(do_pattern_param(&mut tree)?)),
+        Ok((lex, punct!(::))) => {
+            return Err(Error {
+                expected: vec![punct!(@)],
+                got: punct!(::),
+                span: lex.span,
+            })
+        } // bail out so that `do_pattern_const_ctor` works
+        Ok(_) => unreachable!(),
+        Err(_) => None,
+    };
+
+    tree.accept();
+
+    match (mt, binding) {
+        (None, None) => Ok(Spanned {
+            body: Pattern::BareId(id),
+            span,
+        }),
+        (ismut, bound_pattern) => {
+            let startspan = ismut.as_ref().map(|mt| mt.span).unwrap_or(span);
+            let endspan = bound_pattern
+                .as_ref()
+                .map(|binding| binding.span)
+                .unwrap_or(span);
+
+            let span = Span::between(startspan, endspan);
+
+            let body = BindingPattern {
+                ismut,
+                id,
+                bound_pattern,
+            };
+
+            let body = Pattern::Binding(Spanned { span, body });
+
+            Ok(Spanned { span, body })
+        }
+    }
+}
+
+pub fn do_pattern_literal(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Pattern>> {
+    let lit = do_literal(tree)?;
+
+    let span = lit.span;
+
+    let body = Pattern::LiteralPattern(lit);
+
+    Ok(Spanned { span, body })
+}
+
+pub fn do_pattern_const_ctor(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Pattern>> {
+    let mut tree = tree.into_rewinder();
+    let path = do_path(&mut tree)?;
+
+    let pspan = path.span;
+    // TODO: Constructor
+    tree.accept();
+    Ok(Spanned {
+        body: Pattern::Const(path),
+        span: pspan,
+    })
+}
+
+pub fn do_pattern_discard(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Pattern>> {
+    let id = do_lexeme_class(tree, keyword!(_))?;
+
+    Ok(Spanned {
+        body: Pattern::Discard,
+        span: id.span,
+    })
+}
+
+pub fn do_pattern_param(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<Pattern>> {
+    do_alternation(
+        tree,
+        &[
+            do_pattern_binding,
+            do_pattern_const_ctor,
+            do_pattern_discard,
+            do_pattern_literal,
+        ],
+    )
+}
+
 pub fn do_pattern(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Pattern>> {
-    // TODO: anything interesting
-    let lexeme = do_lexeme_class(tree, LexemeClass::Identifier)?;
-    let span = lexeme.span;
-    Ok(Spanned {
-        body: Pattern::BareId(Spanned {
-            body: lexeme.into_text().unwrap(),
-            span,
-        }),
-        span,
-    })
+    // TODO: OR patterns
+    let mut tree = tree.into_rewinder();
+    let pat = do_pattern_param(&mut tree)?;
+    tree.accept();
+    Ok(pat)
 }
 
 pub fn do_param(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Param>> {
-    // TODO: handle params without names
+    // TODO: handle params without names - only in Rust 2015 though
     let mut tree = tree.into_rewinder();
-    let pat = do_pattern(&mut tree)?;
+    let pat = do_pattern_param(&mut tree)?;
     do_lexeme_class(&mut tree, punct!(:))?;
     let ty = do_type(&mut tree)?;
     tree.accept();

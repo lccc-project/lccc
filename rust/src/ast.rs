@@ -542,7 +542,7 @@ pub enum Statement {
     Empty, // everyone forgets about me
     DiscardExpr(Spanned<Expr>),
     ItemDecl(Spanned<Item>),
-    Block(Spanned<CompoundBlock>), // todo: should this be a statement or an expression?
+    Block(Spanned<CompoundBlock>), // todo: should this be a statement or an expression? - yes
     LetStatement(Spanned<LetStatement>),
 }
 
@@ -563,6 +563,26 @@ pub enum CompoundBlock {
     Loop(Spanned<Block>),
     Unsafe(Spanned<Block>),
     For(Spanned<ForBlock>),
+    Match(Spanned<MatchBlock>),
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum MatchArmValue {
+    Expr(Spanned<Expr>),
+    Block(Spanned<Block>),
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct MatchArm {
+    pub discrim: Spanned<Pattern>,
+    pub guard: Option<Spanned<Expr>>,
+    pub value: Spanned<MatchArmValue>,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct MatchBlock {
+    pub discriminee: Box<Spanned<Expr>>,
+    pub arms: Vec<Spanned<MatchArm>>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
