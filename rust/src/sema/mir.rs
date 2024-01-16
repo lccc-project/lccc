@@ -23,6 +23,8 @@ pub mod mir_macro;
 
 pub mod match_lower;
 
+pub mod transform;
+
 pub use mir_macro::{mir, mir_basic_block, mir_expr, mir_fnty, mir_stmt, mir_type};
 
 pub use crate::sema::hir::{BinaryOp, UnaryOp};
@@ -377,12 +379,12 @@ impl MirFunctionBody {
             MirTerminator::SwitchInt(s) => {
                 let nested = tabs.nest();
                 f.write_fmt(format_args!("switch {}: {} ", s.expr.body, s.ty))?;
-                if let Some(default) = &s.default {
-                    f.write_fmt(format_args!("default {} ", default))?;
-                }
                 f.write_str("{\n")?;
                 for (val, jmp) in &s.cases {
                     f.write_fmt(format_args!("{}{} => {}\n", nested, val, jmp))?;
+                }
+                if let Some(default) = &s.default {
+                    f.write_fmt(format_args!("{}default => {}\n", nested, default))?;
                 }
                 tabs.fmt(f)?;
                 f.write_str("}")
@@ -1344,11 +1346,21 @@ impl<'a> MirConverter<'a> {
                             let mut binding_var = if let Some(binding_var) = binding_var {
                                 binding_var
                             } else {
-                                let var = SsaVarId(self.nextvar.fetch_increment());
-                                self.cur_basic_block.incoming_vars.push(var);
-                                jmp.remaps.push((pat_var, var));
-                                binding_var = Some(var);
-                                var
+                                for &(mapped, to) in &jmp.remaps {
+                                    if mapped == pat_var {
+                                        binding_var = Some(to);
+                                        break;
+                                    }
+                                }
+                                if let Some(binding_var) = binding_var {
+                                    binding_var
+                                } else {
+                                    let var = SsaVarId(self.nextvar.fetch_increment());
+                                    self.cur_basic_block.incoming_vars.push(var);
+                                    jmp.remaps.push((pat_var, var));
+                                    binding_var = Some(var);
+                                    var
+                                }
                             };
 
                             if binding.path.elements.len() != 0 {
