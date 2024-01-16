@@ -819,6 +819,21 @@ pub fn do_expr_const_or_constructor<I: Iterator<Item = TokenTree>>(
             let mut inner_tree = g.stream().into_iter().peekmore();
             todo!("constructor")
         } else {
+            let mut inner_stream = defid;
+            inner_stream.extend([TokenTree::Punct(Punct::new(',', Spacing::Alone))]);
+
+            write_crate_path(
+                &mut inner_stream,
+                Span::call_site(),
+                dollar_crate,
+                ["sema", "generics", "GenericArgs", "default"],
+            );
+
+            inner_stream.extend([TokenTree::Group(Group::new(
+                proc_macro::Delimiter::Parenthesis,
+                TokenStream::new(),
+            ))]);
+
             write_crate_path(
                 &mut token_stream,
                 Span::call_site(),
@@ -827,7 +842,7 @@ pub fn do_expr_const_or_constructor<I: Iterator<Item = TokenTree>>(
             );
             token_stream.extend([TokenTree::Group(Group::new(
                 proc_macro::Delimiter::Parenthesis,
-                defid,
+                inner_stream,
             ))]);
         }
 

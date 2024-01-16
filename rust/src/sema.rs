@@ -25,6 +25,7 @@ use crate::lang::LangItem;
 use crate::sema::ty::AsyncType;
 use crate::span::Span;
 
+use self::generics::GenericArgs;
 use self::intrin::IntrinsicDef;
 use self::ty::convert_type;
 use self::ty::FnType;
@@ -120,6 +121,7 @@ pub enum ErrorCategory {
 pub mod attr;
 pub mod cx;
 pub mod gen;
+pub mod generics;
 pub mod hir;
 pub mod intrin;
 pub mod mir;
@@ -986,7 +988,7 @@ impl Definitions {
         path: &ast::Path,
         at_item: DefId,
         self_ty: Option<&Type>,
-    ) -> Result<DefId> {
+    ) -> Result<(DefId, generics::GenericArgs)> {
         self.find_type(curmod, path, at_item, self_ty)
     }
 
@@ -1094,13 +1096,43 @@ impl Definitions {
         panic!("Impossible to parse an empty path")
     }
 
+    pub fn convert_generics_for_def(
+        &self,
+        def: DefId,
+        generics: &mut GenericArgs,
+        ast_generics: &ast::GenericArgs,
+        curmod: DefId,
+        at_item: DefId,
+        self_ty: Option<&ty::Type>,
+    ) -> Result<()> {
+        let generic_params = &self.definition(def).generics;
+
+        for (arg, param) in ast_generics.args.iter().zip(&generic_params.params) {
+            match (&arg.body, &param) {
+                (ast::GenericArg::Id(p), GenericParamInfo::Type(_)) => {
+                    let (defid, gen) = self.find_type(curmod, p, at_item, self_ty)?; // TODO: `<N>`
+                    generics
+                        .params
+                        .push(generics::GenericArg::Type(Type::UserType(defid, gen)));
+                }
+                (ast::GenericArg::Type(ty), GenericParamInfo::Type(_)) => {
+                    let ty = convert_type(self, curmod, at_item, ty, self_ty)?;
+                    generics.params.push(generics::GenericArg::Type(ty));
+                }
+                _ => todo!(),
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn find_type(
         &self,
         curmod: DefId,
         path: &ast::Path,
         at_item: DefId,
         self_ty: Option<&Type>,
-    ) -> Result<DefId> {
+    ) -> Result<(DefId, generics::GenericArgs)> {
         let mut resolve_base = None;
 
         match &path.root {
@@ -1114,8 +1146,7 @@ impl Definitions {
                 body: ast::PathRoot::QSelf(ty, None),
                 ..
             }) => {
-                let ty = ty::convert_type(self, curmod, at_item, ty, self_ty)?;
-                return self.find_type_in_type(curmod, &path.segments, at_item, ty, self_ty);
+                todo!("QSelf")
             }
             Some(Spanned {
                 body: ast::PathRoot::QSelf(_, Some(_)),
@@ -1124,6 +1155,9 @@ impl Definitions {
             None => {}
         }
         let mut path_iter = path.segments.iter();
+
+        let mut generics = generics::GenericArgs::default();
+
         while let Some(seg) = path_iter.next() {
             match &seg.ident.body {
                 ast::SimplePathSegment::Identifier(id) => {
@@ -1138,14 +1172,17 @@ impl Definitions {
                                 resolve_base = Some(self.find_type_in_mod(curmod, md, id, at_item)?)
                             }
                             DefinitionInner::UserType(_) => {
-                                let ty = Type::UserType(md);
-                                return self.find_type_in_type(
-                                    curmod,
-                                    path_iter.as_slice(), // FIXME: We need to not step the iterator by here
-                                    at_item,
-                                    ty,
-                                    self_ty,
-                                );
+                                let ty = Type::UserType(md, generics::GenericArgs::default());
+                                return Ok((
+                                    self.find_type_in_type(
+                                        curmod,
+                                        path_iter.as_slice(), // FIXME: We need to not step the iterator by here
+                                        at_item,
+                                        ty,
+                                        self_ty,
+                                    )?,
+                                    generics,
+                                ));
                             }
                             DefinitionInner::Trait(_) => {
                                 resolve_base =
@@ -1182,8 +1219,16 @@ impl Definitions {
                             }
                         }
 
-                        if let Some(_) = &seg.generics {
-                            todo!("generics")
+                        if let Some(ast_generics) = &seg.generics {
+                            let def = resolve_base.expect("just resolved");
+                            self.convert_generics_for_def(
+                                def,
+                                &mut generics,
+                                ast_generics,
+                                curmod,
+                                at_item,
+                                self_ty,
+                            )?;
                         }
                     }
                 }
@@ -1320,7 +1365,10 @@ impl Definitions {
             }
         }
 
-        Ok(resolve_base.expect("Parsing an empty path is impossible"))
+        Ok((
+            resolve_base.expect("Parsing an empty path is impossible"),
+            generics,
+        ))
     }
 
     pub fn is_copy(&self, ty: &ty::Type) -> bool {
@@ -1332,11 +1380,11 @@ impl Definitions {
             | ty::Type::Str
             | ty::Type::Never
             | ty::Type::FnPtr(_)
-            | ty::Type::FnItem(_, _)
+            | ty::Type::FnItem(_, _, _)
             | ty::Type::Pointer(_, _) => true,
             ty::Type::Reference(_, mt, _) => mt.body == Mutability::Const,
             ty::Type::Tuple(inner) => inner.iter().all(|ty| self.is_copy(ty)),
-            ty::Type::UserType(_) => false, // for now
+            ty::Type::UserType(_, _) => false, // for now
             ty::Type::IncompleteAlias(_) => panic!("incomplete alias held too late"),
             ty::Type::Array(ty, _) => self.is_copy(ty),
             ty::Type::InferableInt(_) | ty::Type::Inferable(_) => {
@@ -1355,7 +1403,7 @@ impl Definitions {
     pub fn type_defid(&self, ty: &ty::Type) -> DefId {
         // todo: look up primitive impl lang item
         match ty {
-            ty::Type::UserType(defid) | ty::Type::FnItem(_, defid) => *defid,
+            ty::Type::UserType(defid, _) | ty::Type::FnItem(_, defid, _) => *defid,
             ty::Type::IncompleteAlias(_) => panic!("incomplete alias held too late"),
             ty::Type::InferableInt(_) | ty::Type::Inferable(_) => {
                 panic!("Canot determine owning definition of an uninfered type")
@@ -1617,7 +1665,7 @@ impl Definitions {
                         niches: Some(ty::Niches::NonNullPointer),
                     }
                 }
-                Type::FnItem(_, _) => ty::TypeLayout {
+                Type::FnItem(_, _, _) => ty::TypeLayout {
                     size: Some(0),
                     align: Some(1),
                     enum_discriminant: None,
@@ -1626,7 +1674,7 @@ impl Definitions {
                     mutable_fields: HashSet::new(),
                     niches: None,
                 },
-                Type::UserType(def) => {
+                Type::UserType(def, generics) => {
                     let def = self.definition(*def);
 
                     let repr = def
@@ -1970,7 +2018,7 @@ impl Definitions {
                 | Type::Str
                 | Type::Never
                 | Type::FnPtr(_)
-                | Type::FnItem(_, _)
+                | Type::FnItem(_, _, _)
                 | Type::Param(_)
                 | Type::Reference(_, _, _)
                 | Type::Pointer(_, _)
@@ -1990,7 +2038,7 @@ impl Definitions {
 
                     fields
                 }
-                Type::UserType(defid) => {
+                Type::UserType(defid, _) => {
                     let def = self.definition(*defid);
 
                     match &def.inner.body {
@@ -2063,6 +2111,7 @@ impl Definitions {
                 relevant_item: at_item,
                 hints: vec![],
             }),
+            cx::ConstExpr::Const(_) => todo!("const items"),
         }
     }
 }
@@ -2780,7 +2829,7 @@ fn collect_function(
     outer_span: Option<Span>,
     outer_defid: Option<DefId>,
     _self_ty: Option<&ty::Type>,
-) -> Result<DefinitionInner> {
+) -> Result<(DefinitionInner, GenericParams)> {
     let actual_tag = itemfn
         .abi
         .map(|tag| {
@@ -2912,8 +2961,24 @@ fn collect_function(
         iscvarargs,
     };
 
+    let mut generic_params = GenericParams {
+        params: vec![],
+        by_name: HashMap::new(),
+    };
+
+    for generic in itemfn.generics.iter().flat_map(|generics| &generics.params) {
+        match &generic.body {
+            ast::GenericParam::Type(ty) => {
+                let idx = generic_params.params.len() as u32;
+                generic_params.params.push(GenericParamInfo::Type(vec![])); // TODO: Bounds
+                generic_params.by_name.insert(ty.name, idx);
+            }
+            _ => todo!("Value and lifetimes"),
+        }
+    }
+
     let fnbody = match &itemfn.body.body {
-        Some(_) => Some(FunctionBody::Incomplete),
+        Some(_) => Some((FunctionBody::Incomplete)),
         None => {
             if let Some(Spanned {
                 body: ty::AbiTag::RustIntrinsic,
@@ -2990,7 +3055,7 @@ fn collect_function(
                         });
                     }
 
-                    Some(FunctionBody::Intrinsic(intrin))
+                    Some((FunctionBody::Intrinsic(intrin)))
                 } else {
                     return Err(Error {
                         span: itemfn.name.span,
@@ -3012,7 +3077,7 @@ fn collect_function(
         }
     };
 
-    Ok(DefinitionInner::Function(fnty, fnbody))
+    Ok((DefinitionInner::Function(fnty, fnbody), generic_params))
 }
 
 fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>) -> Result<()> {
@@ -3031,7 +3096,7 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
             ast::ItemBody::Value(_) => todo!("value"),
             ast::ItemBody::Function(itemfn) => {
                 let defid = defs.allocate_defid();
-                let inner =
+                let (inner, generics) =
                     collect_function(defs, curmod, defid, itemfn, None, None, None, None, None)?;
 
                 let def = defs.definition_mut(defid);
@@ -3040,6 +3105,8 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                     .iter()
                     .map(|attr| attr::parse_meta(attr, defid, curmod))
                     .collect::<Result<_>>()?;
+
+                def.generics = generics;
 
                 def.visible_from = visible_from;
                 def.parent = curmod;
@@ -3080,7 +3147,7 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                     let defid = defs.allocate_defid();
                     match &item.item.body{
                         ast::ItemBody::Function(itemfn) => {
-                            let inner = collect_function(defs, curmod, defid, itemfn, Some(tag), Some(Spanned{body: Safety::Unsafe, span: Span::empty()}), Some(blk.span),Some(extern_defid),None)?;
+                            let (inner, generics) = collect_function(defs, curmod, defid, itemfn, Some(tag), Some(Spanned{body: Safety::Unsafe, span: Span::empty()}), Some(blk.span),Some(extern_defid),None)?;
 
                             let def = defs.definition_mut(defid);
                             def.attrs = item.attrs.iter().map(|attr|attr::parse_meta(attr, defid, defid))
@@ -3090,6 +3157,7 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
 
                             def.attrs.push(Spanned{body: attr::Attr::NoMangle,span: blk.span});
 
+                            def.generics = generics;
                             def.visible_from = visible_from;
                             def.parent = curmod;
                             def.inner = itemfn.copy_span(|_| inner);
@@ -3154,7 +3222,12 @@ fn collect_values(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mod>)
                     trait_def: blk
                         .tr
                         .as_ref()
-                        .map(|p| p.try_copy_span(|p| defs.find_type(curmod, p, defid, Some(&ty))))
+                        .map(|p| {
+                            p.try_copy_span(|p| {
+                                defs.find_type(curmod, p, defid, Some(&ty))
+                                    .map(|(def, _)| def) // FIXME: Generics
+                            })
+                        })
                         .transpose()?,
                     assoc_types: HashMap::new(),
                     values: HashMap::new(),
@@ -3235,7 +3308,10 @@ pub fn convert_types(defs: &mut Definitions, curmod: DefId, md: &Spanned<ast::Mo
                                                 curmod,
                                                 defid,
                                                 ty,
-                                                Some(&Type::UserType(defid)),
+                                                Some(&Type::UserType(
+                                                    defid,
+                                                    generics::GenericArgs::default(),
+                                                )), // TODO: Grab generics
                                             )
                                         })?;
                                         Ok(StructField {

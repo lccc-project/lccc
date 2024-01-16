@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub use super::DefId;
-use super::{cx::ConstExpr, mir::RegionId, tyck::InferId, Definitions};
+use super::{cx::ConstExpr, generics::GenericArgs, mir::RegionId, tyck::InferId, Definitions};
 
 use core::num::NonZeroU16;
 
@@ -87,8 +87,8 @@ pub enum Type {
     Never,
     Tuple(Vec<Spanned<Type>>),
     FnPtr(Box<FnType>),
-    FnItem(Box<FnType>, DefId),
-    UserType(DefId),
+    FnItem(Box<FnType>, DefId, GenericArgs),
+    UserType(DefId, GenericArgs),
     IncompleteAlias(DefId),
     Pointer(Spanned<Mutability>, Box<Spanned<Type>>),
     Array(Box<Spanned<Type>>, Spanned<ConstExpr>),
@@ -570,9 +570,9 @@ impl Type {
             (Type::Tuple(t), Type::Tuple(u)) => {
                 t.len() == u.len() && t.iter().zip(u).all(|(a, b)| a.matches_ignore_bounds(b))
             }
-            (Type::UserType(def1), Type::UserType(def2)) => def1 == def2,
+            (Type::UserType(def1, _), Type::UserType(def2, _)) => def1 == def2,
             (Type::FnPtr(p1), Type::FnPtr(p2)) => p1.matches_ignore_bounds(p2),
-            (Type::FnItem(fnty1, defid1), Type::FnItem(fnty2, defid2)) => {
+            (Type::FnItem(fnty1, defid1, _), Type::FnItem(fnty2, defid2, _)) => {
                 fnty1.matches_ignore_bounds(fnty2) && defid1 == defid2
             }
             (Type::Array(g1, expr1), Type::Array(g2, expr2)) => {
@@ -675,13 +675,14 @@ impl core::fmt::Display for Type {
                 f.write_str(")")
             }
             Self::FnPtr(fnty) => fnty.fmt(f),
-            Self::FnItem(fnty, fndef) => {
+            Self::FnItem(fnty, fndef, generics) => {
                 fnty.fmt(f)?;
                 f.write_str(" {")?;
                 fndef.fmt(f)?;
+                generics.fmt(f)?;
                 f.write_str("}")
             }
-            Self::UserType(defid) => defid.fmt(f),
+            Self::UserType(defid, generics) => f.write_fmt(format_args!("{}{}", defid, generics)),
             Self::IncompleteAlias(defid) => {
                 defid.fmt(f)?;
                 f.write_str(" /* unresolved type alias */")
@@ -765,7 +766,7 @@ pub fn convert_type(
 ) -> super::Result<Type> {
     match ty {
         ast::Type::Path(path) => match defs.find_type(curmod, &path.body, at_item, self_ty) {
-            Ok(defid) => Ok(Type::UserType(defid)),
+            Ok((defid, generics)) => Ok(Type::UserType(defid, generics)),
             Err(e) => match &*path.segments {
                 [Spanned {
                     body:

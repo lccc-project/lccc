@@ -12,6 +12,7 @@ use crate::{
 };
 
 use super::{
+    generics::GenericArgs,
     hir::HirVarId,
     intrin::IntrinsicDef,
     ty::{FieldName, FnType, IntType, Type},
@@ -117,7 +118,7 @@ impl core::fmt::Display for MirExpr {
             MirExpr::ConstString(_, val) => {
                 f.write_fmt(format_args!("\"{}\"", val.escape_default()))
             }
-            MirExpr::Const(defid) => defid.fmt(f),
+            MirExpr::Const(defid, generics) => f.write_fmt(format_args!("{}{}", defid, generics)),
             MirExpr::Retag(rk, mt, inner) => {
                 f.write_str("&")?;
                 if *rk == RefKind::Raw {
@@ -142,7 +143,9 @@ impl core::fmt::Display for MirExpr {
                 }
                 f.write_str(")")
             }
-            MirExpr::Intrinsic(intrin) => f.write_str(intrin.name()),
+            MirExpr::Intrinsic(intrin, generics) => {
+                f.write_fmt(format_args!("{}{}", intrin.name(), generics))
+            }
             MirExpr::FieldProject(base, field) => {
                 f.write_fmt(format_args!("&raw (*{}).{}", base.body, field))
             }
@@ -506,7 +509,7 @@ impl<'a> MirConverter<'a> {
         match val {
             ThirExprInner::Var(_) => "local variable",
             ThirExprInner::MemberAccess(_, _) => "struct field",
-            ThirExprInner::Const(_)
+            ThirExprInner::Const(_, _)
             | ThirExprInner::ConstInt(_, _)
             | ThirExprInner::ConstString(_, _)
             | ThirExprInner::Cast(_, _)
@@ -695,7 +698,7 @@ impl<'a> MirConverter<'a> {
             }
             ThirExprInner::Read(_)
             | ThirExprInner::Unreachable
-            | ThirExprInner::Const(_)
+            | ThirExprInner::Const(_, _)
             | ThirExprInner::ConstInt(_, _)
             | ThirExprInner::ConstString(_, _)
             | ThirExprInner::Cast(_, _)
@@ -762,16 +765,16 @@ impl<'a> MirConverter<'a> {
             super::tyck::ThirExprInner::Var(_) => {
                 panic!("only top level rvalues get lowered by `lower_expr`")
             }
-            super::tyck::ThirExprInner::Const(defid) => {
+            super::tyck::ThirExprInner::Const(defid, generics) => {
                 if let Some(intrin) = self.defs.get_intrinsic(defid) {
                     Ok(Spanned {
                         span,
-                        body: MirExpr::Intrinsic(intrin),
+                        body: MirExpr::Intrinsic(intrin, generics),
                     })
                 } else {
                     Ok(Spanned {
                         span,
-                        body: MirExpr::Const(defid),
+                        body: MirExpr::Const(defid, generics),
                     })
                 }
             }
@@ -997,7 +1000,7 @@ impl<'a> MirConverter<'a> {
 
             ThirExprInner::Read(_)
             | ThirExprInner::Unreachable
-            | ThirExprInner::Const(_)
+            | ThirExprInner::Const(_, _)
             | ThirExprInner::ConstInt(_, _)
             | ThirExprInner::ConstString(_, _)
             | ThirExprInner::Cast(_, _)
@@ -1500,13 +1503,13 @@ impl<'a> MirConverter<'a> {
                 params,
             } => {
                 let fnty = match &fnexpr.ty {
-                    Type::FnItem(fnty, _) | Type::FnPtr(fnty) => fnty.clone(),
+                    Type::FnItem(fnty, _, _) | Type::FnPtr(fnty) => fnty.clone(),
                     _ => unreachable!(),
                 };
 
                 let targ = self.lower_expr(fnexpr)?;
 
-                if let MirExpr::Intrinsic(intrin) = &targ.body {
+                if let MirExpr::Intrinsic(intrin, _) = &targ.body {
                     match intrin {
                         IntrinsicDef::__builtin_unreachable => {
                             let bb = self.cur_basic_block.finish_and_reset(Spanned {

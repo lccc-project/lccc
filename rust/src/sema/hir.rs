@@ -5,6 +5,7 @@ use crate::helpers::{FetchIncrement, TabPrinter};
 use crate::interning::Symbol;
 use crate::span::{synthetic, Span};
 
+use super::generics::GenericArgs;
 use super::ty::{self, FieldName, IntType, Type};
 
 use super::{DefId, Spanned};
@@ -84,7 +85,7 @@ pub enum HirExpr {
     Var(HirVarId),
     ConstInt(Option<Spanned<IntType>>, u128),
     ConstString(StringType, Spanned<Symbol>),
-    Const(DefId),
+    Const(DefId, GenericArgs),
     #[allow(dead_code)]
     Unreachable,
     Cast(Box<Spanned<HirExpr>>, Spanned<Type>),
@@ -113,7 +114,7 @@ impl core::fmt::Display for HirExpr {
                 }
                 Ok(())
             }
-            HirExpr::Const(def) => def.fmt(f),
+            HirExpr::Const(def, generics) => f.write_fmt(format_args!("{}{}", def, generics)),
             HirExpr::Unreachable => f.write_str("unreachable"),
             HirExpr::Cast(inner, ty) => {
                 f.write_str("(")?;
@@ -578,12 +579,33 @@ impl<'a> HirLowerer<'a> {
                     if let Some(hirvar) = self.varnames.get(&id.body) {
                         Ok(id.copy_span(|_| HirExpr::Var(*hirvar)))
                     } else if let Some(val) = self.localvalues.get(&id.body) {
-                        Ok(id.copy_span(|_| HirExpr::Const(*val)))
+                        Ok(id.copy_span(|_| HirExpr::Const(*val, GenericArgs::default())))
                     } else {
                         self.defs
                             .find_value_in_mod(self.curmod, self.curmod, id, self.atitem)
-                            .map(|def| id.copy_span(|_| HirExpr::Const(def)))
+                            .map(|def| {
+                                id.copy_span(|_| HirExpr::Const(def, GenericArgs::default()))
+                            })
                     }
+                } else if let Some((id, ast_generics)) = p.as_bare_id_with_generics() {
+                    let defid = if let Some(val) = self.localvalues.get(&id.body) {
+                        *val
+                    } else {
+                        self.defs
+                            .find_value_in_mod(self.curmod, self.curmod, id, self.atitem)?
+                    };
+
+                    let mut generics = GenericArgs::default();
+                    self.defs.convert_generics_for_def(
+                        defid,
+                        &mut generics,
+                        ast_generics,
+                        self.curmod,
+                        self.atitem,
+                        self.selfty,
+                    )?;
+
+                    Ok(p.copy_span(|_| HirExpr::Const(defid, generics)))
                 } else {
                     todo!("complicated path (Add find_value)")
                 }
@@ -703,12 +725,15 @@ impl<'a> HirLowerer<'a> {
             ast::Expr::Constructor(ctor) => {
                 let ctor = ctor.try_copy_span(|ctor| {
                     let constructor_def = Spanned {
-                        body: self.defs.find_constructor(
-                            self.curmod,
-                            &ctor.ctor_name,
-                            self.atitem,
-                            None, // TODO: Give this a SelfTy
-                        )?,
+                        body: self
+                            .defs
+                            .find_constructor(
+                                self.curmod,
+                                &ctor.ctor_name,
+                                self.atitem,
+                                None, // TODO: Give this a SelfTy
+                            )?
+                            .0,
                         span: ctor.ctor_name.span,
                     };
                     let mut fields = Vec::new();
@@ -723,7 +748,11 @@ impl<'a> HirLowerer<'a> {
                             } else {
                                 self.defs
                                     .find_value_in_mod(self.curmod, self.curmod, id, self.atitem)
-                                    .map(|def| id.copy_span(|_| HirExpr::Const(def)))?
+                                    .map(|def| {
+                                        id.copy_span(|_| {
+                                            HirExpr::Const(def, GenericArgs::default())
+                                        })
+                                    })?
                             }
                         };
 
@@ -865,7 +894,7 @@ impl<'a> HirLowerer<'a> {
                 ast::ItemBody::UserType(_) => {}
                 ast::ItemBody::Function(itemfn) => {
                     let defid = self.defs.allocate_defid();
-                    let mut fnbody = super::collect_function(
+                    let (mut fnbody, generics) = super::collect_function(
                         self.defs,
                         self.curmod,
                         defid,
@@ -897,6 +926,7 @@ impl<'a> HirLowerer<'a> {
                     def.attrs = attrs;
                     def.visible_from = self.atitem;
                     def.parent = self.atitem;
+                    def.generics = generics;
                     def.inner = itemfn.copy_span(|_| fnbody);
 
                     self.localitems.push((itemfn.name.body, defid));

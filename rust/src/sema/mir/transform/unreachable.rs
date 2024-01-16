@@ -15,11 +15,11 @@ impl PropagateUnreachable {
             MirExpr::AllocaDrop(_, _) => false,
             MirExpr::ConstInt(_, _) => false,
             MirExpr::ConstString(_, _) => false,
-            MirExpr::Const(_) => false,
+            MirExpr::Const(_, _) => false,
             MirExpr::Retag(_, _, expr) => Self::expr_contains_unreachable(expr),
             MirExpr::Cast(expr, _) => Self::expr_contains_unreachable(expr),
             MirExpr::Tuple(exprs) => exprs.iter().any(|e| Self::expr_contains_unreachable(e)),
-            MirExpr::Intrinsic(_) => false,
+            MirExpr::Intrinsic(_, _) => false,
             MirExpr::FieldProject(val, _) => Self::expr_contains_unreachable(expr),
             MirExpr::GetSubobject(val, _) => Self::expr_contains_unreachable(expr),
             MirExpr::Ctor(ctor) => ctor

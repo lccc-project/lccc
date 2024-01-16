@@ -18,7 +18,7 @@ use xlang::{
 
 use crate::sema::ty::Mutability;
 use crate::sema::{cx, hir::BinaryOp, mir::SsaVarId};
-use crate::sema::{ty, UserTypeKind};
+use crate::sema::{generics, ty, UserTypeKind};
 use crate::{
     interning::Symbol,
     lang::LangItem,
@@ -435,9 +435,11 @@ impl<'a> XirStructDefVisitor<'a> {
 
 impl<'a> Drop for XirStructDefVisitor<'a> {
     fn drop(&mut self) {
-        let layout = self
-            .defs
-            .layout_of(&ty::Type::UserType(self.defid), self.defid, self.defid);
+        let layout = self.defs.layout_of(
+            &ty::Type::UserType(self.defid, Default::default()),
+            self.defid,
+            self.defid,
+        );
         let mut fields = Vec::new();
         let mut offsets = Vec::new();
 
@@ -790,6 +792,7 @@ impl<'a> ArrayTyVisitor for XirArrayTyVisitor<'a> {
             val: match expr {
                 cx::ConstExpr::HirVal(_) => todo!(),
                 cx::ConstExpr::IntConst(_, val) => *val,
+                cx::ConstExpr::Const(_) => todo!("const item"),
             },
         };
     }
@@ -1261,7 +1264,7 @@ pub struct XirCallVisitor<'a> {
     stack_height: &'a mut u32,
     retplace: Option<SsaVarId>,
     fnty: Option<ir::FnType>,
-    late_invoke_intrin: Option<IntrinsicDef>,
+    late_invoke_intrin: Option<(IntrinsicDef, generics::GenericArgs)>,
 }
 
 impl<'a> XirCallVisitor<'a> {
@@ -1338,7 +1341,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
 
         let is_never = fnty.ret == NEVER;
 
-        if let Some(intrin) = self.late_invoke_intrin {
+        if let Some((intrin, generics)) = self.late_invoke_intrin.take() {
             // Handle late bound intrinsics here
             match intrin {
                 IntrinsicDef::__builtin_unreachable => {
@@ -1457,7 +1460,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
         let retty = fnty.ret.clone();
         *self.stack_height -= fnty.params.len() as u32;
 
-        if let Some(intrin) = self.late_invoke_intrin {
+        if let Some((intrin, generics)) = self.late_invoke_intrin.take() {
             // Handle late bound intrinsics here
             // Assume that params are correct - yes, this will bork irgen if the params are wrong
             match intrin {
@@ -1544,7 +1547,31 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
                             ir::AccessClass::Normal,
                         )));
                 }
-                IntrinsicDef::__builtin_size_of => todo!(),
+                IntrinsicDef::__builtin_size_of => {
+                    let ty = match generics.params.into_iter().next().unwrap() {
+                        generics::GenericArg::Type(ty) => ty,
+                        _ => unreachable!(),
+                    };
+
+                    let layout = self.defs.layout_of(&ty, DefId::ROOT, DefId::ROOT);
+
+                    let size = layout
+                        .size
+                        .expect("__builtin_size_of requires a Sized type");
+
+                    let intty = match &retty {
+                        ir::Type::Scalar(sty) => *sty,
+                        _ => unreachable!("__builtin_size_of returns `usize`"),
+                    };
+
+                    self.body
+                        .block
+                        .items
+                        .push(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Integer {
+                            ty: intty,
+                            val: size as u128,
+                        })));
+                }
                 IntrinsicDef::__builtin_align_of => todo!(),
                 IntrinsicDef::__builtin_size_of_val => todo!(),
                 IntrinsicDef::__builtin_align_of_val => todo!(),
@@ -1579,7 +1606,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
         }))
     }
 
-    fn visit_intrinsic(&mut self, intrin: IntrinsicDef) {
+    fn visit_intrinsic(&mut self, intrin: IntrinsicDef, generics: &generics::GenericArgs) {
         let (item, fnty) = match intrin {
             // Rust sym calls
             func @ (IntrinsicDef::__builtin_allocate | IntrinsicDef::__builtin_deallocate) => {
@@ -1603,7 +1630,10 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
                             asyncness: span::synthetic(ty::AsyncType::Normal),
                             tag: span::synthetic(ty::AbiTag::LCRust(None)),
                             retty: Box::new(span::synthetic(u8_ptr)),
-                            paramtys: std::vec![span::synthetic(ty::Type::UserType(layout_ty))],
+                            paramtys: std::vec![span::synthetic(ty::Type::UserType(
+                                layout_ty,
+                                Default::default()
+                            ))],
                             iscvarargs: span::synthetic(false),
                         };
 
@@ -1621,7 +1651,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
                             tag: span::synthetic(ty::AbiTag::LCRust(None)),
                             retty: Box::new(span::synthetic(ty::Type::UNIT)),
                             paramtys: std::vec![
-                                span::synthetic(ty::Type::UserType(layout_ty)),
+                                span::synthetic(ty::Type::UserType(layout_ty, Default::default())),
                                 span::synthetic(u8_ptr),
                             ],
                             iscvarargs: span::synthetic(false),
@@ -1675,7 +1705,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
             }
 
             // late bound intrinsics (Few of these should survive to irgen?)
-            intrin => return self.late_invoke_intrin = Some(intrin),
+            intrin => return self.late_invoke_intrin = Some((intrin, generics.clone())),
         };
 
         let ty = ir::Type::FnType((xlang::abi::boxed::Box::new(fnty)));

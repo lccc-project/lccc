@@ -341,7 +341,7 @@ pub enum GenericArg {
     LifetimeArg(Spanned<Lifetime>),
     Type(Spanned<Type>),
     Const(Spanned<Expr>),
-    Id(Spanned<Symbol>),
+    Id(Spanned<Path>),
     AssociatedType(Spanned<Symbol>, Spanned<AssociatedTypeBound>),
 }
 
@@ -386,6 +386,25 @@ impl Path {
                         }
                     }
                 }
+                _ => None,
+            }
+        }
+    }
+
+    pub fn as_bare_id_with_generics(&self) -> Option<(Spanned<Symbol>, &GenericArgs)> {
+        if self.root.is_some() {
+            None
+        } else {
+            match &*self.segments {
+                [lone] => match &lone.ident.body {
+                    SimplePathSegment::Identifier(id) => {
+                        Some((lone.ident.copy_span(|_| *id), lone.generics.as_deref()?))
+                    }
+                    SimplePathSegment::SuperPath => None,
+                    SimplePathSegment::SelfPath => None,
+                    SimplePathSegment::CratePath => None,
+                    SimplePathSegment::MacroCratePath => None,
+                },
                 _ => None,
             }
         }

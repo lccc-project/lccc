@@ -13,6 +13,6 @@ union MaybeUninit<T> {
 }
 
 fn main() {
-    let x = MaybeUninit { unint: () };
+    let x = MaybeUninit { uninit: () };
     unsafe { exit(__builtin_read_freeze(&x.init)) }
 }

@@ -5,7 +5,7 @@ use crate::{
     interning::Symbol,
     lex::StringType,
     sema::{
-        cx,
+        cx, generics,
         hir::BinaryOp,
         intrin::IntrinsicDef,
         mir::{self, SsaVarId},
@@ -343,8 +343,8 @@ pub fn visit_call<V: CallVisitor>(mut visitor: V, info: &mir::MirCallInfo, defs:
     }
     visitor.visit_retplace(info.retplace.body);
     visit_fnty(visitor.visit_fnty(), &info.fnty, defs);
-    if let mir::MirExpr::Intrinsic(intrin) = &info.targ.body {
-        visitor.visit_intrinsic(*intrin)
+    if let mir::MirExpr::Intrinsic(intrin, generics) = &info.targ.body {
+        visitor.visit_intrinsic(*intrin, generics)
     } else {
         visit_expr(visitor.visit_target(), &info.targ, defs);
     }
@@ -367,8 +367,8 @@ pub fn visit_tailcall<V: CallVisitor>(
     }
     visit_fnty(visitor.visit_fnty(), &info.fnty, defs);
 
-    if let mir::MirExpr::Intrinsic(intrin) = &info.targ.body {
-        visitor.visit_intrinsic(*intrin)
+    if let mir::MirExpr::Intrinsic(intrin, generics) = &info.targ.body {
+        visitor.visit_intrinsic(*intrin, generics)
     } else {
         visit_expr(visitor.visit_target(), &info.targ, defs);
     }
@@ -438,8 +438,8 @@ pub fn visit_type<V: TypeVisitor>(mut visitor: V, ty: &ty::Type, defs: &Definiti
         ty::Type::Never => {
             visitor.visit_never();
         }
-        ty::Type::UserType(ty) => {
-            visitor.visit_user_type(*ty);
+        ty::Type::UserType(ty, _) => {
+            visitor.visit_user_type(*ty); // TODO: Visit Generics
         }
         x => todo!("{}", x),
     }
@@ -515,7 +515,7 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
             visitor.visit_value(*val);
         }
         mir::MirExpr::Unreachable => visitor.visit_unreachable(),
-        mir::MirExpr::Const(def) => visitor.visit_const(*def),
+        mir::MirExpr::Const(def, _) => visitor.visit_const(*def),
         mir::MirExpr::Cast(val, asty) => visit_cast(visitor.visit_cast(), val, asty, defs),
         mir::MirExpr::ConstString(sty, val) => {
             visit_const_string(visitor.visit_const_string(), *sty, *val)
@@ -525,7 +525,7 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         mir::MirExpr::Read(_) => todo!(),
         mir::MirExpr::Alloca(_, _, _) => todo!(),
         mir::MirExpr::Retag(_, _, _) => todo!(),
-        mir::MirExpr::Intrinsic(_) => panic!("Cannot use an intrinsic, except to call it"),
+        mir::MirExpr::Intrinsic(_, _) => panic!("Cannot use an intrinsic, except to call it"),
         mir::MirExpr::FieldProject(expr, name) => {
             visit_field_access(visitor.visit_field_project(), expr, name, defs)
         }
@@ -760,7 +760,7 @@ def_visitors! {
         fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>>;
         fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
         fn visit_next(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
-        fn visit_intrinsic(&mut self, intrin: IntrinsicDef);
+        fn visit_intrinsic(&mut self, intrin: IntrinsicDef, generics: &generics::GenericArgs);
         fn visit_tailcall(&mut self);
 
         // TODO: visit unwind

@@ -12,6 +12,7 @@ pub use super::ty::Type;
 
 use super::{
     cx::ConstExpr,
+    generics::GenericArgs,
     hir::{HirPatternBinding, HirVarId},
     ty::{FieldName, FnType, IntType, SemaLifetime},
     DefId, DefinitionInner, Definitions, Error, ErrorCategory, Result, SemaHint, Spanned,
@@ -136,7 +137,7 @@ pub enum ThirExprInner {
     Read(Box<Spanned<ThirExpr>>),
     Unreachable,
     Var(HirVarId),
-    Const(DefId),
+    Const(DefId, GenericArgs),
     ConstInt(Option<Spanned<IntType>>, u128),
     ConstString(StringType, Spanned<Symbol>),
     Cast(Box<Spanned<ThirExpr>>, Spanned<Type>),
@@ -196,7 +197,7 @@ impl core::fmt::Display for ThirExprInner {
             }
             ThirExprInner::Unreachable => f.write_str("unreachable"),
             ThirExprInner::Var(var) => var.fmt(f),
-            ThirExprInner::Const(def) => def.fmt(f),
+            ThirExprInner::Const(def, generics) => f.write_fmt(format_args!("{}{}", def, generics)),
             ThirExprInner::ConstInt(ity, val) => {
                 val.fmt(f)?;
                 if let Some(ity) = ity {
@@ -691,18 +692,18 @@ impl<'a> ThirConverter<'a> {
                     cat: ValueCategory::Rvalue,
                 })
             }
-            hir::HirExpr::Const(defid) => {
+            hir::HirExpr::Const(defid, generics) => {
                 let def = self.defs.definition(*defid);
 
                 let (ty, cat) = match &def.inner.body {
                     super::DefinitionInner::Function(fnty, _) => (
-                        Type::FnItem(Box::new(fnty.clone()), *defid),
+                        Type::FnItem(Box::new(fnty.clone()), *defid, generics.clone()),
                         ValueCategory::Rvalue,
                     ),
                     _ => unreachable!("Not a value"),
                 };
 
-                let inner = ThirExprInner::Const(*defid);
+                let inner = ThirExprInner::Const(*defid, generics.clone());
 
                 Ok(ThirExpr { ty, inner, cat })
             }
@@ -742,7 +743,7 @@ impl<'a> ThirConverter<'a> {
 
                 let ty = self.defs.type_of_constructor(defid.body);
 
-                let ctor_ty = Type::UserType(ty);
+                let ctor_ty = Type::UserType(ty, GenericArgs::default());
 
                 let fields = self.defs.fields_of(&ctor_ty);
 
@@ -1339,7 +1340,6 @@ impl<'a> Inferer<'a> {
         &mut self,
         left: &mut ThirExpr,
     ) -> super::Result<CyclicOperationStatus> {
-        eprintln!("enter: {}", left);
         let mut status = CyclicOperationStatus::Complete;
         match &mut left.inner {
             ThirExprInner::Read(inner) => {
@@ -1348,7 +1348,7 @@ impl<'a> Inferer<'a> {
             }
             ThirExprInner::Unreachable => {}
             ThirExprInner::Var(_) => {}
-            ThirExprInner::Const(_) => {}
+            ThirExprInner::Const(_, _) => {}
             ThirExprInner::ConstInt(_, _) => {}
             ThirExprInner::ConstString(_, _) => {}
             ThirExprInner::Cast(inner, ty) => {
@@ -1371,7 +1371,8 @@ impl<'a> Inferer<'a> {
             },
             ThirExprInner::Ctor(ctor) => {
                 let base = ctor.base;
-                let mut ty = Type::UserType(self.defs.type_of_constructor(base));
+                let mut ty =
+                    Type::UserType(self.defs.type_of_constructor(base), GenericArgs::default());
                 if let Some(rest_init) = ctor.rest_init.as_mut() {
                     status &= self.unify_typed_expr(rest_init, &mut ty)?;
                 }
@@ -1423,7 +1424,6 @@ impl<'a> Inferer<'a> {
                 status &= self.unify_single_expr(val)?;
             }
         }
-        eprintln!("exit: {}", left);
 
         Ok(status)
     }
@@ -1508,7 +1508,7 @@ impl<'a> Inferer<'a> {
 
                 let fnty = match &mut fnexpr.ty {
                     Type::FnPtr(ty) => ty,
-                    Type::FnItem(ty, _) => ty,
+                    Type::FnItem(ty, _,_) => ty,
                     Type::Inferable(_) => return Ok(status),
                     ty => {
                         return Err(Error {

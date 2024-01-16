@@ -4,14 +4,15 @@ use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
     ast::{
-        AsyncBlock, Attr, AttrInput, Auto, BinaryOp, BindingPattern, Block, CaptureSpec, Closure,
-        ClosureParam, CompoundBlock, CondBlock, ConstParam, Constructor, ConstructorExpr,
-        EnumVariant, Expr, ExternBlock, FieldInit, Function, GenericBound, GenericParam,
-        GenericParams, IfBlock, ImplBlock, Item, ItemBody, ItemValue, Label, LetStatement,
-        Lifetime, LifetimeParam, Literal, LiteralKind, MatchArm, MatchArmValue, MatchBlock, Mod,
-        Param, Path, PathSegment, Pattern, Safety, SelfParam, SimplePath, SimplePathSegment,
-        Spanned, Statement, StructCtor, StructField, StructKind, TraitDef, TupleCtor, TupleField,
-        Type, TypeParam, UnaryOp, UserType, UserTypeBody, Visibility, WhereClause,
+        AssociatedTypeBound, AsyncBlock, Attr, AttrInput, Auto, BinaryOp, BindingPattern, Block,
+        CaptureSpec, Closure, ClosureParam, CompoundBlock, CondBlock, ConstParam, Constructor,
+        ConstructorExpr, EnumVariant, Expr, ExternBlock, FieldInit, Function, GenericArg,
+        GenericArgs, GenericBound, GenericParam, GenericParams, IfBlock, ImplBlock, Item, ItemBody,
+        ItemValue, Label, LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind, MatchArm,
+        MatchArmValue, MatchBlock, Mod, Param, Path, PathSegment, Pattern, Safety, SelfParam,
+        SimplePath, SimplePathSegment, Spanned, Statement, StructCtor, StructField, StructKind,
+        TraitDef, TupleCtor, TupleField, Type, TypeParam, UnaryOp, UserType, UserTypeBody,
+        Visibility, WhereClause,
     },
     interning::Symbol,
     lex::{
@@ -2361,18 +2362,155 @@ pub fn do_block(
     })
 }
 
+pub fn do_generic_arg(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<GenericArg>> {
+    do_alternation(
+        tree,
+        &[
+            do_generic_arg_associated,
+            do_generic_arg_path,
+            do_generic_arg_type,
+            do_generic_arg_expr,
+        ],
+    )
+}
+
+pub fn do_generic_arg_path(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<GenericArg>> {
+    let path = do_path(tree)?;
+
+    let span = path.span;
+
+    Ok(Spanned {
+        body: GenericArg::Id(path),
+        span,
+    })
+}
+
+pub fn do_generic_arg_associated(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<GenericArg>> {
+    let mut tree = tree.into_rewinder();
+
+    let (span, id) = do_lexeme_token(&mut tree, LexemeClass::Identifier)?;
+    let id = Spanned {
+        body: id.body,
+        span,
+    };
+
+    match do_token_classes(&mut tree, &[punct!(=), punct!(:)]) {
+        Ok((punct!(=), eq, _)) => {
+            let ty = do_type(&mut tree)?;
+            let tspan = ty.span;
+
+            let bound_span = Span::between(eq, tspan);
+            let bound = AssociatedTypeBound::Exact(ty);
+
+            let span = Span::between(span, tspan);
+
+            Ok(Spanned {
+                body: GenericArg::AssociatedType(
+                    id,
+                    Spanned {
+                        body: bound,
+                        span: bound_span,
+                    },
+                ),
+                span,
+            })
+        }
+        Ok((punct!(:), _, _)) => {
+            todo!("Associated Type Bounds")
+        }
+        Ok(_) => unreachable!(),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn do_generic_arg_type(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<GenericArg>> {
+    let ty = do_type(tree)?;
+    let span = ty.span;
+
+    Ok(Spanned {
+        body: GenericArg::Type(ty),
+        span,
+    })
+}
+pub fn do_generic_arg_expr(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<GenericArg>> {
+    let expr = do_simple_block(tree)?;
+    let span = expr.span;
+    let expr = Expr::BlockExpr(expr);
+
+    Ok(Spanned {
+        body: GenericArg::Const(Spanned { body: expr, span }),
+        span,
+    })
+}
+
+pub fn do_generic_args(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Spanned<GenericArgs>> {
+    let mut tree = tree.into_rewinder();
+    let begin_span = do_lexeme_class(&mut tree, punct!(<))?.span;
+    let mut args = vec![];
+    let end_span = loop {
+        let err = match do_lexeme_class(&mut tree, punct!(>)) {
+            Ok(lex) => break lex.span,
+            Err(e) => e,
+        };
+
+        match do_generic_arg(&mut tree) {
+            Ok(arg) => args.push(arg),
+            Err(e) => return Err(e | err),
+        }
+
+        match do_lexeme_classes(&mut tree, &[punct!(,), punct!(>)]) {
+            Ok((_, punct!(,))) => continue,
+            Ok((lex, punct!(>))) => break lex.span,
+            Ok(_) => unreachable!(),
+            Err(e) => return Err(e),
+        }
+    };
+
+    tree.accept();
+    Ok(Spanned {
+        body: GenericArgs { args },
+        span: Span::between(begin_span, end_span),
+    })
+}
+
 pub fn do_path_segment(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<PathSegment>> {
     let ident = do_simple_path_segment(tree)?;
-    let span = ident.span;
-    // TODO: Generics
-    // TODO: $crate
+    let mut span = ident.span;
+    let generics = {
+        let mut tree = tree.into_rewinder();
+
+        if do_lexeme_class(&mut tree, LexemeClass::Punctuation(Punctuation::Path)).is_ok() {
+            match do_generic_args(&mut tree) {
+                Ok(val) => {
+                    span = Span::between(span, val.span);
+                    tree.accept();
+                    Some(val)
+                }
+                Err(e) => match do_lexeme_class(&mut tree, LexemeClass::IdentOrKeyword) {
+                    Ok(_) => None,
+                    Err(d) => return Err(e | d),
+                },
+            }
+        } else {
+            None
+        }
+    };
     Ok(Spanned {
-        body: PathSegment {
-            ident,
-            generics: None,
-        },
+        body: PathSegment { ident, generics },
         span,
     })
 }
