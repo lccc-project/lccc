@@ -184,13 +184,6 @@ pub trait FunctionRawCodegen {
     /// Allocates space to store an lvalue
     fn allocate_lvalue(&mut self, needs_addr: bool) -> Self::Loc;
 
-    /// Writes a branch point for the entry of block n
-    fn write_block_entry_point(&mut self, n: u32);
-    /// Writes a branch point for the exit of block n
-    fn write_block_exit_point(&mut self, n: u32);
-    /// Writes an branch to the exit of block n
-    fn write_block_exit(&mut self, n: u32);
-
     /// Prepares the stack frame (as necessary) for a call to a function with the given `callty` and `realty`
     fn prepare_call_frame(&mut self, callty: &FnType, realty: &FnType);
 
@@ -238,6 +231,15 @@ pub trait FunctionRawCodegen {
 
     /// Writes an assembly expression
     fn write_asm(&mut self, asm: &AsmExpr, inputs: Vec<VStackValue<Self::Loc>>) -> Vec<Self::Loc>;
+
+    /// Converts between two scalar types
+    fn write_scalar_convert(
+        &mut self,
+        target_ty: ScalarType,
+        incoming_ty: ScalarType,
+        new_loc: Self::Loc,
+        old_loc: Self::Loc,
+    );
 }
 
 #[derive(Default, Debug)]
@@ -1800,6 +1802,54 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                 }
                 VStackValue::OpaqueScalar(sty, _) => todo!("{:?} as {:?}", sty, pty),
                 val => panic!("Invalid value for convert _ {:?}: {:?}", pty, val),
+            },
+            Expr::Convert(_, Type::Scalar(sty)) => match self.pop_value().unwrap() {
+                VStackValue::Constant(Value::Uninitialized(Type::Scalar(_))) => self.push_value(
+                    VStackValue::Constant(Value::Uninitialized(Type::Scalar(*sty))),
+                ),
+                VStackValue::Constant(Value::Invalid(Type::Scalar(_))) => {
+                    self.push_value(VStackValue::Trapped);
+                    self.inner.write_trap(Trap::Unreachable)
+                }
+                VStackValue::Constant(Value::Integer { ty, val }) => {
+                    let mut newval = val & (!0 >> (128 - sty.header.bitsize.min(128)));
+
+                    if matches!(
+                        sty,
+                        ScalarType {
+                            kind: ScalarTypeKind::Integer { signed: true, .. },
+                            ..
+                        }
+                    ) {
+                        let bits = match ty {
+                            ScalarType {
+                                kind: ScalarTypeKind::Integer { signed: true, .. },
+                                header: ScalarTypeHeader { bitsize, .. },
+                            } => bitsize,
+                            _ => sty.header.bitsize.min(128),
+                        };
+
+                        let bit = newval >> bits.saturating_sub(1);
+
+                        newval |= !(bit.wrapping_sub(1)) << bits.saturating_sub(1);
+                    }
+
+                    self.push_value(VStackValue::Constant(Value::Integer {
+                        ty: *sty,
+                        val: newval,
+                    }));
+                }
+                VStackValue::OpaqueScalar(psty, loc) => {
+                    let ty = Type::Scalar(*sty);
+
+                    let newloc = self.inner.allocate(&ty, false);
+
+                    self.inner
+                        .write_scalar_convert(*sty, psty, newloc.clone(), loc);
+
+                    self.push_value(VStackValue::OpaqueScalar(*sty, newloc));
+                }
+                val => panic!("Invalind input for convert {}: {:?}", sty, val),
             },
             Expr::Convert(str, ty) => todo!("convert {:?} {:?}", str, ty),
             Expr::Derive(_, expr) => {

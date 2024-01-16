@@ -379,6 +379,10 @@ fn resolve_locations_in(
             resolve_location(dest, assignments);
             resolve_location(src_ptr, assignments);
         }
+        MCInsn::ZeroExtend { dest, src, .. } => {
+            resolve_location(dest, assignments);
+            resolve_location(src, assignments);
+        }
         _ => {}
     }
 }
@@ -923,6 +927,48 @@ impl MCWriter for X86MCWriter {
                         disp: 0,
                     })],
                 ))?,
+                MCInsn::ZeroExtend {
+                    dest,
+                    src,
+                    new_width,
+                    old_width,
+                } => {
+                    if *new_width == 32 && old_width > new_width {
+                        match (dest, src) {
+                            (
+                                MaybeResolved::Resolved(_, dest_reg),
+                                MaybeResolved::Resolved(_, src_reg),
+                            ) => match (dest_reg, src_reg) {
+                                (
+                                    X86ValLocation::Register(dest_reg),
+                                    X86ValLocation::Register(src_reg),
+                                ) => {
+                                    let dest_reg = X86Register::from_class(
+                                        X86RegisterClass::Double,
+                                        dest_reg.regnum(),
+                                    )
+                                    .unwrap();
+                                    let src_reg = X86Register::from_class(
+                                        X86RegisterClass::Double,
+                                        src_reg.regnum(),
+                                    )
+                                    .unwrap();
+                                    encoder.write_insn(X86Instruction::new(
+                                        X86CodegenOpcode::Mov,
+                                        vec![
+                                            X86Operand::Register(dest_reg),
+                                            X86Operand::Register(src_reg),
+                                        ],
+                                    ))?;
+                                }
+                                _ => panic!(),
+                            },
+                            _ => panic!("unresolved location"),
+                        }
+                    } else {
+                        todo!()
+                    }
+                }
                 _ => todo!(),
             }
         }

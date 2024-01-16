@@ -656,18 +656,6 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
         todo!()
     }
 
-    fn write_block_entry_point(&mut self, n: u32) {
-        todo!()
-    }
-
-    fn write_block_exit_point(&mut self, n: u32) {
-        todo!()
-    }
-
-    fn write_block_exit(&mut self, n: u32) {
-        todo!()
-    }
-
     fn prepare_call_frame(&mut self, _: &xlang_struct::FnType, _: &xlang_struct::FnType) {
         if self.frame_size & 15 != 0 {
             self.frame_size = ((self.frame_size + 15) / 16) * 16;
@@ -749,6 +737,16 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
         asm: &xlang_struct::AsmExpr,
         inputs: xlang::vec::Vec<xlang_backend::expr::VStackValue<Self::Loc>>,
     ) -> xlang::vec::Vec<Self::Loc> {
+        todo!()
+    }
+
+    fn write_scalar_convert(
+        &mut self,
+        target_ty: ScalarType,
+        incoming_ty: ScalarType,
+        new_loc: Self::Loc,
+        old_loc: Self::Loc,
+    ) {
         todo!()
     }
 }

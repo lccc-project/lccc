@@ -8,10 +8,14 @@ use binfmt::{
 };
 use xlang::{
     abi::{
-        collection::HashMap, io::WriteAdapter, option::Some as XLangSome, pair::Pair,
-        result::Result::Ok as XLangOk, span::Span, string::StringView, try_,
+        collection::HashMap, io::WriteAdapter, option::None as XLangNone,
+        option::Some as XLangSome, pair::Pair, result::Result::Ok as XLangOk, span::Span,
+        string::StringView, try_,
     },
-    ir::{AccessClass, BinaryOp, FnType, Linkage, PathComponent, PointerKind, Type, UnaryOp},
+    ir::{
+        AccessClass, BinaryOp, FnType, Linkage, PathComponent, PointerKind, ScalarType,
+        ScalarTypeHeader, ScalarTypeKind, Type, UnaryOp,
+    },
     plugin::{OutputMode, XLangCodegen, XLangPlugin},
     targets::properties::{StackAttributeControlStyle, TargetProperties},
 };
@@ -190,6 +194,17 @@ pub enum MCInsn<Loc> {
         src_ptr: MaybeResolved<Loc>,
         /// The Access Class
         cl: AccessClass,
+    },
+    /// Zero-extends (or truncates) from src to dest
+    ZeroExtend {
+        /// Destination register
+        dest: MaybeResolved<Loc>,
+        /// Source register
+        src: MaybeResolved<Loc>,
+        /// Width of the destination value
+        new_width: u16,
+        /// Wdith of the source value
+        old_width: u16,
     },
 }
 
@@ -557,18 +572,6 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
         })
     }
 
-    fn write_block_entry_point(&mut self, n: u32) {
-        todo!()
-    }
-
-    fn write_block_exit_point(&mut self, n: u32) {
-        todo!()
-    }
-
-    fn write_block_exit(&mut self, n: u32) {
-        todo!()
-    }
-
     fn prepare_call_frame(&mut self, callty: &xlang::ir::FnType, realty: &xlang::ir::FnType) {}
 
     fn lockfree_use_libatomic(&mut self, size: u64) -> bool {
@@ -615,6 +618,45 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
         _: xlang::vec::Vec<VStackValue<MaybeResolved<<F as MachineFeatures>::Loc>>>,
     ) -> xlang::vec::Vec<Self::Loc> {
         todo!()
+    }
+
+    fn write_scalar_convert(
+        &mut self,
+        target_ty: xlang::ir::ScalarType,
+        incoming_ty: xlang::ir::ScalarType,
+        new_loc: Self::Loc,
+        old_loc: Self::Loc,
+    ) {
+        match (target_ty, incoming_ty) {
+            (
+                ScalarType {
+                    header:
+                        ScalarTypeHeader {
+                            bitsize: new_width,
+                            vectorsize: XLangNone,
+                            ..
+                        },
+                    kind: ScalarTypeKind::Integer { signed, .. },
+                },
+                ScalarType {
+                    header:
+                        ScalarTypeHeader {
+                            bitsize: old_width,
+                            vectorsize: XLangNone,
+                            ..
+                        },
+                    kind: ScalarTypeKind::Integer { signed: false, .. },
+                },
+            ) => {
+                self.mc_insns.push(MCInsn::ZeroExtend {
+                    dest: new_loc,
+                    src: old_loc,
+                    new_width,
+                    old_width,
+                });
+            }
+            _ => todo!(),
+        }
     }
 }
 
