@@ -431,14 +431,14 @@ impl<K: Eq + Hash, V, H: BuildHasher, A: Allocator> HashMap<K, V, H, A> {
         None
     }
 
-    /// Removes all elements of [`Self`] that are not present in `keyes`
-    pub fn retain_all<C: Searchable<K>>(&mut self, keys: &C) {
+    /// Retains only the elements specified by the predicate.
+    pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut f: F) {
         for bucket in 0..self.buckets {
             let bucket = unsafe { &mut *(self.htab.as_ptr().add(bucket)) };
 
-            for i in 0..bucket.ecount {
-                let key_val = unsafe { &*bucket.entries.get_unchecked(i).as_ptr() };
-                if !keys.contains_key(&key_val.0) {
+            for i in (0..bucket.ecount).rev() {
+                let key_val = unsafe { &mut *bucket.entries.get_unchecked_mut(i).as_mut_ptr() };
+                if !f(&key_val.0, &mut key_val.1) {
                     bucket.entries.swap(i, bucket.ecount - 1);
                     unsafe {
                         core::ptr::drop_in_place(
@@ -926,12 +926,10 @@ impl<K: Eq + Hash, H: BuildHasher, A: Allocator> HashSet<K, H, A> {
     {
         self.inner.remove(val).map(|Pair(k, _)| k)
     }
-}
 
-impl<K: Eq + Hash, H: BuildHasher, A: Allocator> HashSet<K, H, A> {
-    /// Removes a value from the set and returns it if present
-    pub fn retain_all<C: Searchable<K>>(&mut self, keys: &C) {
-        self.inner.retain_all(keys)
+    /// Retains only the elements specified by the predicate.
+    pub fn retain<F: FnMut(&K) -> bool>(&mut self, mut f: F) {
+        self.inner.retain(|k, _| f(k));
     }
 }
 
