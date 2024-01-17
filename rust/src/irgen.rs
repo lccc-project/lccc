@@ -6,7 +6,7 @@ pub mod xir_visitor;
 use crate::{
     interning::Symbol,
     irgen::xir_visitor::{XirModTypeGatherer, XirModVisitor},
-    sema::{DefId, Definitions},
+    sema::{DefId, Definitions, ty::{IntType, IntWidth}}, helpers::nzu16,
 };
 
 use xlang::ir;
@@ -59,6 +59,22 @@ impl IntMangler {
             u64: x64 + 1,
             u128: b'o',
         }
+    }
+
+    fn mangle(&self, ty: &IntType) -> char {
+        char::from(match *ty {
+            IntType { signed: true, width: IntWidth::Bits(x) } if x == nzu16!(8) => self.i8,
+            IntType { signed: true, width: IntWidth::Bits(x) } if x == nzu16!(16) => self.i16,
+            IntType { signed: true, width: IntWidth::Bits(x) } if x == nzu16!(32) => self.i32,
+            IntType { signed: true, width: IntWidth::Bits(x) } if x == nzu16!(64) => self.i64,
+            IntType { signed: true, width: IntWidth::Bits(x) } if x == nzu16!(128) => self.i128,
+            IntType { signed: false, width: IntWidth::Bits(x) } if x == nzu16!(8) => self.u8,
+            IntType { signed: false, width: IntWidth::Bits(x) } if x == nzu16!(16) => self.u16,
+            IntType { signed: false, width: IntWidth::Bits(x) } if x == nzu16!(32) => self.u32,
+            IntType { signed: false, width: IntWidth::Bits(x) } if x == nzu16!(64) => self.u64,
+            IntType { signed: false, width: IntWidth::Bits(x) } if x == nzu16!(128) => self.u128,
+            _ => unreachable!(),
+        })
     }
 }
 

@@ -16,9 +16,9 @@ use xlang::{
     ir::PathComponent,
 };
 
-use crate::sema::ty::Mutability;
 use crate::sema::{cx, hir::BinaryOp, mir::SsaVarId};
 use crate::sema::{generics, ty, UserTypeKind};
+use crate::sema::{mir::UnaryOp, ty::Mutability};
 use crate::{
     interning::Symbol,
     lang::LangItem,
@@ -33,7 +33,8 @@ use super::visitor::{
     FieldAccessVisitor, FieldInitVisitor, FieldVisitor, FunctionBodyVisitor, FunctionDefVisitor,
     FunctionTyVisitor, IntTyVisitor, JumpVisitor, LetStatementVisitor, ModVisitor,
     PointerTyVisitor, ReferenceTyVisitor, StatementVisitor, TailcallVisitor, TerminatorVisitor,
-    TupleExprVisitor, TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
+    TupleExprVisitor, TupleTyVisitor, TypeDefVisitor, TypeVisitor, UnaryExprVisitor,
+    ValueDefVisitor,
 };
 use super::NameMap;
 
@@ -1240,6 +1241,10 @@ impl<'a> ExprVisitor for XirReturnVisitor<'a> {
     fn visit_binary_expr(&mut self) -> Option<Box<dyn BinaryExprVisitor + '_>> {
         self.0.visit_binary_expr()
     }
+
+    fn visit_unary_expr(&mut self) -> Option<Box<dyn UnaryExprVisitor + '_>> {
+        self.0.visit_unary_expr()
+    }
 }
 
 impl<'a> Drop for XirReturnVisitor<'a> {
@@ -2053,6 +2058,19 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
             self.stack_height,
         )))
     }
+
+    fn visit_unary_expr(&mut self) -> Option<Box<dyn UnaryExprVisitor + '_>> {
+        Some(Box::new(XirUnaryExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.stack_height,
+        )))
+    }
 }
 
 pub struct XirConstructorExprVisitor<'a> {
@@ -2345,7 +2363,7 @@ impl<'a> Drop for XirBinaryExprVisitor<'a> {
                     .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
                         ir::BinaryOp::Add,
                         ir::OverflowBehaviour::Wrap,
-                    )))
+                    )));
             }
             Some(BinaryOp::Sub) => {
                 *self.stack_height -= 1;
@@ -2355,7 +2373,7 @@ impl<'a> Drop for XirBinaryExprVisitor<'a> {
                     .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
                         ir::BinaryOp::Sub,
                         ir::OverflowBehaviour::Wrap,
-                    )))
+                    )));
             }
             Some(BinaryOp::Mul) => {
                 *self.stack_height -= 1;
@@ -2365,7 +2383,7 @@ impl<'a> Drop for XirBinaryExprVisitor<'a> {
                     .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
                         ir::BinaryOp::Mul,
                         ir::OverflowBehaviour::Wrap,
-                    )))
+                    )));
             }
             Some(BinaryOp::Div) => {
                 *self.stack_height -= 1;
@@ -2375,7 +2393,81 @@ impl<'a> Drop for XirBinaryExprVisitor<'a> {
                     .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
                         ir::BinaryOp::Div,
                         ir::OverflowBehaviour::Wrap,
-                    )))
+                    )));
+            }
+            None => panic!("operator wasn't set"),
+            x => todo!("{:?}", x),
+        }
+    }
+}
+
+pub struct XirUnaryExprVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    body: &'a mut ir::FunctionBody,
+    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    stack_height: &'a mut u32,
+    op: Option<UnaryOp>,
+}
+
+impl<'a> XirUnaryExprVisitor<'a> {
+    fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        body: &'a mut ir::FunctionBody,
+        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        stack_height: &'a mut u32,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            body,
+            targs,
+            var_heights,
+            stack_height,
+            op: None,
+        }
+    }
+}
+
+impl<'a> UnaryExprVisitor for XirUnaryExprVisitor<'a> {
+    fn visit_op(&mut self, op: UnaryOp) {
+        self.op = Some(op);
+    }
+
+    fn visit_lhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        Some(Box::new(XirExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.stack_height,
+        )))
+    }
+}
+
+impl<'a> Drop for XirUnaryExprVisitor<'a> {
+    fn drop(&mut self) {
+        match self.op {
+            Some(UnaryOp::Neg) => {
+                self.body
+                    .block
+                    .items
+                    .push(ir::BlockItem::Expr(ir::Expr::UnaryOp(
+                        ir::UnaryOp::Minus,
+                        ir::OverflowBehaviour::Wrap,
+                    )));
             }
             None => panic!("operator wasn't set"),
             x => todo!("{:?}", x),
@@ -2730,6 +2822,10 @@ impl<'a> ExprVisitor for XirDiscardVisitor<'a> {
 
     fn visit_binary_expr(&mut self) -> Option<Box<dyn BinaryExprVisitor + '_>> {
         self.0.visit_binary_expr()
+    }
+
+    fn visit_unary_expr(&mut self) -> Option<Box<dyn UnaryExprVisitor + '_>> {
+        self.0.visit_unary_expr()
     }
 }
 

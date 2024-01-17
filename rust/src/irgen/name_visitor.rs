@@ -1,6 +1,6 @@
-use crate::interning::Symbol;
 use crate::sema::UserTypeKind;
 use crate::sema::{ty::AbiTag, DefId};
+use crate::{interning::Symbol, sema::ty::IntType};
 
 use self::mangler::MangleEngine;
 
@@ -305,7 +305,10 @@ impl<'a, 'b> TypeVisitor for NameTypeVisitor<'a, 'b> {
     }
 
     fn visit_int(&mut self) -> Option<Box<dyn IntTyVisitor + '_>> {
-        todo!("visit_int")
+        Some(Box::new(NameIntTyVisitor::new(
+            self.int_mangler,
+            self.name_out,
+        )))
     }
 
     fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>> {
@@ -326,5 +329,25 @@ impl<'a, 'b> TypeVisitor for NameTypeVisitor<'a, 'b> {
 
     fn visit_user_type(&mut self, defid: DefId) {
         todo!("visit_defid")
+    }
+}
+
+struct NameIntTyVisitor<'a, 'b> {
+    int_mangler: &'a IntMangler,
+    name_out: &'b mut String,
+}
+
+impl<'a, 'b> NameIntTyVisitor<'a, 'b> {
+    fn new(int_mangler: &'a IntMangler, name_out: &'b mut String) -> Self {
+        Self {
+            int_mangler,
+            name_out,
+        }
+    }
+}
+
+impl<'a, 'b> IntTyVisitor for NameIntTyVisitor<'a, 'b> {
+    fn visit_type(&mut self, int_type: &IntType) {
+        self.name_out.push(self.int_mangler.mangle(int_type))
     }
 }

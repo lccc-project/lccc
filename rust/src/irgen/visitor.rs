@@ -8,7 +8,7 @@ use crate::{
         cx, generics,
         hir::BinaryOp,
         intrin::IntrinsicDef,
-        mir::{self, SsaVarId},
+        mir::{self, SsaVarId, UnaryOp},
         ty, Attr, Constructor, DefId, DefinitionInner, Definitions, FunctionBody, UserTypeKind,
     },
 };
@@ -539,7 +539,9 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         mir::MirExpr::Uninit(_) => todo!("uninit"),
         mir::MirExpr::AllocaDrop(_, _) => todo!("alloca drop"),
         mir::MirExpr::GetSymbol(_) => todo!("get symbol"),
-        mir::MirExpr::UnaryExpr(_, _) => todo!("unary expr"),
+        mir::MirExpr::UnaryExpr(op, lhs) => {
+            visit_unary_expr(visitor.visit_unary_expr(), op, lhs, defs)
+        }
     }
 }
 
@@ -569,6 +571,19 @@ pub fn visit_binary_expr<V: BinaryExprVisitor>(
     visitor.visit_op(*op);
     visit_expr(visitor.visit_lhs(), lhs, defs);
     visit_expr(visitor.visit_rhs(), rhs, defs);
+}
+
+pub fn visit_unary_expr<V: UnaryExprVisitor>(
+    mut visitor: V,
+    op: &mir::UnaryOp,
+    lhs: &mir::MirExpr,
+    defs: &Definitions,
+) {
+    if visitor.is_none() {
+        return;
+    }
+    visitor.visit_op(*op);
+    visit_expr(visitor.visit_lhs(), lhs, defs);
 }
 
 pub fn visit_constructor<V: ConstructorVisitor>(
@@ -698,6 +713,7 @@ def_visitors! {
         fn visit_field_subobject(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>>;
         fn visit_field_project(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>>;
         fn visit_binary_expr(&mut self) -> Option<Box<dyn BinaryExprVisitor + '_>>;
+        fn visit_unary_expr(&mut self) -> Option<Box<dyn UnaryExprVisitor + '_>>;
     }
 
     pub trait TupleExprVisitor {
@@ -728,6 +744,11 @@ def_visitors! {
         fn visit_op(&mut self, op: BinaryOp);
         fn visit_lhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
         fn visit_rhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+    }
+
+    pub trait UnaryExprVisitor {
+        fn visit_op(&mut self, op: UnaryOp);
+        fn visit_lhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
     }
 
     pub trait ConstructorVisitor {
