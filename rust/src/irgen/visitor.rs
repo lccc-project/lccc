@@ -328,6 +328,7 @@ pub fn visit_terminator<V: TerminatorVisitor>(
         return;
     }
     match term {
+        mir::MirTerminator::Branch(info) => visit_branch(visitor.visit_branch(), info, defs),
         mir::MirTerminator::Call(info) => visit_call(visitor.visit_call(), info, defs),
         mir::MirTerminator::Jump(info) => visit_jump(visitor.visit_jump(), info),
         mir::MirTerminator::Tailcall(info) => visit_tailcall(visitor.visit_call(), info, defs),
@@ -378,6 +379,24 @@ pub fn visit_tailcall<V: CallVisitor>(
     }
 
     visitor.visit_tailcall()
+}
+
+pub fn visit_branch<V: BranchVisitor>(
+    mut visitor: V,
+    info: &mir::MirBranchInfo,
+    defs: &Definitions,
+) {
+    if visitor.is_none() {
+        return;
+    }
+
+    for cond in &info.conds {
+        let mut branch_arm_visitor = visitor.visit_branch_arm();
+        visit_expr(branch_arm_visitor.visit_cond(), &cond.0, defs);
+        visit_jump(branch_arm_visitor.visit_jump(), &cond.1);
+    }
+
+    visit_jump(visitor.visit_else(), &info.else_block);
 }
 
 pub fn visit_jump<V: JumpVisitor>(mut visitor: V, info: &mir::MirJumpInfo) {
@@ -795,6 +814,15 @@ def_visitors! {
         // TODO: visit unwind
     }
 
+    pub trait BranchVisitor {
+        fn visit_branch_arm(&mut self) -> Option<Box<dyn BranchArmVisitor + '_>>;
+        fn visit_else(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
+    }
+
+    pub trait BranchArmVisitor {
+        fn visit_cond(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
+    }
 
     pub trait JumpVisitor {
         fn visit_target_bb(&mut self, targbb: mir::BasicBlockId);
@@ -802,6 +830,7 @@ def_visitors! {
     }
 
     pub trait TerminatorVisitor {
+        fn visit_branch(&mut self) -> Option<Box<dyn BranchVisitor + '_>>;
         fn visit_call(&mut self) -> Option<Box<dyn CallVisitor + '_>>;
         fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
         fn visit_return(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;

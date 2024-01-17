@@ -28,13 +28,13 @@ use crate::{
 use crate::{lex::StringType, sema::Definitions};
 
 use super::visitor::{
-    ArrayTyVisitor, AttrVisitor, BasicBlockVisitor, BinaryExprVisitor, CallVisitor, CastVisitor,
-    ConstIntVisitor, ConstStringVisitor, ConstructorDefVisitor, ConstructorVisitor, ExprVisitor,
-    FieldAccessVisitor, FieldInitVisitor, FieldVisitor, FunctionBodyVisitor, FunctionDefVisitor,
-    FunctionTyVisitor, IntTyVisitor, JumpVisitor, LetStatementVisitor, ModVisitor,
-    PointerTyVisitor, ReferenceTyVisitor, StatementVisitor, TailcallVisitor, TerminatorVisitor,
-    TupleExprVisitor, TupleTyVisitor, TypeDefVisitor, TypeVisitor, UnaryExprVisitor,
-    ValueDefVisitor,
+    ArrayTyVisitor, AttrVisitor, BasicBlockVisitor, BinaryExprVisitor, BranchArmVisitor,
+    BranchVisitor, CallVisitor, CastVisitor, ConstIntVisitor, ConstStringVisitor,
+    ConstructorDefVisitor, ConstructorVisitor, ExprVisitor, FieldAccessVisitor, FieldInitVisitor,
+    FieldVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, IntTyVisitor,
+    JumpVisitor, LetStatementVisitor, ModVisitor, PointerTyVisitor, ReferenceTyVisitor,
+    StatementVisitor, TailcallVisitor, TerminatorVisitor, TupleExprVisitor, TupleTyVisitor,
+    TypeDefVisitor, TypeVisitor, UnaryExprVisitor, ValueDefVisitor,
 };
 use super::NameMap;
 
@@ -957,6 +957,7 @@ pub struct XirFunctionBodyVisitor<'a> {
     targs: HashMap<BasicBlockId, Vec<ir::StackItem>>,
     var_heights: HashMap<SsaVarId, u32>,
     ssa_tys: HashMap<SsaVarId, ir::Type>,
+    stack_height: u32,
 }
 
 impl<'a> XirFunctionBodyVisitor<'a> {
@@ -969,7 +970,8 @@ impl<'a> XirFunctionBodyVisitor<'a> {
         cur_fnty: &'a mut ir::FnType,
         fndecl: &'a mut ir::FunctionBody,
     ) -> Self {
-        Self {
+        let mut result = Self {
+            stack_height: cur_fnty.params.len() as u32,
             defs,
             names,
             properties,
@@ -980,7 +982,15 @@ impl<'a> XirFunctionBodyVisitor<'a> {
             targs: HashMap::new(),
             var_heights: HashMap::new(),
             ssa_tys: HashMap::new(),
+        };
+
+        for (idx, ty) in result.cur_fnty.params.iter().enumerate() {
+            let id = SsaVarId(idx as u32);
+            result.var_heights.insert(id, idx as u32);
+            result.ssa_tys.insert(id, ty.clone());
         }
+
+        result
     }
 }
 
@@ -1010,6 +1020,7 @@ impl<'a> FunctionBodyVisitor for XirFunctionBodyVisitor<'a> {
             &mut self.targs,
             &mut self.var_heights,
             &mut self.ssa_tys,
+            self.stack_height,
         )))
     }
 
@@ -1048,6 +1059,7 @@ impl<'a> XirBasicBlockVisitor<'a> {
         targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
         var_heights: &'a mut HashMap<SsaVarId, u32>,
         ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+        stack_height: u32,
     ) -> Self {
         Self {
             defs,
@@ -1059,7 +1071,7 @@ impl<'a> XirBasicBlockVisitor<'a> {
             targs,
             var_heights,
             ssa_tys,
-            stack_height: 0u32,
+            stack_height,
         }
     }
 }
@@ -1179,8 +1191,10 @@ impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
             self.var_heights,
             self.ssa_tys,
             self.stack_height,
+            ir::BranchCondition::Always,
         )))
     }
+
     fn visit_return(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
         Some(Box::new(XirReturnVisitor(XirExprVisitor::new(
             self.defs,
@@ -1192,6 +1206,20 @@ impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
             self.var_heights,
             self.stack_height,
         ))))
+    }
+
+    fn visit_branch(&mut self) -> Option<Box<dyn BranchVisitor + '_>> {
+        Some(Box::new(XirBranchVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.ssa_tys,
+            self.stack_height,
+        )))
     }
 }
 
@@ -1605,6 +1633,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
                 self.var_heights,
                 self.ssa_tys,
                 self.stack_height,
+                ir::BranchCondition::Always,
             ),
             retty,
             targ: None,
@@ -1765,6 +1794,7 @@ pub struct XirJumpVisitor<'a> {
     ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     stack_height: &'a mut u32,
     targ: Option<BasicBlockId>,
+    cond: ir::BranchCondition,
 }
 
 impl<'a> XirJumpVisitor<'a> {
@@ -1776,6 +1806,7 @@ impl<'a> XirJumpVisitor<'a> {
         var_heights: &'a mut HashMap<SsaVarId, u32>,
         ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
         stack_height: &'a mut u32,
+        cond: ir::BranchCondition,
     ) -> Self {
         Self {
             names,
@@ -1786,6 +1817,7 @@ impl<'a> XirJumpVisitor<'a> {
             stack_height,
             ssa_tys,
             targ: None,
+            cond,
         }
     }
 }
@@ -1800,6 +1832,7 @@ impl<'a> JumpVisitor for XirJumpVisitor<'a> {
             .targs
             .get_or_insert_with_mut(self.targ.expect("wrong visit order"), |_| Vec::new());
         let height = targets.len() as u32;
+        dbg!(src);
         targets.push(ir::StackItem {
             ty: self.ssa_tys[&src].clone(),
             kind: ir::StackValueKind::RValue,
@@ -1818,6 +1851,139 @@ impl<'a> Drop for XirJumpVisitor<'a> {
                 cond: ir::BranchCondition::Always,
                 target: self.targ.unwrap().id(),
             }))
+    }
+}
+
+pub struct XirBranchVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    body: &'a mut ir::FunctionBody,
+    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+    stack_height: &'a mut u32,
+}
+
+impl<'a> XirBranchVisitor<'a> {
+    fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        body: &'a mut ir::FunctionBody,
+        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+        stack_height: &'a mut u32,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            body,
+            targs,
+            var_heights,
+            ssa_tys,
+            stack_height,
+        }
+    }
+}
+
+impl<'a> BranchVisitor for XirBranchVisitor<'a> {
+    fn visit_branch_arm(&mut self) -> Option<Box<dyn BranchArmVisitor + '_>> {
+        Some(Box::new(XirBranchArmVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.ssa_tys,
+            self.stack_height,
+        )))
+    }
+
+    fn visit_else(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
+        Some(Box::new(XirJumpVisitor::new(
+            self.names,
+            self.properties,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.ssa_tys,
+            self.stack_height,
+            ir::BranchCondition::Always,
+        )))
+    }
+}
+
+pub struct XirBranchArmVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    body: &'a mut ir::FunctionBody,
+    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+    stack_height: &'a mut u32,
+}
+
+impl<'a> XirBranchArmVisitor<'a> {
+    fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        body: &'a mut ir::FunctionBody,
+        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+        stack_height: &'a mut u32,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            body,
+            targs,
+            var_heights,
+            ssa_tys,
+            stack_height,
+        }
+    }
+}
+
+impl<'a> BranchArmVisitor for XirBranchArmVisitor<'a> {
+    fn visit_cond(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        Some(Box::new(XirExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.stack_height,
+        )))
+    }
+
+    fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
+        Some(Box::new(XirJumpVisitor::new(
+            self.names,
+            self.properties,
+            self.body,
+            self.targs,
+            self.var_heights,
+            self.ssa_tys,
+            self.stack_height,
+            ir::BranchCondition::NotEqual,
+        )))
     }
 }
 
@@ -2392,6 +2558,46 @@ impl<'a> Drop for XirBinaryExprVisitor<'a> {
                     .items
                     .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
                         ir::BinaryOp::Div,
+                        ir::OverflowBehaviour::Wrap,
+                    )));
+            }
+            Some(BinaryOp::Rem) => {
+                *self.stack_height -= 1;
+                self.body
+                    .block
+                    .items
+                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
+                        ir::BinaryOp::Mod,
+                        ir::OverflowBehaviour::Wrap,
+                    )));
+            }
+            Some(BinaryOp::Less) => {
+                *self.stack_height -= 1;
+                self.body
+                    .block
+                    .items
+                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
+                        ir::BinaryOp::CmpLt,
+                        ir::OverflowBehaviour::Wrap,
+                    )));
+            }
+            Some(BinaryOp::Greater) => {
+                *self.stack_height -= 1;
+                self.body
+                    .block
+                    .items
+                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
+                        ir::BinaryOp::CmpGt,
+                        ir::OverflowBehaviour::Wrap,
+                    )));
+            }
+            Some(BinaryOp::Equal) => {
+                *self.stack_height -= 1;
+                self.body
+                    .block
+                    .items
+                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
+                        ir::BinaryOp::CmpEq,
                         ir::OverflowBehaviour::Wrap,
                     )));
             }
