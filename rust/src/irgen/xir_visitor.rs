@@ -1046,6 +1046,8 @@ pub struct XirBasicBlockVisitor<'a> {
     var_heights: &'a mut HashMap<SsaVarId, u32>,
     ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     stack_height: u32,
+    bb_id: BasicBlockId,
+    incoming_vars: Vec<SsaVarId>,
 }
 
 impl<'a> XirBasicBlockVisitor<'a> {
@@ -1072,6 +1074,8 @@ impl<'a> XirBasicBlockVisitor<'a> {
             var_heights,
             ssa_tys,
             stack_height,
+            bb_id: BasicBlockId(u32::MAX),
+            incoming_vars: vec![],
         }
     }
 }
@@ -1083,7 +1087,8 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
         self.body.block.items.push(ir::BlockItem::Target {
             num: bb_id.id(),
             stack: vec![],
-        })
+        });
+        self.bb_id = bb_id;
     }
 
     fn visit_incoming_var(&mut self, incoming: SsaVarId) -> Option<Box<dyn TypeVisitor + '_>> {
@@ -1092,6 +1097,7 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
         self.stack_height += 1;
 
         let ty = self.ssa_tys.get_or_insert_mut(incoming, ir::Type::Null);
+        self.incoming_vars.push(incoming);
 
         Some(Box::new(XirTypeVisitor::new(
             self.defs,
@@ -1129,6 +1135,16 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
             &mut self.ssa_tys,
             &mut self.stack_height,
         )))
+    }
+}
+
+impl<'a> Drop for XirBasicBlockVisitor<'a> {
+    fn drop(&mut self) {
+        let targs = self.targs.get_mut(&self.bb_id).unwrap();
+        for incoming in &self.incoming_vars {
+            let ty = self.ssa_tys[incoming].clone();
+            targs.push(ir::StackItem { ty, kind: ir::StackValueKind::RValue });
+        }
     }
 }
 
