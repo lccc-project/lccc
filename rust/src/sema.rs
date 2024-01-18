@@ -3615,7 +3615,7 @@ pub fn tycheck_function(defs: &mut Definitions, curmod: DefId, defid: DefId) -> 
 
                 let mut body = converter.into_thir_body(block.body.body.span);
 
-                let mut inferer = Inferer::new(&defs, defid, curmod);
+                let mut inferer = Inferer::new(&defs, defid, curmod, &mut body.vardefs);
 
                 let mut iter_count = 0;
                 const MAX_ITER: usize = 4096;

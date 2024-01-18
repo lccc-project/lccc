@@ -1069,6 +1069,11 @@ impl<'a> MirConverter<'a> {
                     },
                 );
                 let ty = self.hir_var_map[&hirvar].ty.body.clone();
+                if ty.is_inference() {
+                    dbg!(&self.defs.defs[&self.at_item].inner.span);
+                    dbg!(&self.hir_var_map);
+                    panic!("oops.");
+                }
                 remaps.push((hirassign.cur_var, newvar));
                 incoming_vars.push((newvar, ty));
             }
@@ -1254,17 +1259,14 @@ impl<'a> MirConverter<'a> {
                     elseblock,
                 } => {
                     let mut mir_conds = Vec::new();
+                    let mut branches = Vec::new();
 
                     let newbb = BasicBlockId(self.nextbb.fetch_increment());
                     let (basejmp, baseassignments, baseincoming) = self.make_jump(newbb);
+                    branches.push((newbb, baseassignments, baseincoming, block));
 
                     let basecond = self.lower_expr(cond)?;
-
                     mir_conds.push((basecond, basejmp));
-
-                    let mut branches = Vec::new();
-
-                    branches.push((newbb, baseassignments, baseincoming, block));
 
                     for (cond, block) in elseifs {
                         let newbb = BasicBlockId(self.nextbb.fetch_increment());

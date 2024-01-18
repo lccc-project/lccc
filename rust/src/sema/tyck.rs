@@ -1174,15 +1174,17 @@ pub struct Inferer<'a> {
     defs: &'a Definitions,
     curdef: DefId,
     curmod: DefId,
+    vardefs: &'a mut HashMap<HirVarId, ThirVarDef>,
     inference_set: HashMap<InferId, Type>,
 }
 
 impl<'a> Inferer<'a> {
-    pub fn new(defs: &'a Definitions, curdef: DefId, curmod: DefId) -> Self {
+    pub fn new(defs: &'a Definitions, curdef: DefId, curmod: DefId, vardefs: &'a mut HashMap<HirVarId, ThirVarDef>) -> Self {
         Self {
             defs,
             curdef,
             curmod,
+            vardefs,
             inference_set: HashMap::new(),
         }
     }
@@ -1658,7 +1660,13 @@ impl<'a> Inferer<'a> {
                 mutability,
                 var,
                 ty,
-            } => status &= self.propagate_type(ty)?,
+            } => {
+                status &= self.propagate_type(ty)?;
+                let mut ty = std::mem::replace(&mut *self.vardefs[var].ty, Type::Never);
+                status &= self.propagate_type(&mut ty)?;
+                *self.vardefs[var].ty = ty;
+
+            }
             ThirStatement::Return(ret) => status &= self.propagate_expr(ret)?,
             ThirStatement::Block(blk) => status &= self.propagate_block(blk)?,
             ThirStatement::Discard(expr) => status &= self.propagate_expr(expr)?,

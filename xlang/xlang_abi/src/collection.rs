@@ -1,3 +1,4 @@
+use core::ops::IndexMut;
 use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::hash::{BuildHasher, Hash, Hasher};
@@ -681,6 +682,16 @@ where
     type Output = V;
     fn index(&self, idx: &'a Q) -> &V {
         self.get(idx).expect("no entry found for key")
+    }
+}
+
+impl<'a, K: Eq + Hash, V, Q: Eq + Hash + 'a, H: BuildHasher, A: Allocator> IndexMut<&'a Q>
+    for HashMap<K, V, H, A>
+where
+    K: Borrow<Q>,
+{
+    fn index_mut(&mut self, idx: &'a Q) -> &mut V {
+        self.get_mut(idx).expect("no entry found for key")
     }
 }
 

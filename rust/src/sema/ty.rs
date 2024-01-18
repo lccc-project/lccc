@@ -693,8 +693,8 @@ impl core::fmt::Display for Type {
                 f.write_str(" ")?;
                 inner.body.fmt(f)
             }
-            Self::Inferable(_) => f.write_str("{{type}}"),
-            Self::InferableInt(_) => f.write_str("{{int}}"),
+            Self::Inferable(x) => write!(f, "{{{{type {:?}}}}}", x),
+            Self::InferableInt(x) => write!(f, "{{{{int {:?}}}}}", x),
             Self::Array(elem, len) => {
                 f.write_str("[")?;
                 elem.body.fmt(f)?;
