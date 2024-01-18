@@ -223,6 +223,7 @@ pub fn visit_value_def<V: ValueDefVisitor>(
 pub fn visit_attr<V: AttrVisitor>(mut visitor: V, attr: &Attr) {
     match attr {
         Attr::NoMangle => visitor.visit_no_mangle(),
+        Attr::Repr(_) => {}
         x => todo!("{:?}", x),
     }
 }
@@ -270,7 +271,9 @@ pub fn visit_basic_block<V: BasicBlockVisitor>(
         return;
     }
     visitor.visit_id(bb.id);
-    visitor.visit_incoming_vars(&bb.incoming_vars);
+    for (var, ty) in &bb.incoming_vars {
+        visit_type(visitor.visit_incoming_var(*var), ty, defs);
+    }
 
     for stmt in &bb.stmts {
         visit_statement(visitor.visit_stmt(), stmt, defs);
@@ -715,7 +718,7 @@ def_visitors! {
 
     pub trait BasicBlockVisitor {
         fn visit_id(&mut self, id: mir::BasicBlockId);
-        fn visit_incoming_vars(&mut self, incoming: &[SsaVarId]);
+        fn visit_incoming_var(&mut self, incomin: SsaVarId) -> Option<Box<dyn TypeVisitor + '_>>;
         fn visit_stmt(&mut self) -> Option<Box<dyn StatementVisitor + '_>>;
         fn visit_term(&mut self) -> Option<Box<dyn TerminatorVisitor + '_>>;
     }

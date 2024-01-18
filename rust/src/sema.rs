@@ -3823,7 +3823,7 @@ pub fn convert_crate(
                 @0: { []
                     call _0 = #<main>: <fnty>() next @1 []
                 }
-                @1: { [_0]
+                @1: { [_0: <retty>]
                     store dead _0;
                     return 0_i32
                 }

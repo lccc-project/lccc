@@ -1386,7 +1386,20 @@ pub fn do_basic_block<I: Iterator<Item = TokenTree>>(
 
             let param = do_ssa_var(&mut incoming_tree, dollar_crate)?;
 
-            incoming.extend(param);
+            do_punct(&mut incoming_tree, ":")?;
+
+            let ty = do_type(&mut incoming_tree, dollar_crate)?;
+
+            let mut incoming_var = TokenStream::new();
+
+            incoming_var.extend(param);
+            incoming_var.extend([TokenTree::Punct(Punct::new(',', Spacing::Alone))]);
+            incoming_var.extend(ty);
+
+            incoming.extend([TokenTree::Group(Group::new(
+                Delimiter::Parenthesis,
+                incoming_var,
+            ))]);
             incoming.extend([TokenTree::Punct(Punct::new(',', Spacing::Alone))]);
             match do_punct(&mut incoming_tree, ",") {
                 Ok(_) => continue,

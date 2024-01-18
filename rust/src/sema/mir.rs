@@ -261,7 +261,7 @@ impl core::fmt::Display for MirJumpInfo {
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct MirBasicBlock {
-    pub incoming_vars: Vec<SsaVarId>,
+    pub incoming_vars: Vec<(SsaVarId, Type)>,
     pub id: BasicBlockId,
     pub stmts: Vec<Spanned<MirStatement>>,
     pub term: Spanned<MirTerminator>,
@@ -411,7 +411,7 @@ pub enum SsaVarKind {
 pub struct UnbuiltBasicBlock {
     id: BasicBlockId,
     stmts: Vec<Spanned<MirStatement>>,
-    incoming_vars: Vec<SsaVarId>,
+    incoming_vars: Vec<(SsaVarId, Type)>,
 }
 
 impl UnbuiltBasicBlock {
@@ -500,6 +500,10 @@ impl<'a> MirConverter<'a> {
                     var_kind: SsaVarKind::Register,
                 },
             );
+            result
+                .cur_basic_block
+                .incoming_vars
+                .push((newvarid, param.body));
         }
 
         result
@@ -1039,7 +1043,7 @@ impl<'a> MirConverter<'a> {
     ) -> (
         MirJumpInfo,
         HashMap<HirVarId, HirVarAssignment>,
-        Vec<SsaVarId>,
+        Vec<(SsaVarId, Type)>,
     ) {
         let mut assignments = HashMap::new();
         let mut remaps = Vec::new();
@@ -1056,8 +1060,9 @@ impl<'a> MirConverter<'a> {
                         ..*hirassign
                     },
                 );
+                let ty = self.hir_var_map[&hirvar].ty.body.clone();
                 remaps.push((hirassign.cur_var, newvar));
-                incoming_vars.push(newvar);
+                incoming_vars.push((newvar, ty));
             }
         }
 
@@ -1078,7 +1083,7 @@ impl<'a> MirConverter<'a> {
     ) -> (
         Vec<(Vec<MirStatement>, MirJumpInfo)>,
         HashMap<HirVarId, HirVarAssignment>,
-        Vec<SsaVarId>,
+        Vec<(SsaVarId, Type)>,
     ) {
         let mut gather_set = HashSet::<HirVarId>::new();
         let mut placement = HashMap::<HirVarId, SsaVarKind>::new();
@@ -1106,8 +1111,9 @@ impl<'a> MirConverter<'a> {
 
         for var in gather_set {
             var_order.push(var);
+            let ty = self.hir_var_map[&var].ty.body.clone();
             let new_var = SsaVarId(self.nextvar.fetch_increment());
-            incoming.push(new_var);
+            incoming.push((new_var, ty));
             let assign = HirVarAssignment {
                 cur_var: new_var,
                 var_kind: placement[&var],
@@ -1319,6 +1325,7 @@ impl<'a> MirConverter<'a> {
                     self.var_names = endassignments;
                 }
                 super::tyck::ThirBlock::Match(m) => {
+                    let ty = m.discriminee.ty.clone();
                     let (discriminee, pat_var_kind, pat_var) =
                         self.lower_register(m.discriminee, false)?;
                     let assignments = self.var_names.clone();
@@ -1359,7 +1366,7 @@ impl<'a> MirConverter<'a> {
                                     binding_var
                                 } else {
                                     let var = SsaVarId(self.nextvar.fetch_increment());
-                                    self.cur_basic_block.incoming_vars.push(var);
+                                    self.cur_basic_block.incoming_vars.push((var, ty.clone()));
                                     jmp.remaps.push((pat_var, var));
                                     binding_var = Some(var);
                                     var
@@ -1573,7 +1580,8 @@ impl<'a> MirConverter<'a> {
                     let (jmp, assignments, mut incoming) = self.make_jump(nextbb);
 
                     let retvar = SsaVarId(self.nextvar.fetch_increment());
-                    incoming.push(retvar);
+
+                    incoming.push((retvar, fnty.retty.body.clone()));
 
                     let call = MirCallInfo {
                         retplace: Spanned {

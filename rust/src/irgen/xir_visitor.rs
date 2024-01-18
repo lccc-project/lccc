@@ -1078,6 +1078,7 @@ impl<'a> XirBasicBlockVisitor<'a> {
 
 impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
     fn visit_id(&mut self, bb_id: BasicBlockId) {
+        eprintln!("Entering Basic Block {}", bb_id);
         self.targs.get_or_insert_mut(bb_id, Vec::new());
         self.body.block.items.push(ir::BlockItem::Target {
             num: bb_id.id(),
@@ -1085,14 +1086,19 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
         })
     }
 
-    fn visit_incoming_vars(&mut self, incoming: &[SsaVarId]) {
-        let mut height = 0;
-        for (depth, &var) in incoming.iter().enumerate() {
-            self.var_heights.insert(var, depth as u32);
-            height = depth;
-        }
+    fn visit_incoming_var(&mut self, incoming: SsaVarId) -> Option<Box<dyn TypeVisitor + '_>> {
+        let mut height = self.stack_height;
+        self.var_heights.insert(incoming, height);
+        self.stack_height += 1;
 
-        self.stack_height = height as u32;
+        let ty = self.ssa_tys.get_or_insert_mut(incoming, ir::Type::Null);
+
+        Some(Box::new(XirTypeVisitor::new(
+            self.defs,
+            self.names,
+            ty,
+            self.properties,
+        )))
     }
 
     fn visit_stmt(&mut self) -> Option<Box<dyn StatementVisitor + '_>> {
@@ -1831,14 +1837,10 @@ impl<'a> JumpVisitor for XirJumpVisitor<'a> {
         let targets = self
             .targs
             .get_or_insert_with_mut(self.targ.expect("wrong visit order"), |_| Vec::new());
-        let height = targets.len() as u32;
-        dbg!(src);
         targets.push(ir::StackItem {
             ty: self.ssa_tys[&src].clone(),
             kind: ir::StackValueKind::RValue,
         });
-        self.ssa_tys.insert(dest, self.ssa_tys[&src].clone());
-        self.var_heights.insert(dest, height);
     }
 }
 
