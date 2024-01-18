@@ -300,8 +300,16 @@ impl MirFunctionBody {
         use core::fmt::Display;
         tabs.fmt(f)?;
         bb.id.fmt(f)?;
-        f.write_str(": {\n")?;
+        f.write_str(": { [")?;
 
+        let mut sep = "";
+
+        for (var, ty) in &bb.incoming_vars {
+            f.write_fmt(format_args!("{}{}: {}", sep, var, ty))?;
+            sep = ", ";
+        }
+
+        f.write_str("]\n")?;
         for stmt in &bb.stmts {
             self.display_stmt(stmt, f, tabs.nest())?;
             f.write_str("\n")?;
