@@ -1850,7 +1850,7 @@ impl<'a> Drop for XirJumpVisitor<'a> {
             .block
             .items
             .push(ir::BlockItem::Expr(ir::Expr::Branch {
-                cond: ir::BranchCondition::Always,
+                cond: self.cond,
                 target: self.targ.unwrap().id(),
             }))
     }
