@@ -1,5 +1,7 @@
 use super::{MirBasicBlock, MirFunctionBody, MirStatement, MirTerminator};
 
+use crate::sema::Result;
+
 pub enum MirPassType {
     /// A Mandatory pass (IE. Drop elab or borrowck)
     ///
@@ -14,17 +16,17 @@ pub enum MirPassType {
 /// A pass on input mir
 pub trait MirFunctionPass {
     fn pass_type(&self) -> MirPassType;
-    fn accept_function(&self, targ: &mut super::MirFunctionBody);
+    fn accept_function(&self, targ: &mut super::MirFunctionBody) -> Result<()>;
 }
 
 pub trait MirBasicBlockPass {
     fn pass_type(&self) -> MirPassType;
-    fn accept_basic_block(&self, targ: &mut super::MirBasicBlock);
+    fn accept_basic_block(&self, targ: &mut super::MirBasicBlock) -> Result<()>;
 }
 
 pub trait MirStatementPass {
     fn pass_type(&self) -> MirPassType;
-    fn accept_statement(&self, targ: &mut super::MirStatement);
+    fn accept_statement(&self, targ: &mut super::MirStatement) -> Result<()>;
 }
 
 impl<P: MirBasicBlockPass> MirFunctionPass for P {
@@ -32,10 +34,11 @@ impl<P: MirBasicBlockPass> MirFunctionPass for P {
         <P as MirBasicBlockPass>::pass_type(self)
     }
 
-    fn accept_function(&self, targ: &mut super::MirFunctionBody) {
+    fn accept_function(&self, targ: &mut super::MirFunctionBody) -> Result<()> {
         for bb in &mut targ.bbs {
-            self.accept_basic_block(bb)
+            self.accept_basic_block(bb)?;
         }
+        Ok(())
     }
 }
 
@@ -44,13 +47,15 @@ impl<P: MirStatementPass> MirBasicBlockPass for P {
         <P as MirStatementPass>::pass_type(self)
     }
 
-    fn accept_basic_block(&self, targ: &mut super::MirBasicBlock) {
+    fn accept_basic_block(&self, targ: &mut super::MirBasicBlock) -> Result<()> {
         for stmt in &mut targ.stmts {
-            self.accept_statement(stmt)
+            self.accept_statement(stmt)?;
         }
+        Ok(())
     }
 }
 
+mod remove_discard;
 mod unreachable;
 
 pub const REQ_PASSES: &[&(dyn MirFunctionPass + Sync)] = &[];

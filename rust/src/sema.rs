@@ -3736,6 +3736,22 @@ pub fn lower_function(defs: &mut Definitions, curmod: DefId, defid: DefId) -> Re
 }
 
 pub fn mir_lower(defs: &mut Definitions, curmod: DefId) -> Result<()> {
+    let tys = defs.as_module(curmod).types.clone();
+
+    for &Pair(_, defid) in &tys {
+        if let Definition {
+            inner:
+                Spanned {
+                    body: DefinitionInner::Module(_),
+                    ..
+                },
+            ..
+        } = defs.definition(defid)
+        {
+            tycheck_values(defs, defid)?;
+        }
+    }
+
     let values = defs.as_module(curmod).values.clone();
 
     for &Pair(_sym, defid) in &values {
@@ -3743,6 +3759,36 @@ pub fn mir_lower(defs: &mut Definitions, curmod: DefId) -> Result<()> {
         match &mut def.inner.body {
             DefinitionInner::Function(_, Some(FunctionBody::ThirBody(_))) => {
                 lower_function(defs, curmod, defid)?;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+pub fn run_passes_on(body: &mut MirFunctionBody, max_opt: u32) -> Result<()> {
+    for pass in mir::transform::REQ_PASSES {
+        pass.accept_function(body)?;
+    }
+
+    for pass in mir::transform::OPT_PASSES {
+        match pass.pass_type() {
+            mir::transform::MirPassType::Optional(stat) if stat > max_opt => {}
+            _ => {
+                pass.accept_function(body)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn run_passes(defs: &mut Definitions, curmod: DefId, max_opt: u32) -> Result<()> {
+    for Pair(&defid, def) in &mut defs.defs {
+        match &mut def.inner.body {
+            DefinitionInner::Function(_, Some(FunctionBody::MirBody(body))) => {
+                run_passes_on(body, max_opt)?;
             }
             _ => {}
         }
@@ -3858,6 +3904,8 @@ pub fn convert_crate(
             lccc_main,
         )?;
     }
+
+    run_passes(defs, root, 1024)?;
 
     Ok(())
 }

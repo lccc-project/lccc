@@ -1,4 +1,4 @@
-use super::{MirBasicBlockPass, MirPassType};
+use super::{MirBasicBlockPass, MirPassType, Result};
 
 use crate::sema::mir::{MirExpr, MirStatement, MirTerminator};
 
@@ -42,7 +42,7 @@ impl MirBasicBlockPass for PropagateUnreachable {
         MirPassType::Optional(1024)
     }
 
-    fn accept_basic_block(&self, targ: &mut super::MirBasicBlock) {
+    fn accept_basic_block(&self, targ: &mut super::MirBasicBlock) -> Result<()> {
         if targ.term.body != MirTerminator::Unreachable {
             for stat in &mut targ.stmts {
                 match &mut stat.body {
@@ -83,5 +83,7 @@ impl MirBasicBlockPass for PropagateUnreachable {
             }
             _ => {}
         }
+
+        Ok(())
     }
 }
