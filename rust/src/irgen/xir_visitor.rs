@@ -1092,9 +1092,9 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
     }
 
     fn visit_incoming_var(&mut self, incoming: SsaVarId) -> Option<Box<dyn TypeVisitor + '_>> {
-        let mut height = self.stack_height;
-        self.var_heights.insert(incoming, height);
         self.stack_height += 1;
+        let height = self.stack_height;
+        self.var_heights.insert(incoming, height);
 
         let ty = self.ssa_tys.get_or_insert_mut(incoming, ir::Type::Null);
         self.incoming_vars.push(incoming);
@@ -1143,7 +1143,10 @@ impl<'a> Drop for XirBasicBlockVisitor<'a> {
         let targs = self.targs.get_mut(&self.bb_id).unwrap();
         for incoming in &self.incoming_vars {
             let ty = self.ssa_tys[incoming].clone();
-            targs.push(ir::StackItem { ty, kind: ir::StackValueKind::RValue });
+            targs.push(ir::StackItem {
+                ty,
+                kind: ir::StackValueKind::RValue,
+            });
         }
     }
 }
