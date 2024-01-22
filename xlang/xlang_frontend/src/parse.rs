@@ -1,6 +1,6 @@
 use xlang::abi::ops::{ControlFlow, Try};
 
-use crate::iter::{IntoRewinder, PeekMoreIterator};
+use crate::iter::PeekMoreIterator;
 
 pub fn take_left<R>(left: R, _: R) -> R {
     left
@@ -32,9 +32,10 @@ where
                             // Manual replace_with impl
                             struct AbortGuard;
                             impl Drop for AbortGuard {
+                                #[allow(unconditional_recursion)] // Will only run twice due to the panic
                                 fn drop(&mut self) {
-                                    let x = AbortGuard;
-                                    panic!("AbortGuard dropped")
+                                    let _x = AbortGuard;
+                                    panic!("AbortGuard dropped");
                                 }
                             }
                             let abort_guard = AbortGuard;

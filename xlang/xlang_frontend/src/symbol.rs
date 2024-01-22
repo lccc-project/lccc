@@ -9,9 +9,7 @@ use std::{
     },
 };
 
-use xlang::abi::{
-    alloc::Allocator, collection::HashMap, string::String, string::StringView, sync::OnceCell,
-};
+use xlang::abi::{collection::HashMap, string::String, string::StringView, sync::OnceCell};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]

@@ -4,7 +4,7 @@ use std::{
     ops::{Deref, DerefMut},
 }; // FIXME: Use `xlang::abi::VecDeque` instead
 
-use xlang::abi::ops::{ControlFlow, FromResidual, Try};
+use xlang::abi::ops::{ControlFlow, Try};
 
 use crate::{
     span::{Pos, Speekable},

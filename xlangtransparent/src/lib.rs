@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use xlang::{
     abi::result::Result::Ok,
     ir::{FunctionDeclaration, Path, PointerType, Scope, Type, Value},
