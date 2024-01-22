@@ -1795,21 +1795,6 @@ impl<'a> JumpVisitor for XirNextBlockVisitor<'a> {
     }
 }
 
-impl<'a> Drop for XirNextBlockVisitor<'a> {
-    fn drop(&mut self) {
-        self.inner
-            .targs
-            .get_or_insert_with_mut(
-                self.targ.expect("visit_target_bb must have been called"),
-                |_| Vec::new(),
-            )
-            .push(ir::StackItem {
-                ty: core::mem::take(&mut self.retty),
-                kind: ir::StackValueKind::RValue,
-            });
-    }
-}
-
 pub struct XirJumpVisitor<'a> {
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
