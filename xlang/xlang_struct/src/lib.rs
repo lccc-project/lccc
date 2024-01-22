@@ -1490,7 +1490,7 @@ impl core::fmt::Display for Value {
                 f.write_fmt(format_args!("global_address {} ({})", item, ty))
             }
             Self::ByteString { content } => match core::str::from_utf8(content) {
-                Ok(s) => f.write_fmt(format_args!(" \"{}\"", s.escape_default())),
+                Ok(s) => f.write_fmt(format_args!("byte \"{}\"", s.escape_default())),
                 Err(mut err) => {
                     let mut bytes = &content[..];
                     f.write_str(" \"")?;
@@ -1524,7 +1524,7 @@ impl core::fmt::Display for Value {
                 }
             },
             Self::String { encoding, utf8, ty } => f.write_fmt(format_args!(
-                "{} {} {}",
+                "{} {} \"{}\"",
                 ty,
                 encoding,
                 utf8.escape_default()
