@@ -1482,6 +1482,7 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         for (targ_val, val) in self.targets[&target].clone().into_iter().zip(values) {
             let loc = targ_val.opaque_location().unwrap().clone();
             self.move_val(val, loc);
+            self.push_value(targ_val);
         }
 
         if !self.locals_opaque {

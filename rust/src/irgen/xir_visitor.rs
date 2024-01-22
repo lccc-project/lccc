@@ -1082,7 +1082,6 @@ impl<'a> XirBasicBlockVisitor<'a> {
 
 impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
     fn visit_id(&mut self, bb_id: BasicBlockId) {
-        eprintln!("Entering Basic Block {}", bb_id);
         self.targs.get_or_insert_mut(bb_id, Vec::new());
         self.body.block.items.push(ir::BlockItem::Target {
             num: bb_id.id(),
@@ -1837,15 +1836,7 @@ impl<'a> JumpVisitor for XirJumpVisitor<'a> {
         self.targ = Some(targbb);
     }
 
-    fn visit_remap(&mut self, src: SsaVarId, dest: SsaVarId) {
-        let targets = self
-            .targs
-            .get_or_insert_with_mut(self.targ.expect("wrong visit order"), |_| Vec::new());
-        targets.push(ir::StackItem {
-            ty: self.ssa_tys[&src].clone(),
-            kind: ir::StackValueKind::RValue,
-        });
-    }
+    fn visit_remap(&mut self, src: SsaVarId, dest: SsaVarId) {}
 }
 
 impl<'a> Drop for XirJumpVisitor<'a> {
@@ -1856,7 +1847,10 @@ impl<'a> Drop for XirJumpVisitor<'a> {
             .push(ir::BlockItem::Expr(ir::Expr::Branch {
                 cond: self.cond,
                 target: self.targ.unwrap().id(),
-            }))
+            }));
+        if self.cond != ir::BranchCondition::Always && self.cond != ir::BranchCondition::Never {
+            *self.stack_height -= 1;
+        }
     }
 }
 
@@ -2141,10 +2135,6 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
 
     fn visit_var(&mut self, var: SsaVarId) {
         let depth = *self.stack_height - self.var_heights[&var];
-        eprintln!(
-            "Depth of {}: {} (var_height: {})",
-            var, depth, self.var_heights[&var]
-        );
 
         if depth != 0 {
             self.body
@@ -2526,100 +2516,55 @@ impl<'a> BinaryExprVisitor for XirBinaryExprVisitor<'a> {
 
 impl<'a> Drop for XirBinaryExprVisitor<'a> {
     fn drop(&mut self) {
-        match self.op {
-            Some(BinaryOp::Add) => {
-                *self.stack_height -= 1;
-                self.body
-                    .block
-                    .items
-                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
-                        ir::BinaryOp::Add,
-                        ir::OverflowBehaviour::Wrap,
-                    )));
-            }
-            Some(BinaryOp::Sub) => {
-                *self.stack_height -= 1;
-                self.body
-                    .block
-                    .items
-                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
-                        ir::BinaryOp::Sub,
-                        ir::OverflowBehaviour::Wrap,
-                    )));
-            }
-            Some(BinaryOp::Mul) => {
-                *self.stack_height -= 1;
-                self.body
-                    .block
-                    .items
-                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
-                        ir::BinaryOp::Mul,
-                        ir::OverflowBehaviour::Wrap,
-                    )));
-            }
-            Some(BinaryOp::Div) => {
-                *self.stack_height -= 1;
-                self.body
-                    .block
-                    .items
-                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
-                        ir::BinaryOp::Div,
-                        ir::OverflowBehaviour::Wrap,
-                    )));
-            }
-            Some(BinaryOp::Rem) => {
-                *self.stack_height -= 1;
-                self.body
-                    .block
-                    .items
-                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
-                        ir::BinaryOp::Mod,
-                        ir::OverflowBehaviour::Wrap,
-                    )));
-            }
-            Some(BinaryOp::BitAnd) => {
-                *self.stack_height -= 1;
-                self.body
-                    .block
-                    .items
-                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
-                        ir::BinaryOp::BitAnd,
-                        ir::OverflowBehaviour::Wrap,
-                    )));
-            }
-            Some(BinaryOp::Less) => {
-                *self.stack_height -= 1;
-                self.body
-                    .block
-                    .items
-                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
-                        ir::BinaryOp::CmpLt,
-                        ir::OverflowBehaviour::Wrap,
-                    )));
-            }
-            Some(BinaryOp::Greater) => {
-                *self.stack_height -= 1;
-                self.body
-                    .block
-                    .items
-                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
-                        ir::BinaryOp::CmpGt,
-                        ir::OverflowBehaviour::Wrap,
-                    )));
-            }
-            Some(BinaryOp::Equal) => {
-                *self.stack_height -= 1;
-                self.body
-                    .block
-                    .items
-                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
-                        ir::BinaryOp::CmpEq,
-                        ir::OverflowBehaviour::Wrap,
-                    )));
-            }
-            None => panic!("operator wasn't set"),
-            x => todo!("{:?}", x),
-        }
+        *self.stack_height -= 2; // `XirExprVisitor`s drop will increase stack height by 1
+        let op = match self.op.expect("visit_op must be called first") {
+            BinaryOp::Add => ir::BinaryOp::Add,
+            BinaryOp::Sub => ir::BinaryOp::Sub,
+            BinaryOp::Mul => ir::BinaryOp::Mul,
+            BinaryOp::Div => ir::BinaryOp::Div,
+            BinaryOp::Rem => ir::BinaryOp::Mod,
+            BinaryOp::BitAnd => ir::BinaryOp::BitAnd,
+            BinaryOp::BitOr => ir::BinaryOp::BitOr,
+            BinaryOp::BitXor => ir::BinaryOp::BitXor,
+
+            BinaryOp::Less => ir::BinaryOp::CmpLt,
+            BinaryOp::Greater => ir::BinaryOp::CmpGt,
+            BinaryOp::Equal => ir::BinaryOp::CmpEq,
+            BinaryOp::NotEqual => ir::BinaryOp::CmpNe,
+            BinaryOp::LessEqual => ir::BinaryOp::CmpLe,
+            BinaryOp::GreaterEqual => ir::BinaryOp::CmpGe,
+
+            BinaryOp::LeftShift => ir::BinaryOp::Lsh,
+            BinaryOp::RightShift => ir::BinaryOp::Rsh,
+
+            BinaryOp::BoolAnd
+            | BinaryOp::BoolOr
+            | BinaryOp::Range
+            | BinaryOp::RangeInclusive
+            | BinaryOp::Assign
+            | BinaryOp::AddAssign
+            | BinaryOp::SubAssign
+            | BinaryOp::MulAssign
+            | BinaryOp::DivAssign
+            | BinaryOp::RemAssign
+            | BinaryOp::BitAndAssign
+            | BinaryOp::BitOrAssign
+            | BinaryOp::BitXorAssign
+            | BinaryOp::BoolAndAssign
+            | BinaryOp::BoolOrAssign
+            | BinaryOp::LeftShiftAssign
+            | BinaryOp::RightShiftAssign => unreachable!("handled before MIR"),
+        };
+
+        let overflow_behaviour = ir::OverflowBehaviour::Wrap;
+
+        self.body
+            .block
+            .items
+            .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
+                op,
+                overflow_behaviour,
+            )));
     }
 }
 
@@ -2681,19 +2626,28 @@ impl<'a> UnaryExprVisitor for XirUnaryExprVisitor<'a> {
 
 impl<'a> Drop for XirUnaryExprVisitor<'a> {
     fn drop(&mut self) {
-        match self.op {
-            Some(UnaryOp::Neg) => {
-                self.body
-                    .block
-                    .items
-                    .push(ir::BlockItem::Expr(ir::Expr::UnaryOp(
-                        ir::UnaryOp::Minus,
-                        ir::OverflowBehaviour::Wrap,
-                    )));
-            }
-            None => panic!("operator wasn't set"),
-            x => todo!("{:?}", x),
-        }
+        *self.stack_height -= 1; // drop for XirExprVisitor will increase stack_height
+
+        let op = match self.op.expect("visit_op must be called first") {
+            UnaryOp::Neg => ir::UnaryOp::Minus,
+            UnaryOp::Not => todo!(),
+            UnaryOp::RangeFrom
+            | UnaryOp::RangeTo
+            | UnaryOp::RangeToInclusive
+            | UnaryOp::RawAddrOf(_)
+            | UnaryOp::AddrOf(_)
+            | UnaryOp::Deref => unreachable!("handled before of MIR"),
+        };
+
+        let overflow_behaviour = ir::OverflowBehaviour::Wrap;
+
+        self.body
+            .block
+            .items
+            .push(ir::BlockItem::Expr(ir::Expr::UnaryOp(
+                op,
+                overflow_behaviour,
+            )));
     }
 }
 
