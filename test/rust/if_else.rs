@@ -10,7 +10,7 @@ pub fn test_number(x: i32) {
     } else {
         puts(b"Number is zero\0" as *const u8);
     }
-    puts(if x % 2 == 0 {
+    puts(if x & 1 == 0 {
         b"Number is even\0" as *const u8
     } else {
         b"Number is odd\0" as *const u8
