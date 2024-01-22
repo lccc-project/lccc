@@ -1179,7 +1179,12 @@ pub struct Inferer<'a> {
 }
 
 impl<'a> Inferer<'a> {
-    pub fn new(defs: &'a Definitions, curdef: DefId, curmod: DefId, vardefs: &'a mut HashMap<HirVarId, ThirVarDef>) -> Self {
+    pub fn new(
+        defs: &'a Definitions,
+        curdef: DefId,
+        curmod: DefId,
+        vardefs: &'a mut HashMap<HirVarId, ThirVarDef>,
+    ) -> Self {
         Self {
             defs,
             curdef,
@@ -1665,7 +1670,6 @@ impl<'a> Inferer<'a> {
                 let mut ty = std::mem::replace(&mut *self.vardefs[var].ty, Type::Never);
                 status &= self.propagate_type(&mut ty)?;
                 *self.vardefs[var].ty = ty;
-
             }
             ThirStatement::Return(ret) => status &= self.propagate_expr(ret)?,
             ThirStatement::Block(blk) => status &= self.propagate_block(blk)?,
