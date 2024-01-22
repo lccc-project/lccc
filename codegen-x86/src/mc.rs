@@ -361,12 +361,16 @@ fn resolve_locations_in(
         MCInsn::StoreIndirectImm { dest_ptr, .. } => {
             resolve_location(dest_ptr, assignments);
         }
-        MCInsn::BinaryOpImm { dest, .. } => {
-            resolve_location(dest, assignments);
-        }
-        MCInsn::BinaryOp { dest, src, .. } => {
+        MCInsn::BinaryOpImm { dest, src, .. } => {
             resolve_location(dest, assignments);
             resolve_location(src, assignments);
+        }
+        MCInsn::BinaryOp {
+            dest, src1, src2, ..
+        } => {
+            resolve_location(dest, assignments);
+            resolve_location(src1, assignments);
+            resolve_location(src2, assignments);
         }
         MCInsn::UnaryOp { dest, .. } => {
             resolve_location(dest, assignments);
@@ -458,8 +462,13 @@ fn allocate_registers_in(
         MCInsn::StoreIndirect { dest_ptr, src, cl } => true,
         MCInsn::Trap { kind } => true,
         MCInsn::Barrier(_) => true,
-        MCInsn::BinaryOpImm { dest, val, op } => true,
-        MCInsn::BinaryOp { dest, src, op } => true,
+        MCInsn::BinaryOpImm { dest, src, val, op } => true,
+        MCInsn::BinaryOp {
+            dest,
+            src1,
+            src2,
+            op,
+        } => true,
         MCInsn::UnaryOp { dest, op } => true,
         MCInsn::CallSym(_) => true,
         MCInsn::Return => true,
@@ -843,8 +852,13 @@ impl MCWriter for X86MCWriter {
                     _ => encoder.write_insn(X86Instruction::Ud2)?,
                 },
                 MCInsn::Barrier(_) => todo!(),
-                MCInsn::BinaryOpImm { dest, val, op } => todo!(),
-                MCInsn::BinaryOp { dest, src, op } => todo!(),
+                MCInsn::BinaryOpImm { dest, src, val, op } => todo!(),
+                MCInsn::BinaryOp {
+                    dest,
+                    src1,
+                    src2,
+                    op,
+                } => todo!(),
                 MCInsn::UnaryOp { dest, op } => todo!(),
                 MCInsn::CallSym(sym) => {
                     if (frame_size & 0xF) != 8 {

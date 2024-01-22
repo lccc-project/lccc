@@ -70,10 +70,24 @@ pub trait FunctionRawCodegen {
     fn write_barrier(&mut self, acc: AccessClass);
 
     /// Performs a binary operatation on a val location and a constant
-    fn write_int_binary_imm(&mut self, a: Self::Loc, b: u128, ty: &Type, op: BinaryOp);
+    fn write_int_binary_imm(
+        &mut self,
+        dest: Self::Loc,
+        a: Self::Loc,
+        b: u128,
+        ty: &Type,
+        op: BinaryOp,
+    );
 
     /// Performs a binary operatation on two val locations
-    fn write_int_binary(&mut self, a: Self::Loc, b: Self::Loc, ty: &Type, op: BinaryOp);
+    fn write_int_binary(
+        &mut self,
+        dest: Self::Loc,
+        src1: Self::Loc,
+        src2: Self::Loc,
+        ty: &Type,
+        op: BinaryOp,
+    );
 
     /// Performs a unary operation on  a val location
     fn write_unary(&mut self, val: Self::Loc, ty: &Type, op: UnaryOp);
@@ -1426,13 +1440,52 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                         {
                             match v {
                                 OverflowBehaviour::Wrap | OverflowBehaviour::Unchecked => {
+                                    let new_loc = match op {
+                                        BinaryOp::CmpEq
+                                        | BinaryOp::CmpNe
+                                        | BinaryOp::CmpGt
+                                        | BinaryOp::CmpLt
+                                        | BinaryOp::CmpGe
+                                        | BinaryOp::CmpLe => self.inner.allocate(
+                                            &Type::Scalar(ScalarType {
+                                                kind: ScalarTypeKind::Integer {
+                                                    signed: false,
+                                                    min: None,
+                                                    max: None,
+                                                },
+                                                header: ScalarTypeHeader {
+                                                    bitsize: 1,
+                                                    vectorsize: None,
+                                                    validity: Default::default(),
+                                                },
+                                            }),
+                                            false,
+                                        ),
+                                        BinaryOp::CmpInt => self.inner.allocate(
+                                            &Type::Scalar(ScalarType {
+                                                kind: ScalarTypeKind::Integer {
+                                                    signed: true,
+                                                    min: None,
+                                                    max: None,
+                                                },
+                                                header: ScalarTypeHeader {
+                                                    bitsize: 32,
+                                                    vectorsize: None,
+                                                    validity: Default::default(),
+                                                },
+                                            }),
+                                            false,
+                                        ),
+                                        _ => self.inner.allocate(&Type::Scalar(st), false),
+                                    };
                                     self.inner.write_int_binary_imm(
-                                        loc.clone(),
+                                        new_loc.clone(),
+                                        loc,
                                         val,
                                         &Type::Scalar(st),
                                         op,
                                     );
-                                    self.push_value(VStackValue::OpaqueScalar(st, loc));
+                                    self.push_value(VStackValue::OpaqueScalar(st, new_loc));
                                 }
                                 v => todo!("{:?} {:?}", op, v),
                             }

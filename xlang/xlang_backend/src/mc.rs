@@ -145,8 +145,10 @@ pub enum MCInsn<Loc> {
     Barrier(AccessClass),
     /// Performs a binary operation, with an immediate as the rhs
     BinaryOpImm {
-        /// The first operand and the destination
+        /// The destination
         dest: MaybeResolved<Loc>,
+        /// The first operand
+        src: MaybeResolved<Loc>,
         /// The second operand (an immediate)
         val: u128,
         /// The Operation performed
@@ -154,10 +156,12 @@ pub enum MCInsn<Loc> {
     },
     /// Performs a binary operation with unknown values on both sides
     BinaryOp {
-        /// The first operand and the destination
+        /// The destination
         dest: MaybeResolved<Loc>,
+        /// The first operand
+        src1: MaybeResolved<Loc>,
         /// The second operand
-        src: MaybeResolved<Loc>,
+        src2: MaybeResolved<Loc>,
         /// The Operation performed
         op: BinaryOp,
     },
@@ -345,18 +349,34 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
         self.mc_insns.push(MCInsn::Barrier(acc));
     }
 
-    fn write_int_binary_imm(&mut self, a: Self::Loc, b: u128, _: &Type, op: xlang::ir::BinaryOp) {
+    fn write_int_binary_imm(
+        &mut self,
+        dest: Self::Loc,
+        a: Self::Loc,
+        b: u128,
+        _: &Type,
+        op: xlang::ir::BinaryOp,
+    ) {
         self.mc_insns.push(MCInsn::BinaryOpImm {
-            dest: a,
+            dest,
+            src: a,
             val: b,
             op,
         });
     }
 
-    fn write_int_binary(&mut self, a: Self::Loc, b: Self::Loc, _: &Type, op: xlang::ir::BinaryOp) {
+    fn write_int_binary(
+        &mut self,
+        dest: Self::Loc,
+        src1: Self::Loc,
+        src2: Self::Loc,
+        _: &Type,
+        op: xlang::ir::BinaryOp,
+    ) {
         self.mc_insns.push(MCInsn::BinaryOp {
-            dest: a,
-            src: b,
+            dest,
+            src1,
+            src2,
             op,
         });
     }
