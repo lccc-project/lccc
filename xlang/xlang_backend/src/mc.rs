@@ -465,13 +465,8 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
         self.mc_insns.push(MCInsn::Return)
     }
 
-    fn branch(
-        &mut self,
-        target: u32,
-        condition: xlang::ir::BranchCondition,
-        val: crate::expr::VStackValue<Self::Loc>,
-    ) {
-        todo!()
+    fn branch(&mut self, target: u32, condition: xlang::ir::BranchCondition, val: Self::Loc) {
+        todo!("branch {} @{}: {:?}", condition, target, val)
     }
 
     fn branch_compare(

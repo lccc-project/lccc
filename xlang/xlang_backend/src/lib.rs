@@ -141,7 +141,7 @@ pub trait FunctionRawCodegen {
     fn leave_function(&mut self);
 
     /// Performs a conditional branch to `target` based on `condition` and `val`
-    fn branch(&mut self, target: u32, condition: BranchCondition, val: VStackValue<Self::Loc>);
+    fn branch(&mut self, target: u32, condition: BranchCondition, val: Self::Loc);
     /// Performs a conditional branch based on comparing `v1` and `v2` according to `condition`
     /// This is used for the sequence `cmp; branch <condition> @<target>`
     fn branch_compare(
@@ -1477,6 +1477,35 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
         self.inner.branch_unconditional(target);
     }
 
+    fn branch_conditional_to(&mut self, target: u32, cond: BranchCondition, loc: F::Loc) {
+        let values = self.pop_values(self.targets[&target].len()).unwrap();
+        for (targ_val, val) in self.targets[&target].clone().into_iter().zip(values) {
+            let loc = targ_val.opaque_location().unwrap().clone();
+            self.move_val(val, loc);
+        }
+
+        if !self.locals_opaque {
+            let mut locals = std::mem::take(&mut self.locals);
+
+            for (local, _) in &mut locals {
+                let val = core::mem::replace(local, VStackValue::Trapped);
+
+                *local = self.make_opaque(val);
+            }
+
+            self.locals = locals;
+            self.locals_opaque = true;
+        }
+
+        if let StdSome(targ) = self.cfg.get(&target) {
+            if targ.fallthrough_from == self.ctarg {
+                return;
+            }
+        }
+
+        self.inner.branch(target, cond, loc);
+    }
+
     /// Writes a (potentially conditional) branch to `target` based on `cond`
     pub fn write_branch(&mut self, cond: BranchCondition, target: u32) {
         match cond {
@@ -1522,7 +1551,9 @@ impl<F: FunctionRawCodegen> FunctionCodegen<F> {
                             self.branch_to(target);
                         }
                     }
-                    VStackValue::OpaqueScalar(_, _) => todo!("opaque scalar"),
+                    VStackValue::OpaqueScalar(_, loc) => {
+                        self.branch_conditional_to(target, cond, loc);
+                    }
                     VStackValue::CompareResult(_, _) => todo!("compare"),
                     VStackValue::Trapped => {
                         self.push_value(VStackValue::Trapped);

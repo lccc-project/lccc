@@ -557,12 +557,7 @@ impl FunctionRawCodegen for CleverFunctionCodegen {
         self.insns.push(CleverInstructionOrLabel::FunctionEpilogue);
     }
 
-    fn branch(
-        &mut self,
-        target: u32,
-        condition: xlang_struct::BranchCondition,
-        val: xlang_backend::expr::VStackValue<Self::Loc>,
-    ) {
+    fn branch(&mut self, target: u32, condition: xlang_struct::BranchCondition, val: Self::Loc) {
         todo!()
     }
 
