@@ -2592,6 +2592,16 @@ impl<'a> Drop for XirBinaryExprVisitor<'a> {
                         ir::OverflowBehaviour::Wrap,
                     )));
             }
+            Some(BinaryOp::BitAnd) => {
+                *self.stack_height -= 1;
+                self.body
+                    .block
+                    .items
+                    .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
+                        ir::BinaryOp::BitAnd,
+                        ir::OverflowBehaviour::Wrap,
+                    )));
+            }
             Some(BinaryOp::Less) => {
                 *self.stack_height -= 1;
                 self.body
