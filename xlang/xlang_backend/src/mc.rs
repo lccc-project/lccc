@@ -211,7 +211,14 @@ pub enum MCInsn<Loc> {
         old_width: u16,
     },
     /// Conditional Branch
-    Branch(String, xlang::ir::BranchCondition, MaybeResolved<Loc>),
+    Branch {
+        /// Target upon successful condition check
+        targ: String,
+        /// Condition for branching
+        cond: xlang::ir::BranchCondition,
+        /// Value to test
+        val: MaybeResolved<Loc>,
+    },
 }
 
 impl<Loc> Default for MCInsn<Loc> {
@@ -487,9 +494,9 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
         self.mc_insns.push(MCInsn::Return)
     }
 
-    fn branch(&mut self, target: u32, condition: xlang::ir::BranchCondition, val: Self::Loc) {
+    fn branch(&mut self, target: u32, cond: xlang::ir::BranchCondition, val: Self::Loc) {
         let targ = format!("{}._T{}", self.fn_name, target);
-        self.mc_insns.push(MCInsn::Branch(targ, condition, val));
+        self.mc_insns.push(MCInsn::Branch { targ, cond, val });
     }
 
     fn branch_compare(
