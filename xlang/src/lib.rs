@@ -1,6 +1,7 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
 #![allow(clippy::module_name_repetitions, clippy::needless_borrow)]
 
+pub mod diag;
 mod exports;
 pub mod plugin;
 pub mod prelude;

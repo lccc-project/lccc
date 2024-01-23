@@ -9,6 +9,8 @@ pub mod session;
 
 pub mod targets;
 
+pub mod manifest;
+
 use std::{
     borrow::Borrow,
     hash::{BuildHasher, Hash},

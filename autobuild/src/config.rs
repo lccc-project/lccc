@@ -5,8 +5,73 @@ use serde_derive::{Deserialize, Serialize};
 
 use target_tuples::{Target, UnknownError};
 
-use crate::dep::FileHash;
+use crate::hash::{self, FileHash};
 use crate::programs::rustc::RustcVersion;
+use crate::rand::Rand;
+
+#[derive(Clone, Debug)]
+pub enum ConfigVarValue {
+    Set,
+    Unset,
+    Value(String),
+}
+
+impl serde::Serialize for ConfigVarValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            ConfigVarValue::Set => serializer.serialize_bool(true),
+            ConfigVarValue::Unset => serializer.serialize_bool(false),
+            ConfigVarValue::Value(v) => serializer.serialize_str(v),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ConfigVarValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ValueVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for ValueVisitor {
+            type Value = ConfigVarValue;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string or a boolean")
+            }
+
+            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if v {
+                    Ok(ConfigVarValue::Set)
+                } else {
+                    Ok(ConfigVarValue::Unset)
+                }
+            }
+
+            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(ConfigVarValue::Value(v))
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(ConfigVarValue::Value(v.to_string()))
+            }
+        }
+
+        deserializer.deserialize_any(ValueVisitor)
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConfigInstallDirs {
@@ -73,14 +138,29 @@ pub enum ConfigProgramInfo {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConfigData {
-    pub source_manifest: PathBuf,
-    pub bin_dir: PathBuf,
+    pub src_dir: PathBuf,
     pub dirs: ConfigInstallDirs,
     pub env: HashMap<String, String>,
     pub programs: HashMap<String, ConfigFoundProgram>,
     pub targets: ConfigTargets,
-    pub config_files: HashMap<String, FileHash>,
-    pub dep_files: HashMap<String, FileHash>,
+    pub file_cache: HashMap<String, FileHash>,
+    pub config_vars: HashMap<String, ConfigVarValue>,
+    pub global_key: FileHash,
+}
+
+impl ConfigData {
+    pub fn new(src_dir: PathBuf, dirs: ConfigInstallDirs, targets: ConfigTargets) -> Self {
+        Self {
+            src_dir,
+            dirs,
+            env: HashMap::new(),
+            programs: HashMap::new(),
+            targets,
+            file_cache: HashMap::new(),
+            config_vars: HashMap::new(),
+            global_key: FileHash::ZERO,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -106,7 +186,10 @@ pub struct ProgramSpec {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum ProgramType {}
+#[serde(rename_all = "kebab-case")]
+pub enum ProgramType {
+    Rustc,
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BuildTargets {
@@ -126,4 +209,31 @@ pub struct Manifest {
     pub dirs: ExtraConfigDirs,
     pub programs: HashMap<String, ProgramSpec>,
     pub target: BuildTargets,
+}
+
+use std::io;
+
+#[derive(Clone, Debug)]
+pub struct Config {
+    data: Box<ConfigData>,
+    manifests: HashMap<String, Manifest>,
+    rand: Rand,
+}
+
+impl Config {
+    pub fn new(mut data: Box<ConfigData>) -> Self {
+        let mut rand = Rand::init();
+        Self {
+            data,
+            manifests: HashMap::new(),
+            rand,
+        }
+    }
+
+    pub fn check_up_to_date(&mut self, file: String) -> io::Result<bool> {
+        let mut buf = self.data.src_dir.clone();
+        buf.push(&file);
+
+        todo!()
+    }
 }

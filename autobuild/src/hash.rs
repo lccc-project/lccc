@@ -1,12 +1,134 @@
-use core::convert::TryFrom;
-use std::fs::File;
+use std::{
+    fs,
+    io::{self, Read as _},
+    path::Path,
+};
 
 use serde::{Deserialize, Serialize};
 
-use itertools::Itertools as _;
-
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct FileHash([u8; 32]);
+
+impl FileHash {
+    pub const ZERO: FileHash = FileHash([0; 32]);
+}
+
+pub trait FileHasher {
+    type Output: AsRef<[u8]> + 'static;
+
+    /// The size of blocks given to the hash function
+    /// It is a logic error if this is not a power of two (but the result is not undefined behaviour)
+    const BLOCK_SIZE: usize;
+
+    fn update(&mut self, buf: &[u8]);
+
+    fn do_final(self, buf: &[u8]) -> Self::Output;
+}
+
+pub struct HashingReader<R, S> {
+    buf: Vec<u8>,
+    state: S,
+    inner: R,
+}
+
+impl<R, S> HashingReader<R, S> {
+    pub const fn new(state: S, inner: R) -> Self {
+        Self {
+            state,
+            inner,
+            buf: Vec::new(),
+        }
+    }
+
+    pub fn into_inner(self) -> R {
+        self.inner
+    }
+}
+
+impl<R, S: FileHasher> HashingReader<R, S> {
+    pub fn init(&mut self, k: FileHash) {
+        self.buf.clear();
+        self.buf.reserve(S::BLOCK_SIZE);
+
+        if S::BLOCK_SIZE < 32 {
+            for v in k.0.chunks_exact(S::BLOCK_SIZE) {
+                self.state.update(v);
+            }
+        } else {
+            self.buf.extend_from_slice(&k.0);
+        }
+    }
+    pub fn finish(self) -> FileHash {
+        let mut output = [0; 32];
+
+        let val = self.state.do_final(&self.buf);
+
+        let val = val.as_ref();
+
+        let len = val.len().min(32);
+
+        output[..len].copy_from_slice(&val[..len]);
+
+        FileHash(output)
+    }
+}
+
+impl<R: io::Read, S: FileHasher> io::Read for HashingReader<R, S> {
+    fn read(&mut self, mut buf: &mut [u8]) -> io::Result<usize> {
+        let read = self.inner.read(buf)?;
+
+        let mut bytes = &buf[..read];
+
+        let buf_pos = self.buf.len();
+
+        if bytes.len() > (S::BLOCK_SIZE - buf_pos) {
+            if buf_pos != 0 {
+                let (l, r) = bytes.split_at(S::BLOCK_SIZE - buf_pos);
+                self.buf.extend_from_slice(l);
+                bytes = r;
+                self.state.update(&self.buf);
+                self.buf.clear();
+            }
+
+            let ce = bytes.chunks_exact(S::BLOCK_SIZE);
+            self.buf.extend_from_slice(ce.remainder());
+            for chunk in ce {
+                self.state.update(chunk);
+            }
+        } else {
+            self.buf.extend_from_slice(bytes);
+            self.buf.resize(S::BLOCK_SIZE, 0);
+            self.state.update(&self.buf);
+            self.buf.clear();
+        }
+
+        Ok(read)
+    }
+}
+
+pub mod sha;
+
+pub fn hash_file<S: FileHasher, P: AsRef<Path>>(
+    path: P,
+    hasher: S,
+    key: FileHash,
+) -> io::Result<FileHash> {
+    let mut buf = vec![0; S::BLOCK_SIZE];
+    let file = fs::File::open(path)?;
+
+    let mut reader = HashingReader::new(hasher, file);
+
+    reader.init(key);
+
+    loop {
+        if reader.read(&mut buf)? == 0 {
+            break;
+        }
+    }
+
+    Ok(reader.finish())
+}
 
 const ALPHA: [u8; 16] = [
     b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'a', b'b', b'c', b'd', b'e', b'f',

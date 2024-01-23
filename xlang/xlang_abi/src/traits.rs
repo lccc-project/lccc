@@ -496,3 +496,10 @@ impl<T: ?Sized + AbiSafeTrait + 'static, A: Allocator> DerefMut for DynBox<T, A>
         unsafe { &mut *((&mut self.ptr as *mut DynPtr<T>).cast::<DynPtrSafeWrap<T>>()) }
     }
 }
+
+xlang_host::rustcall! {
+    #[doc(hidden)]
+    pub unsafe extern "rustcall" fn __drop_in_place<T>(ptr: *mut ()){
+        core::ptr::drop_in_place(ptr.cast::<T>())
+    }
+}

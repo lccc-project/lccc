@@ -8,7 +8,11 @@ edition = "2018"
 [dependencies]
 serde = "1"
 serde_derive = "1"
-toml = "0.7.6"
-install-dirs= {version="0.3.1", features=["serde"]}
+toml = "0.8.8"
+install-dirs= {version="0.3.2", features=["serde"]}
 target-tuples = "0.5.12"
 itertools = "0.11.0"
+lccc-siphash = {git = "https://github.com/lccc-project/lccc-siphash"}
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.152"
