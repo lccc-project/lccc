@@ -10,7 +10,6 @@ license = "BSD-2-Clause-Patent"
 [dependencies]
 target-tuples = "0.5.5"
 xlang_abi = {path="xlang_abi"}
-xlang_interface = {path="xlang_interface"}
 xlang_struct = {path="xlang_struct"}
 xlang_targets = {path="xlang_targets"}
 xlang_host = {path="xlang_host"}

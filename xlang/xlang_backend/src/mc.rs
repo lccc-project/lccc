@@ -173,7 +173,7 @@ pub enum MCInsn<Loc> {
         op: UnaryOp,
     },
     /// Calls the given String by address
-    CallSym(String),
+    CallSym(String, String),
     /// Tailcalls the given String by address
     TailcallSym(String),
     /// Cleans up the frame and does a return
@@ -456,11 +456,12 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
     fn call_direct(&mut self, path: &xlang::ir::Path, realty: &xlang::ir::FnType) {
         let addr = match &*path.components {
             [PathComponent::Text(a)] | [PathComponent::Root, PathComponent::Text(a)] => {
-                a.clone().to_string()
+                a.to_string()
             }
             [PathComponent::Root, rest @ ..] | [rest @ ..] => self.inner.mangle(rest),
         };
-        self.mc_insns.push(MCInsn::CallSym(addr))
+        self.mc_insns
+            .push(MCInsn::CallSym(realty.tag.to_string(), addr))
     }
 
     fn call_indirect(&mut self, value: Self::Loc) {
@@ -481,7 +482,8 @@ impl<F: MachineFeatures> FunctionRawCodegen for MCFunctionCodegen<F> {
         if self.callconv.can_tail(realty, &self.fnty) {
             self.mc_insns.push(MCInsn::TailcallSym(addr))
         } else {
-            self.mc_insns.push(MCInsn::CallSym(addr));
+            self.mc_insns
+                .push(MCInsn::CallSym(realty.tag.to_string(), addr));
             self.mc_insns.push(MCInsn::Return);
         }
     }
