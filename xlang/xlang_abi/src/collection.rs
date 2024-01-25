@@ -14,7 +14,7 @@ use crate::hash::{BuildHasherDefault, XLangHasher};
 use crate::ptr::Unique;
 use crate::vec::Vec;
 
-/// A [`Trait`] for maps and sets, that allows you to check for whether a particular key is present
+/// A trait for maps and sets, that allows you to check for whether a particular key is present
 pub trait Searchable<Q: ?Sized> {
     /// Searches [`Self`] for the given `key`.
     fn contains_key(&self, key: &Q) -> bool;
