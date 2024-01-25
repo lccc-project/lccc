@@ -540,7 +540,7 @@ impl core::fmt::Display for StaticSpecifier {
 #[derive(Clone, Debug)]
 pub struct StaticDefinition {
     /// The type of the static initializer
-    /// Matches `<type>``
+    /// Matches `<type>`
     pub ty: Type,
     /// The initializer or [`Value::Empty`] if the declaration is not a declaration
     /// Matches `["=" <value>]`
