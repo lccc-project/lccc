@@ -57,8 +57,6 @@ impl<'a> DriverSession<'a> {
             }
         }
     }
-
-    
 }
 
 pub struct CompileSession<'a> {
