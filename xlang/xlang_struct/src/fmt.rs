@@ -52,6 +52,51 @@ impl<'b, 'a> IrFormatter<'b, 'a> {
         Self(f)
     }
 
+    pub fn fmt_terminator(&mut self, term: &Terminator, tabs: Tabs) -> core::fmt::Result {
+        tabs.fmt(self)?;
+        match term {
+            Terminator::Jump(jump) => self.write_fmt(format_args!("jump {}", jump)),
+            Terminator::Branch(cond, then_targ, else_targ) => self.write_fmt(format_args!(
+                "branch {} {} else {}",
+                cond, then_targ, else_targ
+            )),
+            Terminator::BranchIndirect => self.write_str("branch indirect"),
+            Terminator::Call(flags, fnty, next) => {
+                self.write_fmt(format_args!("call {}function{} next {}", flags, fnty, next))
+            }
+            Terminator::Tailcall(flags, fnty) => {
+                self.write_fmt(format_args!("tailcall {}function{}", flags, fnty))
+            }
+            Terminator::Exit(vals) => self.write_fmt(format_args!("exit {}", vals)),
+            Terminator::Asm(asm) => asm.fmt(self),
+            Terminator::Switch(switch) => {
+                self.write_str("switch ")?;
+                let nested = tabs.nest();
+                match switch {
+                    Switch::Hash(switch) => {
+                        self.write_str("hash\n")?;
+                        for case in &switch.cases {
+                            self.write_fmt(format_args!("{}{}: {}\n", nested, case.0, case.1))?;
+                        }
+                        self.write_fmt(format_args!("{}default {}\n", nested, switch.default))?;
+                    }
+                    Switch::Linear(switch) => {
+                        self.write_fmt(format_args!(
+                            "linear {} min {} scale {}\n",
+                            switch.ty, switch.min, switch.scale
+                        ))?;
+                        for case in &switch.cases {
+                            self.write_fmt(format_args!("{}{}", nested, case))?;
+                        }
+                        self.write_fmt(format_args!("{}default {}\n", nested, switch.default))?;
+                    }
+                }
+                self.write_fmt(format_args!("{}end switch", tabs))
+            }
+            Terminator::Unreachable => self.write_str("unreachable"),
+        }
+    }
+
     /// Formats a scope member `mem` at the given `path` at the current nesting level given by `tabs`
     pub fn fmt_scope_member(
         &mut self,
@@ -93,10 +138,30 @@ impl<'b, 'a> IrFormatter<'b, 'a> {
                         self.write_fmt(format_args!("declare _{}: {};\n", local, ty))?;
                     }
 
-                    for item in &body.block.items {
+                    for block in &body.blocks {
                         nested.fmt(self)?;
-                        item.fmt(self)?;
+                        self.write_str("target @")?;
+                        block.target.fmt(self)?;
+                        self.write_str(" [")?;
+                        let mut sep = "";
+                        for item in &block.incoming_stack {
+                            self.write_str(sep)?;
+                            sep = ", ";
+                            item.fmt(self)?;
+                        }
+                        self.write_str("]{\n")?;
+                        let inner_nest = nested.nest();
+
+                        for expr in &block.expr {
+                            inner_nest.fmt(self)?;
+                            expr.fmt(self)?;
+                            self.write_str("\n")?;
+                        }
+
+                        self.fmt_terminator(&block.term, inner_nest)?;
                         self.write_str("\n")?;
+                        nested.fmt(self)?;
+                        self.write_str("}\n")?;
                     }
 
                     tabs.fmt(self)?;

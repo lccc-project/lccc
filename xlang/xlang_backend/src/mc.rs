@@ -8,9 +8,8 @@ use binfmt::{
 };
 use xlang::{
     abi::{
-        collection::HashMap, io::WriteAdapter, option::None as XLangNone,
-        option::Some as XLangSome, pair::Pair, result::Result::Ok as XLangOk, span::Span,
-        string::StringView, try_,
+        collection::HashMap, io::WriteAdapter, option::None as XLangNone, pair::Pair,
+        result::Result::Ok as XLangOk, span::Span, string::StringView, try_,
     },
     ir::{
         AccessClass, BinaryOp, FnType, Linkage, PathComponent, PointerKind, ScalarType,
@@ -782,108 +781,9 @@ impl<W: MCWriter> MCBackend<W> {
 impl<W: MCWriter> XLangPlugin for MCBackend<W> {
     fn accept_ir(
         &mut self,
-        ir: &mut xlang::ir::File,
+        _: &mut xlang::ir::File,
     ) -> xlang::abi::result::Result<(), xlang::plugin::Error> {
-        let mut tys = TypeInformation::from_properties(self.properties.unwrap());
-        for Pair(path, mem) in &ir.root.members {
-            match &mem.member_decl {
-                xlang::ir::MemberDeclaration::OpaqueAggregate(_) => {
-                    tys.add_opaque_aggregate(path.clone())
-                }
-                xlang::ir::MemberDeclaration::AggregateDefinition(defn) => {
-                    tys.add_aggregate(path.clone(), defn.clone())
-                }
-                _ => {}
-            }
-        }
-        let tys = Rc::new(tys);
-        for Pair(path, mem) in &ir.root.members {
-            match &mem.member_decl {
-                xlang::ir::MemberDeclaration::Function(f) => {
-                    let features = self
-                        .writer
-                        .get_features(self.properties.unwrap(), self.feature);
-                    let mangled_name = match &*path.components {
-                        [PathComponent::Root, PathComponent::Text(n)]
-                        | [PathComponent::Text(n)] => n.to_string(),
-                        [PathComponent::Root, rest @ ..] | [rest @ ..] => features.mangle(rest),
-                    };
-
-                    let linkage = f.linkage;
-                    let body = if let XLangSome(body) = &f.body {
-                        let section_spec = SectionSpec::GlobalSection;
-
-                        let innercg = MCFunctionCodegen {
-                            fn_name: mangled_name.clone(),
-                            inner: features,
-                            next_loc_id: 0,
-                            tys: tys.clone(),
-                            mc_insns: Vec::new(),
-                            strings: self.strings.clone(),
-                            callconv: CallConvAdaptor(self.writer.get_call_conv(
-                                &f.ty,
-                                self.properties.unwrap(),
-                                self.feature,
-                                Rc::clone(&tys),
-                            )),
-                            fnty: f.ty.clone(),
-                        };
-                        let mut fncg = FunctionCodegen::new(
-                            innercg,
-                            path.clone(),
-                            f.ty.clone(),
-                            self.properties.unwrap(),
-                            tys.clone(),
-                        );
-
-                        fncg.write_function_body(body);
-
-                        Some((section_spec, fncg))
-                    } else {
-                        None
-                    };
-
-                    self.functions
-                        .insert(mangled_name, MCFunctionDecl { linkage, body });
-                }
-                xlang::ir::MemberDeclaration::Static(st) => {
-                    let features = self
-                        .writer
-                        .get_features(self.properties.unwrap(), self.feature);
-                    let mangled_name = match &*path.components {
-                        [PathComponent::Root, PathComponent::Text(n)]
-                        | [PathComponent::Text(n)] => n.to_string(),
-                        [PathComponent::Root, rest @ ..] | [rest @ ..] => features.mangle(rest),
-                    };
-
-                    let linkage = st.linkage;
-
-                    let init = match &st.init {
-                        xlang::ir::Value::Empty => None,
-                        val => {
-                            let section_spec = SectionSpec::GlobalSection;
-                            let space = tys.type_size(&st.ty).unwrap();
-                            let align = tys.type_align(&st.ty).unwrap();
-                            let init: xlang::ir::Value = val.clone();
-                            let specifier = st.specifiers;
-                            Some(MCStaticDef {
-                                section: section_spec,
-                                init,
-                                space,
-                                align,
-                                specifier,
-                            })
-                        }
-                    };
-
-                    self.statics
-                        .insert(mangled_name, MCStaticDecl { linkage, init });
-                }
-                _ => {}
-            }
-        }
-        self.tys = Some(tys);
-        XLangOk(())
+        unimplemented!()
     }
 
     fn set_target(&mut self, targ: &'static TargetProperties<'static>) {

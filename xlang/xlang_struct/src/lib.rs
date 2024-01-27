@@ -1784,26 +1784,9 @@ pub enum Expr {
     /// Operands: [..]=>[..,Value]
     Const(Value),
 
-    /// Exits the function
-    ///
-    /// # Stack
-    ///
-    /// Type Checking: [..,T1,T2,...,Tn]=>diverged
-    ///
-    /// Operands: [..,v1,v2,...,vn]=>diverged
-    Exit {
-        values: u16,
-    },
-
     /// Computes
     BinaryOp(BinaryOp, OverflowBehaviour),
     UnaryOp(UnaryOp, OverflowBehaviour),
-    CallFunction(FnType),
-    Branch {
-        cond: BranchCondition,
-        target: u32,
-    },
-    BranchIndirect,
     Convert(ConversionStrength, Type),
     Derive(PointerType, Box<Self>),
     Local(u32),
@@ -1823,9 +1806,6 @@ pub enum Expr {
     AddrOf,
 
     Fence(AccessClass),
-    Switch(Switch),
-    Tailcall(FnType),
-    Asm(AsmExpr),
     BeginStorage(u32),
     EndStorage(u32),
 
@@ -1851,14 +1831,8 @@ impl core::fmt::Display for Expr {
                 f.write_str("const ")?;
                 val.fmt(f)
             }
-            Self::Exit { values } => f.write_fmt(format_args!("exit {}", values)),
             Self::BinaryOp(op, v) => f.write_fmt(format_args!("{} {}", op, v)),
             Self::UnaryOp(op, v) => f.write_fmt(format_args!("{} {}", op, v)),
-            Self::CallFunction(fun) => f.write_fmt(format_args!("call {}", fun)),
-            Self::Branch { cond, target } => {
-                f.write_fmt(format_args!("branch {} @{}", cond, target))
-            }
-            Self::BranchIndirect => f.write_str("branch indirect"),
             Self::Convert(strength, ty) => f.write_fmt(format_args!("convert {} {}", strength, ty)),
             Self::Derive(pty, inner) => f.write_fmt(format_args!("derive {} {}", pty, inner)),
             Self::Local(n) => f.write_fmt(format_args!("local _{}", n)),
@@ -1895,13 +1869,111 @@ impl core::fmt::Display for Expr {
             Self::Sequence(AccessClass::Normal) => f.write_str("nop"),
             Self::Sequence(acc) => f.write_fmt(format_args!("sequence {}", acc)),
             Self::Fence(acc) => f.write_fmt(format_args!("fence {}", acc)),
-            Self::Switch(_) => todo!(),
-            Self::Tailcall(fun) => f.write_fmt(format_args!("tailcall {}", fun)),
-            Self::Asm(asm) => asm.fmt(f),
             Self::BeginStorage(n) => f.write_fmt(format_args!("begin storage _{}", n)),
             Self::EndStorage(n) => f.write_fmt(format_args!("end storage _{}", n)),
             Self::Select(n) => f.write_fmt(format_args!("select {}", n)),
         }
+    }
+}
+
+bitflags::bitflags! {
+    /// The flags for a jump target
+    ///
+    /// Matches the syntax:
+    /// ```abnf
+    /// jump-target-flag := "fallthrough" / "cold" / "continue"
+    /// ```
+    #[repr(transparent)]
+    pub struct JumpTargetFlags : u32{
+        /// The "fallthrough" flag.
+        /// Indicates that the jump does not perform a branch but instead continues on to the next basic block
+        ///
+        /// The behaviour is undefined if the `target` field of the [`JumpTarget`] is not the immediately adjacent basic block
+        const FALLTHROUGH = 1;
+        /// The "cold" flag.
+        /// Indicates that the branch is unlikely to be taken.
+        ///
+        /// The optimizer may pessimize the case where the branch is taken, to optimize the case where a different branch is taken
+        const COLD = 2;
+    }
+}
+
+impl core::fmt::Display for JumpTargetFlags {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        if self.contains(Self::FALLTHROUGH) {
+            f.write_str("fallthrough ")?;
+        }
+        if self.contains(Self::COLD) {
+            f.write_str("cold ")?;
+        }
+        Ok(())
+    }
+}
+
+/// The target of a jump, such as a branch,
+/// Matches the syntax
+/// ```abnf
+/// jump-target := [*(<jump-target-flags>)] @<int-literal>
+/// ```
+#[repr(C)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct JumpTarget {
+    /// The flags for the jump
+    pub flags: JumpTargetFlags,
+    /// The target basic block
+    pub target: u32,
+}
+
+impl core::fmt::Display for JumpTarget {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        self.flags.fmt(f)?;
+        f.write_str("@")?;
+        self.target.fmt(f)
+    }
+}
+
+bitflags::bitflags! {
+    #[repr(transparent)]
+    pub struct CallFlags: u32{
+        const WILLRETURN = 1;
+    }
+}
+
+impl core::fmt::Display for CallFlags {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        if self.contains(Self::WILLRETURN) {
+            f.write_str("willreturn ")?;
+        }
+        Ok(())
+    }
+}
+
+/// A terminator of a [`Block`]
+///
+/// Matchs the `terminator` production
+#[repr(u32)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Terminator {
+    /// Jump to another basic block, uncondtionally
+    /// Matches the syntax
+    /// ```abnf
+    /// terminator := "jump" <jump-target>
+    /// ```
+    Jump(JumpTarget),
+    /// Branch to one of two basic blocks, depending on the evaluation of a condition,
+    Branch(BranchCondition, JumpTarget, JumpTarget),
+    BranchIndirect,
+    Call(CallFlags, Box<FnType>, JumpTarget),
+    Tailcall(CallFlags, Box<FnType>),
+    Exit(u16),
+    Asm(AsmExpr),
+    Switch(Switch),
+    Unreachable,
+}
+
+impl Default for Terminator {
+    fn default() -> Self {
+        Self::Unreachable
     }
 }
 
@@ -1991,9 +2063,10 @@ pub struct AsmExpr {
     pub access_class: AccessClass,
     pub string: String,
     pub clobbers: Vec<AsmConstraint>,
-    pub targets: Vec<u32>,
+    pub targets: Vec<JumpTarget>,
     pub inputs: Vec<AsmConstraint>,
     pub outputs: Vec<AsmOutput>,
+    pub next: Option<JumpTarget>,
 }
 
 impl core::fmt::Display for AsmExpr {
@@ -2143,8 +2216,8 @@ pub enum Switch {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct HashSwitch {
-    pub cases: Vec<Pair<Value, u32>>,
-    pub default: u32,
+    pub cases: Vec<Pair<Value, JumpTarget>>,
+    pub default: JumpTarget,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -2152,8 +2225,8 @@ pub struct LinearSwitch {
     pub ty: Type,
     pub min: u128,
     pub scale: u32,
-    pub default: u32,
-    pub cases: Vec<u32>,
+    pub default: JumpTarget,
+    pub cases: Vec<JumpTarget>,
 }
 
 #[repr(u8)]
@@ -2180,43 +2253,20 @@ impl core::fmt::Display for StackItem {
     }
 }
 
-#[repr(u8)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum BlockItem {
-    Expr(Expr),
-    Target { num: u32, stack: Vec<StackItem> },
-}
-
-impl core::fmt::Display for BlockItem {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Expr(expr) => expr.fmt(f),
-            Self::Target { num, stack } => {
-                f.write_fmt(format_args!("target @{} [", num))?;
-                let mut sep = "";
-
-                for item in stack {
-                    f.write_str(sep)?;
-                    sep = ", ";
-                    item.fmt(f)?;
-                }
-                f.write_str("]")
-            }
-        }
-    }
-}
-
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
 pub struct Block {
-    pub items: Vec<BlockItem>,
+    pub target: u32,
+    pub incoming_stack: Vec<StackItem>,
+    pub expr: Vec<Expr>,
+    pub term: Terminator,
 }
 
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
 pub struct FunctionBody {
     pub locals: Vec<Type>,
-    pub block: Block,
+    pub blocks: Vec<Block>,
 }
 
 #[repr(C)]

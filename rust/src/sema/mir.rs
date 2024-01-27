@@ -60,6 +60,7 @@ impl core::borrow::Borrow<u32> for BasicBlockId {
 }
 
 impl SsaVarId {
+    pub const INVALID: SsaVarId = Self(!0);
     pub const fn id(self) -> u32 {
         self.0
     }

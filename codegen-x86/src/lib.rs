@@ -9,6 +9,7 @@ use xlang::{
 
 xlang::host::rustcall! {
 #[no_mangle]
+#[allow(improper_ctypes_definitions)]
 pub extern "rustcall" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
     DynBox::unsize_box(Box::new(xlang_backend::mc::MCBackend::new(mc::new_writer())))
 }}

@@ -7,7 +7,7 @@ use xlang::ir::{
 };
 use xlang::prelude::v1::{HashMap, Pair};
 use xlang::targets::properties::TargetProperties;
-use xlang::{abi::string::String as XLangString, abi::vec::Vec, vec};
+use xlang::{abi::boxed::Box as XLangBox, abi::string::String as XLangString, abi::vec::Vec, vec};
 use xlang::{
     abi::{
         self,
@@ -16,6 +16,7 @@ use xlang::{
     ir::PathComponent,
 };
 
+use crate::sema::mir;
 use crate::sema::{cx, hir::BinaryOp, mir::SsaVarId};
 use crate::sema::{generics, ty, UserTypeKind};
 use crate::sema::{mir::UnaryOp, ty::Mutability};
@@ -568,7 +569,6 @@ impl<'a> FunctionDefVisitor for XirFunctionDefVisitor<'a> {
             self.names,
             self.properties,
             self.deftys,
-            self.file,
             &mut self.fndef.ty,
             self.fndef.body.insert(ir::FunctionBody::default()),
         )))
@@ -951,64 +951,37 @@ pub struct XirFunctionBodyVisitor<'a> {
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
-    file: &'a mut ir::File,
     cur_fnty: &'a mut ir::FnType,
     fndecl: &'a mut ir::FunctionBody,
-    targs: HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: HashMap<SsaVarId, u32>,
     ssa_tys: HashMap<SsaVarId, ir::Type>,
-    stack_height: u32,
 }
 
 impl<'a> XirFunctionBodyVisitor<'a> {
-    fn new(
+    pub fn new(
         defs: &'a Definitions,
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
-        file: &'a mut ir::File,
         cur_fnty: &'a mut ir::FnType,
         fndecl: &'a mut ir::FunctionBody,
     ) -> Self {
-        let mut result = Self {
-            stack_height: cur_fnty.params.len() as u32,
+        Self {
             defs,
             names,
             properties,
             deftys,
-            file,
-            fndecl,
             cur_fnty,
-            targs: HashMap::new(),
-            var_heights: HashMap::new(),
+            fndecl,
             ssa_tys: HashMap::new(),
-        };
-
-        for (idx, ty) in result.cur_fnty.params.iter().enumerate() {
-            let id = SsaVarId(idx as u32);
-            result.var_heights.insert(id, idx as u32);
-            result.ssa_tys.insert(id, ty.clone());
-        }
-
-        result
-    }
-}
-
-impl<'a> Drop for XirFunctionBodyVisitor<'a> {
-    fn drop(&mut self) {
-        for stat in self.fndecl.block.items.iter_mut() {
-            if let ir::BlockItem::Target { num, stack } = stat {
-                *stack = core::mem::take(
-                    self.targs
-                        .get_mut(num)
-                        .expect("must have visited the basic block first"),
-                );
-            }
         }
     }
 }
 
 impl<'a> FunctionBodyVisitor for XirFunctionBodyVisitor<'a> {
+    fn visit_inner_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>> {
+        todo!()
+    }
+
     fn visit_basic_block(&mut self) -> Option<Box<dyn BasicBlockVisitor + '_>> {
         Some(Box::new(XirBasicBlockVisitor::new(
             self.defs,
@@ -1016,21 +989,9 @@ impl<'a> FunctionBodyVisitor for XirFunctionBodyVisitor<'a> {
             self.properties,
             self.deftys,
             self.cur_fnty,
-            self.fndecl,
-            &mut self.targs,
-            &mut self.var_heights,
+            self.fndecl.blocks.push_mut(ir::Block::default()),
+            &mut self.fndecl.locals,
             &mut self.ssa_tys,
-            self.stack_height,
-        )))
-    }
-
-    fn visit_inner_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>> {
-        Some(Box::new(XirValueDefVisitor::new(
-            self.defs,
-            self.names,
-            self.deftys,
-            self.file,
-            self.properties,
         )))
     }
 }
@@ -1041,27 +1002,24 @@ pub struct XirBasicBlockVisitor<'a> {
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
     cur_fnty: &'a mut ir::FnType,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    block: &'a mut ir::Block,
+    locals: &'a mut Vec<ir::Type>,
     ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     stack_height: u32,
-    bb_id: BasicBlockId,
-    incoming_vars: Vec<SsaVarId>,
+    var_heights: HashMap<SsaVarId, u32>,
+    var_stack: Vec<SsaVarId>,
 }
 
 impl<'a> XirBasicBlockVisitor<'a> {
-    fn new(
+    pub fn new(
         defs: &'a Definitions,
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
         cur_fnty: &'a mut ir::FnType,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        block: &'a mut ir::Block,
+        locals: &'a mut Vec<ir::Type>,
         ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
-        stack_height: u32,
     ) -> Self {
         Self {
             defs,
@@ -1069,39 +1027,39 @@ impl<'a> XirBasicBlockVisitor<'a> {
             properties,
             deftys,
             cur_fnty,
-            body,
-            targs,
-            var_heights,
+            block,
+            locals,
             ssa_tys,
-            stack_height,
-            bb_id: BasicBlockId(u32::MAX),
-            incoming_vars: vec![],
+            stack_height: 0,
+            var_heights: HashMap::new(),
+            var_stack: Vec::new(),
         }
     }
 }
 
 impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
-    fn visit_id(&mut self, bb_id: BasicBlockId) {
-        self.targs.get_or_insert_mut(bb_id, Vec::new());
-        self.body.block.items.push(ir::BlockItem::Target {
-            num: bb_id.id(),
-            stack: vec![],
-        });
-        self.bb_id = bb_id;
+    fn visit_id(&mut self, id: mir::BasicBlockId) {
+        self.block.target = id.id();
     }
 
     fn visit_incoming_var(&mut self, incoming: SsaVarId) -> Option<Box<dyn TypeVisitor + '_>> {
-        self.stack_height += 1;
         let height = self.stack_height;
+        self.stack_height += 1;
         self.var_heights.insert(incoming, height);
 
-        let ty = self.ssa_tys.get_or_insert_mut(incoming, ir::Type::Null);
-        self.incoming_vars.push(incoming);
+        self.var_stack.push(incoming);
 
         Some(Box::new(XirTypeVisitor::new(
             self.defs,
             self.names,
-            ty,
+            &mut self
+                .block
+                .incoming_stack
+                .push_mut(ir::StackItem {
+                    ty: ir::Type::Null,
+                    kind: ir::StackValueKind::RValue,
+                })
+                .ty,
             self.properties,
         )))
     }
@@ -1113,11 +1071,12 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
             self.properties,
             self.deftys,
             self.cur_fnty,
-            self.body,
-            self.targs,
-            &mut self.var_heights,
-            &mut self.ssa_tys,
+            &mut self.block.expr,
+            self.locals,
+            self.ssa_tys,
             &mut self.stack_height,
+            &mut self.var_heights,
+            &mut self.var_stack,
         )))
     }
 
@@ -1128,25 +1087,13 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
             self.properties,
             self.deftys,
             self.cur_fnty,
-            self.body,
-            self.targs,
-            &mut self.var_heights,
-            &mut self.ssa_tys,
+            self.block,
+            self.locals,
+            self.ssa_tys,
             &mut self.stack_height,
+            &mut self.var_heights,
+            &mut self.var_stack,
         )))
-    }
-}
-
-impl<'a> Drop for XirBasicBlockVisitor<'a> {
-    fn drop(&mut self) {
-        let targs = self.targs.get_mut(&self.bb_id).unwrap();
-        for incoming in &self.incoming_vars {
-            let ty = self.ssa_tys[incoming].clone();
-            targs.push(ir::StackItem {
-                ty,
-                kind: ir::StackValueKind::RValue,
-            });
-        }
     }
 }
 
@@ -1156,11 +1103,12 @@ pub struct XirTerminatorVisitor<'a> {
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
     cur_fnty: &'a mut ir::FnType,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
+    block: &'a mut ir::Block,
+    locals: &'a mut Vec<ir::Type>,
     ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
     stack_height: &'a mut u32,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    var_stack: &'a mut Vec<SsaVarId>,
 }
 
 impl<'a> XirTerminatorVisitor<'a> {
@@ -1170,11 +1118,12 @@ impl<'a> XirTerminatorVisitor<'a> {
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
         cur_fnty: &'a mut ir::FnType,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        block: &'a mut ir::Block,
+        locals: &'a mut Vec<ir::Type>,
         ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
         stack_height: &'a mut u32,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        var_stack: &'a mut Vec<SsaVarId>,
     ) -> Self {
         Self {
             defs,
@@ -1182,130 +1131,158 @@ impl<'a> XirTerminatorVisitor<'a> {
             properties,
             deftys,
             cur_fnty,
-            body,
-            targs,
+            block,
+            locals,
             ssa_tys,
-            var_heights,
             stack_height,
+            var_heights,
+            var_stack,
         }
     }
 }
 
 impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
+    fn visit_branch(&mut self) -> Option<Box<dyn BranchVisitor + '_>> {
+        todo!()
+    }
+
     fn visit_call(&mut self) -> Option<Box<dyn CallVisitor + '_>> {
         Some(Box::new(XirCallVisitor::new(
             self.defs,
             self.names,
             self.properties,
             self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
+            self.cur_fnty,
+            self.block,
+            self.locals,
             self.ssa_tys,
             self.stack_height,
+            self.var_heights,
+            self.var_stack,
         )))
     }
 
     fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
+        let targ = {
+            self.block.term = ir::Terminator::Jump(ir::JumpTarget {
+                target: !0,
+                flags: ir::JumpTargetFlags::empty(),
+            });
+
+            match &mut self.block.term {
+                ir::Terminator::Jump(targ) => targ,
+                _ => unsafe { core::hint::unreachable_unchecked() },
+            }
+        };
+
         Some(Box::new(XirJumpVisitor::new(
+            self.defs,
             self.names,
             self.properties,
-            self.body,
-            self.targs,
-            self.var_heights,
+            self.deftys,
+            self.cur_fnty,
+            &mut self.block.expr,
+            targ,
+            self.locals,
             self.ssa_tys,
             self.stack_height,
-            ir::BranchCondition::Always,
+            self.var_heights,
+            self.var_stack,
         )))
     }
 
     fn visit_return(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        Some(Box::new(XirReturnVisitor(XirExprVisitor::new(
+        self.block.term = ir::Terminator::Exit(1);
+        Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
             self.properties,
             self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        ))))
-    }
-
-    fn visit_branch(&mut self) -> Option<Box<dyn BranchVisitor + '_>> {
-        Some(Box::new(XirBranchVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
+            self.cur_fnty,
+            &mut self.block.expr,
+            self.locals,
             self.ssa_tys,
             self.stack_height,
+            self.var_heights,
+            self.var_stack,
         )))
     }
 }
 
-pub struct XirReturnVisitor<'a>(XirExprVisitor<'a>);
+pub struct XirJumpVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    cur_fnty: &'a mut ir::FnType,
+    exprs: &'a mut Vec<ir::Expr>,
+    targ: &'a mut ir::JumpTarget,
+    locals: &'a mut Vec<ir::Type>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+    stack_height: &'a mut u32,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    var_stack: &'a mut Vec<SsaVarId>,
+}
 
-impl<'a> ExprVisitor for XirReturnVisitor<'a> {
-    fn visit_unreachable(&mut self) {
-        self.0.visit_unreachable()
-    }
-
-    fn visit_const_int(&mut self) -> Option<Box<dyn ConstIntVisitor + '_>> {
-        self.0.visit_const_int()
-    }
-
-    fn visit_const(&mut self, defid: DefId) {
-        self.0.visit_const(defid)
-    }
-
-    fn visit_cast(&mut self) -> Option<Box<dyn CastVisitor + '_>> {
-        self.0.visit_cast()
-    }
-
-    fn visit_const_string(&mut self) -> Option<Box<dyn ConstStringVisitor + '_>> {
-        self.0.visit_const_string()
-    }
-
-    fn visit_var(&mut self, var: SsaVarId) {
-        self.0.visit_var(var)
-    }
-
-    fn visit_tuple(&mut self) -> Option<Box<dyn super::visitor::TupleExprVisitor + '_>> {
-        self.0.visit_tuple()
-    }
-
-    fn visit_ctor(&mut self) -> Option<Box<dyn ConstructorVisitor + '_>> {
-        self.0.visit_ctor()
-    }
-
-    fn visit_field_subobject(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
-        self.0.visit_field_subobject()
-    }
-
-    fn visit_field_project(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
-        self.0.visit_field_project()
-    }
-
-    fn visit_binary_expr(&mut self) -> Option<Box<dyn BinaryExprVisitor + '_>> {
-        self.0.visit_binary_expr()
-    }
-
-    fn visit_unary_expr(&mut self) -> Option<Box<dyn UnaryExprVisitor + '_>> {
-        self.0.visit_unary_expr()
+impl<'a> XirJumpVisitor<'a> {
+    pub fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        cur_fnty: &'a mut ir::FnType,
+        exprs: &'a mut Vec<ir::Expr>,
+        targ: &'a mut ir::JumpTarget,
+        locals: &'a mut Vec<ir::Type>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+        stack_height: &'a mut u32,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        var_stack: &'a mut Vec<SsaVarId>,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            cur_fnty,
+            exprs,
+            targ,
+            locals,
+            ssa_tys,
+            stack_height,
+            var_heights,
+            var_stack,
+        }
     }
 }
 
-impl<'a> Drop for XirReturnVisitor<'a> {
-    fn drop(&mut self) {
-        self.0
-            .body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::Exit { values: 1 }))
+impl<'a> JumpVisitor for XirJumpVisitor<'a> {
+    fn visit_target_bb(&mut self, targbb: mir::BasicBlockId) {
+        self.targ.target = targbb.id();
+    }
+
+    fn visit_remap(&mut self, src: mir::SsaVarId, _: mir::SsaVarId) {
+        let height = self.var_heights.remove(&src).unwrap().1;
+        let i = self
+            .var_stack
+            .iter()
+            .enumerate()
+            .skip_while(|(_, v)| *v != &src)
+            .map(|(off, _)| off)
+            .next()
+            .unwrap();
+
+        self.var_stack.remove(i);
+
+        for var in &self.var_stack[i..] {
+            self.var_heights[var] -= 1;
+        }
+
+        let depth = (*self.stack_height) - (height + 1);
+
+        if depth != 0 {
+            self.exprs.push(ir::Expr::Pivot(depth, 1));
+        }
     }
 }
 
@@ -1314,14 +1291,16 @@ pub struct XirCallVisitor<'a> {
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    cur_fnty: &'a mut ir::FnType,
+    block: &'a mut ir::Block,
+    locals: &'a mut Vec<ir::Type>,
     ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     stack_height: &'a mut u32,
-    retplace: Option<SsaVarId>,
-    fnty: Option<ir::FnType>,
-    late_invoke_intrin: Option<(IntrinsicDef, generics::GenericArgs)>,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    var_stack: &'a mut Vec<SsaVarId>,
+    late_bound_intrinsic: Option<IntrinsicDef>,
+    fnty: ir::FnType,
+    targ: Option<ir::JumpTarget>,
 }
 
 impl<'a> XirCallVisitor<'a> {
@@ -1330,33 +1309,35 @@ impl<'a> XirCallVisitor<'a> {
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        cur_fnty: &'a mut ir::FnType,
+        block: &'a mut ir::Block,
+        locals: &'a mut Vec<ir::Type>,
         ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
         stack_height: &'a mut u32,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        var_stack: &'a mut Vec<SsaVarId>,
     ) -> Self {
         Self {
             defs,
             names,
-            body,
+            properties,
             deftys,
-            targs,
-            var_heights,
+            cur_fnty,
+            block,
+            locals,
             ssa_tys,
             stack_height,
-            retplace: None,
-            fnty: None,
-            properties,
-            late_invoke_intrin: None,
+            var_heights,
+            var_stack,
+            late_bound_intrinsic: None,
+            fnty: ir::FnType::default(),
+            targ: None,
         }
     }
 }
 
 impl<'a> CallVisitor for XirCallVisitor<'a> {
-    fn visit_retplace(&mut self, retplace: SsaVarId) {
-        self.retplace = Some(retplace);
-    }
+    fn visit_retplace(&mut self, _: mir::SsaVarId) {}
 
     fn visit_target(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
         Some(Box::new(XirExprVisitor::new(
@@ -1364,10 +1345,13 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
             self.names,
             self.properties,
             self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
+            self.cur_fnty,
+            &mut self.block.expr,
+            self.locals,
+            self.ssa_tys,
             self.stack_height,
+            self.var_heights,
+            self.var_stack,
         )))
     }
 
@@ -1375,7 +1359,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
         Some(Box::new(XirFunctionTyVisitor::new(
             self.defs,
             self.names,
-            self.fnty.insert(ir::FnType::default()),
+            &mut self.fnty,
             self.properties,
         )))
     }
@@ -1386,603 +1370,203 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
             self.names,
             self.properties,
             self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
+            self.cur_fnty,
+            &mut self.block.expr,
+            self.locals,
+            self.ssa_tys,
             self.stack_height,
+            self.var_heights,
+            self.var_stack,
         )))
     }
 
-    fn visit_tailcall(&mut self) {
-        let fnty = self.fnty.take().expect("visit_fnty must have been called");
-
-        let is_never = fnty.ret == NEVER;
-
-        if let Some((intrin, generics)) = self.late_invoke_intrin.take() {
-            // Handle late bound intrinsics here
-            match intrin {
-                IntrinsicDef::__builtin_unreachable => {
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Invalid(
-                            fnty.ret,
-                        ))));
-                }
-                IntrinsicDef::impl_id => todo!("impl_id"),
-                IntrinsicDef::type_id => todo!("type_id"),
-                IntrinsicDef::type_name => todo!("type_name"),
-                IntrinsicDef::destroy_at => todo!("destroy_at"),
-                IntrinsicDef::discriminant => todo!("discriminant"),
-
-                IntrinsicDef::construct_in_place => todo!("construct_in_place"),
-                IntrinsicDef::__builtin_read => {
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::AsRValue(
-                            ir::AccessClass::Normal,
-                        )));
-                }
-                IntrinsicDef::__builtin_read_freeze => {
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::AsRValue(
-                            ir::AccessClass::Freeze,
-                        )));
-                }
-                IntrinsicDef::__builtin_read_volatile => {
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::AsRValue(
-                            ir::AccessClass::Volatile,
-                        )));
-                }
-                IntrinsicDef::__builtin_write => {
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Pivot(1, 1)));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Assign(
-                            ir::AccessClass::Normal,
-                        )));
-                }
-                IntrinsicDef::__builtin_write_volatile => {
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Pivot(1, 1)));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Assign(
-                            ir::AccessClass::Normal,
-                        )));
-                }
-                IntrinsicDef::__builtin_size_of => todo!(),
-                IntrinsicDef::__builtin_align_of => todo!(),
-                IntrinsicDef::__builtin_size_of_val => todo!(),
-                IntrinsicDef::__builtin_align_of_val => todo!(),
-
-                IntrinsicDef::__builtin_abort
-                | IntrinsicDef::__builtin_allocate
-                | IntrinsicDef::__builtin_deallocate
-                | IntrinsicDef::transmute
-                | IntrinsicDef::black_box
-                | IntrinsicDef::__builtin_likely
-                | IntrinsicDef::__builtin_unlikely => {
-                    unreachable!("These are handled like regular functions")
-                }
-            }
-            self.body
-                .block
-                .items
-                .push(ir::BlockItem::Expr(ir::Expr::Exit { values: 1 }));
-        } else {
-            // Either we're compatible or we're `!` and don't return
-            self.body
-                .block
-                .items
-                .push(ir::BlockItem::Expr(ir::Expr::Tailcall(fnty)));
-        }
-    }
-
     fn visit_next(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
-        let fnty = self.fnty.take().expect("visit_fnty must be called first");
-        let retty = fnty.ret.clone();
-        *self.stack_height -= fnty.params.len() as u32;
-
-        if let Some((intrin, generics)) = self.late_invoke_intrin.take() {
-            // Handle late bound intrinsics here
-            // Assume that params are correct - yes, this will bork irgen if the params are wrong
-            match intrin {
-                IntrinsicDef::__builtin_unreachable => {
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Invalid(
-                            retty.clone(),
-                        ))));
-                }
-                IntrinsicDef::impl_id => todo!("impl_id"),
-                IntrinsicDef::type_id => todo!("type_id"),
-                IntrinsicDef::type_name => todo!("type_name"),
-                IntrinsicDef::destroy_at => todo!("destroy_at"),
-                IntrinsicDef::discriminant => todo!("discriminant"),
-
-                IntrinsicDef::construct_in_place => todo!("construct_in_place"),
-                IntrinsicDef::__builtin_read => {
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::AsRValue(
-                            ir::AccessClass::Normal,
-                        )));
-                }
-                IntrinsicDef::__builtin_read_freeze => {
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::AsRValue(
-                            ir::AccessClass::Freeze,
-                        )));
-                }
-                IntrinsicDef::__builtin_read_volatile => {
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::AsRValue(
-                            ir::AccessClass::Volatile,
-                        )));
-                }
-                IntrinsicDef::__builtin_write => {
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Pivot(1, 1)));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Assign(
-                            ir::AccessClass::Normal,
-                        )));
-                }
-                IntrinsicDef::__builtin_write_volatile => {
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Pivot(1, 1)));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Indirect));
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Assign(
-                            ir::AccessClass::Normal,
-                        )));
-                }
-                IntrinsicDef::__builtin_size_of => {
-                    let ty = match generics.params.into_iter().next().unwrap() {
-                        generics::GenericArg::Type(ty) => ty,
-                        _ => unreachable!(),
-                    };
-
-                    let layout = self.defs.layout_of(&ty, DefId::ROOT, DefId::ROOT);
-
-                    let size = layout
-                        .size
-                        .expect("__builtin_size_of requires a Sized type");
-
-                    let intty = match &retty {
-                        ir::Type::Scalar(sty) => *sty,
-                        _ => unreachable!("__builtin_size_of returns `usize`"),
-                    };
-
-                    self.body
-                        .block
-                        .items
-                        .push(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Integer {
-                            ty: intty,
-                            val: size as u128,
-                        })));
-                }
-                IntrinsicDef::__builtin_align_of => todo!(),
-                IntrinsicDef::__builtin_size_of_val => todo!(),
-                IntrinsicDef::__builtin_align_of_val => todo!(),
-
-                IntrinsicDef::__builtin_abort
-                | IntrinsicDef::__builtin_allocate
-                | IntrinsicDef::__builtin_deallocate
-                | IntrinsicDef::transmute
-                | IntrinsicDef::black_box
-                | IntrinsicDef::__builtin_likely
-                | IntrinsicDef::__builtin_unlikely => unreachable!(),
-            }
-        } else {
-            self.body
-                .block
-                .items
-                .push(ir::BlockItem::Expr(ir::Expr::CallFunction(fnty)));
-        }
-
-        Some(Box::new(XirNextBlockVisitor {
-            inner: XirJumpVisitor::new(
-                self.names,
-                self.properties,
-                self.body,
-                self.targs,
-                self.var_heights,
-                self.ssa_tys,
-                self.stack_height,
-                ir::BranchCondition::Always,
-            ),
-            retty,
-            targ: None,
-        }))
-    }
-
-    fn visit_intrinsic(&mut self, intrin: IntrinsicDef, generics: &generics::GenericArgs) {
-        let (item, fnty) = match intrin {
-            // Rust sym calls
-            func @ (IntrinsicDef::__builtin_allocate | IntrinsicDef::__builtin_deallocate) => {
-                let layout_ty = self
-                    .defs
-                    .get_lang_item(LangItem::LayoutTy)
-                    .expect("lang item `layout` is required to use `__builtin_alloc`");
-                let u8_ptr = ty::Type::Pointer(
-                    span::synthetic(Mutability::Mut),
-                    Box::new(span::synthetic(ty::Type::Int(ty::IntType::u8))),
-                );
-                let (sym, sig) = match func {
-                    IntrinsicDef::__builtin_allocate => {
-                        let alloc_sym = self.defs.get_lang_item(LangItem::AllocSym).expect(
-                            "lang item `alloc_symbol` is required to use `__builtin_alloc`",
-                        );
-
-                        let fnty = ty::FnType {
-                            safety: span::synthetic(ty::Safety::Unsafe),
-                            constness: span::synthetic(ty::Mutability::Mut),
-                            asyncness: span::synthetic(ty::AsyncType::Normal),
-                            tag: span::synthetic(ty::AbiTag::LCRust(None)),
-                            retty: Box::new(span::synthetic(u8_ptr)),
-                            paramtys: std::vec![span::synthetic(ty::Type::UserType(
-                                layout_ty,
-                                Default::default()
-                            ))],
-                            iscvarargs: span::synthetic(false),
-                        };
-
-                        (alloc_sym, fnty)
-                    }
-                    IntrinsicDef::__builtin_deallocate => {
-                        let dealloc_sym = self.defs.get_lang_item(LangItem::DeallocSym).expect(
-                            "lang item `deaalloc_symbol` is required to use `__builtin_alloc`",
-                        );
-
-                        let fnty = ty::FnType {
-                            safety: span::synthetic(ty::Safety::Unsafe),
-                            constness: span::synthetic(ty::Mutability::Mut),
-                            asyncness: span::synthetic(ty::AsyncType::Normal),
-                            tag: span::synthetic(ty::AbiTag::LCRust(None)),
-                            retty: Box::new(span::synthetic(ty::Type::UNIT)),
-                            paramtys: std::vec![
-                                span::synthetic(ty::Type::UserType(layout_ty, Default::default())),
-                                span::synthetic(u8_ptr),
-                            ],
-                            iscvarargs: span::synthetic(false),
-                        };
-
-                        (dealloc_sym, fnty)
-                    }
-                    _ => unreachable!(),
-                };
-
-                let name = self.names[&sym];
-                let mut ir_fnty = ir::FnType::default();
-                let fnty_vis =
-                    XirFunctionTyVisitor::new(self.defs, self.names, &mut ir_fnty, self.properties);
-
-                super::visitor::visit_fnty(fnty_vis, &sig, &self.defs);
-
-                let path = ir::Path {
-                    components: vec![ir::PathComponent::Text((&name).into())],
-                };
-
-                (path, ir_fnty)
-            }
-
-            // xlang intrinsics
-            xlang_intrin @ (IntrinsicDef::__builtin_abort
-            | IntrinsicDef::transmute
-            | IntrinsicDef::black_box
-            | IntrinsicDef::__builtin_likely
-            | IntrinsicDef::__builtin_unlikely) => {
-                let path = match xlang_intrin {
-                    IntrinsicDef::__builtin_abort => {
-                        ir::simple_path!(__lccc::intrinsics::C::__builtin_trap)
-                    }
-                    IntrinsicDef::transmute => {
-                        ir::simple_path!(__lccc::intrinsics::Rust::__builtin_transmute)
-                    }
-                    IntrinsicDef::black_box => ir::simple_path!(__lccc::xlang::deoptimize),
-                    IntrinsicDef::__builtin_likely => ir::simple_path!(__lccc::xlang::likely),
-                    IntrinsicDef::__builtin_unlikely => ir::simple_path!(__lccc::xlang::unlikely),
-                    _ => unreachable!(),
-                };
-
-                (
-                    path,
-                    self.fnty
-                        .as_ref()
-                        .cloned()
-                        .expect("visit_fnty must have been called first"),
-                )
-            }
-
-            // late bound intrinsics (Few of these should survive to irgen?)
-            intrin => return self.late_invoke_intrin = Some((intrin, generics.clone())),
-        };
-
-        let ty = ir::Type::FnType((xlang::abi::boxed::Box::new(fnty)));
-
-        let value = ir::Value::GlobalAddress { ty, item };
-
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::Const(value)));
-    }
-}
-
-pub struct XirNextBlockVisitor<'a> {
-    inner: XirJumpVisitor<'a>,
-    retty: ir::Type,
-    targ: Option<BasicBlockId>,
-}
-
-impl<'a> JumpVisitor for XirNextBlockVisitor<'a> {
-    fn visit_target_bb(&mut self, targbb: BasicBlockId) {
-        self.targ = Some(targbb);
-        self.inner.visit_target_bb(targbb)
-    }
-
-    fn visit_remap(&mut self, src: SsaVarId, targ: SsaVarId) {
-        self.inner.visit_remap(src, targ)
-    }
-}
-
-pub struct XirJumpVisitor<'a> {
-    names: &'a NameMap,
-    properties: &'a TargetProperties<'a>,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
-    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
-    stack_height: &'a mut u32,
-    targ: Option<BasicBlockId>,
-    cond: ir::BranchCondition,
-}
-
-impl<'a> XirJumpVisitor<'a> {
-    pub fn new(
-        names: &'a NameMap,
-        properties: &'a TargetProperties<'a>,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
-        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
-        stack_height: &'a mut u32,
-        cond: ir::BranchCondition,
-    ) -> Self {
-        Self {
-            names,
-            properties,
-            body,
-            targs,
-            var_heights,
-            stack_height,
-            ssa_tys,
-            targ: None,
-            cond,
-        }
-    }
-}
-
-impl<'a> JumpVisitor for XirJumpVisitor<'a> {
-    fn visit_target_bb(&mut self, targbb: BasicBlockId) {
-        self.targ = Some(targbb);
-    }
-
-    fn visit_remap(&mut self, src: SsaVarId, dest: SsaVarId) {}
-}
-
-impl<'a> Drop for XirJumpVisitor<'a> {
-    fn drop(&mut self) {
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::Branch {
-                cond: self.cond,
-                target: self.targ.unwrap().id(),
-            }));
-        if self.cond != ir::BranchCondition::Always && self.cond != ir::BranchCondition::Never {
-            *self.stack_height -= 1;
-        }
-    }
-}
-
-pub struct XirBranchVisitor<'a> {
-    defs: &'a Definitions,
-    names: &'a NameMap,
-    properties: &'a TargetProperties<'a>,
-    deftys: &'a HashMap<DefId, ir::Type>,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
-    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
-    stack_height: &'a mut u32,
-}
-
-impl<'a> XirBranchVisitor<'a> {
-    fn new(
-        defs: &'a Definitions,
-        names: &'a NameMap,
-        properties: &'a TargetProperties<'a>,
-        deftys: &'a HashMap<DefId, ir::Type>,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
-        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
-        stack_height: &'a mut u32,
-    ) -> Self {
-        Self {
-            defs,
-            names,
-            properties,
-            deftys,
-            body,
-            targs,
-            var_heights,
-            ssa_tys,
-            stack_height,
-        }
-    }
-}
-
-impl<'a> BranchVisitor for XirBranchVisitor<'a> {
-    fn visit_branch_arm(&mut self) -> Option<Box<dyn BranchArmVisitor + '_>> {
-        Some(Box::new(XirBranchArmVisitor::new(
+        Some(Box::new(XirJumpVisitor::new(
             self.defs,
             self.names,
             self.properties,
             self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
+            self.cur_fnty,
+            &mut self.block.expr,
+            self.targ.insert(ir::JumpTarget {
+                flags: ir::JumpTargetFlags::empty(),
+                target: !0,
+            }),
+            self.locals,
             self.ssa_tys,
             self.stack_height,
+            self.var_heights,
+            self.var_stack,
         )))
     }
 
-    fn visit_else(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
-        Some(Box::new(XirJumpVisitor::new(
-            self.names,
-            self.properties,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.ssa_tys,
-            self.stack_height,
-            ir::BranchCondition::Always,
-        )))
+    fn visit_intrinsic(&mut self, intrin: IntrinsicDef, generics: &generics::GenericArgs) {
+        todo!("{}{}", intrin.name(), generics)
+    }
+
+    fn visit_tailcall(&mut self) {
+        self.block.term = ir::Terminator::Tailcall(
+            ir::CallFlags::empty(),
+            XLangBox::new(core::mem::take(&mut self.fnty)),
+        );
     }
 }
 
-pub struct XirBranchArmVisitor<'a> {
+impl<'a> Drop for XirCallVisitor<'a> {
+    fn drop(&mut self) {
+        if let Some(targ) = self.targ.take() {
+            self.block.term = ir::Terminator::Call(
+                ir::CallFlags::empty(),
+                XLangBox::new(core::mem::take(&mut self.fnty)),
+                targ,
+            );
+        }
+    }
+}
+
+pub struct XirStatementVisitor<'a> {
     defs: &'a Definitions,
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    cur_fnty: &'a mut ir::FnType,
+    exprs: &'a mut Vec<ir::Expr>,
+    locals: &'a mut Vec<ir::Type>,
     ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     stack_height: &'a mut u32,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    var_stack: &'a mut Vec<SsaVarId>,
 }
 
-impl<'a> XirBranchArmVisitor<'a> {
-    fn new(
+impl<'a> XirStatementVisitor<'a> {
+    pub fn new(
         defs: &'a Definitions,
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        cur_fnty: &'a mut ir::FnType,
+        exprs: &'a mut Vec<ir::Expr>,
+        locals: &'a mut Vec<ir::Type>,
         ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
         stack_height: &'a mut u32,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        var_stack: &'a mut Vec<SsaVarId>,
     ) -> Self {
         Self {
             defs,
             names,
             properties,
             deftys,
-            body,
-            targs,
-            var_heights,
+            cur_fnty,
+            exprs,
+            locals,
             ssa_tys,
             stack_height,
+            var_heights,
+            var_stack,
         }
     }
 }
 
-impl<'a> BranchArmVisitor for XirBranchArmVisitor<'a> {
-    fn visit_cond(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+impl<'a> StatementVisitor for XirStatementVisitor<'a> {
+    fn visit_let(&mut self) -> Option<Box<dyn LetStatementVisitor + '_>> {
+        Some(Box::new(XirLetStatementVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.cur_fnty,
+            self.exprs,
+            self.locals,
+            self.ssa_tys,
+            self.stack_height,
+            self.var_heights,
+            self.var_stack,
+        )))
+    }
+
+    fn visit_store_dead(&mut self, _: mir::SsaVarId) {}
+
+    fn visit_discard(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        None
+    }
+}
+
+pub struct XirLetStatementVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    cur_fnty: &'a mut ir::FnType,
+    exprs: &'a mut Vec<ir::Expr>,
+    locals: &'a mut Vec<ir::Type>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+    stack_height: &'a mut u32,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    var_stack: &'a mut Vec<SsaVarId>,
+    var: SsaVarId,
+}
+
+impl<'a> XirLetStatementVisitor<'a> {
+    pub fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        cur_fnty: &'a mut ir::FnType,
+        exprs: &'a mut Vec<ir::Expr>,
+        locals: &'a mut Vec<ir::Type>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+        stack_height: &'a mut u32,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        var_stack: &'a mut Vec<SsaVarId>,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            cur_fnty,
+            exprs,
+            locals,
+            ssa_tys,
+            stack_height,
+            var_heights,
+            var_stack,
+            var: SsaVarId::INVALID,
+        }
+    }
+}
+
+impl<'a> LetStatementVisitor for XirLetStatementVisitor<'a> {
+    fn visit_var(&mut self, var: mir::SsaVarId) {
+        self.var = var;
+        self.var_heights.insert(var, *self.stack_height);
+        self.var_stack.push(var);
+    }
+
+    fn visit_var_ty(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+        Some(Box::new(XirTypeVisitor::new(
+            self.defs,
+            self.names,
+            self.ssa_tys.get_or_insert_mut(self.var, ir::Type::Null),
+            self.properties,
+        )))
+    }
+
+    fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
         Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
             self.properties,
             self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        )))
-    }
-
-    fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
-        Some(Box::new(XirJumpVisitor::new(
-            self.names,
-            self.properties,
-            self.body,
-            self.targs,
-            self.var_heights,
+            self.cur_fnty,
+            self.exprs,
+            self.locals,
             self.ssa_tys,
             self.stack_height,
-            ir::BranchCondition::NotEqual,
+            self.var_heights,
+            self.var_stack,
         )))
     }
 }
@@ -1992,16 +1576,13 @@ pub struct XirExprVisitor<'a> {
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    cur_fnty: &'a mut ir::FnType,
+    exprs: &'a mut Vec<ir::Expr>,
+    locals: &'a mut Vec<ir::Type>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     stack_height: &'a mut u32,
-}
-
-impl<'a> Drop for XirExprVisitor<'a> {
-    fn drop(&mut self) {
-        *self.stack_height += 1;
-    }
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    var_stack: &'a mut Vec<SsaVarId>,
 }
 
 impl<'a> XirExprVisitor<'a> {
@@ -2010,75 +1591,61 @@ impl<'a> XirExprVisitor<'a> {
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        cur_fnty: &'a mut ir::FnType,
+        exprs: &'a mut Vec<ir::Expr>,
+        locals: &'a mut Vec<ir::Type>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
         stack_height: &'a mut u32,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        var_stack: &'a mut Vec<SsaVarId>,
     ) -> Self {
         Self {
             defs,
             names,
             properties,
             deftys,
-            body,
-            targs,
-            var_heights,
+            cur_fnty,
+            exprs,
+            locals,
+            ssa_tys,
             stack_height,
+            var_heights,
+            var_stack,
         }
     }
 }
 
 impl<'a> ExprVisitor for XirExprVisitor<'a> {
     fn visit_unreachable(&mut self) {
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Invalid(
-                NEVER,
-            ))));
+        todo!()
     }
 
     fn visit_const_int(&mut self) -> Option<Box<dyn ConstIntVisitor + '_>> {
-        match self
-            .body
-            .block
-            .items
-            .push_mut(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Integer {
-                ty: ir::ScalarType::default(),
-                val: 0,
-            }))) {
-            ir::BlockItem::Expr(ir::Expr::Const(ir::Value::Integer { ty, val })) => {
-                Some(Box::new(XirConstIntVisitor::new(
-                    self.names,
-                    self.properties,
-                    self.deftys,
-                    self.targs,
-                    self.var_heights,
-                    self.stack_height,
-                    ty,
-                    val,
-                )))
-            }
-            _ => unreachable!(),
-        }
+        let (intty, val) = match self.exprs.push_mut(ir::Expr::Const(ir::Value::Integer {
+            ty: ir::ScalarType::default(),
+            val: 0,
+        })) {
+            ir::Expr::Const(ir::Value::Integer { ty, val }) => (ty, val),
+            _ => unsafe { core::hint::unreachable_unchecked() },
+        };
+        Some(Box::new(XirConstIntVisitor::new(
+            self.properties,
+            val,
+            intty,
+        )))
     }
 
     fn visit_const(&mut self, defid: DefId) {
-        let sym = self.names[&defid];
+        let name = self.names[&defid];
 
         let path = ir::Path {
-            components: vec![ir::PathComponent::Text((&sym).into())],
+            components: vec![ir::PathComponent::Text((&name).into())],
         };
 
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::Const(
-                ir::Value::GlobalAddress {
-                    ty: self.deftys[&defid].clone(),
-                    item: path,
-                },
-            )))
+        let ty = self.deftys[&defid].clone();
+
+        self.exprs
+            .push(ir::Expr::Const(ir::Value::GlobalAddress { ty, item: path }));
     }
 
     fn visit_cast(&mut self) -> Option<Box<dyn CastVisitor + '_>> {
@@ -2087,713 +1654,168 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
             self.names,
             self.properties,
             self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
+            self.cur_fnty,
+            self.exprs,
+            self.locals,
+            self.ssa_tys,
             self.stack_height,
+            self.var_heights,
+            self.var_stack,
         )))
     }
 
     fn visit_const_string(&mut self) -> Option<Box<dyn ConstStringVisitor + '_>> {
-        match self
-            .body
-            .block
-            .items
-            .push_mut(ir::BlockItem::Expr(ir::Expr::Const(ir::Value::String {
-                encoding: ir::StringEncoding::Utf8,
-                utf8: XLangString::new(),
-                ty: ir::Type::Pointer(ir::PointerType {
-                    inner: xlang::abi::boxed::Box::new(ir::Type::Scalar(ir::ScalarType {
-                        header: ir::ScalarTypeHeader {
-                            bitsize: 8,
-                            vectorsize: XLangNone,
-                            validity: ScalarValidity::empty(),
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: XLangNone,
-                            max: XLangNone,
-                        },
-                    })),
-                    ..Default::default()
-                }),
-            }))) {
-            ir::BlockItem::Expr(ir::Expr::Const(ir::Value::String { utf8, .. })) => {
-                Some(Box::new(XirConstStringVisitor::new(
-                    self.names,
-                    self.properties,
-                    self.deftys,
-                    self.targs,
-                    self.var_heights,
-                    self.stack_height,
-                    utf8,
-                )))
-            }
-            _ => unreachable!(),
-        }
+        let (ty, val) = match self.exprs.push_mut(ir::Expr::Const(ir::Value::String {
+            encoding: ir::StringEncoding::Utf8,
+            ty: ir::Type::default(),
+            utf8: XLangString::new(),
+        })) {
+            ir::Expr::Const(ir::Value::String { ty, utf8, .. }) => (ty, utf8),
+            _ => unsafe { core::hint::unreachable_unchecked() },
+        };
+        Some(Box::new(XirConstStringVisitor::new(
+            self.properties,
+            val,
+            ty,
+        )))
     }
 
-    fn visit_var(&mut self, var: SsaVarId) {
-        let depth = *self.stack_height - self.var_heights[&var];
+    fn visit_var(&mut self, var: mir::SsaVarId) {
+        let height = self.var_heights[&var];
+
+        let depth = (*self.stack_height) - (height + 1);
 
         if depth != 0 {
-            self.body
-                .block
-                .items
-                .push(ir::BlockItem::Expr(ir::Expr::Pivot(1, depth)));
+            self.exprs.push(ir::Expr::Pivot(depth, 1));
         }
-
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::Dup(1)));
+        self.exprs.push(ir::Expr::Dup(1));
         if depth != 0 {
-            self.body
-                .block
-                .items
-                .push(ir::BlockItem::Expr(ir::Expr::Pivot(depth + 1, 1)));
+            self.exprs.push(ir::Expr::Pivot(1, depth + 1));
         }
     }
 
     fn visit_tuple(&mut self) -> Option<Box<dyn TupleExprVisitor + '_>> {
-        Some(Box::new(XirTupleExprVisitor::new(
+        Some(Box::new(XirTupleVisitor::new(
+            self.defs,
             self.names,
             self.properties,
             self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
+            self.cur_fnty,
+            self.exprs,
+            self.locals,
+            self.ssa_tys,
             self.stack_height,
+            self.var_heights,
+            self.var_stack,
         )))
     }
 
     fn visit_ctor(&mut self) -> Option<Box<dyn ConstructorVisitor + '_>> {
-        Some(Box::new(XirConstructorExprVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        )))
+        todo!()
     }
 
     fn visit_field_subobject(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
-        Some(Box::new(XirFieldAccessVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-            ir::Expr::Member,
-        )))
+        todo!()
     }
 
     fn visit_field_project(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
-        Some(Box::new(XirFieldAccessVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-            ir::Expr::MemberIndirect,
-        )))
+        todo!()
     }
 
     fn visit_binary_expr(&mut self) -> Option<Box<dyn BinaryExprVisitor + '_>> {
-        Some(Box::new(XirBinaryExprVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        )))
+        todo!()
     }
 
     fn visit_unary_expr(&mut self) -> Option<Box<dyn UnaryExprVisitor + '_>> {
-        Some(Box::new(XirUnaryExprVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        )))
-    }
-}
-
-pub struct XirConstructorExprVisitor<'a> {
-    defs: &'a Definitions,
-    names: &'a NameMap,
-    properties: &'a TargetProperties<'a>,
-    deftys: &'a HashMap<DefId, ir::Type>,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
-    stack_height: &'a mut u32,
-    fields: Vec<XLangString>,
-    ctor_ty: DefId,
-}
-
-impl<'a> XirConstructorExprVisitor<'a> {
-    pub fn new(
-        defs: &'a Definitions,
-        names: &'a NameMap,
-        properties: &'a TargetProperties<'a>,
-        deftys: &'a HashMap<DefId, ir::Type>,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
-        stack_height: &'a mut u32,
-    ) -> Self {
-        Self {
-            defs,
-            names,
-            properties,
-            deftys,
-            body,
-            targs,
-            var_heights,
-            stack_height,
-            fields: Vec::new(),
-            ctor_ty: DefId::ROOT,
-        }
-    }
-}
-
-impl<'a> Drop for XirConstructorExprVisitor<'a> {
-    fn drop(&mut self) {
-        *self.stack_height -= self.fields.len() as u32;
-        let ty = ir::Type::Named(into_path(self.names[&self.ctor_ty]));
-
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::Aggregate(
-                ir::AggregateCtor {
-                    ty,
-                    fields: core::mem::take(&mut self.fields),
-                },
-            )));
-    }
-}
-
-impl<'a> ConstructorVisitor for XirConstructorExprVisitor<'a> {
-    fn visit_ctor_def(&mut self, defid: DefId) {
-        self.ctor_ty = defid;
-        // TODO: Handle Enum constructors, which need to be nested.
-    }
-
-    fn visit_field(&mut self) -> Option<Box<dyn FieldInitVisitor + '_>> {
-        let field = self.fields.push_mut(XLangString::new());
-        Some(Box::new(XirConstructorFieldVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-            field,
-        )))
-    }
-
-    fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
         todo!()
     }
 }
 
-pub struct XirConstructorFieldVisitor<'a> {
+impl<'a> Drop for XirExprVisitor<'a> {
+    fn drop(&mut self) {
+        *self.stack_height += 1;
+    }
+}
+
+pub struct XirTupleVisitor<'a> {
     defs: &'a Definitions,
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    cur_fnty: &'a mut ir::FnType,
+    exprs: &'a mut Vec<ir::Expr>,
+    locals: &'a mut Vec<ir::Type>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     stack_height: &'a mut u32,
-    field: &'a mut XLangString,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    var_stack: &'a mut Vec<SsaVarId>,
+    tys: Vec<ir::Type>,
 }
 
-impl<'a> XirConstructorFieldVisitor<'a> {
+impl<'a> XirTupleVisitor<'a> {
     pub fn new(
         defs: &'a Definitions,
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        cur_fnty: &'a mut ir::FnType,
+        exprs: &'a mut Vec<ir::Expr>,
+        locals: &'a mut Vec<ir::Type>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
         stack_height: &'a mut u32,
-        field: &'a mut XLangString,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        var_stack: &'a mut Vec<SsaVarId>,
     ) -> Self {
         Self {
             defs,
             names,
             properties,
             deftys,
-            body,
-            targs,
-            var_heights,
+            cur_fnty,
+            exprs,
+            locals,
+            ssa_tys,
             stack_height,
-            field,
+            var_heights,
+            var_stack,
+            tys: vec![],
         }
     }
 }
 
-impl<'a> FieldInitVisitor for XirConstructorFieldVisitor<'a> {
-    fn visit_field(&mut self, field_name: &ty::FieldName) {
-        let _ = write!(self.field, "{}", field_name);
-    }
-
-    fn visit_value(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        Some(Box::new(XirExprVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        )))
-    }
-}
-
-pub struct XirFieldAccessVisitor<'a> {
-    defs: &'a Definitions,
-    names: &'a NameMap,
-    properties: &'a TargetProperties<'a>,
-    deftys: &'a HashMap<DefId, ir::Type>,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
-    stack_height: &'a mut u32,
-    ctor: fn(XLangString) -> ir::Expr,
-    field: XLangString,
-}
-
-impl<'a> XirFieldAccessVisitor<'a> {
-    pub fn new(
-        defs: &'a Definitions,
-        names: &'a NameMap,
-        properties: &'a TargetProperties<'a>,
-        deftys: &'a HashMap<DefId, ir::Type>,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
-        stack_height: &'a mut u32,
-        ctor: fn(XLangString) -> ir::Expr,
-    ) -> Self {
-        Self {
-            defs,
-            names,
-            properties,
-            deftys,
-            body,
-            targs,
-            var_heights,
-            stack_height,
-            ctor,
-            field: XLangString::new(),
-        }
-    }
-}
-
-impl<'a> Drop for XirFieldAccessVisitor<'a> {
-    fn drop(&mut self) {
-        *self.stack_height -= 1;
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr((self.ctor)(core::mem::take(
-                &mut self.field,
-            ))))
-    }
-}
-
-impl<'a> FieldAccessVisitor for XirFieldAccessVisitor<'a> {
-    fn visit_base(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        Some(Box::new(XirExprVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        )))
-    }
-    fn visit_field(&mut self, field_name: &ty::FieldName) {
-        // TODO: variant fields
-        let _ = write!(self.field, "{}", field_name);
-    }
-}
-
-pub struct XirBinaryExprVisitor<'a> {
-    defs: &'a Definitions,
-    names: &'a NameMap,
-    properties: &'a TargetProperties<'a>,
-    deftys: &'a HashMap<DefId, ir::Type>,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
-    stack_height: &'a mut u32,
-    op: Option<BinaryOp>,
-}
-
-impl<'a> XirBinaryExprVisitor<'a> {
-    fn new(
-        defs: &'a Definitions,
-        names: &'a NameMap,
-        properties: &'a TargetProperties<'a>,
-        deftys: &'a HashMap<DefId, ir::Type>,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
-        stack_height: &'a mut u32,
-    ) -> Self {
-        Self {
-            defs,
-            names,
-            properties,
-            deftys,
-            body,
-            targs,
-            var_heights,
-            stack_height,
-            op: None,
-        }
-    }
-}
-
-impl<'a> BinaryExprVisitor for XirBinaryExprVisitor<'a> {
-    fn visit_op(&mut self, op: BinaryOp) {
-        self.op = Some(op);
-    }
-
-    fn visit_lhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        Some(Box::new(XirExprVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        )))
-    }
-
-    fn visit_rhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        Some(Box::new(XirExprVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        )))
-    }
-}
-
-impl<'a> Drop for XirBinaryExprVisitor<'a> {
-    fn drop(&mut self) {
-        *self.stack_height -= 2; // `XirExprVisitor`s drop will increase stack height by 1
-        let op = match self.op.expect("visit_op must be called first") {
-            BinaryOp::Add => ir::BinaryOp::Add,
-            BinaryOp::Sub => ir::BinaryOp::Sub,
-            BinaryOp::Mul => ir::BinaryOp::Mul,
-            BinaryOp::Div => ir::BinaryOp::Div,
-            BinaryOp::Rem => ir::BinaryOp::Mod,
-            BinaryOp::BitAnd => ir::BinaryOp::BitAnd,
-            BinaryOp::BitOr => ir::BinaryOp::BitOr,
-            BinaryOp::BitXor => ir::BinaryOp::BitXor,
-
-            BinaryOp::Less => ir::BinaryOp::CmpLt,
-            BinaryOp::Greater => ir::BinaryOp::CmpGt,
-            BinaryOp::Equal => ir::BinaryOp::CmpEq,
-            BinaryOp::NotEqual => ir::BinaryOp::CmpNe,
-            BinaryOp::LessEqual => ir::BinaryOp::CmpLe,
-            BinaryOp::GreaterEqual => ir::BinaryOp::CmpGe,
-
-            BinaryOp::LeftShift => ir::BinaryOp::Lsh,
-            BinaryOp::RightShift => ir::BinaryOp::Rsh,
-
-            BinaryOp::BoolAnd
-            | BinaryOp::BoolOr
-            | BinaryOp::Range
-            | BinaryOp::RangeInclusive
-            | BinaryOp::Assign
-            | BinaryOp::AddAssign
-            | BinaryOp::SubAssign
-            | BinaryOp::MulAssign
-            | BinaryOp::DivAssign
-            | BinaryOp::RemAssign
-            | BinaryOp::BitAndAssign
-            | BinaryOp::BitOrAssign
-            | BinaryOp::BitXorAssign
-            | BinaryOp::BoolAndAssign
-            | BinaryOp::BoolOrAssign
-            | BinaryOp::LeftShiftAssign
-            | BinaryOp::RightShiftAssign => unreachable!("handled before MIR"),
-        };
-
-        let overflow_behaviour = ir::OverflowBehaviour::Wrap;
-
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::BinaryOp(
-                op,
-                overflow_behaviour,
-            )));
-    }
-}
-
-pub struct XirUnaryExprVisitor<'a> {
-    defs: &'a Definitions,
-    names: &'a NameMap,
-    properties: &'a TargetProperties<'a>,
-    deftys: &'a HashMap<DefId, ir::Type>,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
-    stack_height: &'a mut u32,
-    op: Option<UnaryOp>,
-}
-
-impl<'a> XirUnaryExprVisitor<'a> {
-    fn new(
-        defs: &'a Definitions,
-        names: &'a NameMap,
-        properties: &'a TargetProperties<'a>,
-        deftys: &'a HashMap<DefId, ir::Type>,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
-        stack_height: &'a mut u32,
-    ) -> Self {
-        Self {
-            defs,
-            names,
-            properties,
-            deftys,
-            body,
-            targs,
-            var_heights,
-            stack_height,
-            op: None,
-        }
-    }
-}
-
-impl<'a> UnaryExprVisitor for XirUnaryExprVisitor<'a> {
-    fn visit_op(&mut self, op: UnaryOp) {
-        self.op = Some(op);
-    }
-
-    fn visit_lhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        Some(Box::new(XirExprVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        )))
-    }
-}
-
-impl<'a> Drop for XirUnaryExprVisitor<'a> {
-    fn drop(&mut self) {
-        *self.stack_height -= 1; // drop for XirExprVisitor will increase stack_height
-
-        let op = match self.op.expect("visit_op must be called first") {
-            UnaryOp::Neg => ir::UnaryOp::Minus,
-            UnaryOp::Not => todo!(),
-            UnaryOp::RangeFrom
-            | UnaryOp::RangeTo
-            | UnaryOp::RangeToInclusive
-            | UnaryOp::RawAddrOf(_)
-            | UnaryOp::AddrOf(_)
-            | UnaryOp::Deref => unreachable!("handled before of MIR"),
-        };
-
-        let overflow_behaviour = ir::OverflowBehaviour::Wrap;
-
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::UnaryOp(
-                op,
-                overflow_behaviour,
-            )));
-    }
-}
-
-pub struct XirTupleExprVisitor<'a> {
-    names: &'a NameMap,
-    properties: &'a TargetProperties<'a>,
-    deftys: &'a HashMap<DefId, ir::Type>,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
-    stack_height: &'a mut u32,
-    next_field: u32,
-    fields: Vec<XLangString>,
-    elem_tys: Vec<ir::Type>,
-}
-
-impl<'a> XirTupleExprVisitor<'a> {
-    pub fn new(
-        names: &'a NameMap,
-        properties: &'a TargetProperties<'a>,
-        deftys: &'a HashMap<DefId, ir::Type>,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
-        stack_height: &'a mut u32,
-    ) -> Self {
-        Self {
-            names,
-            properties,
-            deftys,
-            body,
-            targs,
-            var_heights,
-            stack_height,
-            next_field: 0,
-            fields: Vec::new(),
-            elem_tys: Vec::new(),
-        }
-    }
-}
-
-impl<'a> TupleExprVisitor for XirTupleExprVisitor<'a> {
+impl<'a> TupleExprVisitor for XirTupleVisitor<'a> {
     fn visit_elem(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        todo!()
+        Some(Box::new(XirExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.cur_fnty,
+            self.exprs,
+            self.locals,
+            self.ssa_tys,
+            self.stack_height,
+            self.var_heights,
+            self.var_stack,
+        )))
     }
 }
 
-impl<'a> Drop for XirTupleExprVisitor<'a> {
+impl<'a> Drop for XirTupleVisitor<'a> {
     fn drop(&mut self) {
-        *self.stack_height -= self.next_field;
-        let ty = ir::Type::Product(core::mem::take(&mut self.elem_tys));
+        let fields = self
+            .tys
+            .iter()
+            .zip(0..)
+            .map(|(_, x)| xlang::abi::format!("{}", x))
+            .collect::<Vec<_>>();
 
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::Aggregate(
-                ir::AggregateCtor {
-                    ty,
-                    fields: core::mem::take(&mut self.fields),
-                },
-            )))
-    }
-}
+        *self.stack_height -= fields.len() as u32;
 
-pub struct XirConstIntVisitor<'a> {
-    names: &'a NameMap,
-    properties: &'a TargetProperties<'a>,
-    deftys: &'a HashMap<DefId, ir::Type>,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
-    stack_height: &'a mut u32,
-    ty: &'a mut ir::ScalarType,
-    val: &'a mut u128,
-}
-
-impl<'a> XirConstIntVisitor<'a> {
-    pub fn new(
-        names: &'a NameMap,
-        properties: &'a TargetProperties<'a>,
-        deftys: &'a HashMap<DefId, ir::Type>,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
-        stack_height: &'a mut u32,
-        ty: &'a mut ir::ScalarType,
-        val: &'a mut u128,
-    ) -> Self {
-        Self {
-            names,
-            properties,
-            deftys,
-            targs,
-            var_heights,
-            stack_height,
-            ty,
-            val,
-        }
-    }
-}
-
-impl<'a> ConstIntVisitor for XirConstIntVisitor<'a> {
-    fn visit_intty(&mut self) -> Option<Box<dyn IntTyVisitor + '_>> {
-        Some(Box::new(XirIntTyVisitor::new(self.ty, self.properties)))
-    }
-
-    fn visit_value(&mut self, val: u128) {
-        *self.val = val;
-    }
-}
-
-pub struct XirConstStringVisitor<'a> {
-    names: &'a NameMap,
-    properties: &'a TargetProperties<'a>,
-    deftys: &'a HashMap<DefId, ir::Type>,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
-    stack_height: &'a mut u32,
-    string: &'a mut XLangString,
-}
-
-impl<'a> XirConstStringVisitor<'a> {
-    pub fn new(
-        names: &'a NameMap,
-        properties: &'a TargetProperties<'a>,
-        deftys: &'a HashMap<DefId, ir::Type>,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
-        stack_height: &'a mut u32,
-        string: &'a mut XLangString,
-    ) -> Self {
-        Self {
-            names,
-            properties,
-            deftys,
-            targs,
-            var_heights,
-            stack_height,
-            string,
-        }
-    }
-}
-
-impl<'a> ConstStringVisitor for XirConstStringVisitor<'a> {
-    fn visit_string_type(&mut self, st: StringType) {}
-
-    fn visit_value(&mut self, val: Symbol) {
-        *self.string = (&*val).into();
+        self.exprs.push(ir::Expr::Aggregate(ir::AggregateCtor {
+            ty: ir::Type::Product(core::mem::take(&mut self.tys)),
+            fields,
+        }));
     }
 }
 
@@ -2802,11 +1824,14 @@ pub struct XirCastVisitor<'a> {
     names: &'a NameMap,
     properties: &'a TargetProperties<'a>,
     deftys: &'a HashMap<DefId, ir::Type>,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    cur_fnty: &'a mut ir::FnType,
+    exprs: &'a mut Vec<ir::Expr>,
+    locals: &'a mut Vec<ir::Type>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
     stack_height: &'a mut u32,
-    as_ty: Option<ir::Type>,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    var_stack: &'a mut Vec<SsaVarId>,
+    ty: ir::Type,
 }
 
 impl<'a> XirCastVisitor<'a> {
@@ -2815,21 +1840,27 @@ impl<'a> XirCastVisitor<'a> {
         names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
         deftys: &'a HashMap<DefId, ir::Type>,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        cur_fnty: &'a mut ir::FnType,
+        exprs: &'a mut Vec<ir::Expr>,
+        locals: &'a mut Vec<ir::Type>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
         stack_height: &'a mut u32,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        var_stack: &'a mut Vec<SsaVarId>,
     ) -> Self {
         Self {
             defs,
             names,
             properties,
             deftys,
-            body,
-            targs,
-            var_heights,
+            cur_fnty,
+            exprs,
+            locals,
+            ssa_tys,
             stack_height,
-            as_ty: None,
+            var_heights,
+            var_stack,
+            ty: ir::Type::Null,
         }
     }
 }
@@ -2841,10 +1872,13 @@ impl<'a> CastVisitor for XirCastVisitor<'a> {
             self.names,
             self.properties,
             self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
+            self.cur_fnty,
+            self.exprs,
+            self.locals,
+            self.ssa_tys,
             self.stack_height,
+            self.var_heights,
+            self.var_stack,
         )))
     }
 
@@ -2852,7 +1886,7 @@ impl<'a> CastVisitor for XirCastVisitor<'a> {
         Some(Box::new(XirTypeVisitor::new(
             self.defs,
             self.names,
-            self.as_ty.insert(ir::Type::Null),
+            &mut self.ty,
             self.properties,
         )))
     }
@@ -2860,239 +1894,88 @@ impl<'a> CastVisitor for XirCastVisitor<'a> {
 
 impl<'a> Drop for XirCastVisitor<'a> {
     fn drop(&mut self) {
+        self.exprs.push(ir::Expr::Convert(
+            ir::ConversionStrength::Reinterpret,
+            core::mem::take(&mut self.ty),
+        ));
         *self.stack_height -= 1;
-
-        self.body
-            .block
-            .items
-            .push(ir::BlockItem::Expr(ir::Expr::Convert(
-                ir::ConversionStrength::Reinterpret,
-                self.as_ty
-                    .take()
-                    .expect("visit_cast_type must have been called"),
-            )));
     }
 }
 
-pub struct XirStatementVisitor<'a> {
-    defs: &'a Definitions,
-    names: &'a NameMap,
+pub struct XirConstStringVisitor<'a> {
     properties: &'a TargetProperties<'a>,
-    deftys: &'a HashMap<DefId, ir::Type>,
-    cur_fnty: &'a mut ir::FnType,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
-    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
-    stack_height: &'a mut u32,
+    val: &'a mut XLangString,
+    ty: &'a mut ir::Type,
 }
 
-impl<'a> XirStatementVisitor<'a> {
+impl<'a> XirConstStringVisitor<'a> {
     pub fn new(
-        defs: &'a Definitions,
-        names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
-        deftys: &'a HashMap<DefId, ir::Type>,
-        cur_fnty: &'a mut ir::FnType,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
-        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
-        stack_height: &'a mut u32,
+        val: &'a mut XLangString,
+        ty: &'a mut ir::Type,
     ) -> Self {
         Self {
-            defs,
-            names,
             properties,
-            deftys,
-            cur_fnty,
-            body,
-            targs,
-            var_heights,
-            ssa_tys,
-            stack_height,
+            val,
+            ty,
         }
     }
 }
 
-impl<'a> StatementVisitor for XirStatementVisitor<'a> {
-    fn visit_let(&mut self) -> Option<Box<dyn LetStatementVisitor + '_>> {
-        Some(Box::new(XirLetVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.cur_fnty,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.ssa_tys,
-            self.stack_height,
-        )))
-    }
-
-    fn visit_store_dead(&mut self, _: SsaVarId) {
-        // Be more intelligent in the future
-    }
-
-    fn visit_discard(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        Some(Box::new(XirDiscardVisitor(
-            XirExprVisitor::new(
-                self.defs,
-                self.names,
-                self.properties,
-                self.deftys,
-                self.body,
-                self.targs,
-                self.var_heights,
-                self.stack_height,
-            ),
-            true,
-        )))
-    }
-}
-
-pub struct XirDiscardVisitor<'a>(XirExprVisitor<'a>, bool);
-
-impl<'a> ExprVisitor for XirDiscardVisitor<'a> {
-    fn visit_unreachable(&mut self) {
-        self.0.visit_unreachable()
-    }
-
-    fn visit_const_int(&mut self) -> Option<Box<dyn ConstIntVisitor + '_>> {
-        self.0.visit_const_int()
-    }
-
-    fn visit_const(&mut self, defid: DefId) {
-        self.0.visit_const(defid)
-    }
-
-    fn visit_cast(&mut self) -> Option<Box<dyn CastVisitor + '_>> {
-        self.0.visit_cast()
-    }
-
-    fn visit_const_string(&mut self) -> Option<Box<dyn ConstStringVisitor + '_>> {
-        self.0.visit_const_string()
-    }
-
-    fn visit_var(&mut self, var: crate::sema::mir::SsaVarId) {
-        // We can honestly no-op, but destructor currently pops *something*
-        self.1 = false;
-    }
-
-    fn visit_tuple(&mut self) -> Option<Box<dyn super::visitor::TupleExprVisitor + '_>> {
-        self.0.visit_tuple()
-    }
-
-    fn visit_ctor(&mut self) -> Option<Box<dyn ConstructorVisitor + '_>> {
-        self.0.visit_ctor()
-    }
-
-    fn visit_field_subobject(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
-        self.0.visit_field_subobject()
-    }
-
-    fn visit_field_project(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
-        self.0.visit_field_project()
-    }
-
-    fn visit_binary_expr(&mut self) -> Option<Box<dyn BinaryExprVisitor + '_>> {
-        self.0.visit_binary_expr()
-    }
-
-    fn visit_unary_expr(&mut self) -> Option<Box<dyn UnaryExprVisitor + '_>> {
-        self.0.visit_unary_expr()
-    }
-}
-
-impl<'a> Drop for XirDiscardVisitor<'a> {
-    fn drop(&mut self) {
-        if self.1 {
-            *self.0.stack_height -= 1;
-            self.0
-                .body
-                .block
-                .items
-                .push(ir::BlockItem::Expr(ir::Expr::Pop(1)));
+impl<'a> ConstStringVisitor for XirConstStringVisitor<'a> {
+    fn visit_string_type(&mut self, st: StringType) {
+        match st {
+            StringType::Default | StringType::Raw(_) => todo!(),
+            StringType::Byte | StringType::RawByte(_) => {
+                let mut ptr = ir::PointerType::default();
+                *ptr.inner = ir::Type::Scalar(ir::ScalarType {
+                    header: ir::ScalarTypeHeader {
+                        bitsize: 0,
+                        vectorsize: XLangNone,
+                        validity: ir::ScalarValidity::empty(),
+                    },
+                    kind: ir::ScalarTypeKind::Integer {
+                        signed: false,
+                        min: XLangNone,
+                        max: XLangNone,
+                    },
+                });
+                *self.ty = ir::Type::Pointer(ptr);
+            }
         }
     }
+
+    fn visit_value(&mut self, val: Symbol) {
+        *self.val = (&val).into();
+    }
 }
 
-pub struct XirLetVisitor<'a> {
-    defs: &'a Definitions,
-    names: &'a NameMap,
+pub struct XirConstIntVisitor<'a> {
     properties: &'a TargetProperties<'a>,
-    deftys: &'a HashMap<DefId, ir::Type>,
-    cur_fnty: &'a mut ir::FnType,
-    body: &'a mut ir::FunctionBody,
-    targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-    var_heights: &'a mut HashMap<SsaVarId, u32>,
-    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
-    stack_height: &'a mut u32,
-    varid: Option<SsaVarId>,
+    val: &'a mut u128,
+    intty: &'a mut ir::ScalarType,
 }
 
-impl<'a> XirLetVisitor<'a> {
+impl<'a> XirConstIntVisitor<'a> {
     pub fn new(
-        defs: &'a Definitions,
-        names: &'a NameMap,
         properties: &'a TargetProperties<'a>,
-        deftys: &'a HashMap<DefId, ir::Type>,
-        cur_fnty: &'a mut ir::FnType,
-        body: &'a mut ir::FunctionBody,
-        targs: &'a mut HashMap<BasicBlockId, Vec<ir::StackItem>>,
-        var_heights: &'a mut HashMap<SsaVarId, u32>,
-        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
-        stack_height: &'a mut u32,
+        val: &'a mut u128,
+        intty: &'a mut ir::ScalarType,
     ) -> Self {
         Self {
-            defs,
-            names,
             properties,
-            deftys,
-            cur_fnty,
-            body,
-            targs,
-            var_heights,
-            ssa_tys,
-            stack_height,
-            varid: None,
+            val,
+            intty,
         }
     }
 }
 
-impl<'a> LetStatementVisitor for XirLetVisitor<'a> {
-    fn visit_var(&mut self, var: SsaVarId) {
-        self.varid = Some(var);
+impl<'a> ConstIntVisitor for XirConstIntVisitor<'a> {
+    fn visit_intty(&mut self) -> Option<Box<dyn IntTyVisitor + '_>> {
+        Some(Box::new(XirIntTyVisitor::new(self.intty, self.properties)))
     }
 
-    fn visit_var_ty(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
-        Some(Box::new(XirTypeVisitor::new(
-            self.defs,
-            self.names,
-            self.ssa_tys
-                .get_or_insert_mut(self.varid.unwrap(), ir::Type::default()),
-            self.properties,
-        )))
-    }
-
-    fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        Some(Box::new(XirExprVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.body,
-            self.targs,
-            self.var_heights,
-            self.stack_height,
-        )))
-    }
-}
-
-impl<'a> Drop for XirLetVisitor<'a> {
-    fn drop(&mut self) {
-        let varid = self.varid.take().expect("visit_var must have been called");
-        self.var_heights.insert(varid, *self.stack_height);
+    fn visit_value(&mut self, val: u128) {
+        *self.val = val;
     }
 }

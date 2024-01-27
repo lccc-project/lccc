@@ -593,7 +593,7 @@ unsafe impl<A: ?Sized + Allocator> Allocator for &mut A {
 // TODO: Should this be changed? No. XLangAlloc is the correct name. This isn't the `Global` or `System` allocator, it's the xlang allocator
 #[derive(Copy, Clone)]
 #[repr(transparent)]
-pub struct XLangAlloc(core::mem::MaybeUninit<u8>);
+pub struct XLangAlloc(());
 
 impl XLangAlloc {
     ///
@@ -602,7 +602,7 @@ impl XLangAlloc {
     /// All values of type [`XLangAlloc`] are identical, and may be used interchangeably
     #[must_use]
     pub const fn new() -> Self {
-        Self(core::mem::MaybeUninit::uninit())
+        Self(())
     }
 }
 

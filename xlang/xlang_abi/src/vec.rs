@@ -451,6 +451,54 @@ impl<T, A: Allocator> Vec<T, A> {
         self.len += 1;
     }
 
+    /// Removes and returns the `i`th element of the vector, shifting all subsequent elements down.
+    ///
+    /// The relative order of remaining elements is preserved by this function
+    ///
+    /// ## Panics
+    ///
+    /// Panics if `i` is greater than or equal to `self.len()`
+    pub fn remove(&mut self, i: usize) -> T {
+        if i >= self.len {
+            panic!(
+                "Index {} is out of range for a Vec of length {}",
+                i, self.len
+            );
+        }
+        let rest = self.len - i;
+        let loc = unsafe { self.ptr.as_ptr().add(i) };
+        let val = unsafe { core::ptr::read(loc) };
+        unsafe {
+            core::ptr::copy(loc.offset(1), loc, rest);
+        }
+        self.len -= 1;
+        val
+    }
+
+    /// Removes and returns the `i`th element of the vector, replacing it with the last element of the vector.
+    ///
+    /// This operation does not preserve the relative order of the remaining elements
+    ///
+    /// ## Panics
+    ///
+    /// Panics if `i` is greater than or equal to `self.len()`
+    pub fn swap_remove(&mut self, i: usize) -> T {
+        if i >= self.len {
+            panic!(
+                "Index {} is out of range for a Vec of length {}",
+                i, self.len
+            );
+        }
+        self.len -= 1;
+        let loc = unsafe { self.ptr.as_ptr().add(i) };
+        let end_loc = unsafe { self.ptr.as_ptr().add(self.len) };
+        if loc != end_loc {
+            unsafe { core::ptr::swap_nonoverlapping(loc, end_loc, 1) }
+        }
+
+        unsafe { core::ptr::read(end_loc) }
+    }
+
     /// Inserts `val` into the `Vec` at a position such that the list is sorted in ascending order and returns that position.
     ///
     /// If an element that compares equal to `val` is already present in the list, the position relative to any such element is unspecified
