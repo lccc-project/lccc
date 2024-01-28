@@ -1920,7 +1920,7 @@ impl<'a> BinaryExprVisitor for XirBinaryExprVisitor<'a> {
 
 impl<'a> Drop for XirBinaryExprVisitor<'a> {
     fn drop(&mut self) {
-        *self.stack_height -= 1;
+        *self.stack_height -= 2;
         self.exprs.push(ir::Expr::BinaryOp(
             self.op
                 .expect("BinaryExprVisitor::visit_op was never called"),
