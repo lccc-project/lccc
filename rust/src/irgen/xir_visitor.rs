@@ -1711,11 +1711,35 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
     }
 
     fn visit_ctor(&mut self) -> Option<Box<dyn ConstructorVisitor + '_>> {
-        todo!()
+        Some(Box::new(XirConstructorVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.cur_fnty,
+            self.exprs,
+            self.locals,
+            self.ssa_tys,
+            self.stack_height,
+            self.var_heights,
+            self.var_stack,
+        )))
     }
 
     fn visit_field_subobject(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
-        todo!()
+        Some(Box::new(XirFieldSubobjectVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.cur_fnty,
+            self.exprs,
+            self.locals,
+            self.ssa_tys,
+            self.stack_height,
+            self.var_heights,
+            self.var_stack,
+        )))
     }
 
     fn visit_field_project(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
@@ -1758,6 +1782,76 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
 impl<'a> Drop for XirExprVisitor<'a> {
     fn drop(&mut self) {
         *self.stack_height += 1;
+    }
+}
+
+pub struct XirFieldSubobjectVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    cur_fnty: &'a mut ir::FnType,
+    exprs: &'a mut Vec<ir::Expr>,
+    locals: &'a mut Vec<ir::Type>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+    stack_height: &'a mut u32,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    var_stack: &'a mut Vec<SsaVarId>,
+}
+
+impl<'a> XirFieldSubobjectVisitor<'a> {
+    pub fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        cur_fnty: &'a mut ir::FnType,
+        exprs: &'a mut Vec<ir::Expr>,
+        locals: &'a mut Vec<ir::Type>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+        stack_height: &'a mut u32,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        var_stack: &'a mut Vec<SsaVarId>,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            cur_fnty,
+            exprs,
+            locals,
+            ssa_tys,
+            stack_height,
+            var_heights,
+            var_stack,
+        }
+    }
+}
+
+impl<'a> FieldAccessVisitor for XirFieldSubobjectVisitor<'a> {
+    fn visit_base(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        Some(Box::new(XirExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.cur_fnty,
+            self.exprs,
+            self.locals,
+            self.ssa_tys,
+            self.stack_height,
+            self.var_heights,
+            self.var_stack,
+        )))
+    }
+
+    fn visit_field(&mut self, field_name: &ty::FieldName) {
+        *self.stack_height -= 1;
+        self.exprs.push(ir::Expr::Member(match field_name {
+            ty::FieldName::Field(x) => x.to_string().into(),
+            x => todo!("{:?}", x),
+        }))
     }
 }
 
@@ -1840,6 +1934,172 @@ impl<'a> Drop for XirTupleVisitor<'a> {
             ty: ir::Type::Product(core::mem::take(&mut self.tys)),
             fields,
         }));
+    }
+}
+
+pub struct XirConstructorVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    cur_fnty: &'a mut ir::FnType,
+    exprs: &'a mut Vec<ir::Expr>,
+    locals: &'a mut Vec<ir::Type>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+    stack_height: &'a mut u32,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    var_stack: &'a mut Vec<SsaVarId>,
+    ty: Option<ir::Type>,
+    fields: Vec<String>,
+}
+
+impl<'a> XirConstructorVisitor<'a> {
+    pub fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        cur_fnty: &'a mut ir::FnType,
+        exprs: &'a mut Vec<ir::Expr>,
+        locals: &'a mut Vec<ir::Type>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+        stack_height: &'a mut u32,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        var_stack: &'a mut Vec<SsaVarId>,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            cur_fnty,
+            exprs,
+            locals,
+            ssa_tys,
+            stack_height,
+            var_heights,
+            var_stack,
+            ty: None,
+            fields: vec![],
+        }
+    }
+}
+
+impl<'a> ConstructorVisitor for XirConstructorVisitor<'a> {
+    fn visit_ctor_def(&mut self, defid: DefId) {
+        self.ty = Some(ir::Type::Named(ir::Path {
+            components: vec![ir::PathComponent::Text(
+                self.names[&defid].to_string().into(),
+            )],
+        }));
+    }
+
+    fn visit_field(&mut self) -> Option<Box<dyn FieldInitVisitor + '_>> {
+        Some(Box::new(XirFieldInitVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.cur_fnty,
+            self.exprs,
+            self.locals,
+            self.ssa_tys,
+            self.stack_height,
+            self.var_heights,
+            self.var_stack,
+            &mut self.fields,
+        )))
+    }
+
+    fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        todo!("..default() and similar aren't currently handled by irgen")
+    }
+}
+
+impl<'a> Drop for XirConstructorVisitor<'a> {
+    fn drop(&mut self) {
+        let fields = std::mem::replace(&mut self.fields, vec![]);
+        *self.stack_height -= self.fields.len() as u32;
+
+        self.exprs.push(ir::Expr::Aggregate(ir::AggregateCtor {
+            ty: self
+                .ty
+                .take()
+                .expect("ConstructorVisitor::visit_ty was never called"),
+            fields: fields.into_iter().map(String::into).collect(),
+        }));
+    }
+}
+
+pub struct XirFieldInitVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    cur_fnty: &'a mut ir::FnType,
+    exprs: &'a mut Vec<ir::Expr>,
+    locals: &'a mut Vec<ir::Type>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+    stack_height: &'a mut u32,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    var_stack: &'a mut Vec<SsaVarId>,
+    fields: &'a mut Vec<String>,
+}
+
+impl<'a> XirFieldInitVisitor<'a> {
+    pub fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        cur_fnty: &'a mut ir::FnType,
+        exprs: &'a mut Vec<ir::Expr>,
+        locals: &'a mut Vec<ir::Type>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+        stack_height: &'a mut u32,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        var_stack: &'a mut Vec<SsaVarId>,
+        fields: &'a mut Vec<String>,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            cur_fnty,
+            exprs,
+            locals,
+            ssa_tys,
+            stack_height,
+            var_heights,
+            var_stack,
+            fields,
+        }
+    }
+}
+
+impl<'a> FieldInitVisitor for XirFieldInitVisitor<'a> {
+    fn visit_field(&mut self, field_name: &ty::FieldName) {
+        self.fields.push(match field_name {
+            ty::FieldName::Field(x) => x.to_string(),
+            x => todo!("{:?}", x),
+        });
+    }
+
+    fn visit_value(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        Some(Box::new(XirExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.cur_fnty,
+            self.exprs,
+            self.locals,
+            self.ssa_tys,
+            self.stack_height,
+            self.var_heights,
+            self.var_stack,
+        )))
     }
 }
 
