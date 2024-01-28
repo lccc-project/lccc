@@ -19,7 +19,7 @@ version = "0.1.0"
 dependencies = [
  "install-dirs 0.3.2",
  "itertools",
- "lccc-siphash",
+ "lccc-siphash 0.1.0 (git+https://github.com/lccc-project/lccc-siphash)",
  "libc",
  "serde",
  "serde_derive",
@@ -292,6 +292,12 @@ dependencies = [
  "xlang_frontend",
  "xlang_host",
 ]
+
+[[package]]
+name = "lccc-siphash"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15d185e10c787c464fc66c65e04e5ece989e1b654ab177bdad844248e9df71fc"
 
 [[package]]
 name = "lccc-siphash"
@@ -660,6 +666,7 @@ dependencies = [
  "target-tuples",
  "xlang_abi",
  "xlang_host",
+ "xlang_interface",
  "xlang_struct",
  "xlang_targets",
 ]
@@ -702,6 +709,17 @@ name = "xlang_host"
 version = "0.2.0"
 dependencies = [
  "cfg-match",
+]
+
+[[package]]
+name = "xlang_interface"
+version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "lccc-siphash 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "xlang_abi",
+ "xlang_host",
+ "xlang_targets",
 ]
 
 [[package]]

@@ -13,4 +13,5 @@ xlang_abi = {path="xlang_abi"}
 xlang_struct = {path="xlang_struct"}
 xlang_targets = {path="xlang_targets"}
 xlang_host = {path="xlang_host"}
+xlang_interface = {path="xlang_interface"}
 fake-enum ="0.1"
