@@ -16,8 +16,7 @@ use crate::{
     },
     interning::Symbol,
     lex::{
-        AstFrag, AstFragClass, Group, GroupType, IsEof, Keyword, Lexeme, LexemeBody, LexemeClass,
-        Punctuation, StringType, Token, TokenType,
+        AstFrag, AstFragClass, CharType, Group, GroupType, IsEof, Keyword, Lexeme, LexemeBody, LexemeClass, Punctuation, StringType, Token, TokenType
     },
     sema::ty::Mutability,
     span::{Pos, Span},
@@ -800,6 +799,7 @@ pub fn do_user_type_enum(
 
         let (startspan, var_id) = do_lexeme_token(&mut inner_tree, LexemeClass::Identifier)?;
 
+        // FIXME: What is this used for?
         let var_name = Spanned {
             body: var_id.body,
             span: startspan,
@@ -1169,7 +1169,7 @@ pub fn do_statement(
 pub fn do_literal(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Literal>> {
-    // Only handling int and string lits for now
+    // Only handling int, string, and char lits for now
     match do_lexeme_class(tree, LexemeClass::Number) {
         Ok(x) => {
             let span = x.span;
@@ -1195,7 +1195,19 @@ pub fn do_literal(
                     span,
                 })
             }
-            Err(b) => Err(a | b)?, // TODO: Literally every other kind of useful literal
+            Err(b) => match do_char(tree) {
+                Ok((ch, ty)) => {
+                    let span = ch.span;
+                    Ok(Spanned {
+                        body: Literal {
+                            val: ch,
+                            lit_kind: LiteralKind::Char(ty),
+                        },
+                        span,
+                    })
+                }
+                Err(c) => Err(a | b | c)?, // TODO: Literally every other kind of useful literal
+            },
         },
     }
 }
@@ -2639,7 +2651,7 @@ pub fn do_pattern_binding(
     };
 
     let binding = match do_lexeme_classes(&mut tree, &[punct!(@), punct!(::)]) {
-        Ok((lex, punct!(@))) => Some(Box::new(do_pattern_param(&mut tree)?)),
+        Ok((_, punct!(@))) => Some(Box::new(do_pattern_param(&mut tree)?)),
         Ok((lex, punct!(::))) => {
             return Err(Error {
                 expected: vec![punct!(@)],
@@ -3214,6 +3226,53 @@ pub fn do_string(
             span: full_str.span,
         },
         str_ty,
+    ))
+}
+
+pub fn do_char(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<(Spanned<Symbol>, StringType)> {
+    let full_str = do_lexeme_class(tree, LexemeClass::Character)?;
+    let chr_ty = *if let Lexeme {
+        body:
+            LexemeBody::Token(Token {
+                ty: TokenType::Character(chr_ty),
+                ..
+            }),
+        ..
+    } = &full_str
+    {
+        chr_ty
+    } else {
+        unreachable!()
+    };
+    let str = full_str.text().unwrap();
+    let str = match chr_ty {
+        CharType::Default => &str[1..str.len() - 1], // Skip    " and "
+        CharType::Byte => &str[2..str.len() - 1],    // Skip   b" and "
+    };
+    let mut parsed = String::new();
+    let mut str_iter = str.chars();
+    while let Some(c) = str_iter.next() {
+        match c {
+            '\\' => match str_iter.next() {
+                Some('0') => parsed.push('\0'),
+                Some('n') => parsed.push('\n'),
+                None => todo!("throw an error"),
+                Some(x) => todo!("\\{}", x),
+            },
+            x => parsed.push(x),
+        }
+    }
+    Ok((
+        Spanned {
+            body: parsed.into(),
+            span: full_str.span,
+        },
+        match chr_ty {
+            CharType::Default => StringType::Default,
+            CharType::Byte => StringType::Byte,
+        },
     ))
 }
 

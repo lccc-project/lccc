@@ -512,7 +512,6 @@ impl LexemeClass {
                 AstFrag::Vis(_) => Self::AstFrag(Some(AstFragClass::Vis)),
                 AstFrag::Meta(_) => Self::AstFrag(Some(AstFragClass::Meta)),
             },
-            _ => todo!(),
         }
     }
 
