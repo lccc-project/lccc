@@ -1,6 +1,6 @@
 use xlang::abi::collection::HashMap;
 
-use crate::ast::{self, Literal, LiteralKind, Mutability, Safety, StringType};
+use crate::ast::{self, CharType, Literal, LiteralKind, Mutability, Safety, StringType};
 use crate::helpers::{FetchIncrement, TabPrinter};
 use crate::interning::Symbol;
 use crate::span::{synthetic, Span};
@@ -85,6 +85,7 @@ pub enum HirExpr {
     Var(HirVarId),
     ConstInt(Option<Spanned<IntType>>, u128),
     ConstString(StringType, Spanned<Symbol>),
+    ConstChar(CharType, Spanned<Symbol>),
     Const(DefId, GenericArgs),
     #[allow(dead_code)]
     Unreachable,
@@ -126,6 +127,11 @@ impl core::fmt::Display for HirExpr {
                 f.write_str("\"")?;
                 s.escape_default().fmt(f)?;
                 f.write_str("\"")
+            }
+            HirExpr::ConstChar(_, s) => {
+                f.write_str("'")?;
+                s.escape_default().fmt(f)?;
+                f.write_str("'")
             }
             HirExpr::Tuple(v) => {
                 f.write_str("(")?;
@@ -710,9 +716,13 @@ impl<'a> HirLowerer<'a> {
                     Ok(expr.copy_span(|_| HirExpr::ConstInt(ty, val)))
                 }
                 Literal {
-                    lit_kind: LiteralKind::String(skind),
+                    lit_kind: LiteralKind::String(sty),
                     val: sym,
-                } => Ok(expr.copy_span(|_| HirExpr::ConstString(skind, sym))),
+                } => Ok(expr.copy_span(|_| HirExpr::ConstString(sty, sym))),
+                Literal {
+                    lit_kind: LiteralKind::Char(cty),
+                    val: sym,
+                } => Ok(expr.copy_span(|_| HirExpr::ConstChar(cty, sym))),
                 _ => todo!("literal"),
             },
             ast::Expr::Break(_, _) => todo!("break"),

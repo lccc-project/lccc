@@ -3,7 +3,7 @@ use core::fmt;
 use crate::lex::Group;
 use crate::{interning::Symbol, lex::Lexeme};
 
-pub use crate::lex::StringType;
+pub use crate::lex::{CharType, StringType};
 
 pub use crate::span::Spanned;
 
@@ -433,7 +433,7 @@ impl core::fmt::Display for Literal {
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum LiteralKind {
     String(StringType),
-    Char(StringType),
+    Char(CharType),
     Int(Option<Spanned<Symbol>>),
     Float(Option<Spanned<Symbol>>),
     Bool,

@@ -3231,7 +3231,7 @@ pub fn do_string(
 
 pub fn do_char(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
-) -> Result<(Spanned<Symbol>, StringType)> {
+) -> Result<(Spanned<Symbol>, CharType)> {
     let full_str = do_lexeme_class(tree, LexemeClass::Character)?;
     let chr_ty = *if let Lexeme {
         body:
@@ -3269,10 +3269,7 @@ pub fn do_char(
             body: parsed.into(),
             span: full_str.span,
         },
-        match chr_ty {
-            CharType::Default => StringType::Default,
-            CharType::Byte => StringType::Byte,
-        },
+        chr_ty,
     ))
 }
 

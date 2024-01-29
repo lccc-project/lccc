@@ -692,6 +692,9 @@ impl<'a> ThirConverter<'a> {
                     cat: ValueCategory::Rvalue,
                 })
             }
+            &hir::HirExpr::ConstChar(cty, val) => {
+                todo!("const char");
+            }
             hir::HirExpr::Const(defid, generics) => {
                 let def = self.defs.definition(*defid);
 
