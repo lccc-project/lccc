@@ -5,7 +5,7 @@ use xlang::{
         AggregateDefinition, AggregateKind, AnnotationItem, Path, PointerAliasingRule, PointerKind,
         ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type, ValidRangeType, Value,
     },
-    prelude::v1::{format, Box, HashMap, Pair, Some as XLangSome},
+    prelude::v1::{HashMap, Pair, Some as XLangSome},
     targets::properties::TargetProperties,
 };
 

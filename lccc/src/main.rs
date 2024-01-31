@@ -467,6 +467,7 @@ fn main() {
 
     if mode > Mode::Xir {
         for codegen_path in &codegen_paths {
+            println!("Opening codegen plugin: {}", codegen_path.display());
             codegen_handles
                 .push(Handle::open(codegen_path).expect("couldn't load frontend library"));
         }

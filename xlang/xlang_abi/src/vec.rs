@@ -6,6 +6,7 @@ use std::{
     marker::PhantomData,
     mem::{size_of, ManuallyDrop},
     ops::{Deref, DerefMut},
+    ptr::NonNull,
 };
 
 use crate::{
@@ -394,6 +395,32 @@ impl<T, A: Allocator> Vec<T, A> {
         new
     }
 
+    /// Returns an iterator that moves out of the back `n` elements of `self`.
+    ///
+    /// The iterator takes ownership of the values immediately - if dropped, the unconsumed values are dropped, and if forgetten the unconsumed values will also be forgotten.
+    /// `self` remains borrowed for the lifetime of the iterator to avoid an extra allocation.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if `n` is greater than `len()`
+    ///
+    pub fn drain_back(&mut self, n: usize) -> DrainBack<T> {
+        if n > self.len {
+            panic!(
+                "Index {} is out of range for a vector of length {}",
+                n, self.len
+            )
+        }
+        self.len -= n;
+        let base = unsafe { self.ptr.as_ptr().add(self.len) };
+
+        DrainBack {
+            ptr: unsafe { NonNull::new_unchecked(base) },
+            remaining: n,
+            _phantom: PhantomData,
+        }
+    }
+
     ///
     /// Resizes the vector, shrinking it to `nlen`, dropping any excees elements
     ///
@@ -740,6 +767,56 @@ impl<T, A: Allocator + Default> From<std::vec::Vec<T>> for Vec<T, A> {
             }
             drop(ManuallyDrop::into_inner(s));
             v
+        }
+    }
+}
+
+/// An iterator that takes ownership of elements at the end of a [`Vec`]
+pub struct DrainBack<'a, T> {
+    ptr: core::ptr::NonNull<T>,
+    remaining: usize,
+    _phantom: PhantomData<&'a mut [T]>,
+}
+
+impl<'a, T> Iterator for DrainBack<'a, T> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            None
+        } else {
+            let val = unsafe { core::ptr::read(self.ptr.as_ptr()) };
+            self.remaining -= 1;
+            self.ptr = unsafe { NonNull::new_unchecked(self.ptr.as_ptr().add(1)) };
+
+            Some(val)
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl<'a, T> Drop for DrainBack<'a, T> {
+    fn drop(&mut self) {
+        if core::mem::needs_drop::<T>() {
+            for i in 0..self.remaining {
+                unsafe { core::ptr::drop_in_place(self.ptr.as_ptr().add(i)) }
+            }
+        }
+    }
+}
+
+impl<'a, T> ExactSizeIterator for DrainBack<'a, T> {}
+impl<'a, T> FusedIterator for DrainBack<'a, T> {}
+impl<'a, T> DoubleEndedIterator for DrainBack<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            None
+        } else {
+            self.remaining -= 1;
+            let val = unsafe { core::ptr::read(self.ptr.as_ptr().add(self.remaining)) };
+            Some(val)
         }
     }
 }

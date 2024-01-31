@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 fn main() {
+    println!("cargo:rerun-if-changed=build.rs");
     let rustc = std::env::var_os("RUSTC").unwrap();
     let rustflags = std::env::var("CARGO_ENCODED_RUSTFLAGS")
         .ok()
