@@ -3,7 +3,7 @@ use xlang::{
     abi::string::StringView, plugin::XLangCodegen, prelude::v1::*,
     targets::properties::TargetProperties,
 };
-use xlang_backend::{mach::Machine, SsaCodegenPlugin};
+use xlang_backend::{mach::Machine, ssa::OpaqueLocation, ty::TypeInformation, SsaCodegenPlugin};
 
 pub struct W65Assignments {}
 
@@ -32,6 +32,8 @@ impl Machine for W65Machine {
         insns: &[xlang_backend::ssa::SsaInstruction],
         incoming: &[xlang_backend::ssa::OpaqueLocation],
         which: u32,
+        incoming_set: &HashMap<u32, xlang::abi::vec::Vec<OpaqueLocation>>,
+        tys: &TypeInformation,
     ) -> Self::BlockClobbers {
         todo!()
     }
@@ -52,6 +54,7 @@ impl Machine for W65Machine {
         out: &mut W,
         label_sym: F,
         which: u32,
+        tys: &TypeInformation,
     ) -> std::io::Result<()> {
         todo!()
     }

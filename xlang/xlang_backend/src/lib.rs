@@ -13,11 +13,11 @@ use xlang::{
     abi::{io::WriteAdapter, option::Some as XLangSome, pair::Pair, try_},
     ir::{self, Linkage},
     plugin::{XLangCodegen, XLangPlugin},
-    targets::properties::TargetProperties,
+    targets::properties::{StackAttributeControlStyle, TargetProperties},
 };
 
 use binfmt::{
-    fmt::{Section, SectionFlag},
+    fmt::{Section, SectionFlag, SectionType},
     sym::{Symbol, SymbolKind, SymbolType},
 };
 
@@ -275,7 +275,22 @@ impl<M: Machine> XLangCodegen for SsaCodegenPlugin<M> {
                     syms.push(Symbol::new_undef(sym_name, SymbolType::Function, sym_kind));
                 }
             }
-
+            match targ.link.stack_attribute_control {
+                StackAttributeControlStyle::NoExec => {}
+                StackAttributeControlStyle::CveFactory => {
+                    eprintln!("Warning: Codegen for target selected sets Stack as Writable")
+                }
+                StackAttributeControlStyle::GnuStack => {
+                    sections.push(Section {
+                        name: format!(".note.GNU-stack"),
+                        align: 1024,
+                        ty: SectionType::NoBits,
+                        flags: Some(SectionFlag::Writable.into()),
+                        ..Default::default()
+                    });
+                }
+                ctrl => eprintln!("Warning: Unknown stack attribute control style {:?}", ctrl),
+            }
             let mut section_map = vec![];
             for section in sections {
                 let new_off = output

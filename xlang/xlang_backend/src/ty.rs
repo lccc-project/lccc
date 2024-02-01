@@ -2,14 +2,17 @@ use std::convert::TryInto;
 
 use xlang::{
     ir::{
-        AggregateDefinition, AggregateKind, AnnotationItem, Path, PointerAliasingRule, PointerKind,
-        ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type, ValidRangeType, Value,
+        self, AggregateDefinition, AggregateKind, AnnotationItem, Path, PointerAliasingRule,
+        PointerKind, ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type,
+        ValidRangeType, Value,
     },
     prelude::v1::{HashMap, Pair, Some as XLangSome},
     targets::properties::TargetProperties,
 };
 
 use crate::expr::{LValue, NoOpaque, VStackValue};
+
+use core::cell::RefCell;
 
 pub(crate) fn scalar_align(size: u64, max_align: u16) -> u64 {
     if size <= (max_align as u64) {
@@ -40,11 +43,52 @@ pub struct AggregateLayout {
 
 ///
 /// A map of information about the types on the system
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct TypeInformation {
     aggregates: HashMap<Path, Option<AggregateDefinition>>,
     aliases: HashMap<Path, Type>,
+    aggregate_layout_cache: RefCell<HashMap<Type, Box<AggregateLayout>>>,
     properties: &'static TargetProperties<'static>,
+}
+
+pub struct FlattenFieldsOf<'a> {
+    fields_stack: Vec<std::vec::IntoIter<(u64, &'a Type)>>,
+
+    tys: &'a TypeInformation,
+}
+
+impl<'a> FlattenFieldsOf<'a> {
+    fn push_fields_of(&mut self, base_offset: u64, agl: &'a AggregateLayout) {
+        let mut fields = vec![];
+
+        for Pair(_, (offset, ty)) in &agl.fields {
+            fields.push((*offset + base_offset, ty));
+        }
+
+        fields.sort_by_key(|(off, _)| *off);
+
+        self.fields_stack.push(fields.into_iter());
+    }
+
+    fn push_fields_of_array(&mut self, base_off: u64, arr_ty: &'a ir::ArrayType) {
+        let mut fields = vec![];
+        let ty = &arr_ty.ty;
+        let size = self
+            .tys
+            .type_size(ty)
+            .expect("array type must have a complete value type as a field");
+
+        let len = match &arr_ty.len {
+            Value::Integer { val, .. } => (*val) as u64,
+            val => panic!("Cannot determine length of array from {}", val),
+        };
+
+        for i in 0..len {
+            fields.push((base_off + i * size, ty));
+        }
+
+        self.fields_stack.push(fields.into_iter());
+    }
 }
 
 impl TypeInformation {
@@ -54,6 +98,7 @@ impl TypeInformation {
             properties,
             aliases: HashMap::new(),
             aggregates: HashMap::new(),
+            aggregate_layout_cache: RefCell::new(HashMap::new()),
         }
     }
 
@@ -190,7 +235,7 @@ impl TypeInformation {
     }
 
     /// Computes the layout of an aggregate type from it's definition
-    pub fn aggregate_layout_from_defn(&self, defn: &AggregateDefinition) -> AggregateLayout {
+    fn aggregate_layout_from_defn(&self, defn: &AggregateDefinition) -> AggregateLayout {
         let mut align = 1u64;
         let mut size = 0u64;
         let mut fields = HashMap::new();
@@ -262,44 +307,58 @@ impl TypeInformation {
     }
 
     /// Determines the total aggregate layout of a type
-    pub fn aggregate_layout(&self, ty: &Type) -> Option<AggregateLayout> {
-        match ty {
-            Type::TaggedType(_, ty) => self.aggregate_layout(ty),
-            Type::Aligned(_, ty) => self.aggregate_layout(ty),
-            Type::Product(elems) => {
-                let mut elems = elems.clone();
-                elems.sort_by_key(|ty| self.type_align(ty).unwrap());
+    pub fn aggregate_layout(&self, ty: &Type) -> Option<&AggregateLayout> {
+        let cache = self.aggregate_layout_cache.borrow();
+        if let Some(layout) = cache.get(ty) {
+            unsafe { Some(&*((&**layout) as *const AggregateLayout)) }
+        } else {
+            drop(cache);
+            let layout = match ty {
+                Type::TaggedType(_, ty) => return self.aggregate_layout(ty),
+                Type::Aligned(_, ty) => return self.aggregate_layout(ty),
+                Type::Product(elems) => {
+                    let mut elems = elems.clone();
+                    elems.sort_by_key(|ty| self.type_align(ty).unwrap());
 
-                let mut align = 1u64;
-                let mut size = 0u64;
-                let mut fields = HashMap::new();
+                    let mut align = 1u64;
+                    let mut size = 0u64;
+                    let mut fields = HashMap::new();
 
-                for (i, field) in elems.into_iter().enumerate() {
-                    align = self.type_align(&field)?.max(align);
-                    let offset = size;
-                    size += self.type_size(&field)?;
-                    fields.insert(i.to_string(), (offset, field));
+                    for (i, field) in elems.into_iter().enumerate() {
+                        align = self.type_align(&field)?.max(align);
+                        let offset = size;
+                        size += self.type_size(&field)?;
+                        fields.insert(i.to_string(), (offset, field));
+                    }
+
+                    Some(AggregateLayout {
+                        total_size: size,
+                        total_align: align,
+                        fields,
+                        transparent_over: None,
+                        first_niche: None,
+                    })
                 }
-
-                Some(AggregateLayout {
-                    total_size: size,
-                    total_align: align,
-                    fields,
-                    transparent_over: None,
-                    first_niche: None,
-                })
-            }
-            Type::Aggregate(defn) => Some(self.aggregate_layout_from_defn(defn)),
-            Type::Named(p) => {
-                if let Some(ty) = self.aliases.get(p) {
-                    self.aggregate_layout(ty)
-                } else if let Some(Some(defn)) = self.aggregates.get(p) {
-                    Some(self.aggregate_layout_from_defn(defn))
-                } else {
-                    None
+                Type::Aggregate(defn) => Some(self.aggregate_layout_from_defn(defn)),
+                Type::Named(p) => {
+                    if let Some(ty) = self.aliases.get(p) {
+                        return self.aggregate_layout(ty);
+                    } else if let Some(Some(defn)) = self.aggregates.get(p) {
+                        Some(self.aggregate_layout_from_defn(defn))
+                    } else {
+                        None
+                    }
                 }
+                _ => None,
+            };
+
+            if let Some(layout) = layout {
+                let mut cache = self.aggregate_layout_cache.borrow_mut();
+                cache.insert(ty.clone(), Box::new(layout));
+                unsafe { Some(&*((&*cache[ty]) as *const AggregateLayout)) }
+            } else {
+                None
             }
-            _ => None,
         }
     }
 
@@ -403,7 +462,7 @@ impl TypeInformation {
     /// Gets the type of the field of `ty` with a given name
     pub fn get_field_type(&self, ty: &Type, name: &str) -> Option<Type> {
         self.aggregate_layout(ty)
-            .map(|layout| layout.fields)
+            .map(|layout| &layout.fields)
             .map(|fields| fields.get(name).cloned().map(|(_, ty)| ty))
             .and_then(Into::into)
     }

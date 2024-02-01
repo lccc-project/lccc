@@ -94,6 +94,7 @@ impl core::fmt::Display for SsaInstruction {
 pub struct CallTarget {
     pub ptr: OpaquePtr,
     pub real_ty: ir::FnType,
+    pub call_ty: ir::FnType,
 }
 
 impl core::fmt::Display for CallTarget {
@@ -253,12 +254,15 @@ impl<M: Machine> FunctionBuilder<M> {
                 &bb.insns,
                 self.incoming_locations.get(&bb.id).unwrap(),
                 bb.id,
+                &self.incoming_locations,
+                &self.tys,
             ));
         }
 
         self.mach.codegen_prologue(&assigns, out)?;
         for (bb, block_clobbers) in self.basic_blocks.iter().zip(block_clobbers) {
             let symbol = format!("{}._B{}", self.sym_name, bb.id);
+            sym_accepter(symbol, out.offset() as u128);
             self.mach.codegen_block(
                 &assigns,
                 &bb.insns,
@@ -266,6 +270,7 @@ impl<M: Machine> FunctionBuilder<M> {
                 out,
                 |id| format!("{}._B{}", self.sym_name, id),
                 bb.id,
+                &self.tys,
             )?;
         }
         Ok(())
@@ -390,6 +395,7 @@ impl<M: Machine> BasicBlockBuilder<M> {
         &mut self,
         targ: VStackValue<OpaqueLocation>,
         params: Vec<VStackValue<OpaqueLocation>>,
+        call_ty: ir::FnType,
         next: Option<ir::JumpTarget>,
     ) {
         match targ {
@@ -417,6 +423,7 @@ impl<M: Machine> BasicBlockBuilder<M> {
                         CallTarget {
                             ptr: OpaquePtr::Symbol(sym),
                             real_ty,
+                            call_ty,
                         },
                         params,
                     ));
@@ -489,7 +496,7 @@ impl<M: Machine> BasicBlockBuilder<M> {
 
                 let target = self.pop();
 
-                self.write_call(target, vals, None);
+                self.write_call(target, vals, (**call_fnty).clone(), None);
             }
             ir::Terminator::Exit(_) => todo!("exit"),
             ir::Terminator::Asm(_) => todo!("asm"),

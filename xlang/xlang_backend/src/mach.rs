@@ -1,8 +1,12 @@
-use xlang::{abi::string::StringView, targets::properties::TargetProperties};
+use xlang::{
+    abi::collection::HashMap, abi::string::StringView, targets::properties::TargetProperties,
+    vec::Vec,
+};
 
 use crate::{
     mangle::mangle_itanium,
     ssa::{OpaqueLocation, SsaInstruction},
+    ty::TypeInformation,
 };
 
 use arch_ops::traits::InsnWrite;
@@ -21,6 +25,8 @@ pub trait Machine {
         insns: &[SsaInstruction],
         incoming: &[OpaqueLocation],
         which: u32,
+        incoming_set: &HashMap<u32, Vec<OpaqueLocation>>,
+        tys: &TypeInformation,
     ) -> Self::BlockClobbers;
     fn codegen_prologue<W: InsnWrite>(
         &self,
@@ -35,6 +41,7 @@ pub trait Machine {
         out: &mut W,
         label_sym: F,
         which: u32,
+        tys: &TypeInformation,
     ) -> std::io::Result<()>;
     fn mangle(&self, path: &[xlang::ir::PathComponent]) -> String {
         mangle_itanium(path)
