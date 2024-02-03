@@ -3248,8 +3248,8 @@ pub fn do_char(
     };
     let str = full_str.text().unwrap();
     let str = match chr_ty {
-        CharType::Default => &str[1..str.len() - 1], // Skip    " and "
-        CharType::Byte => &str[2..str.len() - 1],    // Skip   b" and "
+        CharType::Default => &str[1..str.len() - 1], // Skip    ' and '
+        CharType::Byte => &str[2..str.len() - 1],    // Skip   b' and '
     };
     let mut parsed = String::new();
     let mut str_iter = str.chars();
@@ -3264,6 +3264,7 @@ pub fn do_char(
             x => parsed.push(x),
         }
     }
+    dbg!(&full_str);
     Ok((
         Spanned {
             body: parsed.into(),

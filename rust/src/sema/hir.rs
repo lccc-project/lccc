@@ -739,7 +739,7 @@ impl<'a> HirLowerer<'a> {
                     dbg!(sym);
                     let mut c = sym.chars().peekable();
 
-                    let val = match c.next().expect("We have at least one character") {
+                    let val = match c.next().expect("missing a character") {
                         '\\' => match c.next().expect("malformed escape sequence") {
                             't' => '\t' as u32,
                             'n' => '\n' as u32,
