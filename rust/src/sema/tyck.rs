@@ -800,14 +800,14 @@ impl<'a> ThirConverter<'a> {
                 cat: ValueCategory::Rvalue,
                 inner: ThirExprInner::Unreachable,
             }),
-            hir::HirExpr::Cast(expr, ty) => Ok(ThirExpr {
-                ty: ty.body.clone(),
-                cat: ValueCategory::Rvalue,
-                inner: ThirExprInner::Cast(
-                    Box::new(self.convert_rvalue(expr)?),
-                    self.convert_syntatic_type(ty.clone()),
-                ),
-            }),
+            hir::HirExpr::Cast(expr, ty) => {
+                let ty = self.convert_syntatic_type(ty.clone());
+                Ok(ThirExpr {
+                    ty: ty.body.clone(),
+                    cat: ValueCategory::Rvalue,
+                    inner: ThirExprInner::Cast(Box::new(self.convert_rvalue(expr)?), ty),
+                })
+            }
             hir::HirExpr::Tuple(vals) => {
                 let vals = vals
                     .iter()
