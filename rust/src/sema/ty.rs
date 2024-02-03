@@ -92,7 +92,7 @@ pub enum Type {
     IncompleteAlias(DefId),
     Pointer(Spanned<Mutability>, Box<Spanned<Type>>),
     Array(Box<Spanned<Type>>, Spanned<ConstExpr>),
-    Inferable(InferId),
+    Inferable(Option<InferId>),
     InferableInt(InferId),
     Reference(
         Option<Box<Spanned<SemaLifetime>>>,
@@ -723,6 +723,7 @@ impl core::fmt::Display for Type {
 
 pub fn convert_builtin_type(name: &str) -> Option<Type> {
     match name {
+        "_" => Some(Type::Inferable(None)),
         "char" => Some(Type::Char),
         "str" => Some(Type::Str),
         x if x.starts_with('i') || x.starts_with('u') => {

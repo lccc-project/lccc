@@ -1,7 +1,7 @@
 use xlang::abi::collection::{HashMap, HashSet};
 
 use crate::{
-    ast::{self, Mutability, Safety, StringType},
+    ast::{self, CharType, Mutability, Safety, StringType},
     helpers::{CyclicOperationStatus, FetchIncrement, TabPrinter},
     interning::Symbol,
     span::Span,
@@ -140,6 +140,7 @@ pub enum ThirExprInner {
     Const(DefId, GenericArgs),
     ConstInt(Option<Spanned<IntType>>, u128),
     ConstString(StringType, Spanned<Symbol>),
+    ConstChar(CharType, u32),
     Cast(Box<Spanned<ThirExpr>>, Spanned<Type>),
     Tuple(Vec<Spanned<ThirExpr>>),
     Ctor(Spanned<ThirConstructor>),
@@ -209,6 +210,24 @@ impl core::fmt::Display for ThirExprInner {
                 f.write_str("\"")?;
                 str.escape_default().fmt(f)?;
                 f.write_str("\"")
+            }
+            ThirExprInner::ConstChar(CharType::Default, val) => {
+                f.write_str("'")?;
+                if let Some(c) = char::from_u32(*val) {
+                    c.escape_default().fmt(f)?;
+                } else {
+                    f.write_fmt(format_args!("\\u{{invalid char: {:04x}}}", val))?;
+                }
+
+                f.write_str("'")
+            }
+            ThirExprInner::ConstChar(CharType::Byte, val) => {
+                f.write_str("'")?;
+                match val {
+                    &val @ 0x20..=0x7F => (val as u8 as char).fmt(f)?,
+                    val => f.write_fmt(format_args!("\\x{:02x}", val))?,
+                }
+                f.write_str("'")
             }
             ThirExprInner::Cast(e, ty) => {
                 f.write_str("(")?;
@@ -610,6 +629,61 @@ impl<'a> ThirConverter<'a> {
         Ok(ret)
     }
 
+    pub fn convert_syntatic_type(&mut self, ty: Spanned<Type>) -> Spanned<Type> {
+        ty.map_span(|ty| match ty {
+            Type::Inferable(None) => {
+                Type::Inferable(Some(InferId(self.next_infer.fetch_increment())))
+            }
+
+            Type::IncompleteAlias(_) => todo!("incomplete alias"),
+
+            Type::Tuple(tys) => Type::Tuple(
+                tys.into_iter()
+                    .map(|ty| self.convert_syntatic_type(ty))
+                    .collect(),
+            ),
+            Type::FnPtr(mut fnty) => {
+                fnty.paramtys = fnty
+                    .paramtys
+                    .into_iter()
+                    .map(|ty| self.convert_syntatic_type(ty))
+                    .collect();
+                *fnty.retty = self.convert_syntatic_type(*fnty.retty);
+
+                Type::FnPtr(fnty)
+            }
+
+            Type::Pointer(mt, mut ty) => {
+                *ty = self.convert_syntatic_type(*ty);
+
+                Type::Pointer(mt, ty)
+            }
+            Type::Array(mut ty, cx) => {
+                *ty = self.convert_syntatic_type(*ty);
+
+                Type::Array(ty, cx)
+            }
+            Type::Reference(life, mt, mut ty) => {
+                *ty = self.convert_syntatic_type(*ty);
+
+                Type::Reference(life, mt, ty)
+            }
+            val @ (Type::Inferable(Some(_))
+            | Type::InferableInt(_)
+            | Type::Param(_)
+            | Type::TraitSelf(_)
+            | Type::DropFlags(_)
+            | Type::Bool
+            | Type::Int(_)
+            | Type::Float(_)
+            | Type::Char
+            | Type::Str
+            | Type::FnItem(_, _, _)
+            | Type::UserType(_, _)
+            | Type::Never) => val,
+        })
+    }
+
     pub fn convert_expr(
         &mut self,
         expr: &Spanned<hir::HirExpr>,
@@ -692,8 +766,19 @@ impl<'a> ThirConverter<'a> {
                     cat: ValueCategory::Rvalue,
                 })
             }
-            &hir::HirExpr::ConstChar(cty, val) => {
-                todo!("const char");
+            hir::HirExpr::ConstChar(cty, val) => {
+                let ty = match cty {
+                    CharType::Byte => Type::Int(IntType::u8),
+                    CharType::Default => Type::Char,
+                };
+
+                let inner = ThirExprInner::ConstChar(*cty, *val);
+
+                Ok(ThirExpr {
+                    ty,
+                    inner,
+                    cat: ValueCategory::Rvalue,
+                })
             }
             hir::HirExpr::Const(defid, generics) => {
                 let def = self.defs.definition(*defid);
@@ -718,7 +803,10 @@ impl<'a> ThirConverter<'a> {
             hir::HirExpr::Cast(expr, ty) => Ok(ThirExpr {
                 ty: ty.body.clone(),
                 cat: ValueCategory::Rvalue,
-                inner: ThirExprInner::Cast(Box::new(self.convert_rvalue(expr)?), ty.clone()),
+                inner: ThirExprInner::Cast(
+                    Box::new(self.convert_rvalue(expr)?),
+                    self.convert_syntatic_type(ty.clone()),
+                ),
             }),
             hir::HirExpr::Tuple(vals) => {
                 let vals = vals
@@ -826,7 +914,7 @@ impl<'a> ThirConverter<'a> {
                     .next()
                     .unwrap_or_else(|| {
                         let inferid = InferId(self.next_infer.fetch_increment());
-                        Type::Inferable(inferid)
+                        Type::Inferable(Some(inferid))
                     });
 
                 let inner = ThirExprInner::MemberAccess(Box::new(val), name.clone());
@@ -839,7 +927,7 @@ impl<'a> ThirConverter<'a> {
                     Type::Int(x) => Type::Int(*x),
                     Type::Float(x) => Type::Float(*x),
                     Type::InferableInt(x) => Type::InferableInt(*x),
-                    _ => Type::Inferable(InferId(self.next_infer.fetch_increment())),
+                    _ => Type::Inferable(Some(InferId(self.next_infer.fetch_increment()))),
                 };
                 Ok(ThirExpr {
                     ty,
@@ -854,7 +942,7 @@ impl<'a> ThirConverter<'a> {
                     (Type::Int(x), y) if Type::Int(*x) == *y => Type::Int(*x),
                     (Type::Float(x), y) if Type::Float(*x) == *y => Type::Float(*x),
                     (Type::InferableInt(x), Type::InferableInt(_)) => Type::InferableInt(*x),
-                    _ => Type::Inferable(InferId(self.next_infer.fetch_increment())),
+                    _ => Type::Inferable(Some(InferId(self.next_infer.fetch_increment()))),
                 };
                 Ok(ThirExpr {
                     ty,
@@ -869,7 +957,7 @@ impl<'a> ThirConverter<'a> {
                     .collect::<Result<Vec<_>>>()?;
                 if elements.len() == 0 {
                     Ok(ThirExpr {
-                        ty: Type::Inferable(InferId(self.next_infer.fetch_increment())),
+                        ty: Type::Inferable(Some(InferId(self.next_infer.fetch_increment()))),
                         cat: ValueCategory::Rvalue,
                         inner: ThirExprInner::Array(elements),
                     })
@@ -886,7 +974,7 @@ impl<'a> ThirConverter<'a> {
                 Ok(ThirExpr {
                     ty: match &base.ty {
                         Type::Array(ty, _) => ty.body.clone(),
-                        _ => Type::Inferable(InferId(self.next_infer.fetch_increment())),
+                        _ => Type::Inferable(Some(InferId(self.next_infer.fetch_increment()))),
                     },
                     cat: ValueCategory::Rvalue,
                     inner: ThirExprInner::Index(
@@ -907,7 +995,7 @@ impl<'a> ThirConverter<'a> {
         let matcher = match &matcher.body {
             hir::HirPatternMatcher::Hole => {
                 let infer = InferId(self.next_infer.fetch_increment());
-                let ty = Type::Inferable(infer);
+                let ty = Type::Inferable(Some(infer));
 
                 Spanned {
                     body: ThirPatternMatcher {
@@ -1008,14 +1096,18 @@ impl<'a> ThirConverter<'a> {
                 var,
                 ty,
             } => {
-                let ty = ty.as_ref().cloned().unwrap_or_else(|| {
-                    let infer = InferId(self.next_infer.fetch_increment());
+                let ty = ty
+                    .as_ref()
+                    .cloned()
+                    .map(|ty| self.convert_syntatic_type(ty))
+                    .unwrap_or_else(|| {
+                        let infer = InferId(self.next_infer.fetch_increment());
 
-                    Spanned {
-                        span: var.span,
-                        body: Type::Inferable(infer),
-                    }
-                });
+                        Spanned {
+                            span: var.span,
+                            body: Type::Inferable(Some(infer)),
+                        }
+                    });
 
                 let mutability = *mutability;
 
@@ -1204,13 +1296,13 @@ impl<'a> Inferer<'a> {
     ) -> super::Result<CyclicOperationStatus> {
         match (&mut *left, &mut *right) {
             (a, b) if a == b => Ok(CyclicOperationStatus::Complete),
-            (Type::Inferable(l), Type::Inferable(r)) => {
+            (Type::Inferable(Some(l)), Type::Inferable(Some(r))) => {
                 let l = *l;
                 let r = *r;
 
                 // Note: We do RTL Propagation here. The left type is typically the assignee and the right type is typically the assigned
                 // This *should* narrow the inference set quicker in general
-                *left = Type::Inferable(r);
+                *left = Type::Inferable(Some(r));
 
                 if let Some(ty) = self.inference_set.get_mut(&l) {
                     let mut ty = core::mem::replace(ty, Type::Never);
@@ -1225,12 +1317,12 @@ impl<'a> Inferer<'a> {
                         self.inference_set.insert(r, ty);
                     }
                 } else {
-                    self.inference_set.insert(l, Type::Inferable(r));
+                    self.inference_set.insert(l, Type::Inferable(Some(r)));
                 }
 
                 Ok(CyclicOperationStatus::Incomplete)
             }
-            (Type::InferableInt(l), Type::Inferable(r)) => {
+            (Type::InferableInt(l), Type::Inferable(Some(r))) => {
                 let l = *l;
                 let r = *r;
                 //Note: We're doing LTR propagation here because the left type is more specific.
@@ -1249,17 +1341,17 @@ impl<'a> Inferer<'a> {
                         self.inference_set.insert(r, ty);
                     }
                 } else {
-                    self.inference_set.insert(l, Type::Inferable(r));
+                    self.inference_set.insert(l, Type::Inferable(Some(r)));
                 }
 
                 Ok(CyclicOperationStatus::Incomplete)
             }
-            (Type::Inferable(l), Type::InferableInt(r)) => {
+            (Type::Inferable(Some(l)), Type::InferableInt(r)) => {
                 let l = *l;
                 let r = *r;
 
                 //Note: We do RTL Propagation here because the right type is more specific.
-                *left = Type::Inferable(r);
+                *left = Type::Inferable(Some(r));
 
                 if let Some(ty) = self.inference_set.get_mut(&l) {
                     let mut ty = core::mem::replace(ty, Type::Never);
@@ -1275,12 +1367,12 @@ impl<'a> Inferer<'a> {
                         self.inference_set.insert(r, ty);
                     }
                 } else {
-                    self.inference_set.insert(l, Type::Inferable(r));
+                    self.inference_set.insert(l, Type::Inferable(Some(r)));
                 }
 
                 Ok(CyclicOperationStatus::Incomplete)
             }
-            (Type::Inferable(l), ty) => {
+            (Type::Inferable(Some(l)), ty) => {
                 let l = *l;
 
                 if let Some(gty) = self.inference_set.get_mut(&l) {
@@ -1319,7 +1411,7 @@ impl<'a> Inferer<'a> {
                 }
                 Ok(CyclicOperationStatus::Incomplete)
             }
-            (ty, Type::Inferable(r)) => {
+            (ty, Type::Inferable(Some(r))) => {
                 let r = *r;
 
                 if let Some(gty) = self.inference_set.get_mut(&r) {
@@ -1356,11 +1448,12 @@ impl<'a> Inferer<'a> {
                 status &= self.unify_single_expr(inner)?;
                 status &= self.unify_types(&mut inner.ty, &mut left.ty)?;
             }
-            ThirExprInner::Unreachable => {}
-            ThirExprInner::Var(_) => {}
-            ThirExprInner::Const(_, _) => {}
-            ThirExprInner::ConstInt(_, _) => {}
-            ThirExprInner::ConstString(_, _) => {}
+            ThirExprInner::Unreachable
+            | ThirExprInner::Var(_)
+            | ThirExprInner::Const(_, _)
+            | ThirExprInner::ConstInt(_, _)
+            | ThirExprInner::ConstString(_, _)
+            | ThirExprInner::ConstChar(_, _) => {}
             ThirExprInner::Cast(inner, ty) => {
                 status &= self.unify_single_expr(inner)?;
 
@@ -1753,7 +1846,7 @@ impl<'a> Inferer<'a> {
             }
             Type::Pointer(_, pty) => self.propagate_type(pty),
             Type::Array(inner, _) => self.propagate_type(inner),
-            Type::Inferable(infer) | Type::InferableInt(infer) => {
+            Type::Inferable(Some(infer)) | Type::InferableInt(infer) => {
                 if let Some(subty) = self.inference_set.get(infer) {
                     *ty = subty.clone();
                     Ok(Incomplete)

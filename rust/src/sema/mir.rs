@@ -4,7 +4,7 @@ use xlang::abi::{
 };
 
 use crate::{
-    ast::{Mutability, StringType},
+    ast::{CharType, Mutability, StringType},
     helpers::{FetchIncrement, TabPrinter},
     interning::Symbol,
     lex::Error,
@@ -118,6 +118,24 @@ impl core::fmt::Display for MirExpr {
             MirExpr::ConstInt(ity, val) => f.write_fmt(format_args!("{}_{}", val, ity)),
             MirExpr::ConstString(_, val) => {
                 f.write_fmt(format_args!("\"{}\"", val.escape_default()))
+            }
+            MirExpr::ConstChar(CharType::Default, val) => {
+                f.write_str("'")?;
+                if let Some(c) = char::from_u32(*val) {
+                    c.escape_default().fmt(f)?;
+                } else {
+                    f.write_fmt(format_args!("\\u{{invalid char: {:04x}}}", val))?;
+                }
+
+                f.write_str("'")
+            }
+            MirExpr::ConstChar(CharType::Byte, val) => {
+                f.write_str("'")?;
+                match val {
+                    &val @ 0x20..=0x7F => (val as u8 as char).fmt(f)?,
+                    val => f.write_fmt(format_args!("\\x{:02x}", val))?,
+                }
+                f.write_str("'")
             }
             MirExpr::Const(defid, generics) => f.write_fmt(format_args!("{}{}", defid, generics)),
             MirExpr::Retag(rk, mt, inner) => {
@@ -525,6 +543,7 @@ impl<'a> MirConverter<'a> {
             ThirExprInner::Const(_, _)
             | ThirExprInner::ConstInt(_, _)
             | ThirExprInner::ConstString(_, _)
+            | ThirExprInner::ConstChar(_, _)
             | ThirExprInner::Cast(_, _)
             | ThirExprInner::Tuple(_)
             | ThirExprInner::Read(_)
@@ -720,7 +739,8 @@ impl<'a> MirConverter<'a> {
             | ThirExprInner::BinaryExpr(_, _, _)
             | ThirExprInner::Array(_)
             | ThirExprInner::UnaryExpr(_, _)
-            | ThirExprInner::Index(_, _) => unreachable!("cannot access"),
+            | ThirExprInner::Index(_, _)
+            | ThirExprInner::ConstChar(_, _) => unreachable!("cannot access"),
         }
     }
 
@@ -806,6 +826,10 @@ impl<'a> MirConverter<'a> {
             super::tyck::ThirExprInner::ConstString(sty, val) => Ok(Spanned {
                 span,
                 body: MirExpr::ConstString(sty, *val),
+            }),
+            super::tyck::ThirExprInner::ConstChar(cty, val) => Ok(Spanned {
+                span,
+                body: MirExpr::ConstChar(cty, val),
             }),
             super::tyck::ThirExprInner::Cast(inner, ty) => {
                 let inner = self.lower_expr(*inner)?;
@@ -1016,6 +1040,7 @@ impl<'a> MirConverter<'a> {
             | ThirExprInner::Const(_, _)
             | ThirExprInner::ConstInt(_, _)
             | ThirExprInner::ConstString(_, _)
+            | ThirExprInner::ConstChar(_, _)
             | ThirExprInner::Cast(_, _)
             | ThirExprInner::Tuple(_)
             | ThirExprInner::Ctor(_)

@@ -16,6 +16,7 @@ use xlang::{
     ir::PathComponent,
 };
 
+use crate::lex::CharType;
 use crate::sema::mir;
 use crate::sema::{cx, hir::BinaryOp, mir::SsaVarId};
 use crate::sema::{generics, ty, UserTypeKind};
@@ -30,7 +31,7 @@ use crate::{lex::StringType, sema::Definitions};
 
 use super::visitor::{
     ArrayTyVisitor, AttrVisitor, BasicBlockVisitor, BinaryExprVisitor, BranchArmVisitor,
-    BranchVisitor, CallVisitor, CastVisitor, ConstIntVisitor, ConstStringVisitor,
+    BranchVisitor, CallVisitor, CastVisitor, ConstCharVisitor, ConstIntVisitor, ConstStringVisitor,
     ConstructorDefVisitor, ConstructorVisitor, ExprVisitor, FieldAccessVisitor, FieldInitVisitor,
     FieldVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, IntTyVisitor,
     JumpVisitor, LetStatementVisitor, ModVisitor, PointerTyVisitor, ReferenceTyVisitor,
@@ -643,6 +644,17 @@ const NEVER: ir::Type = ir::Type::Scalar(ir::ScalarType {
         bitsize: 0,
         vectorsize: XLangNone,
         validity: ir::ScalarValidity::NONZERO,
+    },
+});
+
+const CHAR: ir::Type = ir::Type::Scalar(ir::ScalarType {
+    kind: ScalarTypeKind::Char {
+        flags: ir::CharFlags::UNICODE,
+    },
+    header: ir::ScalarTypeHeader {
+        bitsize: 32,
+        vectorsize: XLangNone,
+        validity: ir::ScalarValidity::empty(),
     },
 });
 
@@ -1635,6 +1647,21 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
         )))
     }
 
+    fn visit_const_char(&mut self) -> Option<Box<dyn ConstCharVisitor + '_>> {
+        let (intty, val) = match self.exprs.push_mut(ir::Expr::Const(ir::Value::Integer {
+            ty: ir::ScalarType::default(),
+            val: 0,
+        })) {
+            ir::Expr::Const(ir::Value::Integer { ty, val }) => (ty, val),
+            _ => unsafe { core::hint::unreachable_unchecked() },
+        };
+        Some(Box::new(XirConstIntVisitor::new(
+            self.properties,
+            val,
+            intty,
+        )))
+    }
+
     fn visit_const(&mut self, defid: DefId) {
         let name = self.names[&defid];
 
@@ -2441,5 +2468,30 @@ impl<'a> ConstIntVisitor for XirConstIntVisitor<'a> {
 
     fn visit_value(&mut self, val: u128) {
         *self.val = val;
+    }
+}
+
+impl<'a> ConstCharVisitor for XirConstIntVisitor<'a> {
+    fn visit_charty(&mut self, ty: crate::lex::CharType) {
+        match ty {
+            CharType::Default => {
+                self.intty.kind = ir::ScalarTypeKind::Char {
+                    flags: ir::CharFlags::UNICODE,
+                };
+                self.intty.header.bitsize = 32;
+            }
+            CharType::Byte => {
+                self.intty.kind = ir::ScalarTypeKind::Integer {
+                    signed: false,
+                    min: XLangNone,
+                    max: XLangNone,
+                };
+                self.intty.header.bitsize = 8;
+            }
+        }
+    }
+
+    fn visit_value(&mut self, val: u32) {
+        *self.val = val as u128;
     }
 }

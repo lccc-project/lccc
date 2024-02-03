@@ -2,6 +2,7 @@ use ty::Spanned;
 use xlang::abi::pair::Pair;
 
 use crate::{
+    ast::CharType,
     interning::Symbol,
     lex::StringType,
     sema::{
@@ -564,6 +565,16 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         mir::MirExpr::UnaryExpr(op, lhs) => {
             visit_unary_expr(visitor.visit_unary_expr(), op, lhs, defs)
         }
+        mir::MirExpr::ConstChar(ty, val) => {
+            let mut visitor = visitor.visit_const_char();
+
+            if visitor.is_none() {
+                return;
+            }
+            visitor.visit_charty(*ty);
+
+            visitor.visit_value(*val);
+        }
     }
 }
 
@@ -726,6 +737,7 @@ def_visitors! {
     pub trait ExprVisitor {
         fn visit_unreachable(&mut self);
         fn visit_const_int(&mut self) -> Option<Box<dyn ConstIntVisitor +'_>>;
+        fn visit_const_char(&mut self) -> Option<Box<dyn ConstCharVisitor + '_>>;
         fn visit_const(&mut self, defid: DefId);
         fn visit_cast(&mut self) -> Option<Box<dyn CastVisitor + '_>>;
         fn visit_const_string(&mut self) -> Option<Box<dyn ConstStringVisitor + '_>>;
@@ -745,6 +757,11 @@ def_visitors! {
     pub trait ConstIntVisitor {
         fn visit_intty(&mut self) -> Option<Box<dyn IntTyVisitor + '_>>;
         fn visit_value(&mut self, val: u128);
+    }
+
+    pub trait ConstCharVisitor {
+        fn visit_charty(&mut self, ty: CharType);
+        fn visit_value(&mut self, val: u32);
     }
 
     pub trait CastVisitor {

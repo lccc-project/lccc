@@ -85,7 +85,7 @@ pub enum HirExpr {
     Var(HirVarId),
     ConstInt(Option<Spanned<IntType>>, u128),
     ConstString(StringType, Spanned<Symbol>),
-    ConstChar(CharType, Spanned<Symbol>),
+    ConstChar(CharType, u32),
     Const(DefId, GenericArgs),
     #[allow(dead_code)]
     Unreachable,
@@ -128,9 +128,22 @@ impl core::fmt::Display for HirExpr {
                 s.escape_default().fmt(f)?;
                 f.write_str("\"")
             }
-            HirExpr::ConstChar(_, s) => {
+            HirExpr::ConstChar(CharType::Default, val) => {
                 f.write_str("'")?;
-                s.escape_default().fmt(f)?;
+                if let Some(c) = char::from_u32(*val) {
+                    c.escape_default().fmt(f)?;
+                } else {
+                    f.write_fmt(format_args!("\\u{{invalid char: {:04x}}}", val))?;
+                }
+
+                f.write_str("'")
+            }
+            HirExpr::ConstChar(CharType::Byte, val) => {
+                f.write_str("'")?;
+                match val {
+                    &val @ 0x20..=0x7F => (val as u8 as char).fmt(f)?,
+                    val => f.write_fmt(format_args!("\\x{:02x}", val))?,
+                }
                 f.write_str("'")
             }
             HirExpr::Tuple(v) => {
@@ -722,7 +735,72 @@ impl<'a> HirLowerer<'a> {
                 Literal {
                     lit_kind: LiteralKind::Char(cty),
                     val: sym,
-                } => Ok(expr.copy_span(|_| HirExpr::ConstChar(cty, sym))),
+                } => {
+                    dbg!(sym);
+                    let mut c = sym.chars().peekable();
+
+                    let val = match c.next().expect("We have at least one character") {
+                        '\\' => match c.next().expect("malformed escape sequence") {
+                            't' => '\t' as u32,
+                            'n' => '\n' as u32,
+                            'r' => '\r' as u32,
+                            '\'' => '\'' as u32,
+                            '"' => '"' as u32,
+                            '0' => 0,
+                            '\\' => '\\' as u32,
+                            'x' => {
+                                let mut val = 0;
+
+                                match c
+                                    .next()
+                                    .expect("Malformed escape sequence - error in lexer")
+                                {
+                                    c => val = c.to_digit(16).expect("Malformed escape sequence"),
+                                }
+
+                                match c
+                                    .peek()
+                                    .expect("Malformed character literal - error in lexer")
+                                {
+                                    '\'' => {}
+                                    &v => {
+                                        c.next();
+                                        val <<= 4;
+                                        val |= v
+                                            .to_digit(16)
+                                            .expect("Malformed character literal - error in lexer");
+                                    }
+                                }
+
+                                val
+                            }
+                            'u' => {
+                                assert_eq!(
+                                    c.next(),
+                                    Some('{'),
+                                    "Malformed escape sequence - error in lexer"
+                                );
+                                let mut val = 0;
+                                for c in &mut c {
+                                    match c {
+                                        '}' => break,
+                                        c => {
+                                            val <<= 4;
+                                            val |= c.to_digit(16).expect(
+                                                "Malformed character literal - error in lexer",
+                                            );
+                                        }
+                                    }
+                                }
+                                val
+                            }
+                            val => panic!("Expected an escape sequence, got {}", val),
+                        },
+                        val => val as u32,
+                    };
+
+                    Ok(expr.copy_span(|_| HirExpr::ConstChar(cty, val)))
+                }
                 _ => todo!("literal"),
             },
             ast::Expr::Break(_, _) => todo!("break"),

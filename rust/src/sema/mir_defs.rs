@@ -65,6 +65,7 @@ pub enum MirExpr {
     AllocaDrop(Type, DropFlagState),
     ConstInt(IntType, u128),
     ConstString(StringType, Symbol),
+    ConstChar(CharType, u32),
     Const(DefId, GenericArgs),
     Retag(RefKind, Mutability, Box<Spanned<MirExpr>>),
     Cast(Box<Spanned<MirExpr>>, Type),
