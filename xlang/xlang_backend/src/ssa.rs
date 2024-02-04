@@ -489,7 +489,14 @@ impl<M: Machine> BasicBlockBuilder<M> {
             }
             ir::Terminator::Branch(_, _, _) => todo!("branch"),
             ir::Terminator::BranchIndirect => todo!("branch indirect"),
-            ir::Terminator::Call(_, _, _) => todo!("call"),
+            ir::Terminator::Call(_, call_fnty, next) => {
+                let params_count = call_fnty.params.len();
+                let vals = self.pop_values(params_count);
+
+                let target = self.pop();
+
+                self.write_call(target, vals, (**call_fnty).clone(), Some(*next));
+            }
             ir::Terminator::Tailcall(_, call_fnty) => {
                 let params_count = call_fnty.params.len();
                 let vals = self.pop_values(params_count);

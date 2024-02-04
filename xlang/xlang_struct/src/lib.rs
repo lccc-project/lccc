@@ -1916,7 +1916,7 @@ impl core::fmt::Display for JumpTargetFlags {
 /// jump-target := [*(<jump-target-flags>)] @<int-literal>
 /// ```
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct JumpTarget {
     /// The flags for the jump
     pub flags: JumpTargetFlags,
