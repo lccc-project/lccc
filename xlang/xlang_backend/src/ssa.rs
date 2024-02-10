@@ -9,7 +9,7 @@ use crate::mach::Machine;
 use crate::ty::TypeInformation;
 
 use arch_ops::traits::InsnWrite;
-use xlang::targets::properties::TargetProperties;
+use xlang::{ir::JumpTarget, targets::properties::TargetProperties};
 
 use xlang::ir;
 
@@ -31,6 +31,7 @@ impl SharedCounter {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum SsaInstruction {
+    Call(CallTarget, Vec<OpaqueLocation>),
     Jump(u32, Vec<OpaqueLocation>),
     Fallthrough(u32, Vec<OpaqueLocation>),
     Exit(Vec<OpaqueLocation>),
@@ -42,6 +43,16 @@ pub enum SsaInstruction {
 impl core::fmt::Display for SsaInstruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            SsaInstruction::Call(targ, params) => {
+                f.write_fmt(format_args!("call {}(", targ))?;
+                let mut sep = "";
+                for item in params {
+                    f.write_str(sep)?;
+                    sep = ", ";
+                    item.fmt(f)?;
+                }
+                f.write_str(")")
+            }
             SsaInstruction::Jump(val, stack) => {
                 f.write_fmt(format_args!("jump @{} [", val))?;
                 let mut sep = "";
@@ -417,7 +428,15 @@ impl<M: Machine> BasicBlockBuilder<M> {
                 };
 
                 if let Some(next) = next {
-                    todo!("Call with next")
+                    self.insns.push(SsaInstruction::Call(
+                        CallTarget {
+                            ptr: OpaquePtr::Symbol(sym),
+                            real_ty,
+                            call_ty,
+                        },
+                        params,
+                    ));
+                    self.write_jump(&next);
                 } else {
                     self.insns.push(SsaInstruction::Tailcall(
                         CallTarget {
@@ -438,6 +457,19 @@ impl<M: Machine> BasicBlockBuilder<M> {
             VStackValue::CompareResult(_, _) => todo!(),
             VStackValue::Trapped => todo!(),
             VStackValue::ArrayRepeat(_, _) => todo!(),
+        }
+    }
+
+    pub fn write_jump(&mut self, targ: &JumpTarget) {
+        let vals = self.incoming_count[&targ.target];
+
+        let vals = self.pop_opaque(vals);
+
+        if targ.flags.contains(ir::JumpTargetFlags::FALLTHROUGH) {
+            self.insns
+                .push(SsaInstruction::Fallthrough(targ.target, vals));
+        } else {
+            self.insns.push(SsaInstruction::Jump(targ.target, vals));
         }
     }
 
@@ -476,16 +508,7 @@ impl<M: Machine> BasicBlockBuilder<M> {
     pub fn write_terminator(&mut self, term: &ir::Terminator) {
         match term {
             ir::Terminator::Jump(targ) => {
-                let vals = self.incoming_count[&targ.target];
-
-                let vals = self.pop_opaque(vals);
-
-                if targ.flags.contains(ir::JumpTargetFlags::FALLTHROUGH) {
-                    self.insns
-                        .push(SsaInstruction::Fallthrough(targ.target, vals));
-                } else {
-                    self.insns.push(SsaInstruction::Jump(targ.target, vals));
-                }
+                self.write_jump(targ);
             }
             ir::Terminator::Branch(_, _, _) => todo!("branch"),
             ir::Terminator::BranchIndirect => todo!("branch indirect"),

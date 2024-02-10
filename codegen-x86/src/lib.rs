@@ -184,6 +184,7 @@ impl Machine for X86Machine {
         let mut clobbers = X86Clobbers {};
         for (num, insn) in insns.iter().enumerate() {
             match insn {
+                xlang_backend::ssa::SsaInstruction::Call(_, _) => todo!("call"),
                 xlang_backend::ssa::SsaInstruction::Jump(targ, old_locs)
                 | xlang_backend::ssa::SsaInstruction::Fallthrough(targ, old_locs) => {
                     let foreign_locs = &incoming_set[targ];
@@ -255,6 +256,7 @@ impl Machine for X86Machine {
             }
 
             match insn {
+                xlang_backend::ssa::SsaInstruction::Call(_, _) => todo!("call"),
                 xlang_backend::ssa::SsaInstruction::Jump(targ, _) => {
                     encoder.write_insn(X86Instruction::new(
                         X86CodegenOpcode::Jmp,
