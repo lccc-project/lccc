@@ -1767,33 +1767,388 @@ pub enum Expr {
     ///
     /// ## Semantics
     ///
-    /// 1. If `access-class` contains `volatile`, the instruction performs a observable side effect (`[intro.abstract]#6`).
-    /// 2. If `access-class` contains `nontemporal`, hints that subsequent expressions are unlikely to access memory accessed or modified by preceeding expressions.
-    /// 3. If `access-class` contains an atomic access class, the instruction functions the same a fence instruction with that atomic access class, except that the fence does not *synchronize-with* atomic operations or fence instructions performed by another thread of execution.
+    /// 1. If `access-class` contains `volatile`, the expression performs a observable side effect (`[intro.abstract]#6`).
+    /// 2. If `access-class` contains `nontemporal`, then all preceeding operations weekly-sequenced-before this expression *weekly-happens-before* this expression.
+    /// 3. If `access-class` contains an atomic access class, the expression functions the same a fence expression with that atomic access class, except that the fence does not *synchronize-with* atomic operations or fence instructions performed by another thread of execution.
     /// 4. [_Note: This is suitable for communicating with signal or interrupt handlers executed on the current thread._]
-    /// 5. [_Note: The `access-class` modifier `freeze` may appear, but is ignored by this expression. ]
+    /// 5. [_Note: The `access-class` modifier `freeze` may appear, but is ignored by this expression. _]
     /// 6. If `access-class` does not contain either `volatile`, `nontemporal`, or an atomic access class, the expression performs no operation.
+    ///
+    /// ### Platform Notes
+    ///
+    /// Typically, a `sequence` expr corresponds to no generated machine code, regardless of access-class.
     ///
     Sequence(AccessClass),
     /// Pushes a constant value.
     ///
-    /// # Stack
+    /// ## Stack
     ///
-    /// Type checking: [..]=>[..,T]
+    /// Type checking: `[..]`=>`[..,T]``
     ///
-    /// Operands: [..]=>[..,Value]
+    /// Operands: `[..]``=>`[..,Value]`
+    ///
+    /// ## Syntax
+    ///
+    /// ```abnf
+    /// expr /= "const" <value
+    /// ```
+    ///
+    /// ## Semantics
+    /// Pushes a constant value, with no side effects.
     Const(Value),
 
-    /// Computes
+    /// Computes the given binary Op
+    ///
+    /// ## Stack
+    /// In all of the following, `S` means a scalar type, `P` means a pointer type `I` an integer type.
+    /// Each occurance of `S`, `P`, or `I` in the same type checking specification refers to the same type.
+    ///
+    /// ### Form 1
+    ///
+    /// Type checking: `[..,S,S]`=>`[..,S]`
+    ///
+    /// Operands: `[..,a,b]`=>`[..,res]`
+    ///
+    /// (All except comparison ops or [`OverflowBehaviour::Checked`])
+    ///
+    /// ### Form 2
+    ///
+    /// Type checking: `[..,S, S]`=>`[..,S, uint(1)]`
+    ///
+    /// Operands: `[..,a,b]`=>`[..,res, v]`
+    ///
+    /// ([`OverflowBehaviour::Checked`], except for comarpison ops)
+    ///
+    /// `S` may not have a vectorsize
+    ///
+    /// ### Form 3
+    ///
+    /// Type checking: `[..,S,S]` => `[..,uint(1)]` or `[..,P,P]` => `[..,uint(1)]`
+    ///
+    /// Operands: `[..,a,b]`=>`[..,res]`
+    ///
+    /// (Comparison Op, other than [`BinaryOp::Cmp`])
+    ///
+    /// ### Form 4
+    ///
+    /// Type checking: `[..,S, S]`=>`[..,int(32)]` or `[..P,P]`=>`[..,int(32)]`
+    ///
+    /// Operands: `[..,a,b]`=>`[..,res]`
+    ///
+    /// ([`BinaryOp::Cmp`] except [`OverflowBehaviour::Checked`])
+    ///
+    /// ### Form 5
+    ///
+    /// Type checking: `[..,S, S]`=>`[..,int(32), uint(0)]`
+    ///
+    /// Operands: `[..,a,b]`=>`[..,res,unordered]`
+    /// ([`BinaryOp::Cmp`] with [`OverflowBehaviour::Checked`])
+    ///
+    /// ### Form 6
+    ///
+    /// Type checking: `[..,P,I]`=>`[..,P]` or `[..,I,P]`=>`[..,P]` ([`BinaryOp::Add`] only)
+    ///
+    /// Operands: `[.., ptr, idx]`=>`[..,res]` or `[.., idx, ptr]`=>`[..,res]` ([`BinaryOp::Add`] only)
+    ///
+    /// [`BinaryOp::Add`] or [`BinaryOp::Sub`] only (pointer+integer)
+    ///
+    /// ### Form 7
+    ///
+    /// Type checking: `[..,P, P]`=>`[..,DI]`
+    ///
+    /// (`DI` is the signed integer type with width equal to the `size_bits` target property)
+    ///
+    /// Operands: `[.., a, b]`=>`[..,res]`
+    ///
+    /// [`BinaryOp::Sub`] only (pointer+pointer)
+    ///
+    /// ## Syntax
+    ///
+    /// ```abnf
+    /// expr /= <binary-op> [<overflow-behaviour>]
+    /// ```
+    ///
+    /// ## Semantics
+    ///
+    /// If any operand is `uninit`, all results are `uninit`.
+    ///
+    /// ### Form 1
+    ///
+    /// Computes the value of the specified binary-op with `a,b` according to `overflow-behaviour` (defaults to `wrap` if not specified)
+    ///
+    /// If an operation overflows (or an integer/fixed-point operation attempts to divide by zero), the result is the following, based on the specified `overflow-behaviour`:
+    /// * `wrap`: Wraps modulo `2^N`. Division by zero yields `uninit`
+    /// * `unchecked`: Yields `uninit`
+    /// * `trap`: Causes abnormal program termination
+    /// * `saturate`: Saturates to Minimum/Maxmimum value of the type. Division by zero yields a quotient of the maximum value, and a remainder of the minimum value of the type.
+    ///
+    /// Overflow in this section is not the same as floating-point overflow.
+    /// Operations on floating-point or posit types are not considered to overflow for the purposes of this section, even if they would return +/-infinity from finite inputs or cause the `FE_OVERFLOW` floating-point exception.
+    /// Operations on rationals or fixed-point values *can* cause overflow.
+    ///
+    /// If `overflow-behaviour` is `trap`, and any operand is uninit, the behaviour is undefined.
+    ///
+    /// ### Form 2
+    ///
+    /// Computes the value of the specified binary-op, checking for overflow or input errors.
+    /// If an operation overflow (or an integer/fixed-point operation attempts to divide by zero),
+    ///  the result is wrapped modulo 2^N (or saturated for `div`/`rem`) and the overflow flag (`v`) is `1` (else `0`).
+    ///
+    /// ### Form 3
+    ///
+    /// Compares two scalar or pointer values, and returns `0` if the comparison fails and `1` otherwise.
+    ///
+    /// `overflow-behaviour` is ignored, and may not be `checked`.
+    ///
+    /// ### Form 4
+    ///
+    /// Performs 3-way comparison on a scalar or pointer value, returning `-1` if `a<b`, `0` if `a==b`, or `1` if `a>b`.
+    ///
+    /// `overflow-behaviour` is ignored. If the comparison of `a,b` is unordered, the result is `uninit`.
+    ///
+    /// ### Form 5
+    ///
+    /// Performs 3-way comparison on a scalar value, returning `-1` if `a<b`, `0` if `a==b`, or `1` if `a>b`.
+    ///
+    /// If the comparison of `a,b` is unordered, the result is `uninit`. If the comparison is unordered, then `unord` is `1`, otherwise `unord` is `0`.
+    ///
+    /// ### Form 6
+    ///
+    /// Performs pointer addition/subtraction.
+    ///
+    /// Let `P` be a pointer to `T` where `T` is a complete value type.
+    ///
+    /// For `add`, the result is the pointer derived from `ptr` with address given by the offset from `ptr`
+    ///  determined by the offset between an element `a` and the `idx`th following element `b`.
+    ///
+    /// For `sub`, the result is the pointer derived from `ptr` with address given by the offset from `ptr`
+    ///  determined by the offset between an element `a` and the `idx`th previous element `b`.
+    ///
+    /// `overflow-behaviour` (default is `wrap`) must be either `wrap` or `unchecked`.
+    ///
+    /// If `overflow-behaviour` is `unchecked`, then the result is `uninit` if any of the following are true:
+    /// * The resulting pointer as above does not point into an object
+    /// * The resulting pointer as above points into a different complete object than `ptr`
+    /// * The offset between the elements of the array is the value `off`, such that `off` cannot be exactly represented as a value of type `DI`
+    /// * The resulting pointers address wraps the address space (for a far pointer) or segment (for a near pointer)
+    ///
+    /// (DI is the signed integer type with width equal to the `sizebits` target property)
+    ///
+    /// ### Form 7
+    ///
+    /// Performs pointer subtraction.
+    ///
+    /// Let `P` be a pointer to `T`, where `T` is a complete value type.
+    ///
+    /// Let the offset between the addresses of `b` and `a` be `off`.
+    ///
+    /// Returns `idx`, such that the offset between some element `A` and the `idx`th previous element `B`  is the value `off`.
+    ///
+    /// `overflow-behaviour` (default is `wrap`) must be either `wrap` or `unchecked`.
+    ///
+    /// If `overflow-behaviour` is `unchecked`, then the result is `uninit` if any of the following are true:
+    /// * Either `a` or `b` do not point into an object
+    /// * `a` and `b` do not point into the same complete object
+    /// * Either `off` or `idx` cannot be represented as a value of type `DI`
+    /// * The pointers are near pointers that refer to objects in different segments of the address space
+    ///
+    /// (DI is the signed integer type with width equal to the `sizebits` target property)
     BinaryOp(BinaryOp, OverflowBehaviour),
+    /// Performs the given unary operation
+    ///
+    /// ## Stack
+    /// In all of the following, `S` means a scalar type, `I` means an integer type.
+    /// Each occurance of `S` or `I` in the same type checking specification refers to the same type.
+    ///
+    /// ### Form 1
+    ///
+    /// Type checking: `[..,S]` => `[..,S]`
+    ///
+    /// Operands: `[..,val]`=>`[..,res]`
+    ///
+    /// (Except for [`OverflowBehaviour::Checked`] or [`UnaryOp::LogicNot`])
+    ///
+    /// ### Form 2
+    ///
+    /// Type checking: `[..,S]`=>`[..,S, uint(1)]`
+    ///
+    /// Operands: `[..,val]`=>[..,res,v]
+    ///
+    /// ([`OverflowBehaviour::Checked`] except for [`UnaryOp::LogicNot`]))
+    ///
+    /// ### Form 3
+    ///
+    /// Type checking: `[..I]`=>`[..,I]`
+    ///
+    /// Operands: `[..,val]`=>`[..,val]`
+    ///
+    /// ([`UnaryOp::LogicNot`] only)
+    ///
+    /// ## Syntax
+    ///
+    /// ```abnf
+    /// expr /= <unary-op> [<overflow-behaviour>]
+    /// ```
+    ///
+    /// ## Semantics
+    ///
+    /// If `val` is `uninit`, all results are `uninit`.
+    /// `overflow-behaviour` defaults to `wrap`
+    ///
+    /// ### Form 1
+    ///
+    /// Computes the given unary op on `val`, returning the result.
+    ///
+    /// If overflow occurs, the result is according to the `overflow-behaviour`:
+    /// * `wrap`: The value is wrapped modulo 2^N
+    /// * `unchecked`: The result is `uninit`.
+    /// * `trap`: The program terminates abnormally
+    /// * `saturate`: The value is saturated to the minimum/maximum value of the type.
+    ///
+    /// ### Form 2
+    ///
+    /// Computes the given unary op on `val` checking for overflow.
+    ///
+    /// If overflow occurs, the result is wrapped modulo `2^N` and `v` is 1.
+    ///
+    /// ### Form 3
+    ///
+    /// Computes the logical negation of `val`.
+    /// If `val` is `0`, then the result is `1` if the integer type is unsigned, and `-1` if the integer type is signed.
+    /// If `val` is non-zero then the result is `0`.
+    ///
+    /// If `val` cannot be represented as `I` (only possible for width `0` integer types), the result is `0`.
+    ///
+    /// The overflow-behaviour is ignored (overflow-behaviour cannot be `checked`)
+    ///
     UnaryOp(UnaryOp, OverflowBehaviour),
     Convert(ConversionStrength, Type),
     Derive(PointerType, Box<Self>),
+    /// Obtains an lvalue that designates the specified local variable
+    ///
+    /// ## Stack
+    ///
+    /// Type checking: `[..]`=>`[..,lvalue T]`
+    /// Operands: `[..]`=>`[..,local]`
+    ///
+    /// ## Syntax
+    /// ```abnf
+    /// local-id = <IDENT>
+    ///
+    /// expr :/= "local" <local-id>
+    /// ```
+    ///
+    /// where `local-id` matches `"_"*<dec-digit>`
+    ///
+    /// ## Semantics
+    ///
+    /// Pushes an lvalue that designates the specified `<local-id>` defined in the current function.
+    ///
+    /// Ill-formed if `<local-id>` is not defined in the function
+    ///
     Local(u32),
+    /// The stack `pop n` operation
+    ///
+    /// ## Stack
+    ///
+    /// Type checking: `[..,T0,T1, ..., Tn]`=>`[..]`
+    ///
+    /// Operands: `[..,i0,i1, ..., in]`=>`[..]`
+    ///
+    /// ## Syntax
+    ///
+    /// ```abnf
+    /// expr /= "pop" [<int-literal>]
+    /// ```
+    ///
+    /// ## Semantics
+    ///
+    /// For `pop n`, pops `n` values from the stack and discards them with no side effects.
+    ///
+    /// `pop` is an alias for `pop 1`.
+    ///
     Pop(u32),
+    /// The stack `dup n` operation
+    ///
+    /// ## Stack
+    ///
+    /// Type checking: `[.., T0, T1, ..., Tn]` => `[..,T0,T1, ..., Tn, T0, T1, ..., Tn]`
+    ///
+    /// Operands: `[..,v0,v1, ..., vn]`=>`[..,v0,v1, ..., vn,v0,v1, ..., vn]`
+    ///
+    /// ## Syntax
+    /// ```abnf
+    /// expr /= "dup" [<int-literal>]
+    /// ```
+    ///
+    /// ## Semantics
+    ///
+    /// For `dup n`, pops `n` values from the stack, then pushes those `n` values twice in order.
+    ///
+    /// `dup` is an alias for `dup 1`
     Dup(u32),
+    /// The stack `pivot m n` operation
+    ///
+    /// ## Stack
+    ///
+    /// Type checking: `[.., S0, S1,  ..., Sm, T0, T1, ..., Tn]`=> `[.., T0, T1, ..., Tn, S0, S1, ..., Sm]`
+    ///
+    /// Operands: `[.., s0, s1, ..., sm, t0, t1, ..., tn]`=>`[.., t0, t1, ..., tn, s0, s1, ..., sm]`
+    ///
+    /// ## Syntax
+    ///
+    /// ```abnf
+    /// expr /= "pivot" [<int-literal> [<int-literal>]]
+    /// ```
+    ///
+    /// ## Semantics
+    ///
+    /// For `pivot m n`, pops `n` values from the stack, preserves them in an unspecified location, pops `m` additional values,
+    ///  then pushes the first set of values popped followed by the second set of values popped.
     Pivot(u32, u32),
     Aggregate(AggregateCtor),
+    /// Projects to a field of the type of an aggregate
+    ///
+    /// ## Stack
+    ///
+    /// In all of the following, `A` is an aggregate type or a product type. `F` is the type of the named field of `A`.
+    ///
+    /// The expression is invalid if `A` does not have the field named by `member-name`.
+    ///
+    /// ### Form 1
+    /// Type checking: `[.., A]`=>`[..,F]`
+    ///
+    /// Operands: `[..,a]`=>`[..,f]`
+    ///
+    /// ### Form 2
+    /// Type checking: `[.., lvalue A]`=>`[..,lvalue F]`
+    ///
+    /// Operands: `[..,a]`=>`[..,f]`
+    ///
+    /// ## Syntax
+    /// ```abnf
+    /// member-name := <ident> / <int-literal> / "(" <member-name> ")"
+    /// expr /= "member" <field-name>
+    /// ```
+    ///
+    /// ## Semantics
+    ///
+    /// Projects to a named member of an aggregate type or product type.
+    ///
+    /// ### Form 1
+    ///
+    /// The operand and the result are both rvalues.
+    /// Returns the value of the named member.
+    ///
+    /// ### Form 2
+    /// The operand and the result are both lvalues.
+    /// Returns an lvalue that designates the named member of `a`.
+    /// If the member is a bitfield, then the resulting lvalue is an lvalue that designates a bitfield.
+    ///
+    /// The program is ill-formed if an lvalue that designates a bitfield is used in any of the following ways:
+    /// * As an operand to a `compound_assign`, `fetch_assign`, `assign`, `as_rvalue`, lvalue op, or unary lvalue op with an atomic access class
+    /// * As the operand of a `member` or `addr_of` expression
+    /// * As a value used as an incoming value for a jump target
     Member(String),
     MemberIndirect(String),
     Assign(AccessClass),
@@ -1933,8 +2288,10 @@ impl core::fmt::Display for JumpTarget {
 }
 
 bitflags::bitflags! {
+    /// Flags for the call instruction
     #[repr(transparent)]
     pub struct CallFlags: u32{
+        /// Indicates the the call or tailcall will definitely return in finite time
         const WILLRETURN = 1;
     }
 }
