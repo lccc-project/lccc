@@ -379,7 +379,7 @@ impl<M: Machine> BasicBlockBuilder<M> {
                 }
                 ir::Value::GlobalAddress { .. } => todo!(),
                 ir::Value::ByteString { .. } => todo!(),
-                ir::Value::String { .. } => todo!(),
+                ir::Value::String { .. } => todo!("{}", loc),
                 ir::Value::LabelAddress(_) => todo!(),
                 ir::Value::Empty => panic!("Empty IR value"),
             },
@@ -591,7 +591,27 @@ impl<M: Machine> BasicBlockBuilder<M> {
             }
             ir::Expr::BinaryOp(_, _) => todo!("binary op"),
             ir::Expr::UnaryOp(_, _) => todo!("unary op"),
-            ir::Expr::Convert(_, _) => todo!("convert"),
+            ir::Expr::Convert(strength, new_ty) => match (self.pop(), strength, new_ty) {
+                (
+                    VStackValue::Pointer(_, val),
+                    ir::ConversionStrength::Reinterpret,
+                    ir::Type::Pointer(new_ty),
+                ) => {
+                    self.push(VStackValue::Pointer(new_ty.clone(), val));
+                }
+                (
+                    VStackValue::Constant(ir::Value::String { encoding, utf8, .. }),
+                    ir::ConversionStrength::Reinterpret,
+                    ir::Type::Pointer(new_ty),
+                ) => {
+                    self.push(VStackValue::Constant(ir::Value::String {
+                        encoding,
+                        utf8,
+                        ty: ir::Type::Pointer(new_ty.clone()),
+                    }));
+                }
+                x => todo!("{:?}", x),
+            },
             ir::Expr::Derive(_, _) => todo!("derive"),
             ir::Expr::Local(_) => todo!("local"),
             ir::Expr::Pop(n) => {
