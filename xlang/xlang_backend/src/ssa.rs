@@ -678,7 +678,10 @@ impl<M: Machine> BasicBlockBuilder<M> {
 
                 self.write_call(target, vals, (**call_fnty).clone(), None);
             }
-            ir::Terminator::Exit(_) => todo!("exit"),
+            ir::Terminator::Exit(n) => {
+                let vals = self.pop_opaque(*n as usize);
+                self.insns.push(SsaInstruction::Exit(vals));
+            }
             ir::Terminator::Asm(_) => todo!("asm"),
             ir::Terminator::Switch(_) => todo!("switch"),
             ir::Terminator::Unreachable => self.insns.push(SsaInstruction::Trap(Trap::Unreachable)),
