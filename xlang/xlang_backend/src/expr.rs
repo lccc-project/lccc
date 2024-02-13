@@ -6,8 +6,6 @@ use xlang::{
 use core::{fmt::Debug, hash::Hash};
 use std::num::NonZeroU128;
 
-use crate::str::Encoding;
-
 /// Represents the location of opaque values both as locals and on the value stack
 pub trait ValLocation: Eq + Debug + Clone {
     /// Checks if this location is addressable (is not a register)
@@ -160,8 +158,8 @@ impl<Loc: ValLocation> VStackValue<Loc> {
             VStackValue::Constant(val) => match val {
                 Value::Invalid(ty) | Value::Uninitialized(ty) => ty.clone(),
                 Value::GenericParameter(_) => panic!("Cannot handle generic params this late"),
-                Value::Integer { ty, val } => Type::Scalar(*ty),
-                Value::GlobalAddress { ty, item } => {
+                Value::Integer { ty, .. } => Type::Scalar(*ty),
+                Value::GlobalAddress { ty, .. } => {
                     let mut pty = PointerType::default();
                     *pty.inner = ty.clone();
                     Type::Pointer(pty)

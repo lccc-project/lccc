@@ -332,6 +332,28 @@ impl Machine for X86Machine {
 
         Ok(())
     }
+
+    fn assign_call_conv(
+        &self,
+        assignments: &mut Self::Assignments,
+        incoming: &[xlang_backend::ssa::OpaqueLocation],
+        fnty: &xlang::ir::FnType,
+        tys: &TypeInformation,
+    ) {
+        let callconv = X86CallConvInfo {
+            mode: assignments.mode,
+        };
+        let callconv = compute_call_conv(&callconv, fnty, fnty, tys);
+
+        for (param, incoming) in callconv.params().iter().zip(incoming) {
+            todo!()
+        }
+
+        match callconv.ret_location() {
+            CallConvLocation::Null => {}
+            loc => todo!("Return in {:?}", loc),
+        }
+    }
 }
 
 xlang::host::rustcall! {

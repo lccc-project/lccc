@@ -251,7 +251,7 @@ impl CallConvInfo for X86CallConvInfo {
         }
     }
 
-    fn classify_pointer(&self) -> Self::TypeClass {
+    fn classify_pointer(&self, _: xlang::ir::PointerKind) -> Self::TypeClass {
         X86TypeClass::Integer
     }
 

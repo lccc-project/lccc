@@ -58,6 +58,16 @@ impl Machine for CleverMachine {
     ) -> std::io::Result<()> {
         todo!()
     }
+
+    fn assign_call_conv(
+        &self,
+        assignments: &mut Self::Assignments,
+        incoming: &[OpaqueLocation],
+        fnty: &xlang_struct::FnType,
+        tys: &TypeInformation,
+    ) {
+        todo!()
+    }
 }
 
 xlang::host::rustcall! {

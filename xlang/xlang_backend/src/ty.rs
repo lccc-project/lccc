@@ -2,9 +2,8 @@ use std::convert::TryInto;
 
 use xlang::{
     ir::{
-        self, AggregateDefinition, AggregateKind, AnnotationItem, Path, PointerAliasingRule,
-        PointerKind, ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type,
-        ValidRangeType, Value,
+        AggregateDefinition, AggregateKind, AnnotationItem, Path, PointerAliasingRule, PointerKind,
+        ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type, ValidRangeType, Value,
     },
     prelude::v1::{HashMap, Pair, Some as XLangSome},
     targets::properties::TargetProperties,
@@ -49,46 +48,6 @@ pub struct TypeInformation {
     aliases: HashMap<Path, Type>,
     aggregate_layout_cache: RefCell<HashMap<Type, Box<AggregateLayout>>>,
     properties: &'static TargetProperties<'static>,
-}
-
-pub struct FlattenFieldsOf<'a> {
-    fields_stack: Vec<std::vec::IntoIter<(u64, &'a Type)>>,
-
-    tys: &'a TypeInformation,
-}
-
-impl<'a> FlattenFieldsOf<'a> {
-    fn push_fields_of(&mut self, base_offset: u64, agl: &'a AggregateLayout) {
-        let mut fields = vec![];
-
-        for Pair(_, (offset, ty)) in &agl.fields {
-            fields.push((*offset + base_offset, ty));
-        }
-
-        fields.sort_by_key(|(off, _)| *off);
-
-        self.fields_stack.push(fields.into_iter());
-    }
-
-    fn push_fields_of_array(&mut self, base_off: u64, arr_ty: &'a ir::ArrayType) {
-        let mut fields = vec![];
-        let ty = &arr_ty.ty;
-        let size = self
-            .tys
-            .type_size(ty)
-            .expect("array type must have a complete value type as a field");
-
-        let len = match &arr_ty.len {
-            Value::Integer { val, .. } => (*val) as u64,
-            val => panic!("Cannot determine length of array from {}", val),
-        };
-
-        for i in 0..len {
-            fields.push((base_off + i * size, ty));
-        }
-
-        self.fields_stack.push(fields.into_iter());
-    }
 }
 
 impl TypeInformation {

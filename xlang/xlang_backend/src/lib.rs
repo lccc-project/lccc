@@ -1,5 +1,4 @@
-// #![deny(missing_docs, warnings)] // No clippy::nursery
-#![allow(dead_code)] // I'm not deleting a bunch of randomly placed shit
+#![deny(missing_docs, warnings)] // No clippy::nursery
 //! A helper crate for implementing [`xlang::plugin::XLangCodegen`]s without duplicating code (also can be used to evaluate constant expressions)
 //! the `xlang_backend` crate provides a general interface for writing expressions to an output.
 
@@ -43,15 +42,29 @@ pub mod mangle;
 pub mod mach;
 
 /// Module for building SSA from XIR that can be readily lowered to machine code
-/// Does not use FunctionCodegen
 pub mod ssa;
 
+/// The section a symbol definition is placed in
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum SectionSpec {
+    /// The global section for the current type of definition, which (on ELF platforms), are generally:
+    /// * `.text` (RX) for functions
+    /// * `.data` (RW) for mutable statics
+    /// * `.rodata` (RO) for immutable statics
+    /// * `.bss` (RW - no data) for uninitialized statics
+    /// * `.tdata` (RW TLS) for thread-local statics
+    /// * `.tbss` (RW TLS - no data) for uninitialized thread-local statics
+    ///
+    /// Note that there is no guarantee as to the exact name of the sections, or which section a particular symbol is placed in if multiple sections are valid (For example, immutable statics may be placed in `.data` or `.bss`).
+    ///
+    /// However, the same set of sections will be used for all symbols defined in the [`SectionSpec::Global`].
+    ///
+    ///
     Global,
 }
 
 impl core::fmt::Display for SectionSpec {
+    #[allow(unused_variables)] // we'll have more sections than `Global` at some point
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             Self::Global => Ok(()),
@@ -59,6 +72,7 @@ impl core::fmt::Display for SectionSpec {
     }
 }
 
+/// A codegen definition of a [`ir::FunctionDeclaration`]
 pub struct FunctionDef<M> {
     section: SectionSpec,
     linkage: Linkage,
@@ -66,6 +80,7 @@ pub struct FunctionDef<M> {
     body: Option<FunctionBuilder<M>>,
 }
 
+/// an [`XLangCodegen`] implementation parameterized on a [`Machine`] that uses [`ssa::FunctionBuilder`] to generate machine code or assembly
 pub struct SsaCodegenPlugin<M> {
     mach: Rc<M>,
     targ: Option<&'static TargetProperties<'static>>,
@@ -73,6 +88,7 @@ pub struct SsaCodegenPlugin<M> {
 }
 
 impl<M> SsaCodegenPlugin<M> {
+    /// Constructs a new [`SsaCodegenPlugin`] based on `mach`.
     pub fn new(mach: M) -> Self {
         Self {
             mach: Rc::new(mach),
