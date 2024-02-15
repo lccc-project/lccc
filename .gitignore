@@ -6,3 +6,4 @@ autom4te.cache/
 a.out
 testfile
 test-output.txt
+/build*/

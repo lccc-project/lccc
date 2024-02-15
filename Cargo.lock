@@ -17,6 +17,7 @@ dependencies = [
 name = "autobuild"
 version = "0.1.0"
 dependencies = [
+ "cfg-match",
  "install-dirs 0.3.2",
  "itertools",
  "lccc-siphash 0.1.0 (git+https://github.com/lccc-project/lccc-siphash)",
@@ -32,15 +33,6 @@ name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
-
-[[package]]
-name = "binary-io"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d48e3ca0c86b51d14834d49f91771531b31cce782f4d7774fd7908b044e44769"
-dependencies = [
- "fake-enum",
-]
 
 [[package]]
 name = "binfmt"
@@ -207,11 +199,9 @@ dependencies = [
 name = "frontend-xir"
 version = "0.1.0"
 dependencies = [
- "binary-io",
- "peekmore",
- "target-tuples",
  "unicode-xid",
  "xlang",
+ "xlang_frontend",
  "xlang_struct",
 ]
 
@@ -264,9 +254,9 @@ version = "0.1.0"
 
 [[package]]
 name = "itertools"
-version = "0.11.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
+checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
 dependencies = [
  "either",
 ]
@@ -701,6 +691,7 @@ dependencies = [
 name = "xlang_frontend"
 version = "0.1.0"
 dependencies = [
+ "unicode-xid",
  "xlang",
 ]
 

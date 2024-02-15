@@ -7,3 +7,6 @@
 [submodule "rtlibs"]
 	path = rtlibs
 	url = https://github.com/lccc-project/rtlibs.git
+[submodule "autobuild"]
+	path = autobuild
+	url = https://github.com/lccc-project/autobuild.git
