@@ -1,9 +1,8 @@
-env = ["RUSTC", "RUSTC_FOR_BUILD"]
+env = ["RUSTC", "RUSTC_FOR_BUILD", "RUSTFLAGS", "RUSTFLAGS_FOR_BUILDS"]
 
 [package]
 name = "lccc"
 version = "0.1"
-
 
 [dirs]
 lcccdir = "{libdir}/lccc"
