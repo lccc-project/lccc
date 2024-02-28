@@ -48,8 +48,8 @@ impl<I: Iterator> Iterator for PeekMoreIterator<I> {
 impl<I: FusedIterator> FusedIterator for PeekMoreIterator<I> {}
 
 impl<I: Iterator<Item = char>> PeekMoreIterator<Speekable<I>> {
-    pub fn last_pos(&self) -> Pos {
-        if let Some((pos, _)) = self.buf.front() {
+    pub fn last_pos(&mut self) -> Pos {
+        if let Some((pos, _)) = self.cursor() {
             *pos
         } else {
             self.inner.last_pos()
@@ -62,13 +62,17 @@ impl<I: Iterator<Item = char>> PeekMoreIterator<Speekable<I>> {
 }
 
 impl<I: Iterator> PeekMoreIterator<I> {
-    pub fn peek(&mut self) -> Option<&I::Item> {
-        if self.cursor == 0 {
-            self.cursor = 1;
-        }
-
-        if self.cursor <= self.buf.len() {
+    fn cursor(&self) -> Option<&I::Item> {
+        if self.cursor != 0 && self.cursor <= self.buf.len() {
             Some(&self.buf[self.cursor - 1])
+        } else {
+            None
+        }
+    }
+
+    pub fn peek(&mut self) -> Option<&I::Item> {
+        if let Some(item) = self.cursor() {
+            Some(unsafe { &*(item as *const I::Item) })
         } else {
             let val = self.inner.next()?;
             self.buf.push_back(val);
@@ -107,9 +111,10 @@ impl<I: Iterator> PeekMoreIterator<I> {
     pub fn consume_peaked(&mut self) {
         if self.cursor == self.buf.len() {
             self.buf.clear();
+        } else {
+            drop(self.buf.drain(..(self.cursor.saturating_sub(1))));
         }
-        let count = self.cursor.saturating_sub(1);
-        drop(self.buf.drain(..count));
+
         self.cursor = 0;
         self.mark.clear();
     }
@@ -220,6 +225,100 @@ pub fn with_rewinder_accept_on_break<
         ControlFlow::Continue(val) => {
             drop(tree);
             C::from_output(val)
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum DecodeUtf8Error {
+    UnexpectedEof,
+    InvalidStartChar(u8),
+}
+
+#[derive(Debug, Clone)]
+pub struct DecodeUtf8<I>(I);
+
+impl<I> DecodeUtf8<I> {
+    pub const fn new(inner: I) -> Self {
+        Self(inner)
+    }
+
+    pub fn into_inner(self) -> I {
+        self.0
+    }
+}
+
+impl<I: Iterator<Item = u8>> Iterator for DecodeUtf8<I> {
+    type Item = Result<char, DecodeUtf8Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let b = self.0.next()?;
+        match b {
+            0x00..=0x7f => Some(Ok(b as char)),
+            0xC0..=0xDF => {
+                let n = match self.0.next() {
+                    Some(n) => n,
+                    None => return Some(Err(DecodeUtf8Error::UnexpectedEof)),
+                };
+                if (n & 0xC0) != 0x80 {
+                    return None;
+                }
+
+                let c = (((b & 0x1F) as u32) << 6) | (n & 0x3F) as u32;
+
+                char::from_u32(c).map(Ok)
+            }
+            0xE0..=0xEF => {
+                let n1 = match self.0.next() {
+                    Some(n) => n,
+                    None => return Some(Err(DecodeUtf8Error::UnexpectedEof)),
+                };
+                if (n1 & 0xC0) != 0x80 {
+                    return None;
+                }
+                let n2 = match self.0.next() {
+                    Some(n) => n,
+                    None => return Some(Err(DecodeUtf8Error::UnexpectedEof)),
+                };
+                if (n2 & 0xC0) != 0x80 {
+                    return None;
+                }
+
+                let c = (((b & 0x1F) as u32) << 12)
+                    | (((n1 & 0x3F) as u32) << 6)
+                    | ((n2 & 0x3F) as u32);
+                char::from_u32(c).map(Ok)
+            }
+            0xF0..=0xF7 => {
+                let n1 = match self.0.next() {
+                    Some(n) => n,
+                    None => return Some(Err(DecodeUtf8Error::UnexpectedEof)),
+                };
+                if (n1 & 0xC0) != 0x80 {
+                    return None;
+                }
+                let n2 = match self.0.next() {
+                    Some(n) => n,
+                    None => return Some(Err(DecodeUtf8Error::UnexpectedEof)),
+                };
+                if (n2 & 0xC0) != 0x80 {
+                    return None;
+                }
+                let n3 = match self.0.next() {
+                    Some(n) => n,
+                    None => return Some(Err(DecodeUtf8Error::UnexpectedEof)),
+                };
+                if (n3 & 0xC0) != 0x80 {
+                    return None;
+                }
+
+                let c = (((b & 0x1F) as u32) << 18)
+                    | (((n1 & 0x3F) as u32) << 12)
+                    | (((n2 & 0x3F) as u32) << 6)
+                    | ((n3 & 0x3F) as u32);
+                char::from_u32(c).map(Ok)
+            }
+            b => Some(Err(DecodeUtf8Error::InvalidStartChar(b))),
         }
     }
 }

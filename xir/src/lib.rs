@@ -8,6 +8,8 @@ use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 use xlang::targets::properties::TargetProperties;
 
+mod lexer;
+
 struct XirFrontend {
     filename: Option<String>,
     target: Option<&'static TargetProperties<'static>>,
@@ -33,8 +35,21 @@ impl XLangFrontend for XirFrontend {
     }
 
     #[allow(clippy::cast_lossless)]
-    fn read_source(&mut self, _: DynMut<dyn Read>) -> io::Result<()> {
-        todo!()
+    fn read_source(&mut self, it: DynMut<dyn Read>) -> io::Result<()> {
+        use xlang::abi::io::IntoChars;
+        let filename = self
+            .filename
+            .take()
+            .unwrap_or_else(|| String::from("<unset file name>"));
+
+        let chars = it.into_chars();
+
+        let lexer = lexer::XirLexer;
+
+        let toks = lexer::lex_file(&lexer, chars, filename).unwrap();
+        println!("{:?}", toks);
+
+        xlang::abi::result::Ok(())
     }
 }
 

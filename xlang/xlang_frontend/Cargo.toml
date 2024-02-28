@@ -7,3 +7,4 @@ edition = "2018"
 
 [dependencies]
 xlang = {path=".."}
+unicode-xid = {version = "0.2.4", features=["no_std"]}

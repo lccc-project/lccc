@@ -48,7 +48,7 @@
 
 #![allow(clippy::borrow_as_ptr)]
 
-use core::marker::{PhantomData, Send, Sync};
+use core::marker::PhantomData;
 use std::{
     marker::PhantomPinned,
     ops::{Deref, DerefMut},

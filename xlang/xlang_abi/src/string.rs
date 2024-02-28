@@ -7,6 +7,7 @@ use std::{
     ffi::OsStr,
     fmt::{Formatter, Write},
     hash::{Hash, Hasher},
+    iter::FromIterator,
     marker::PhantomData,
     ops::{Add, AddAssign},
     path::Path,
@@ -136,6 +137,23 @@ impl<A: Allocator> String<A> {
     /// Pushes a character
     pub fn push(&mut self, c: char) {
         self.push_str(c.encode_utf8(&mut [0u8; 4]));
+    }
+
+    /// Pops the last character from the string
+    pub fn pop(&mut self) -> Option<char> {
+        let mut b = self.0.pop()?;
+        let mut val = 0;
+        while b & 0xC0 == 0x80 {
+            val |= (b & 0x3F) as u32;
+            val <<= 6;
+
+            b = self.0.pop().unwrap();
+        }
+        let bits = b.leading_ones();
+        val |= (b & (!0 >> bits)) as u32;
+
+        // SAFETY: the `String` is valid UTF-8 so we just decoded a valid `char`
+        Some(unsafe { char::from_u32_unchecked(val) })
     }
 
     /// Converts a [`String`] into a [`crate::vec::Vec`] of UTF-8 bytes
@@ -272,6 +290,37 @@ impl<A: Allocator> Write for String<A> {
     fn write_str(&mut self, s: &str) -> std::fmt::Result {
         self.0.extend_from_slice(s.as_bytes());
         Ok(())
+    }
+}
+
+impl<A: Allocator> Extend<char> for String<A> {
+    fn extend<T: IntoIterator<Item = char>>(&mut self, iter: T) {
+        let iter = iter.into_iter();
+        let (c_count, _) = iter.size_hint();
+        self.0.reserve(c_count);
+
+        for c in iter {
+            self.push(c)
+        }
+    }
+}
+
+impl<'a, A: Allocator> Extend<&'a str> for String<A> {
+    fn extend<T: IntoIterator<Item = &'a str>>(&mut self, iter: T) {
+        for s in iter {
+            self.push_str(s)
+        }
+    }
+}
+
+impl<I> FromIterator<I> for String
+where
+    String: Extend<I>,
+{
+    fn from_iter<T: IntoIterator<Item = I>>(iter: T) -> Self {
+        let mut st = String::new();
+        st.extend(iter);
+        st
     }
 }
 

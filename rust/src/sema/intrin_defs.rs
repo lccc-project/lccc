@@ -27,4 +27,13 @@ def_intrinsics! {
 
     intrin __builtin_likely(bool) -> bool;
     intrin __builtin_unlikely(bool) -> bool;
+
+
+    intrin __builtin_fadd_fast<type>(Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_fsub_fast<type>(Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_fmul_fast<type>(Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_fdiv_fast<type>(Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_frem_fast<type>(Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_ffma_fast<type>(Var<0>, Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_fneg_fast<type>(Var<0>) -> Var<0>;
 }

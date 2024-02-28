@@ -2,7 +2,6 @@ use core::cell::Cell;
 
 use std::rc::Rc;
 
-use crate::expr::ValLocation;
 use crate::expr::*;
 use crate::mach::Machine;
 use crate::ty::TypeInformation;

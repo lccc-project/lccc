@@ -231,7 +231,7 @@ pub trait IntoChars {
 }
 
 /// An Iterator over the chars of `R`
-pub struct ReadIntoChars<R: Read> {
+pub struct ReadIntoChars<R> {
     // Why is there a trait bound here
     buf: Vec<u8>,
     pos: usize,
