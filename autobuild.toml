@@ -19,10 +19,12 @@ type="rustc"
 target="{build}"
 
 
-[target.groups.frontends]
+[target.groups.languages]
+optional=true
 members=["rust","c"]
 
 [target.groups.backends]
+optional=true
 path-specifier="codegen-{}"
 members=["clever","x86","w65"]
 
@@ -30,11 +32,12 @@ members=["clever","x86","w65"]
 subdir="xlang"
 
 [target.lccc]
+deps=["xlang"]
 subdir="lccc"
 
 
 [stages.host]
-build=["xlang","frontends","backends","lccc"]
+build=["xlang","languages","backends","lccc"]
 
 
 [stages]

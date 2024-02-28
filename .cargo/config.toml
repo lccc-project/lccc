@@ -2,6 +2,7 @@
 autobuild = ["run", "--package","autobuild","--release","--"]
 configure = "autobuild configure"
 build-lccc = "autobuild build"
+clean-lccc = "autobuild clean"
 run-lccc = "run --bin lccc -- --intree"
 run-lccc-release = "run --release --bin lccc -- --intree"
 
