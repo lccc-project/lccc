@@ -1,0 +1,4 @@
+[targets.codegen-clever]
+deps=["xlang:xlang", "xlang:xlang_backend", "lc-binutils:arch-ops", "lc-binutils:binfmt", "vendor:target-tuples-0.5.2"]
+src="src/lib.rs"
+type="xlang:xlang-plugin"

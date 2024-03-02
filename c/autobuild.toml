@@ -1,0 +1,4 @@
+[targets.frontend-c]
+deps=["xlang:xlang_frontend", "xlang:xlang"]
+src="src/lib.rs"
+type="xlang:xlang-plugin"

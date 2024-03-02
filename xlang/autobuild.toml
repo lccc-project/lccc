@@ -21,10 +21,11 @@ src="xlang_interface/src/lib.rs"
 
 [target.xlang-interface.library]
 library-type="dynamic"
-soname="0.1"
+soversion="0.1"
 
 [target.xlang]
 deps=["xlang_abi", "xlang_host", "xlang_struct", "xlang_targets"]
+links=["xlang-interface"]
 src="src/lib.rs"
 
 [target.xlang_backend]
@@ -34,3 +35,16 @@ src="xlang_backend/src/lib.rs"
 [target.xlang_frontend]
 deps=["xlang"]
 src="xlang_frontend/src/lib.rs"
+
+[build.xlang-plugin]
+base="rust" # Use the rust compiler for this build step
+leaf=true # Don't allow `link`s or `dep`s keys
+
+[build.xlang-plugin.defaults.library]
+library-type="dynamic" # We want a shared object/dll
+generate-link=false # Don't generate a <target-name>.lib on windows
+
+
+[build.xlang-plugin.defaults.artifact]
+prefix="xlang" # replace `lib` or `` prefix with `xlang`
+install="{lcccdir}"

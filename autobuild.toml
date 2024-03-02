@@ -25,7 +25,7 @@ members=["rust","c"]
 
 [target.groups.backends]
 optional=true
-path-specifier="codegen-{}"
+path-spec="codegen-{}"
 members=["clever","x86","w65"]
 
 [target.xlang]
@@ -35,6 +35,8 @@ subdir="xlang"
 deps=["xlang"]
 subdir="lccc"
 
+[defaults.rust]
+edition="2018"
 
 [stages.host]
 build=["xlang","languages","backends","lccc"]
