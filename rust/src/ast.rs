@@ -97,10 +97,15 @@ pub struct ImplBlock {
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub struct Async;
 
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub struct Extern {
+    pub tag: Option<Spanned<Symbol>>,
+}
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Function {
     pub safety: Option<Spanned<Safety>>,
-    pub abi: Option<Spanned<Symbol>>,
+    pub abi: Option<Spanned<Extern>>,
     pub constness: Option<Spanned<Mutability>>,
     pub is_async: Option<Spanned<Async>>,
     pub name: Spanned<Symbol>,

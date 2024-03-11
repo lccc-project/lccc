@@ -2833,9 +2833,10 @@ fn collect_function(
     let actual_tag = itemfn
         .abi
         .map(|tag| {
-            Ok(Spanned {
-                body: ty::convert_tag(tag, curmod, item)?,
-                span: tag.span,
+            tag.try_map_span(|tag| {
+                tag.tag.map_or(Ok(ty::AbiTag::C { unwind: false }), |tag| {
+                    ty::convert_tag(tag, curmod, item)
+                })
             })
         })
         .transpose()?;
@@ -2880,12 +2881,12 @@ fn collect_function(
 
     let constness = itemfn.constness.unwrap_or(Spanned {
         body: Mutability::Mut,
-        span: Span::empty(),
+        span: Span::synthetic(),
     });
     let asyncness = itemfn.is_async.map_or(
         Spanned {
             body: ty::AsyncType::Normal,
-            span: Span::empty(),
+            span: Span::synthetic(),
         },
         |isasync| Spanned {
             body: ty::AsyncType::Async,

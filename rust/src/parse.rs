@@ -4,19 +4,20 @@ use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
     ast::{
-        AssociatedTypeBound, AsyncBlock, Attr, AttrInput, Auto, BinaryOp, BindingPattern, Block,
-        CaptureSpec, Closure, ClosureParam, CompoundBlock, CondBlock, ConstParam, Constructor,
-        ConstructorExpr, EnumVariant, Expr, ExternBlock, FieldInit, Function, GenericArg,
-        GenericArgs, GenericBound, GenericParam, GenericParams, IfBlock, ImplBlock, Item, ItemBody,
-        ItemValue, Label, LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind, MatchArm,
-        MatchArmValue, MatchBlock, Mod, Param, Path, PathSegment, Pattern, Safety, SelfParam,
-        SimplePath, SimplePathSegment, Spanned, Statement, StructCtor, StructField, StructKind,
-        TraitDef, TupleCtor, TupleField, Type, TypeParam, UnaryOp, UserType, UserTypeBody,
-        Visibility, WhereClause,
+        AssociatedTypeBound, Async, AsyncBlock, Attr, AttrInput, Auto, BinaryOp, BindingPattern,
+        Block, CaptureSpec, Closure, ClosureParam, CompoundBlock, CondBlock, ConstParam,
+        Constructor, ConstructorExpr, EnumVariant, Expr, Extern, ExternBlock, FieldInit, Function,
+        GenericArg, GenericArgs, GenericBound, GenericParam, GenericParams, IfBlock, ImplBlock,
+        Item, ItemBody, ItemValue, Label, LetStatement, Lifetime, LifetimeParam, Literal,
+        LiteralKind, MatchArm, MatchArmValue, MatchBlock, Mod, Param, Path, PathSegment, Pattern,
+        Safety, SelfParam, SimplePath, SimplePathSegment, Spanned, Statement, StructCtor,
+        StructField, StructKind, TraitDef, TupleCtor, TupleField, Type, TypeParam, UnaryOp,
+        UserType, UserTypeBody, Visibility, WhereClause,
     },
     interning::Symbol,
     lex::{
-        AstFrag, AstFragClass, CharType, Group, GroupType, IsEof, Keyword, Lexeme, LexemeBody, LexemeClass, Punctuation, StringType, Token, TokenType
+        AstFrag, AstFragClass, CharType, Group, GroupType, IsEof, Keyword, Lexeme, LexemeBody,
+        LexemeClass, Punctuation, StringType, Token, TokenType,
     },
     sema::ty::Mutability,
     span::{Pos, Span},
@@ -2992,6 +2993,43 @@ pub fn do_item_fn(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<ItemBody>> {
     let mut tree = tree.into_rewinder();
+
+    let constness = match do_lexeme_token(&mut tree, keyword!(const)) {
+        Ok((span, _)) => Some(Spanned {
+            body: Mutability::Const,
+            span,
+        }),
+        Err(_) => None,
+    };
+
+    let is_async = match do_lexeme_token(&mut tree, keyword!(async)) {
+        Ok((span, _)) => Some(Spanned { body: Async, span }),
+        Err(_) => None,
+    };
+
+    let safety = match do_lexeme_token(&mut tree, keyword!(unsafe)) {
+        Ok((span, _)) => Some(Spanned {
+            body: Safety::Unsafe,
+            span,
+        }),
+        Err(_) => None,
+    };
+
+    let abi = match do_lexeme_token(&mut tree, keyword!(extern)) {
+        Ok((span, _)) => {
+            let (span, tag) = match do_string(&mut tree) {
+                Ok((tok, _)) => (Span::between(span, tok.span), Some(tok)),
+                Err(_) => (span, None),
+            };
+
+            Some(Spanned {
+                body: Extern { tag },
+                span,
+            })
+        }
+        Err(_) => None,
+    };
+
     let Lexeme {
         span: span_start, ..
     } = do_lexeme_class(&mut tree, keyword!(fn))?;
@@ -3037,10 +3075,10 @@ pub fn do_item_fn(
     Ok(Spanned {
         body: ItemBody::Function(Spanned {
             body: Function {
-                safety: None,
-                abi: None,
-                constness: None,
-                is_async: None,
+                safety,
+                abi,
+                constness,
+                is_async,
                 name,
                 generics,
                 receiver: None, // TODO: parse receiver
