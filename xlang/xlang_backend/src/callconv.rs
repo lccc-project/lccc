@@ -243,7 +243,11 @@ pub fn classify_type<I: CallConvInfo>(
         Type::Pointer(ptr) => classes.push(info.classify_pointer(ptr.kind)),
         Type::Array(_) => todo!(),
         Type::TaggedType(_, ty) => classes = classify_type(info, ty, tys),
-        Type::Product(_) => todo!(),
+        Type::Product(vals) => {
+            if vals.len() != 0 {
+                todo!("Aggregate types")
+            }
+        }
         Type::Aligned(_, _) => todo!(),
         Type::Aggregate(_) => todo!(),
         Type::Named(_) => todo!(),

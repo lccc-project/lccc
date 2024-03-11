@@ -1,12 +1,17 @@
 use core::cell::Cell;
 
+use core::cell::RefCell;
 use std::rc::Rc;
 
 use crate::expr::*;
 use crate::mach::Machine;
 use crate::ty::TypeInformation;
 
+use crate::str::StringMap;
+
+use arch_ops::traits::Address;
 use arch_ops::traits::InsnWrite;
+use xlang::abi::pair::Pair;
 use xlang::{ir::JumpTarget, targets::properties::TargetProperties};
 
 use xlang::ir;
@@ -54,6 +59,10 @@ pub enum SsaInstruction {
     Trap(Trap),
     /// Loads a scalar immediate value into the given [`OpaqueLocation`]
     LoadImmediate(OpaqueLocation, u128),
+    /// Loads an address
+    LoadSymAddr(OpaqueLocation, Address),
+    /// Initializes a (potentially large) memory location with zeroes
+    ZeroInit(OpaqueLocation),
 }
 
 impl core::fmt::Display for SsaInstruction {
@@ -118,6 +127,10 @@ impl core::fmt::Display for SsaInstruction {
             SsaInstruction::LoadImmediate(dest, val) => {
                 f.write_fmt(format_args!("loadimm {}, {}", dest, val))
             }
+            SsaInstruction::LoadSymAddr(dest, addr) => {
+                f.write_fmt(format_args!("loadsymaddr {}, {}", dest, addr))
+            }
+            SsaInstruction::ZeroInit(dest) => f.write_fmt(format_args!("zeroinit {}", dest)),
         }
     }
 }
@@ -199,6 +212,7 @@ pub struct FunctionBuilder<M> {
     incoming_locations: HashMap<u32, Vec<OpaqueLocation>>,
     incoming_count: Rc<HashMap<u32, usize>>,
     fnty: Rc<ir::FnType>,
+    string_interner: Rc<RefCell<StringMap>>,
 }
 
 impl<M> FunctionBuilder<M> {
@@ -211,6 +225,7 @@ impl<M> FunctionBuilder<M> {
         tys: Rc<TypeInformation>,
         target: &'static TargetProperties<'static>,
         fnty: Rc<ir::FnType>,
+        string_interner: Rc<RefCell<StringMap>>,
     ) -> Self {
         Self {
             sym_name,
@@ -223,6 +238,7 @@ impl<M> FunctionBuilder<M> {
             incoming_locations: HashMap::new(),
             fnty,
             incoming_count: Rc::new(HashMap::new()),
+            string_interner,
         }
     }
 
@@ -286,6 +302,7 @@ impl<M> FunctionBuilder<M> {
             vstack,
             incoming_count: self.incoming_count.clone(),
             loc_id_counter: self.loc_id_counter.clone(),
+            string_interner: self.string_interner.clone(),
         };
 
         self.basic_blocks.push_mut(builder)
@@ -367,6 +384,7 @@ pub struct BasicBlockBuilder<M> {
     vstack: Vec<VStackValue<OpaqueLocation>>,
     incoming_count: Rc<HashMap<u32, usize>>,
     loc_id_counter: Rc<SharedCounter>,
+    string_interner: Rc<RefCell<StringMap>>,
 }
 
 impl<M: Machine> BasicBlockBuilder<M> {
@@ -382,14 +400,47 @@ impl<M: Machine> BasicBlockBuilder<M> {
                 }
                 ir::Value::GlobalAddress { .. } => todo!(),
                 ir::Value::ByteString { .. } => todo!(),
-                ir::Value::String { .. } => todo!("{}", loc),
+                ir::Value::String {
+                    encoding,
+                    utf8,
+                    ty: ir::Type::Pointer(_),
+                } => {
+                    let mut string_map = self.string_interner.borrow_mut();
+                    let sym = string_map.get_string_symbol(
+                        utf8.into_bytes(),
+                        crate::str::Encoding::XLang(encoding),
+                    );
+
+                    self.insns.push(SsaInstruction::LoadSymAddr(
+                        loc,
+                        Address::Symbol {
+                            name: sym.to_string(),
+                            disp: 0,
+                        },
+                    ));
+                }
+                ir::Value::String { ty, .. } => todo!("String const as {}", ty),
                 ir::Value::LabelAddress(_) => todo!(),
                 ir::Value::Empty => panic!("Empty IR value"),
             },
             VStackValue::LValue(_, _) => todo!(),
             VStackValue::Pointer(_, _) => todo!(),
             VStackValue::OpaqueScalar(_, _) => todo!(),
-            VStackValue::AggregatePieced(_, _) => todo!(),
+            VStackValue::AggregatePieced(ty, fields) => {
+                let aggregate_info = self
+                    .tys
+                    .aggregate_layout(&ty)
+                    .expect("Required a aggregate type");
+                self.insns.push(SsaInstruction::ZeroInit(loc.clone()));
+                for Pair(field, val) in fields {
+                    todo!(
+                        "{} (offset {}): {}",
+                        field,
+                        aggregate_info.fields[&field].0,
+                        val
+                    );
+                }
+            }
             VStackValue::OpaqueAggregate(_, _) => todo!(),
             VStackValue::CompareResult(_, _) => todo!(),
             VStackValue::Trapped => todo!(),
@@ -645,7 +696,20 @@ impl<M: Machine> BasicBlockBuilder<M> {
                 self.push_values(first);
                 self.push_values(second);
             }
-            ir::Expr::Aggregate(_) => todo!("aggregate"),
+            ir::Expr::Aggregate(ctor) => {
+                let ty = ctor.ty.clone();
+
+                let field_vals = self.pop_values(ctor.fields.len());
+
+                let fields = ctor
+                    .fields
+                    .iter()
+                    .map(|s| s.to_string())
+                    .zip(field_vals)
+                    .collect();
+
+                self.push(VStackValue::AggregatePieced(ty, fields));
+            }
             ir::Expr::Member(_) => todo!("member"),
             ir::Expr::MemberIndirect(_) => todo!("member indirect"),
             ir::Expr::Assign(_) => todo!("assign"),

@@ -2,11 +2,14 @@
 //! A helper crate for implementing [`xlang::plugin::XLangCodegen`]s without duplicating code (also can be used to evaluate constant expressions)
 //! the `xlang_backend` crate provides a general interface for writing expressions to an output.
 
-use std::rc::Rc;
+use core::cell::RefCell;
+
+use std::{io::Write, rc::Rc};
 
 use arch_ops::traits::InsnWrite;
 use mach::Machine;
 use ssa::FunctionBuilder;
+use str::StringMap;
 use ty::TypeInformation;
 use xlang::{
     abi::{io::WriteAdapter, option::Some as XLangSome, pair::Pair, try_},
@@ -85,6 +88,7 @@ pub struct SsaCodegenPlugin<M> {
     mach: Rc<M>,
     targ: Option<&'static TargetProperties<'static>>,
     functions: Vec<(String, FunctionDef<M>)>,
+    string_interner: Rc<RefCell<StringMap>>,
 }
 
 impl<M> SsaCodegenPlugin<M> {
@@ -94,6 +98,7 @@ impl<M> SsaCodegenPlugin<M> {
             mach: Rc::new(mach),
             targ: None,
             functions: Vec::new(),
+            string_interner: Rc::new(RefCell::new(StringMap::new())),
         }
     }
 }
@@ -143,6 +148,7 @@ impl<M: Machine> XLangPlugin for SsaCodegenPlugin<M> {
                             tys.clone(),
                             targ,
                             ty.clone(),
+                            self.string_interner.clone(),
                         );
                         for local in &body.locals {
                             builder.push_local(local.clone());
@@ -248,6 +254,20 @@ impl<M: Machine> XLangCodegen for SsaCodegenPlugin<M> {
                 },
             ];
             let mut syms = vec![];
+            let str_map = self.string_interner.borrow();
+            for (sym, bytes) in str_map.symbols() {
+                let sec = &mut sections[1];
+                let sym = Symbol::new(
+                    sym.to_string(),
+                    1,
+                    sec.offset() as u128,
+                    SymbolType::Object,
+                    SymbolKind::Local,
+                );
+                syms.push(sym);
+                sec.write_all(bytes)
+                    .expect("Section::write should not error");
+            }
 
             for (sym_name, def) in core::mem::take(&mut self.functions) {
                 let sym_kind = match def.linkage {

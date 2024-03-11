@@ -1,7 +1,7 @@
 use arch_ops::{
     traits::{Address, InsnWrite},
     x86::{
-        codegen::{X86CodegenOpcode, X86Encoder, X86Instruction, X86Operand},
+        codegen::{X86CodegenOpcode, X86Encoder, X86Instruction, X86MemoryOperand, X86Operand},
         X86Mode, X86Register, X86RegisterClass,
     },
 };
@@ -9,6 +9,7 @@ use callconv::X86CallConvInfo;
 use target_tuples::{Architecture, Target};
 use xlang::{
     abi::{pair::Pair, string::StringView},
+    ir,
     plugin::XLangCodegen,
     prelude::v1::{DynBox, HashMap},
     targets::properties::TargetProperties,
@@ -50,6 +51,39 @@ pub struct X86Assignments {
 }
 
 pub struct X86Clobbers {}
+
+fn xor_opcode(class: X86RegisterClass, hint_vec_is_int: bool) -> X86CodegenOpcode {
+    match class {
+        X86RegisterClass::Xmm => {
+            if hint_vec_is_int {
+                X86CodegenOpcode::Pxor
+            } else {
+                X86CodegenOpcode::Xorps
+            }
+        }
+        X86RegisterClass::Ymm => {
+            if hint_vec_is_int {
+                X86CodegenOpcode::Vpxor
+            } else {
+                X86CodegenOpcode::Vxorps
+            }
+        }
+        X86RegisterClass::Zmm => {
+            if hint_vec_is_int {
+                X86CodegenOpcode::Vpxord
+            } else {
+                X86CodegenOpcode::Vxorps
+            }
+        }
+        X86RegisterClass::Byte
+        | X86RegisterClass::ByteRex
+        | X86RegisterClass::Word
+        | X86RegisterClass::Double
+        | X86RegisterClass::Quad => X86CodegenOpcode::Xor,
+        X86RegisterClass::AvxMask => todo!("kreg"),
+        cl => panic!("Cannot xor {:?}", cl),
+    }
+}
 
 fn move_opcode(
     class: X86RegisterClass,
@@ -199,6 +233,10 @@ impl Machine for X86Machine {
         for (num, insn) in insns.iter().enumerate() {
             match insn {
                 xlang_backend::ssa::SsaInstruction::Call(targ, locations) => {
+                    eprintln!("Current width {:?}", assignments.stack_width);
+                    assignments.stack_width = ((assignments.stack_width + 7) & !15) + 8;
+                    eprintln!("Aligned width width {:?}", assignments.stack_width);
+
                     let callconv = X86CallConvInfo {
                         mode: assignments.mode,
                     };
@@ -227,7 +265,16 @@ impl Machine for X86Machine {
 
                     if let Some(ret) = &locations.ret {
                         match callconv.ret_location() {
-                            CallConvLocation::Null => {}
+                            CallConvLocation::Null => {
+                                assignments.assigns.insert(
+                                    ret.num,
+                                    LocationAssignment {
+                                        foreign_location: X86ValLocation::Null,
+                                        owning_bb: which,
+                                        change_owner: vec![],
+                                    },
+                                );
+                            }
                             CallConvLocation::Register(reg) => {
                                 assignments.assigns.insert(
                                     ret.num,
@@ -284,7 +331,7 @@ impl Machine for X86Machine {
                                 );
                             }
                             (None, None) => {
-                                todo!("Allocate register");
+                                todo!("Allocate register {} => {}", old_loc, new_loc);
                             }
                         }
                     }
@@ -334,7 +381,9 @@ impl Machine for X86Machine {
                     }
                 }
                 xlang_backend::ssa::SsaInstruction::Trap(_) => {}
-                xlang_backend::ssa::SsaInstruction::LoadImmediate(_, _) => {}
+                xlang_backend::ssa::SsaInstruction::LoadImmediate(_, _)
+                | xlang_backend::ssa::SsaInstruction::LoadSymAddr(_, _)
+                | xlang_backend::ssa::SsaInstruction::ZeroInit(_) => {}
             }
         }
         clobbers
@@ -429,6 +478,53 @@ impl Machine for X86Machine {
                         }
                     }
                 }
+                xlang_backend::ssa::SsaInstruction::LoadSymAddr(loc, addr) => {
+                    if let Some(location) = cur_locations.get(&loc.num) {
+                        match location {
+                            X86ValLocation::Register(reg) => {
+                                let lea = X86CodegenOpcode::Lea;
+                                let cl = reg.class();
+
+                                encoder.write_insn(X86Instruction::new(
+                                    lea,
+                                    vec![
+                                        X86Operand::Register(*reg),
+                                        X86Operand::Memory(
+                                            cl,
+                                            None,
+                                            X86MemoryOperand::RelAddr(addr.clone()),
+                                        ),
+                                    ],
+                                ))?;
+                            }
+                            X86ValLocation::Null => {}
+                        }
+                    }
+                }
+                xlang_backend::ssa::SsaInstruction::ZeroInit(dest) => {
+                    if let Some(loc) = cur_locations.get(&dest.num) {
+                        match loc {
+                            X86ValLocation::Register(reg) => {
+                                let is_int = match &*dest.ty {
+                                    ir::Type::Scalar(ir::ScalarType {
+                                        kind:
+                                            ir::ScalarTypeKind::Float { .. } | ir::ScalarTypeKind::Posit,
+                                        ..
+                                    }) => false,
+                                    _ => true, // TODO: Be better with heauristics arround aggregate types
+                                };
+
+                                let xor = xor_opcode(reg.class(), is_int);
+
+                                encoder.write_insn(X86Instruction::new(
+                                    xor,
+                                    vec![X86Operand::Register(*reg), X86Operand::Register(*reg)],
+                                ))?;
+                            }
+                            X86ValLocation::Null => {}
+                        }
+                    }
+                }
             }
         }
 
@@ -446,7 +542,7 @@ impl Machine for X86Machine {
                 X86CodegenOpcode::Sub,
                 vec![
                     X86Operand::Register(assignments.sp),
-                    X86Operand::Immediate(-assignments.stack_width as i64),
+                    X86Operand::Immediate(assignments.stack_width as i64),
                 ],
             ))?;
         }
