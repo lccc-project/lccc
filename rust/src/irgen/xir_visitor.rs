@@ -2179,7 +2179,11 @@ impl<'a> XirBinaryExprVisitor<'a> {
 impl<'a> BinaryExprVisitor for XirBinaryExprVisitor<'a> {
     fn visit_op(&mut self, op: BinaryOp) {
         self.op = Some(match op {
+            BinaryOp::Add => ir::BinaryOp::Add,
             BinaryOp::Sub => ir::BinaryOp::Sub,
+            BinaryOp::Mul => ir::BinaryOp::Mul,
+            BinaryOp::Div => ir::BinaryOp::Div,
+            BinaryOp::Rem => ir::BinaryOp::Mod,
             x => todo!("{:?}", x),
         });
     }
