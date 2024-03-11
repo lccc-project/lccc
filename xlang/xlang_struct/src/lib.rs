@@ -1247,42 +1247,100 @@ impl Default for Type {
 
 /// An Array type.
 ///
-///
+/// Matches
 ///
 #[repr(C)]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ArrayType {
+    /// The type of the array
     pub ty: Type,
+    /// The length of the array
     pub len: Value,
 }
 
 bitflags::bitflags! {
+    /// An aliasing Rule for a pointer, that indicates what assumptions are made about the pointer.
+    ///
+    /// All valid pointers exist in at least one of two modes for any given byte:
+    /// * `Valid`
+    /// * `Disabled`
+    ///
+    /// A pointer that is marked as valid for any given byte may freely read from and (subject to restrictions) freely write to that byte.
+    /// When a pointer is `Disabled` for a byte, writing to that byte via that pointer and reads yield uninit scalar values.
+    ///
+    /// The determination of whether a particular access is valid occurs after the effect of any aliasing attribute is applied.
+    /// A pointer that is marked as `Disabled` for a byte cannot be marked in any other way - any operation that attempts to do so is ignored.
+    ///
+    /// When a pointer is derived, the Valid/Disabled state of each byte is copied to the child.
+    ///
+    /// Matches the syntax
+    /// ```abnf
+    /// pointer-aliasing = "unique" / "readonly" / "nonnull"
+    /// ```
     #[repr(transparent)]
     #[derive(Default)]
     pub struct PointerAliasingRule : u32{
+        /// Indicates that no other pointers access any of the same bytes while this pointer is active.
+        ///
+        /// Matches `"unique"`
+        ///
+        /// ## Activation
+        /// For any given byte accessible through a `unique` pointer which is `Valid` for that byte, the pointer has two modes.
+        /// * Active
+        /// * Frozen
+        /// * Reserved
+        ///
+        /// When a pointer is derived as `unique` the pointer is marked as `Reserved` in each byte accessible from that pointer.
+        ///
+        /// Regardless of mode, the pointer may make any read access. In `Reserved` or `Active` mode, write accesses may be performed.
+        ///
+        /// When a pointer is used to write to a byte, then the following happens:
+        /// * That pointer (if `unique`) and all of its ancestors marked `unique` are set to `Active` for that byte. If any of these pointers were marked `Frozen` for that byte, instead that pointer and all descendants are marked `Disabled`.
+        /// * All pointers that are not an ancestor of the pointer are marked as `Disabled` for that byte.
+        /// * All `readonly` pointers and all children of readonly pointers are marked as `Disabled` for that byte.
+        ///
+        /// When a read access occurs to byte through any pointer, the following happens:
+        /// * All pointers that are `unique` and not an ancestor that are `Reserved` for that byte become `Frozen`.
+        /// * All pointers that are `unique` and are `Active` for that byte and not an ancestor become `Disabled`.
+        ///
+        ///
+        /// `unique` may be combined with `readonly`, but has no effect as `readonly` prohibits write accesses and `unique` activation requires a write access.
         const UNIQUE = 2;
+        /// Indicates that no pointer may perform a write access to any of the same bytes while this pointer is active.
+        ///
+        /// A `readonly` pointer becomes `Disabled` for a byte when any pointer (included a descendant) is used to perform a write access to that byte.
         const READ_ONLY = 4;
-        const READ_SHALLOW = 8;
-        const INVALID = 16;
+
+        /// Indicates that the pointer may not be null.
+        /// This is a trivial validity attribute and does not impose any additional aliasing constraints.
         const NONNULL = 32;
-        const NULL_OR_INVALID = 256;
     }
 }
 
-fake_enum::fake_enum! {
-    #[repr(u16)]
-    #[derive(Default,Hash)]
-    pub enum struct ValidRangeType{
-        None = 0,
-        Dereference = 1,
-        DereferenceWrite = 2,
-        WriteOnly = 3,
-        NullOrDereference = 4,
-        NullOrDereferenceWrite = 5,
-        NullOrWriteOnly = 6,
+bitflags::bitflags! {
+    /// Determines the type of valid range.
+    ///
+    /// A byte is accessible from a pointer if:
+    /// * The pointer is a root pointer to an object, the byte belongs to the complete object the root pointer points to,
+    /// * If the pointer was returned from the intrinsic function `__lccc::xlang::limit_valid_range`, the byte is part of the range `[p, p+n)` where the parameters to the intrinsic call were `[.., p, n]`, or
+    /// * If the pointer was not returned from the intrinsic function `__lccc::xlang::limit_valid_range` and the pointer is a child of some pointer `p`, the byte is accessible from `p`.
+    ///
+    /// A range of bytes is accessible from a pointer if each byte contained in the range is accessible from that pointer and each byte in the range belongs to the same complete object.
+    ///
+    /// Syntax:
+    /// ```abnf
+    /// valid-range-option := "inbounds" / "read" / "write"
+    /// ```
+    ///
+    #[repr(transparent)]
+    #[derive(Default)]
+    pub struct ValidRangeType : u16{
+        /// Indicates that the valid range of the pointer
+        const INBOUNDS = 1;
+        const READ = 2;
+        const WRITE = 4;
     }
 }
-
 bitflags::bitflags! {
     #[repr(transparent)]
     #[derive(Default)]
@@ -1334,40 +1392,8 @@ impl core::fmt::Display for PointerType {
         if self.alias.contains(PointerAliasingRule::READ_ONLY) {
             f.write_str("readonly ")?;
         }
-        if self.alias.contains(PointerAliasingRule::READ_SHALLOW) {
-            f.write_str("read_shallow ")?;
-        }
-        if self.alias.contains(PointerAliasingRule::INVALID) {
-            f.write_str("invalid ")?;
-        }
         if self.alias.contains(PointerAliasingRule::NONNULL) {
             f.write_str("nonnull ")?;
-        }
-        if self.alias.contains(PointerAliasingRule::NULL_OR_INVALID) {
-            f.write_str("null_or_invalid ")?;
-        }
-
-        match self.valid_range {
-            Pair(ValidRangeType::None, _) => {}
-            Pair(ValidRangeType::Dereference, n) => {
-                f.write_fmt(format_args!("dereferenceable({}) ", n))?;
-            }
-            Pair(ValidRangeType::DereferenceWrite, n) => {
-                f.write_fmt(format_args!("dereference_write({}) ", n))?;
-            }
-            Pair(ValidRangeType::WriteOnly, n) => {
-                f.write_fmt(format_args!("write_only({}) ", n))?;
-            }
-            Pair(ValidRangeType::NullOrDereference, n) => {
-                f.write_fmt(format_args!("null_or_dereferenceable({}) ", n))?;
-            }
-            Pair(ValidRangeType::NullOrDereferenceWrite, n) => {
-                f.write_fmt(format_args!("null_or_dereference_write({}) ", n))?;
-            }
-            Pair(ValidRangeType::NullOrWriteOnly, n) => {
-                f.write_fmt(format_args!("null_or_write_only({}) ", n))?;
-            }
-            Pair(ty, n) => panic!("{:?}({}) is invalid", ty, n),
         }
 
         if self.addr_space != 0 {

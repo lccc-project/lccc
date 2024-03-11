@@ -3,9 +3,9 @@ use std::convert::TryInto;
 use xlang::{
     ir::{
         AggregateDefinition, AggregateKind, AnnotationItem, Path, PointerAliasingRule, PointerKind,
-        ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type, ValidRangeType, Value,
+        ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type, Value,
     },
-    prelude::v1::{HashMap, Pair, Some as XLangSome},
+    prelude::v1::{HashMap, Some as XLangSome},
     targets::properties::TargetProperties,
 };
 
@@ -140,19 +140,7 @@ impl TypeInformation {
             Type::Void => None,
             Type::FnType(_) => None,
             Type::Pointer(pty) => {
-                if pty.alias.contains(PointerAliasingRule::NONNULL)
-                    || pty.alias.contains(PointerAliasingRule::INVALID)
-                {
-                    Some(VStackValue::Constant(Value::Invalid(Type::Pointer(
-                        pty.clone(),
-                    ))))
-                } else if let Pair(
-                    ValidRangeType::Dereference
-                    | ValidRangeType::DereferenceWrite
-                    | ValidRangeType::WriteOnly,
-                    _,
-                ) = pty.valid_range
-                {
+                if pty.alias.contains(PointerAliasingRule::NONNULL) || pty.valid_range.1 > 0 {
                     Some(VStackValue::Constant(Value::Invalid(Type::Pointer(
                         pty.clone(),
                     ))))
