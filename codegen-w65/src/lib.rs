@@ -65,6 +65,7 @@ impl Machine for W65Machine {
         incoming: &[OpaqueLocation],
         fnty: &xlang_struct::FnType,
         tys: &TypeInformation,
+        which: u32,
     ) {
         todo!()
     }

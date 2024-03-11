@@ -33,7 +33,7 @@ pub struct CallLocations {
     /// The locations of the parameters
     pub params: Vec<OpaqueLocation>,
     /// The location of the return value
-    pub ret: OpaqueLocation,
+    pub ret: Option<OpaqueLocation>,
 }
 
 /// An instruction for ssa codegen lowered from a [`Expr`][xlang::ir::Expr]
@@ -67,9 +67,12 @@ impl core::fmt::Display for SsaInstruction {
                     sep = ", ";
                     item.fmt(f)?;
                 }
-                f.write_str(") -> ")?;
-
-                locs.ret.fmt(f)
+                f.write_str(")")?;
+                if let Some(ret) = &locs.ret {
+                    f.write_str(" -> ")?;
+                    ret.fmt(f)?;
+                }
+                Ok(())
             }
             SsaInstruction::Jump(val, stack) => {
                 f.write_fmt(format_args!("jump @{} [", val))?;
@@ -305,6 +308,7 @@ impl<M: Machine> FunctionBuilder<M> {
                 &self.incoming_locations[&bb.id],
                 &self.fnty,
                 &self.tys,
+                bb.id,
             )
         }
 
@@ -510,24 +514,36 @@ impl<M: Machine> BasicBlockBuilder<M> {
                 };
 
                 if let Some(next) = next {
-                    let ret_loc = OpaqueLocation {
-                        ty: Rc::new(real_ty.ret.clone()),
-                        kind: ir::StackValueKind::RValue,
-                        num: self.loc_id_counter.next(),
-                        has_addr: false,
-                    };
-                    self.insns.push(SsaInstruction::Call(
-                        CallTarget {
-                            ptr: OpaquePtr::Symbol(sym),
-                            real_ty,
-                            call_ty,
-                        },
-                        CallLocations {
-                            params,
-                            ret: ret_loc.clone(),
-                        },
-                    ));
-                    self.write_jump(&next, [ret_loc]);
+                    if call_ty.ret == ir::Type::Void {
+                        self.insns.push(SsaInstruction::Call(
+                            CallTarget {
+                                ptr: OpaquePtr::Symbol(sym),
+                                real_ty,
+                                call_ty,
+                            },
+                            CallLocations { params, ret: None },
+                        ));
+                        self.write_jump(&next, []);
+                    } else {
+                        let ret_loc = OpaqueLocation {
+                            ty: Rc::new(real_ty.ret.clone()),
+                            kind: ir::StackValueKind::RValue,
+                            num: self.loc_id_counter.next(),
+                            has_addr: false,
+                        };
+                        self.insns.push(SsaInstruction::Call(
+                            CallTarget {
+                                ptr: OpaquePtr::Symbol(sym),
+                                real_ty,
+                                call_ty,
+                            },
+                            CallLocations {
+                                params,
+                                ret: Some(ret_loc.clone()),
+                            },
+                        ));
+                        self.write_jump(&next, [ret_loc]);
+                    }
                 } else {
                     self.insns.push(SsaInstruction::Tailcall(
                         CallTarget {
@@ -551,7 +567,7 @@ impl<M: Machine> BasicBlockBuilder<M> {
         }
     }
 
-    /// Writes a (possibly [`FALLTHROUGH`][ir::JumpFlags::FALLTHROUGH]) jump to the specified target.
+    /// Writes a (possibly [`FALLTHROUGH`][ir::JumpTargetFlags::FALLTHROUGH]) jump to the specified target.
     ///
     /// `head_vals` contains value placed on the head of the incoming target stack, which much be at most the total number of incoming values
     pub fn write_jump<H: IntoIterator<Item = OpaqueLocation>>(

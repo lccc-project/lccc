@@ -33,6 +33,7 @@ pub trait Machine {
         incoming: &[OpaqueLocation],
         fnty: &ir::FnType,
         tys: &TypeInformation,
+        which: u32,
     );
 
     /// Assigns the locations for a basic block, specifying the instructions the make up the lowered basic block, and the list of locations incoming to the basic block.

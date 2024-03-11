@@ -65,6 +65,7 @@ impl Machine for CleverMachine {
         incoming: &[OpaqueLocation],
         fnty: &xlang_struct::FnType,
         tys: &TypeInformation,
+        which: u32,
     ) {
         todo!()
     }

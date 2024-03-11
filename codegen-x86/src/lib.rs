@@ -26,6 +26,7 @@ mod callconv;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum X86ValLocation {
+    Null,
     Register(X86Register),
 }
 
@@ -43,6 +44,7 @@ pub struct X86Assignments {
     mode: X86Mode,
     sp: X86Register,
     available_int_registers: Vec<X86Register>,
+    return_reg: Option<X86Register>,
     stack_width: i32,
     assigns: HashMap<u32, LocationAssignment>,
 }
@@ -97,8 +99,8 @@ fn move_opcode(
                 X86CodegenOpcode::Vmovups
             }
         }
-        X86RegisterClass::Tmm => todo!("tmmreg"),
-        X86RegisterClass::St => todo!("fpreg"),
+        X86RegisterClass::Tmm => panic!("No mov reg, reg for tmm"),
+        X86RegisterClass::St => panic!("No mov for st reg"),
         _ => X86CodegenOpcode::Mov,
     }
 }
@@ -114,17 +116,28 @@ impl X86Machine {
             return Ok(());
         }
         match (dest, src) {
+            (X86ValLocation::Null, X86ValLocation::Null) => Ok(()),
             (X86ValLocation::Register(dest), X86ValLocation::Register(src)) => {
                 if dest.class() != src.class() {
                     panic!("Cannot move between register classes")
                 }
 
-                let opcode = move_opcode(dest.class(), None, false);
+                match dest.class() {
+                    X86RegisterClass::St => todo!("fpreg"), // We need to do shenanigans to move between arbitrary st slots
+                    X86RegisterClass::Tmm => todo!("tmmreg"), // Less shenanigans are needed here, but we need to spill to memory
+                    _ => {
+                        let opcode = move_opcode(dest.class(), None, false);
 
-                writer.write_insn(X86Instruction::new(
-                    opcode,
-                    vec![X86Operand::Register(*dest), X86Operand::Register(*src)],
-                ))
+                        writer.write_insn(X86Instruction::new(
+                            opcode,
+                            vec![X86Operand::Register(*dest), X86Operand::Register(*src)],
+                        ))
+                    }
+                }
+            }
+            (X86ValLocation::Null, X86ValLocation::Register(_))
+            | (X86ValLocation::Register(_), X86ValLocation::Null) => {
+                panic!("Cannot move a register to/from null")
             }
         }
     }
@@ -167,6 +180,7 @@ impl Machine for X86Machine {
             mode,
             sp,
             available_int_registers: int_registers,
+            return_reg: None,
             stack_width: 0,
             assigns: HashMap::new(),
         }
@@ -184,16 +198,116 @@ impl Machine for X86Machine {
         let mut clobbers = X86Clobbers {};
         for (num, insn) in insns.iter().enumerate() {
             match insn {
-                xlang_backend::ssa::SsaInstruction::Call(_, _) => todo!("call"),
+                xlang_backend::ssa::SsaInstruction::Call(targ, locations) => {
+                    let callconv = X86CallConvInfo {
+                        mode: assignments.mode,
+                    };
+
+                    let callconv = compute_call_conv(&callconv, &targ.real_ty, &targ.call_ty, tys);
+
+                    // TODO: Clobber non-saved registers
+
+                    for (loc, call_loc) in locations.params.iter().zip(callconv.params()) {
+                        match call_loc {
+                            CallConvLocation::Null => {}
+                            CallConvLocation::Register(reg) => {
+                                assignments
+                                    .assigns
+                                    .get_or_insert_with_mut(loc.num, |_| LocationAssignment {
+                                        foreign_location: X86ValLocation::Register(*reg),
+                                        owning_bb: which,
+                                        change_owner: vec![],
+                                    })
+                                    .change_owner
+                                    .push((num, X86ValLocation::Register(*reg)));
+                            }
+                            loc => todo!("{:?}", loc),
+                        }
+                    }
+
+                    if let Some(ret) = &locations.ret {
+                        match callconv.ret_location() {
+                            CallConvLocation::Null => {}
+                            CallConvLocation::Register(reg) => {
+                                assignments.assigns.insert(
+                                    ret.num,
+                                    LocationAssignment {
+                                        foreign_location: X86ValLocation::Register(*reg),
+                                        owning_bb: which,
+                                        change_owner: vec![],
+                                    },
+                                );
+                            }
+                            loc => todo!("{:?}", loc),
+                        }
+                    }
+                }
                 xlang_backend::ssa::SsaInstruction::Jump(targ, old_locs)
                 | xlang_backend::ssa::SsaInstruction::Fallthrough(targ, old_locs) => {
                     let foreign_locs = &incoming_set[targ];
 
                     for (old_loc, new_loc) in old_locs.iter().zip(foreign_locs) {
-                        todo!("jump remap {} => {}", old_loc, new_loc)
+                        match (
+                            assignments
+                                .assigns
+                                .get_mut(&new_loc.num)
+                                .map(|x| x.foreign_location.clone()),
+                            assignments.assigns.get_mut(&old_loc.num),
+                        ) {
+                            (Some(foreign), Some(old)) => {
+                                old.change_owner.push((num, foreign));
+                            }
+                            (Some(foreign), None) => {
+                                assignments.assigns.insert(
+                                    old_loc.num,
+                                    LocationAssignment {
+                                        foreign_location: foreign,
+                                        owning_bb: which,
+                                        change_owner: vec![],
+                                    },
+                                );
+                            }
+                            (None, Some(old)) => {
+                                let incoming = old
+                                    .change_owner
+                                    .last()
+                                    .map_or(&old.foreign_location, |(_, x)| x)
+                                    .clone();
+
+                                assignments.assigns.insert(
+                                    new_loc.num,
+                                    LocationAssignment {
+                                        foreign_location: incoming,
+                                        owning_bb: *targ,
+                                        change_owner: vec![],
+                                    },
+                                );
+                            }
+                            (None, None) => {
+                                todo!("Allocate register");
+                            }
+                        }
                     }
                 }
-                xlang_backend::ssa::SsaInstruction::Exit(_) => todo!("exit"),
+                xlang_backend::ssa::SsaInstruction::Exit(val) => match &**val {
+                    [] => {}
+                    [retval] => {
+                        let reg = assignments.return_reg;
+                        if let Some(reg) = reg {
+                            let loc = X86ValLocation::Register(reg);
+                            assignments
+                                .assigns
+                                .get_or_insert_with_mut(retval.num, |_| LocationAssignment {
+                                    foreign_location: loc.clone(),
+                                    owning_bb: which,
+                                    change_owner: vec![],
+                                })
+                                .change_owner
+                                .push((num, loc));
+                        }
+                    }
+                    vals => panic!("exit with more than 1 value: {:?}", vals),
+                },
                 xlang_backend::ssa::SsaInstruction::Tailcall(targ, locs) => {
                     let callconv = X86CallConvInfo {
                         mode: assignments.mode,
@@ -256,7 +370,13 @@ impl Machine for X86Machine {
             }
 
             match insn {
-                xlang_backend::ssa::SsaInstruction::Call(_, _) => todo!("call"),
+                xlang_backend::ssa::SsaInstruction::Call(targ, _) => match &targ.ptr {
+                    OpaquePtr::Symbol(sym) => encoder.write_insn(X86Instruction::new(
+                        X86CodegenOpcode::Call,
+                        vec![X86Operand::RelOffset(Address::PltSym { name: sym.clone() })],
+                    ))?,
+                    OpaquePtr::Pointer(ptr) => todo!("indirect call"),
+                },
                 xlang_backend::ssa::SsaInstruction::Jump(targ, _) => {
                     encoder.write_insn(X86Instruction::new(
                         X86CodegenOpcode::Jmp,
@@ -267,7 +387,7 @@ impl Machine for X86Machine {
                     ))?;
                 }
                 xlang_backend::ssa::SsaInstruction::Fallthrough(_, _) => {}
-                xlang_backend::ssa::SsaInstruction::Exit(_) => {
+                xlang_backend::ssa::SsaInstruction::Exit(val) => {
                     if assignments.stack_width > 0 {
                         encoder.write_insn(X86Instruction::new(
                             X86CodegenOpcode::Add,
@@ -305,6 +425,7 @@ impl Machine for X86Machine {
                                     ],
                                 ))?;
                             }
+                            X86ValLocation::Null => {}
                         }
                     }
                 }
@@ -339,6 +460,7 @@ impl Machine for X86Machine {
         incoming: &[xlang_backend::ssa::OpaqueLocation],
         fnty: &xlang::ir::FnType,
         tys: &TypeInformation,
+        which: u32,
     ) {
         let callconv = X86CallConvInfo {
             mode: assignments.mode,
@@ -346,11 +468,24 @@ impl Machine for X86Machine {
         let callconv = compute_call_conv(&callconv, fnty, fnty, tys);
 
         for (param, incoming) in callconv.params().iter().zip(incoming) {
-            todo!()
+            let loc = match param {
+                CallConvLocation::Null => X86ValLocation::Null,
+                CallConvLocation::Register(reg) => X86ValLocation::Register(*reg),
+                loc => todo!("Param in {:?}", loc),
+            };
+
+            let assignment = LocationAssignment {
+                foreign_location: loc,
+                change_owner: vec![],
+                owning_bb: which,
+            };
+
+            assignments.assigns.insert(incoming.num, assignment);
         }
 
         match callconv.ret_location() {
             CallConvLocation::Null => {}
+            CallConvLocation::Register(reg) => assignments.return_reg = Some(*reg),
             loc => todo!("Return in {:?}", loc),
         }
     }
