@@ -261,6 +261,10 @@ impl core::fmt::Display for MirTailcallInfo {
 
 impl core::fmt::Display for MirJumpInfo {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        if self.fallthrough {
+            f.write_str("fallthrough ")?;
+        }
+
         self.targbb.fmt(f)?;
         f.write_str(" [")?;
 
@@ -1068,6 +1072,7 @@ impl<'a> MirConverter<'a> {
         MirJumpInfo {
             targbb: bb_id,
             remaps,
+            fallthrough: self.cur_basic_block.id.0 + 1 == bb_id.0,
         }
     }
 
@@ -1109,6 +1114,7 @@ impl<'a> MirConverter<'a> {
             MirJumpInfo {
                 targbb: bb_id,
                 remaps,
+                fallthrough: self.cur_basic_block.id.0 + 1 == bb_id.0,
             },
             assignments,
             incoming_vars,
@@ -1186,7 +1192,14 @@ impl<'a> MirConverter<'a> {
                 }
             }
 
-            jump_map.push((reinit_stat, MirJumpInfo { targbb, remaps }))
+            jump_map.push((
+                reinit_stat,
+                MirJumpInfo {
+                    targbb,
+                    remaps,
+                    fallthrough: self.cur_basic_block.id.0 + 1 == targbb.0,
+                },
+            ))
         }
 
         (jump_map, new_assignments, incoming)

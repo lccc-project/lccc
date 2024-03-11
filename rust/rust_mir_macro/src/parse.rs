@@ -1292,6 +1292,13 @@ pub fn do_jump_target<I: Iterator<Item = TokenTree>>(
     dollar_crate: &TokenStream,
 ) -> Result<TokenStream> {
     with_rewinder_accept_on_continue(tokens, |tree| {
+        let fallthrough = do_keyword(tree, "fallthrough");
+
+        let fallthrough = match fallthrough {
+            Ok(span) => TokenStream::from(TokenTree::Ident(Ident::new("true", span))),
+            Err(x) => TokenStream::from(TokenTree::Ident(Ident::new("false", x.span))),
+        };
+
         let target = do_basic_block_id(tree, dollar_crate)?;
 
         let inner_tree = do_group(tree, Some(Delimiter::Bracket))?;
@@ -1351,7 +1358,11 @@ pub fn do_jump_target<I: Iterator<Item = TokenTree>>(
         write_constructor(
             &mut output,
             Span::call_site(),
-            [("targbb", target), ("remaps", remaps)],
+            [
+                ("targbb", target),
+                ("remaps", remaps),
+                ("fallthrough", fallthrough),
+            ],
         );
 
         Ok(output)

@@ -3868,7 +3868,7 @@ pub fn convert_crate(
         } else {
             mir::mir! {
                 @0: { []
-                    call _0 = #<main>: <fnty>() next @1 []
+                    call _0 = #<main>: <fnty>() next fallthrough @1 []
                 }
                 @1: { [_0: <retty>]
                     store dead _0;

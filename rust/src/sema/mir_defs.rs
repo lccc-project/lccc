@@ -138,6 +138,7 @@ pub struct MirBranchInfo {
 pub struct MirJumpInfo {
     pub targbb: BasicBlockId,
     pub remaps: Vec<(SsaVarId, SsaVarId)>,
+    pub fallthrough: bool,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]

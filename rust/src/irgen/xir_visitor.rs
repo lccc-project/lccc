@@ -1296,6 +1296,10 @@ impl<'a> JumpVisitor for XirJumpVisitor<'a> {
             self.exprs.push(ir::Expr::Pivot(depth, 1));
         }
     }
+
+    fn visit_fallthrough(&mut self) {
+        self.targ.flags |= ir::JumpTargetFlags::FALLTHROUGH;
+    }
 }
 
 pub struct XirCallVisitor<'a> {

@@ -411,6 +411,9 @@ pub fn visit_jump<V: JumpVisitor>(mut visitor: V, info: &mir::MirJumpInfo) {
     for remap in &info.remaps {
         visitor.visit_remap(remap.0, remap.1);
     }
+    if info.fallthrough {
+        visitor.visit_fallthrough();
+    }
 }
 
 pub fn visit_fnty<V: FunctionTyVisitor>(mut visitor: V, fnty: &ty::FnType, defs: &Definitions) {
@@ -847,6 +850,7 @@ def_visitors! {
     pub trait JumpVisitor {
         fn visit_target_bb(&mut self, targbb: mir::BasicBlockId);
         fn visit_remap(&mut self, src: mir::SsaVarId, targ: mir::SsaVarId);
+        fn visit_fallthrough(&mut self);
     }
 
     pub trait TerminatorVisitor {
