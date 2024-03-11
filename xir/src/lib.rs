@@ -9,6 +9,7 @@ use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
 use xlang::targets::properties::TargetProperties;
 
 mod lexer;
+mod parser;
 
 struct XirFrontend {
     filename: Option<String>,

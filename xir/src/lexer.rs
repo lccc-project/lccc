@@ -3,12 +3,18 @@
 use std::convert::Infallible;
 
 use xlang::abi::string::String;
+use xlang_frontend::lexer;
 use xlang_frontend::span::{NoHygiene, Speekable};
 
 pub use xlang_frontend::lexer::{
     is_ident_part_unicode, is_ident_start_unicode, parse_escape, DefaultTy, Error, HexEscape,
     Lexer, Result, UnicodeEscapeRust,
 };
+
+pub type Lexeme = lexer::Lexeme<XirLexer>;
+pub type Group = lexer::Group<XirLexer, NoHygiene, GroupType>;
+pub type Token = lexer::LToken<XirLexer>;
+pub type TokenType = lexer::LToken<XirLexer>;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum GroupType {
@@ -138,7 +144,7 @@ impl Lexer for XirLexer {
     }
 
     fn punct_list(&self) -> &[&str] {
-        &["->", "::", ":", "#", "@"]
+        &["->", "::", ":", "#", "@", "*", ";"]
     }
 
     fn check_valid_punct<I: Iterator<Item = char>>(
@@ -147,7 +153,7 @@ impl Lexer for XirLexer {
         it: &mut xlang_frontend::iter::PeekMoreIterator<Speekable<I>>,
     ) -> Result<()> {
         match c {
-            "->" | "::" | ":" | "#" | "@" => Ok(()),
+            "->" | "::" | ":" | "#" | "@" | "*" | ";" => Ok(()),
             _ => match it.next() {
                 Some((pos, c)) => Err(Error::UnrecognizedChar(c, pos)),
                 None => Err(Error::UnexpectedEof(it.last_pos())),

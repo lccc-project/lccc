@@ -214,8 +214,8 @@ impl EscapeMatcher for char {
     fn try_match<I: Iterator<Item = char>>(
         &self,
         sel: char,
-        it: &mut PeekMoreIterator<Speekable<I>>,
-        accepter: &mut String,
+        _: &mut PeekMoreIterator<Speekable<I>>,
+        _: &mut String,
     ) -> Result<bool> {
         Ok(sel == *self)
     }
@@ -252,7 +252,7 @@ macro_rules! impl_for_tuple{
     ($($T:ident),* $(,)?) => {
 
     impl<$($T: EscapeMatcher),*> EscapeMatcher for ($($T,)*){
-            #[allow(unused_variables)]
+            #[allow(unused_variables, non_snake_case)] // I'm not typing two idents into a macro input when there's a perfectly good ident already.
             fn try_match<_I: Iterator<Item=char>>(&self, sel: char, it: &mut PeekMoreIterator<Speekable<_I>>, accepter: &mut String) -> Result<bool>{
                 let ($($T,)*) = self;
 
@@ -333,6 +333,7 @@ pub struct Group<Lex, H = NoHygiene, GType = Infallible> {
     pub stream: Vec<Spanned<Lex, H>>,
 }
 
+pub type LGroup<L> = Group<Lexeme<L>, <L as Lexer>::Hygiene, <L as Lexer>::GroupType>;
 pub enum Lexeme<L: Lexer> {
     Token(LToken<L>),
     Group(Group<Self, L::Hygiene, L::GroupType>),
@@ -453,6 +454,7 @@ pub trait Lexer {
         &self,
         it: &mut PeekMoreIterator<Speekable<I>>,
     ) -> Result<String>;
+    #[allow(unused_variables)] // I don't want `_it` to be silencing the warning downstream in implementors
     fn parse_rest<I: Iterator<Item = char>>(
         &self,
         preceeding: Spanned<LToken<Self>, Self::Hygiene>,
@@ -466,20 +468,33 @@ fn do_lexeme_in_group<L: Lexer, I: Iterator<Item = char>>(
     lex: &L,
     iter: &mut PeekMoreIterator<Speekable<I>>,
     end_char: Option<char>,
-) -> Result<Option<Spanned<Lexeme<L>, L::Hygiene>>> {
+) -> Result<Spanned<Lexeme<L>, L::Hygiene>> {
     let (c, pos) = match lex.next_token_start(iter)? {
         Some((c, pos)) => (c, pos),
         None => {
             if end_char.is_some() {
                 return Err(Error::UnexpectedEof(iter.last_pos()));
             } else {
-                return Ok(None);
+                let pos = iter.last_pos();
+                return Ok(Spanned::new(
+                    Lexeme::Token(Token {
+                        ty: TokenType::Eof,
+                        body: Symbol::intern(""),
+                    }),
+                    Span::new_simple(pos, pos, iter.file_name()),
+                ));
             }
         }
     };
 
     if Some(c) == end_char {
-        return Ok(None);
+        return Ok(Spanned::new(
+            Lexeme::Token(Token {
+                ty: TokenType::Eof,
+                body: Symbol::intern(""),
+            }),
+            Span::new_simple(pos, pos, iter.file_name()),
+        ));
     }
 
     let l = match c {
@@ -508,7 +523,7 @@ fn do_lexeme_in_group<L: Lexer, I: Iterator<Item = char>>(
             }
             let mut flt_piece = 0;
 
-            while let Some((pos, c)) = iter.peek().copied() {
+            while let Some((_, c)) = iter.peek().copied() {
                 if c.is_digit(radix.unwrap_or(10)) {
                     s.push(c);
                     radix.get_or_insert(10);
@@ -595,15 +610,27 @@ fn do_lexeme_in_group<L: Lexer, I: Iterator<Item = char>>(
         c => {
             if let Some((gty, end)) = lex.is_group_start(c) {
                 let mut stream = Vec::new();
-                while let Some(tok) = do_lexeme_in_group(lex, iter, Some(end))? {
-                    stream.push(tok);
+                loop {
+                    let lexeme = do_lexeme_in_group(lex, iter, Some(end))?;
+                    let is_eof = matches!(
+                        lexeme.body(),
+                        Lexeme::Token(Token {
+                            ty: TokenType::Eof,
+                            ..
+                        })
+                    );
+                    stream.push(lexeme);
+
+                    if is_eof {
+                        break;
+                    }
                 }
 
                 Lexeme::Group(Group { ty: gty, stream })
             } else {
                 let mut st = String::from(c);
 
-                let mut puncts = lex.punct_list();
+                let puncts = lex.punct_list();
 
                 if !puncts.iter().any(|&s| s.starts_with(&*st)) {
                     return Err(Error::UnrecognizedChar(c, pos));
@@ -632,16 +659,16 @@ fn do_lexeme_in_group<L: Lexer, I: Iterator<Item = char>>(
     match l {
         Lexeme::Token(tok) => {
             let span = lex.parse_rest(Spanned::new(tok, span), iter)?;
-            Ok(Some(span.map(|tok| Lexeme::Token(tok))))
+            Ok(span.map(|tok| Lexeme::Token(tok)))
         }
-        lex => Ok(Some(Spanned::new(lex, span))),
+        lex => Ok(Spanned::new(lex, span)),
     }
 }
 
 pub fn do_lexeme<L: Lexer, I: Iterator<Item = char>>(
     lex: &L,
     iter: &mut PeekMoreIterator<Speekable<I>>,
-) -> Result<Option<Spanned<Lexeme<L>, L::Hygiene>>> {
+) -> Result<Spanned<Lexeme<L>, L::Hygiene>> {
     do_lexeme_in_group(lex, iter, None)
 }
 
@@ -653,9 +680,18 @@ pub fn lex_file<L: Lexer, I: Iterator<Item = char>>(
     let mut lexemes = vec![];
     let mut it = it.speekable(file_name.into()).peekmore();
     loop {
-        match do_lexeme(lex, &mut it)? {
-            Some(lexeme) => lexemes.push(lexeme),
-            None => break,
+        let lexeme = do_lexeme(lex, &mut it)?;
+        let is_eof = matches!(
+            lexeme.body(),
+            Lexeme::Token(Token {
+                ty: TokenType::Eof,
+                ..
+            })
+        );
+        lexemes.push(lexeme);
+
+        if is_eof {
+            break;
         }
     }
     Ok(lexemes)

@@ -273,6 +273,8 @@ macro_rules! yeet {
     };
 }
 
+pub use yeet;
+
 #[cfg(test)]
 mod test {
     use crate::prelude::v1::*;

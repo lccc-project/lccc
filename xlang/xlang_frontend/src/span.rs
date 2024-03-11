@@ -147,6 +147,10 @@ impl<T, H> Spanned<T, H> {
         &self.span
     }
 
+    pub const fn body(&self) -> &T {
+        &self.val
+    }
+
     pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> Spanned<U, H> {
         let Self { val, span } = self;
 
@@ -185,6 +189,17 @@ impl<T, H> Spanned<T, H> {
         let Self { val, span } = self;
 
         Try::from_output(Spanned::new(try_!(f(val)), *span))
+    }
+}
+
+impl<A, B, H> Spanned<(A, B), H> {
+    pub fn unzip(self) -> (Spanned<A, H>, Spanned<B, H>)
+    where
+        H: Copy,
+    {
+        let Self { val, span } = self;
+
+        (Spanned::new(val.0, span), Spanned::new(val.1, span))
     }
 }
 
