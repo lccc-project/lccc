@@ -7,7 +7,6 @@ use std::{
     ffi::OsStr,
     fmt::{Formatter, Write},
     hash::{Hash, Hasher},
-    iter::FromIterator,
     marker::PhantomData,
     ops::{Add, AddAssign},
     path::Path,

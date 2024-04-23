@@ -3,7 +3,7 @@
 ![Build/Test](https://github.com/LightningCreations/lccc/actions/workflows/rust.yml/badge.svg)
 ![Miri](https://github.com/LightningCreations/lccc/actions/workflows/miri.yml/badge.svg)
 ![Clippy](https://github.com/LightningCreations/lccc/actions/workflows/clippy.yml/badge.svg)
-![MSRV](https://img.shields.io/badge/MSRV-1.54-brightgreen)
+![MSRV](https://img.shields.io/badge/MSRV-1.74-brightgreen)
 
 Lightning Creations Compiler Collection (Now with extra Fe2O3) is a compiler framework written in pure rust, that is intended to eventually be fully usable in place of existing toolchains.
 

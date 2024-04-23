@@ -2,7 +2,7 @@ use core::ops::IndexMut;
 use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::hash::{BuildHasher, Hash, Hasher};
-use std::iter::{FromIterator, FusedIterator};
+use std::iter::FusedIterator;
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::Index;

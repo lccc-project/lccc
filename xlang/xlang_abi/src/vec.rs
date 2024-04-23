@@ -2,7 +2,7 @@ use std::{
     fmt::Debug,
     hash::Hash,
     io::Write,
-    iter::{FromIterator, FusedIterator},
+    iter::FusedIterator,
     marker::PhantomData,
     mem::{size_of, ManuallyDrop},
     ops::{Deref, DerefMut},

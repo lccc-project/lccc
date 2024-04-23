@@ -20,7 +20,7 @@ impl<T: ?Sized> core::hash::Hash for Unique<T> {
 
 impl<T: ?Sized> core::cmp::PartialEq for Unique<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.ptr == other.ptr
+        std::ptr::eq(self.ptr.as_ptr(), other.ptr.as_ptr())
     }
 }
 

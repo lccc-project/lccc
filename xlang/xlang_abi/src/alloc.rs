@@ -2,7 +2,6 @@
 
 pub use std::alloc::GlobalAlloc;
 use std::{
-    convert::TryFrom,
     hash::{Hash, Hasher},
     ptr::NonNull,
 };

@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use xlang::{
     ir::{
         AggregateDefinition, AggregateKind, AnnotationItem, Path, PointerAliasingRule, PointerKind,

@@ -466,7 +466,8 @@ AC_DEFUN([LCRUST_PROG_CARGO],[
 [package]
 name = "cargotest"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
+rust-version = "1.74"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
