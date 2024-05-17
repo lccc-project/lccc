@@ -322,9 +322,8 @@ pub enum ThirBlock {
     Loop(ThirSimpleBlock),
     If {
         cond: Spanned<ThirExpr>,
-        block: ThirSimpleBlock,
-        elseifs: Vec<(Spanned<ThirExpr>, ThirSimpleBlock)>,
-        elseblock: ThirSimpleBlock,
+        block: Box<Spanned<ThirBlock>>,
+        elseblock: Option<Box<Spanned<ThirBlock>>>,
     },
     Match(ThirMatch),
 }
@@ -364,6 +363,81 @@ impl ThirFunctionBody {
         Ok(())
     }
 
+    fn display_block(
+        &self,
+        block: &ThirBlock,
+        f: &mut core::fmt::Formatter,
+        tabs: TabPrinter,
+    ) -> core::fmt::Result {
+        use core::fmt::Display;
+        match &block {
+            ThirBlock::Normal(stmts) => {
+                f.write_str("{\n")?;
+                let nested = tabs.nest();
+                for stmt in stmts {
+                    self.display_statement(stmt, f, nested)?;
+                }
+                tabs.fmt(f)?;
+                f.write_str("}\n")
+            }
+            ThirBlock::Unsafe(stmts) => {
+                f.write_str("unsafe {\n")?;
+                let nested = tabs.nest();
+                for stmt in stmts {
+                    self.display_statement(stmt, f, nested)?;
+                }
+                tabs.fmt(f)?;
+                f.write_str("}\n")
+            }
+            ThirBlock::Loop(stmts) => {
+                f.write_str("loop {\n")?;
+                let nested = tabs.nest();
+                for stmt in stmts {
+                    self.display_statement(stmt, f, nested)?;
+                }
+                tabs.fmt(f)?;
+                f.write_str("}\n")
+            }
+            ThirBlock::If {
+                cond,
+                block,
+                elseblock,
+            } => {
+                write!(f, "if {} ", cond.body)?;
+                self.display_block(block, f, tabs)?;
+                if let Some(elseblk) = elseblock {
+                    write!(f, "{}else ", tabs)?;
+                    self.display_block(elseblk, f, tabs)
+                } else {
+                    Ok(())
+                }
+            }
+            ThirBlock::Match(m) => {
+                let nested = tabs.nest();
+                write!(f, "match {} {{\n", m.discriminee.body)?;
+                for arm in &m.arms {
+                    nested.fmt(f)?;
+                    let subnested = nested.nest();
+                    arm.discrim.body.fmt(f)?;
+
+                    if let Some(guard) = &arm.guard {
+                        write!(f, "if {}", guard.body)?;
+                    }
+
+                    f.write_str(" => {\n")?;
+
+                    for stmt in &arm.expansion.body {
+                        self.display_statement(stmt, f, subnested)?;
+                    }
+                    nested.fmt(f)?;
+                    f.write_str("}\n")?;
+                }
+                tabs.fmt(f)?;
+                f.write_str("}\n")
+            }
+        }
+    }
+
     fn display_statement(
         &self,
         stmt: &ThirStatement,
@@ -391,91 +465,10 @@ impl ThirFunctionBody {
             ThirStatement::Return(expr) => {
                 f.write_fmt(format_args!("{}return {};\n", tabs, expr.body))
             }
-            ThirStatement::Block(b) => match &b.body {
-                ThirBlock::Normal(stmts) => {
-                    tabs.fmt(f)?;
-                    f.write_str("{\n")?;
-                    let nested = tabs.nest();
-                    for stmt in stmts {
-                        self.display_statement(stmt, f, nested)?;
-                    }
-                    tabs.fmt(f)?;
-                    f.write_str("}\n")
-                }
-                ThirBlock::Unsafe(stmts) => {
-                    tabs.fmt(f)?;
-                    f.write_str("unsafe {\n")?;
-                    let nested = tabs.nest();
-                    for stmt in stmts {
-                        self.display_statement(stmt, f, nested)?;
-                    }
-                    tabs.fmt(f)?;
-                    f.write_str("}\n")
-                }
-                ThirBlock::Loop(stmts) => {
-                    tabs.fmt(f)?;
-                    f.write_str("loop {\n")?;
-                    let nested = tabs.nest();
-                    for stmt in stmts {
-                        self.display_statement(stmt, f, nested)?;
-                    }
-                    tabs.fmt(f)?;
-                    f.write_str("}\n")
-                }
-                ThirBlock::If {
-                    cond,
-                    block,
-                    elseifs,
-                    elseblock,
-                } => {
-                    tabs.fmt(f)?;
-                    write!(f, "if {} {{\n", cond.body)?;
-                    let nested = tabs.nest();
-                    for stmt in block {
-                        self.display_statement(stmt, f, nested)?;
-                    }
-                    for (cond, block) in elseifs {
-                        tabs.fmt(f)?;
-                        write!(f, "}} else if {} {{\n", cond.body)?;
-                        for stmt in block {
-                            self.display_statement(stmt, f, nested)?;
-                        }
-                    }
-                    if elseblock.len() > 0 {
-                        tabs.fmt(f)?;
-                        f.write_str("} else {\n")?;
-                        for stmt in elseblock {
-                            self.display_statement(stmt, f, nested)?;
-                        }
-                    }
-                    tabs.fmt(f)?;
-                    f.write_str("}\n")
-                }
-                ThirBlock::Match(m) => {
-                    tabs.fmt(f)?;
-                    let nested = tabs.nest();
-                    write!(f, "match {} {{\n", m.discriminee.body)?;
-                    for arm in &m.arms {
-                        nested.fmt(f)?;
-                        let subnested = nested.nest();
-                        arm.discrim.body.fmt(f)?;
-
-                        if let Some(guard) = &arm.guard {
-                            write!(f, "if {}", guard.body)?;
-                        }
-
-                        f.write_str(" => {\n")?;
-
-                        for stmt in &arm.expansion.body {
-                            self.display_statement(stmt, f, subnested)?;
-                        }
-                        nested.fmt(f)?;
-                        f.write_str("}\n")?;
-                    }
-                    tabs.fmt(f)?;
-                    f.write_str("}\n")
-                }
-            },
+            ThirStatement::Block(b) => {
+                tabs.fmt(f)?;
+                self.display_block(b, f, tabs)
+            }
             ThirStatement::Discard(expr) => f.write_fmt(format_args!("{}{};\n", tabs, expr.body)),
             ThirStatement::Call {
                 retplace,
@@ -1078,6 +1071,78 @@ impl<'a> ThirConverter<'a> {
         Ok(())
     }
 
+    pub fn convert_block(
+        &mut self,
+        blk: &Spanned<hir::HirBlock>,
+    ) -> super::Result<Spanned<ThirBlock>> {
+        blk.try_copy_span(|blk| match blk {
+            hir::HirBlock::Normal(stmts) => stmts
+                .iter()
+                .map(|stmt| self.convert_statement(stmt))
+                .collect::<super::Result<Vec<_>>>()
+                .map(ThirBlock::Normal),
+            hir::HirBlock::Unsafe(stmts) => stmts
+                .iter()
+                .map(|stmt| self.convert_statement(stmt))
+                .collect::<super::Result<Vec<_>>>()
+                .map(ThirBlock::Unsafe),
+            hir::HirBlock::Loop(stmts) => stmts
+                .iter()
+                .map(|stmt| self.convert_statement(stmt))
+                .collect::<super::Result<Vec<_>>>()
+                .map(ThirBlock::Loop),
+            hir::HirBlock::If {
+                cond,
+                block,
+                elseblock,
+            } => {
+                let cond = self.convert_expr(cond)?;
+                let block = self.convert_block(block)?;
+                let elseblock = elseblock
+                    .as_ref()
+                    .map(|block| self.convert_block(block))
+                    .transpose()?;
+
+                Ok(ThirBlock::If {
+                    cond,
+                    block: Box::new(block),
+                    elseblock: elseblock.map(Box::new),
+                })
+            }
+            hir::HirBlock::Match(m) => {
+                let discriminee = self.convert_expr(&m.discriminee)?;
+
+                let arms = m
+                    .arms
+                    .iter()
+                    .map(|a| {
+                        let pattern = self.convert_pattern(&a.pattern)?;
+                        let expansion = a.expansion.try_copy_span(|s| {
+                            s.iter()
+                                .map(|stmt| self.convert_statement(stmt))
+                                .collect::<super::Result<Vec<_>>>()
+                        })?;
+                        let guard = a
+                            .guard
+                            .as_ref()
+                            .map(|expr| self.convert_expr(expr))
+                            .transpose()?;
+
+                        Ok(ThirMatchArm {
+                            discrim: pattern,
+                            guard,
+                            expansion,
+                        })
+                    })
+                    .collect::<super::Result<Vec<_>>>()?;
+
+                let m = ThirMatch { discriminee, arms };
+
+                Ok(ThirBlock::Match(m))
+            }
+        })
+    }
+
     pub fn convert_statement(
         &mut self,
         stmt: &Spanned<hir::HirStatement>,
@@ -1133,90 +1198,7 @@ impl<'a> ThirConverter<'a> {
 
                 Ok(ThirStatement::Return(expr))
             }
-            hir::HirStatement::Block(b) => Ok(ThirStatement::Block(b.try_copy_span(|b| {
-                match b {
-                    hir::HirBlock::Normal(stmts) => Ok(ThirBlock::Normal(
-                        stmts
-                            .iter()
-                            .map(|stmt| self.convert_statement(stmt))
-                            .collect::<Result<_>>()?,
-                    )),
-                    hir::HirBlock::Unsafe(stmts) => Ok(ThirBlock::Unsafe(
-                        stmts
-                            .iter()
-                            .map(|stmt| self.convert_statement(stmt))
-                            .collect::<Result<_>>()?,
-                    )),
-                    hir::HirBlock::Loop(stmts) => Ok(ThirBlock::Loop(
-                        stmts
-                            .iter()
-                            .map(|stmt| self.convert_statement(stmt))
-                            .collect::<Result<_>>()?,
-                    )),
-                    hir::HirBlock::If {
-                        cond,
-                        block,
-                        elseifs,
-                        elseblock,
-                    } => Ok(ThirBlock::If {
-                        cond: self.convert_expr(cond)?,
-                        block: block
-                            .iter()
-                            .map(|stmt| self.convert_statement(stmt))
-                            .collect::<Result<_>>()?,
-                        elseifs: elseifs
-                            .iter()
-                            .map(|(cond, block)| {
-                                Ok((
-                                    self.convert_expr(cond)?,
-                                    block
-                                        .iter()
-                                        .map(|stmt| self.convert_statement(stmt))
-                                        .collect::<Result<_>>()?,
-                                ))
-                            })
-                            .collect::<Result<_>>()?,
-                        elseblock: elseblock
-                            .iter()
-                            .map(|stmt| self.convert_statement(stmt))
-                            .collect::<Result<_>>()?,
-                    }),
-                    hir::HirBlock::Match(m) => {
-                        let discriminee = self.convert_expr(&m.discriminee)?;
-
-                        let arms = m
-                            .arms
-                            .iter()
-                            .map(|arm| {
-                                let discrim = self.convert_pattern(&arm.pattern)?;
-
-                                let guard = arm
-                                    .guard
-                                    .as_ref()
-                                    .map(|guard| self.convert_expr(guard))
-                                    .transpose()?;
-
-                                let expansion = arm.expansion.try_copy_span(|expansion| {
-                                    expansion
-                                        .iter()
-                                        .map(|stmt| self.convert_statement(stmt))
-                                        .collect::<Result<_>>()
-                                })?;
-
-                                Ok(ThirMatchArm {
-                                    discrim,
-                                    guard,
-                                    expansion,
-                                })
-                            })
-                            .collect::<Result<_>>()?;
-
-                        let m = ThirMatch { discriminee, arms };
-
-                        Ok(ThirBlock::Match(m))
-                    }
-                }
-            })?)),
+            hir::HirStatement::Block(b) => Ok(ThirStatement::Block(self.convert_block(b)?)),
             hir::HirStatement::Discard(expr) => {
                 let val = self.convert_rvalue(expr)?;
 
@@ -1675,21 +1657,13 @@ impl<'a> Inferer<'a> {
             ThirBlock::If {
                 cond,
                 block,
-                elseifs,
                 elseblock,
             } => {
                 status &= self.unify_typed_expr(cond, &mut Type::Bool)?;
-                for stmt in block {
-                    status &= self.unify_statement(stmt)?;
-                }
-                for (cond, blk) in elseifs {
-                    status &= self.unify_typed_expr(cond, &mut Type::Bool)?;
-                    for stmt in blk {
-                        status &= self.unify_statement(stmt)?;
-                    }
-                }
-                for stmt in elseblock {
-                    status &= self.unify_statement(stmt)?;
+                status &= self.unify_block(block)?;
+
+                if let Some(elseblock) = elseblock {
+                    status &= self.unify_block(elseblock)?;
                 }
             }
             ThirBlock::Match(m) => {
@@ -1717,21 +1691,12 @@ impl<'a> Inferer<'a> {
             ThirBlock::If {
                 cond,
                 block,
-                elseifs,
                 elseblock,
             } => {
                 status &= self.propagate_expr(cond)?;
-                for stmt in block {
-                    status &= self.propagate_statement(stmt)?;
-                }
-                for (cond, blk) in elseifs {
-                    status &= self.propagate_expr(cond)?;
-                    for stmt in blk {
-                        status &= self.propagate_statement(stmt)?;
-                    }
-                }
-                for stmt in elseblock {
-                    status &= self.propagate_statement(stmt)?;
+                status &= self.propagate_block(block)?;
+                if let Some(elseblock) = elseblock {
+                    status &= self.propagate_block(elseblock)?;
                 }
             }
             ThirBlock::Match(m) => {

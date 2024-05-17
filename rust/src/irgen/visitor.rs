@@ -394,12 +394,8 @@ pub fn visit_branch<V: BranchVisitor>(
         return;
     }
 
-    for cond in &info.conds {
-        let mut branch_arm_visitor = visitor.visit_branch_arm();
-        visit_expr(branch_arm_visitor.visit_cond(), &cond.0, defs);
-        visit_jump(branch_arm_visitor.visit_jump(), &cond.1);
-    }
-
+    visit_expr(visitor.visit_cond(), &info.cond, defs);
+    visit_jump(visitor.visit_if_arm(), &info.if_block);
     visit_jump(visitor.visit_else(), &info.else_block);
 }
 
@@ -838,13 +834,9 @@ def_visitors! {
     }
 
     pub trait BranchVisitor {
-        fn visit_branch_arm(&mut self) -> Option<Box<dyn BranchArmVisitor + '_>>;
-        fn visit_else(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
-    }
-
-    pub trait BranchArmVisitor {
         fn visit_cond(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
-        fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
+        fn visit_if_arm(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
+        fn visit_else(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
     }
 
     pub trait JumpVisitor {

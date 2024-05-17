@@ -55,8 +55,12 @@ impl<P: MirStatementPass> MirBasicBlockPass for P {
     }
 }
 
+mod fallthrough;
 mod remove_discard;
 mod unreachable;
 
 pub const REQ_PASSES: &[&(dyn MirFunctionPass + Sync)] = &[];
-pub const OPT_PASSES: &[&(dyn MirFunctionPass + Sync)] = &[&unreachable::PropagateUnreachable];
+pub const OPT_PASSES: &[&(dyn MirFunctionPass + Sync)] = &[
+    &fallthrough::InferFallthrough,
+    &unreachable::PropagateUnreachable,
+];

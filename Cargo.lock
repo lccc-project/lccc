@@ -17,7 +17,9 @@ dependencies = [
 name = "autobuild"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "cfg-match",
+ "hashbrown",
  "install-dirs 0.3.2",
  "lccc-siphash",
  "libc",
@@ -34,6 +36,7 @@ name = "binfmt"
 version = "0.1.0"
 dependencies = [
  "arch-ops",
+ "bitflags 2.5.0",
  "bytemuck",
  "fake-enum",
  "lazy_static",
@@ -48,10 +51,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
-name = "bytemuck"
-version = "1.13.1"
+name = "bitflags"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17febce684fd15d89027105661fec94afb475cb995fbc59d2865198446ba2eea"
+checksum = "cf4b9d6a944f767f8e5e0db018570623c85f3d925ac718db4e06d0187adb21c1"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
+name = "bytemuck"
+version = "1.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d6d68c57235a3a081186990eca2867354726650f42f7516ca50c28d6281fd15"
 dependencies = [
  "bytemuck_derive",
 ]
@@ -311,7 +323,7 @@ name = "rlib"
 version = "0.1.0"
 dependencies = [
  "binfmt",
- "bitflags",
+ "bitflags 1.3.2",
  "bytemuck",
 ]
 
@@ -635,7 +647,7 @@ dependencies = [
 name = "xlang_struct"
 version = "0.2.0"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
  "fake-enum",
  "xlang_abi",
  "xlang_targets",

@@ -1527,24 +1527,15 @@ impl Definitions {
                         niches: None,
                     }
                 }
-                Type::Float(width) => {
-                    let (size, align) = match width {
-                        ty::FloatWidth::Bits(bits) => {
-                            let max_align = self.properties.primitives.max_align;
-                            let width = bits.get();
-                            let size = width >> 8;
+                Type::Float(fty) => {
+                    let (size, align) = {
+                        let max_align = self.properties.primitives.max_align;
+                        let width = fty.width.get();
+                        let size = width >> 8;
 
-                            let align = size.min(max_align);
+                        let align = size.next_power_of_two().min(max_align);
 
-                            (size as u64, align as u64)
-                        }
-                        ty::FloatWidth::Long => {
-                            let align = self.properties.primitives.ldbl_align;
-                            let size = self.properties.primitives.ldbl_format.size();
-
-                            let real_size = (size + (align - 1)) & !(align - 1);
-                            (real_size as u64, align as u64)
-                        }
+                        (size as u64, align as u64)
                     };
 
                     ty::TypeLayout {

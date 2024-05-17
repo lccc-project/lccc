@@ -219,9 +219,8 @@ pub enum HirBlock {
     Loop(HirSimpleBlock),
     If {
         cond: Spanned<HirExpr>,
-        block: HirSimpleBlock,
-        elseifs: Vec<(Spanned<HirExpr>, HirSimpleBlock)>,
-        elseblock: HirSimpleBlock,
+        block: Box<Spanned<HirBlock>>,
+        elseblock: Option<Box<Spanned<HirBlock>>>,
     },
     Match(HirMatch),
 }
@@ -382,6 +381,81 @@ impl HirFunctionBody {
         Ok(())
     }
 
+    fn display_block(
+        &self,
+        block: &HirBlock,
+        f: &mut core::fmt::Formatter,
+        tabs: TabPrinter,
+    ) -> core::fmt::Result {
+        use core::fmt::Display;
+        match &block {
+            HirBlock::Normal(stmts) => {
+                f.write_str("{\n")?;
+                let nested = tabs.nest();
+                for stmt in stmts {
+                    self.display_statement(stmt, f, nested)?;
+                }
+                tabs.fmt(f)?;
+                f.write_str("}\n")
+            }
+            HirBlock::Unsafe(stmts) => {
+                f.write_str("unsafe {\n")?;
+                let nested = tabs.nest();
+                for stmt in stmts {
+                    self.display_statement(stmt, f, nested)?;
+                }
+                tabs.fmt(f)?;
+                f.write_str("}\n")
+            }
+            HirBlock::Loop(stmts) => {
+                f.write_str("loop {\n")?;
+                let nested = tabs.nest();
+                for stmt in stmts {
+                    self.display_statement(stmt, f, nested)?;
+                }
+                tabs.fmt(f)?;
+                f.write_str("}\n")
+            }
+            HirBlock::If {
+                cond,
+                block,
+                elseblock,
+            } => {
+                write!(f, "if {} ", cond.body)?;
+                self.display_block(block, f, tabs)?;
+                if let Some(elseblk) = elseblock {
+                    write!(f, "{}else ", tabs)?;
+                    self.display_block(elseblk, f, tabs)
+                } else {
+                    Ok(())
+                }
+            }
+            HirBlock::Match(m) => {
+                let nested = tabs.nest();
+                write!(f, "match {} {{\n", m.discriminee.body)?;
+                for arm in &m.arms {
+                    nested.fmt(f)?;
+                    let subnested = nested.nest();
+                    arm.pattern.body.fmt(f)?;
+
+                    if let Some(guard) = &arm.guard {
+                        write!(f, "if {}", guard.body)?;
+                    }
+
+                    f.write_str(" => {\n")?;
+
+                    for stmt in &arm.expansion.body {
+                        self.display_statement(stmt, f, subnested)?;
+                    }
+                    nested.fmt(f)?;
+                    f.write_str("}\n")?;
+                }
+                tabs.fmt(f)?;
+                f.write_str("}\n")
+            }
+        }
+    }
+
     fn display_statement(
         &self,
         stmt: &HirStatement,
@@ -409,91 +483,10 @@ impl HirFunctionBody {
             HirStatement::Return(expr) => {
                 f.write_fmt(format_args!("{}return {};\n", tabs, expr.body))
             }
-            HirStatement::Block(b) => match &b.body {
-                HirBlock::Normal(stmts) => {
-                    tabs.fmt(f)?;
-                    f.write_str("{\n")?;
-                    let nested = tabs.nest();
-                    for stmt in stmts {
-                        self.display_statement(stmt, f, nested)?;
-                    }
-                    tabs.fmt(f)?;
-                    f.write_str("}\n")
-                }
-                HirBlock::Unsafe(stmts) => {
-                    tabs.fmt(f)?;
-                    f.write_str("unsafe {\n")?;
-                    let nested = tabs.nest();
-                    for stmt in stmts {
-                        self.display_statement(stmt, f, nested)?;
-                    }
-                    tabs.fmt(f)?;
-                    f.write_str("}\n")
-                }
-                HirBlock::Loop(stmts) => {
-                    tabs.fmt(f)?;
-                    f.write_str("loop {\n")?;
-                    let nested = tabs.nest();
-                    for stmt in stmts {
-                        self.display_statement(stmt, f, nested)?;
-                    }
-                    tabs.fmt(f)?;
-                    f.write_str("}\n")
-                }
-                HirBlock::If {
-                    cond,
-                    block,
-                    elseifs,
-                    elseblock,
-                } => {
-                    tabs.fmt(f)?;
-                    write!(f, "if {} {{\n", cond.body)?;
-                    let nested = tabs.nest();
-                    for stmt in block {
-                        self.display_statement(stmt, f, nested)?;
-                    }
-                    for (cond, block) in elseifs {
-                        tabs.fmt(f)?;
-                        write!(f, "}} else if {} {{\n", cond.body)?;
-                        for stmt in block {
-                            self.display_statement(stmt, f, nested)?;
-                        }
-                    }
-                    if elseblock.len() > 0 {
-                        tabs.fmt(f)?;
-                        f.write_str("} else {\n")?;
-                        for stmt in elseblock {
-                            self.display_statement(stmt, f, nested)?;
-                        }
-                    }
-                    tabs.fmt(f)?;
-                    f.write_str("}\n")
-                }
-                HirBlock::Match(m) => {
-                    tabs.fmt(f)?;
-                    let nested = tabs.nest();
-                    write!(f, "match {} {{\n", m.discriminee.body)?;
-                    for arm in &m.arms {
-                        nested.fmt(f)?;
-                        let subnested = nested.nest();
-                        arm.pattern.body.fmt(f)?;
-
-                        if let Some(guard) = &arm.guard {
-                            write!(f, "if {}", guard.body)?;
-                        }
-
-                        f.write_str(" => {\n")?;
-
-                        for stmt in &arm.expansion.body {
-                            self.display_statement(stmt, f, subnested)?;
-                        }
-                        nested.fmt(f)?;
-                        f.write_str("}\n")?;
-                    }
-                    tabs.fmt(f)?;
-                    f.write_str("}\n")
-                }
-            },
+            HirStatement::Block(b) => {
+                tabs.fmt(f)?;
+                self.display_block(b, f, tabs)
+            }
             HirStatement::Discard(expr) => f.write_fmt(format_args!("{}{};\n", tabs, expr.body)),
             HirStatement::Call {
                 retplace,
@@ -1113,12 +1106,16 @@ impl<'a> HirLowerer<'a> {
                         },
                         &if_blk.block,
                     )?;
-                    let block = lowerer.stmts;
+
+                    let block = Spanned {
+                        body: HirBlock::Normal(lowerer.stmts),
+                        span: if_blk.block.span,
+                    };
+
                     self.nexthirvarid = lowerer.nexthirvarid;
 
-                    let mut elseifs = Vec::new();
+                    let mut partial_blocks = Vec::new();
                     for elseif in &if_blk.elseifs {
-                        let cond = self.desugar_expr(&elseif.cond)?;
                         let mut lowerer = HirLowerer::new(
                             self.defs,
                             self.atitem,
@@ -1129,7 +1126,30 @@ impl<'a> HirLowerer<'a> {
                         );
                         lowerer.nexthirvarid = self.nexthirvarid;
                         lowerer.varnames = self.varnames.clone();
-                        lowerer.desugar_block(
+                        let cond = lowerer.desugar_expr(&elseif.cond)?;
+
+                        let preamble_stmts = if lowerer.stmts.is_empty() {
+                            None
+                        } else {
+                            Some(lowerer.stmts)
+                        };
+
+                        self.nexthirvarid = lowerer.nexthirvarid;
+
+                        let mut inner_lowerer = HirLowerer::new(
+                            self.defs,
+                            self.atitem,
+                            self.curmod,
+                            self.vardebugmap,
+                            self.selfty,
+                            self.localitems,
+                        );
+
+                        inner_lowerer.nexthirvarid = self.nexthirvarid;
+
+                        inner_lowerer.varnames = self.varnames.clone();
+
+                        inner_lowerer.desugar_block(
                             if let Some(ret) = &mut ret {
                                 Some(ret)
                             } else {
@@ -1137,11 +1157,24 @@ impl<'a> HirLowerer<'a> {
                             },
                             &elseif.block,
                         )?;
-                        elseifs.push((cond, lowerer.stmts));
-                        self.nexthirvarid = lowerer.nexthirvarid;
+
+                        self.nexthirvarid = inner_lowerer.nexthirvarid;
+
+                        partial_blocks.push((
+                            preamble_stmts,
+                            elseif.copy_span(|_| HirBlock::If {
+                                cond: cond,
+                                block: Box::new(
+                                    elseif
+                                        .block
+                                        .copy_span(|_| HirBlock::Normal(inner_lowerer.stmts)),
+                                ),
+                                elseblock: None,
+                            }),
+                        ))
                     }
 
-                    let elseblock = if let Some(x) = if_blk.elseblock.as_ref() {
+                    let mut elseblock = if let Some(x) = if_blk.elseblock.as_ref() {
                         let mut lowerer = HirLowerer::new(
                             self.defs,
                             self.atitem,
@@ -1164,16 +1197,36 @@ impl<'a> HirLowerer<'a> {
                         )?;
                         self.nexthirvarid = lowerer.nexthirvarid;
 
-                        lowerer.stmts
+                        Some(x.copy_span(|_| HirBlock::Normal(lowerer.stmts)))
                     } else {
-                        Vec::new()
+                        None
                     };
+
+                    for (preamble, mut block) in partial_blocks.into_iter().rev() {
+                        match &mut block.body {
+                            HirBlock::If {
+                                elseblock: elseblk, ..
+                            } => *elseblk = elseblock.map(Box::new),
+                            _ => unreachable!(),
+                        }
+
+                        if let Some(mut preamble) = preamble {
+                            let span = block.span;
+                            let stmt = HirStatement::Block(block);
+                            preamble.push(Spanned { body: stmt, span });
+                            block = Spanned {
+                                body: HirBlock::Normal(preamble),
+                                span,
+                            };
+                        }
+
+                        elseblock = Some(block);
+                    }
 
                     let if_block = HirBlock::If {
                         cond,
-                        block,
-                        elseifs,
-                        elseblock,
+                        block: Box::new(block),
+                        elseblock: elseblock.map(Box::new),
                     };
                     self.stmts.push(
                         stmt.copy_span(|_| HirStatement::Block(if_blk.copy_span(|_| if_block))),

@@ -48,9 +48,17 @@ pub enum IntWidth {
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub enum FloatWidth {
-    Bits(NonZeroU16),
-    Long,
+pub enum FloatFormat {
+    IeeeBinary,
+    IeeeExtRange,
+    IeeeExtPrecision,
+    Dfloat,
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FloatType {
+    pub width: NonZeroU16,
+    pub format: FloatFormat,
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -81,7 +89,7 @@ pub enum SemaLifetime {
 pub enum Type {
     Bool,
     Int(IntType),
-    Float(FloatWidth),
+    Float(FloatType),
     Char,
     Str,
     Never,
@@ -311,9 +319,35 @@ pub fn convert_tag(tag: Spanned<Symbol>, curmod: DefId, at_item: DefId) -> super
 
 // Write the Rust type here
 #[allow(non_upper_case_globals)]
-impl FloatWidth {
-    pub const f32: FloatWidth = FloatWidth::Bits(nzu16!(32));
-    pub const f64: FloatWidth = FloatWidth::Bits(nzu16!(64));
+impl FloatType {
+    pub const f16: FloatType = FloatType {
+        width: nzu16!(16),
+        format: FloatFormat::IeeeBinary,
+    };
+    pub const f32: FloatType = FloatType {
+        width: nzu16!(32),
+        format: FloatFormat::IeeeBinary,
+    };
+    pub const f64: FloatType = FloatType {
+        width: nzu16!(64),
+        format: FloatFormat::IeeeBinary,
+    };
+    pub const f128: FloatType = FloatType {
+        width: nzu16!(128),
+        format: FloatFormat::IeeeBinary,
+    };
+    pub const bf16: FloatType = FloatType {
+        width: nzu16!(16),
+        format: FloatFormat::IeeeExtRange,
+    };
+    pub const fx80: FloatType = FloatType {
+        width: nzu16!(80),
+        format: FloatFormat::IeeeExtPrecision,
+    };
+    pub const fd128: FloatType = FloatType {
+        width: nzu16!(128),
+        format: FloatFormat::Dfloat,
+    };
 }
 
 #[allow(non_upper_case_globals)] // Write the Rust type here
@@ -593,8 +627,13 @@ impl Type {
     pub fn rt_impl_lang(&self) -> Option<LangItem> {
         match self {
             Self::Float(x) => match *x {
-                FloatWidth::f32 => Some(LangItem::F32Rt),
-                FloatWidth::f64 => Some(LangItem::F64Rt),
+                FloatType::f32 => Some(LangItem::F32Rt),
+                FloatType::f64 => Some(LangItem::F64Rt),
+                FloatType::f16 => Some(LangItem::F16Rt),
+                FloatType::f128 => Some(LangItem::F128Rt),
+                FloatType::bf16 => Some(LangItem::Bf16Rt),
+                FloatType::fd128 => Some(LangItem::Fd128Rt),
+                FloatType::fx80 => Some(LangItem::Fx80Rt),
                 _ => None,
             },
             _ => None,
@@ -625,8 +664,13 @@ impl Type {
                 _ => None,
             },
             Self::Float(x) => match *x {
-                FloatWidth::f32 => Some(LangItem::F32),
-                FloatWidth::f64 => Some(LangItem::F64),
+                FloatType::f32 => Some(LangItem::F32),
+                FloatType::f64 => Some(LangItem::F64),
+                FloatType::f16 => Some(LangItem::F16),
+                FloatType::f128 => Some(LangItem::F128),
+                FloatType::bf16 => Some(LangItem::Bf16),
+                FloatType::fd128 => Some(LangItem::Fd128),
+                FloatType::fx80 => Some(LangItem::Fx80),
                 _ => None,
             },
             Self::Pointer(
@@ -654,12 +698,15 @@ impl core::fmt::Display for Type {
         match self {
             Self::Bool => f.write_str("bool"),
             Self::Int(intty) => intty.fmt(f),
-            Self::Float(width) => {
-                f.write_str("f")?;
-                match width {
-                    FloatWidth::Bits(bits) => f.write_fmt(format_args!("{}", bits)),
-                    FloatWidth::Long => f.write_str("long"),
+            Self::Float(ty) => {
+                match ty.format {
+                    FloatFormat::IeeeBinary => f.write_str("f")?,
+                    FloatFormat::IeeeExtPrecision => f.write_str("fx")?,
+                    FloatFormat::IeeeExtRange => f.write_str("bf")?,
+                    FloatFormat::Dfloat => f.write_str("fd")?,
                 }
+
+                ty.width.fmt(f)
             }
             Self::Char => f.write_str("char"),
             Self::Str => f.write_str("str"),
@@ -748,11 +795,14 @@ pub fn convert_builtin_type(name: &str) -> Option<Type> {
         x if x.starts_with('f') => {
             let size = x[1..].parse::<NonZeroU16>().ok()?;
             match size.get() {
-                32 | 64 => {}
+                16 | 32 | 64 | 32 => {}
                 _ => None?,
             }
 
-            Some(Type::Float(FloatWidth::Bits(size)))
+            Some(Type::Float(FloatType {
+                format: FloatFormat::IeeeBinary,
+                width: size,
+            }))
         }
         _ => None,
     }
@@ -768,19 +818,26 @@ pub fn convert_type(
     match ty {
         ast::Type::Path(path) => match defs.find_type(curmod, &path.body, at_item, self_ty) {
             Ok((defid, generics)) => Ok(Type::UserType(defid, generics)),
-            Err(e) => match &*path.segments {
-                [Spanned {
-                    body:
-                        PathSegment {
-                            ident:
-                                Spanned {
-                                    body: ast::SimplePathSegment::Identifier(id),
-                                    ..
-                                },
-                            generics: None,
-                        },
-                    ..
-                }] => convert_builtin_type(id).ok_or(e),
+            Err(e) => match (&*path.segments, &path.root) {
+                (
+                    [Spanned {
+                        body:
+                            PathSegment {
+                                ident:
+                                    Spanned {
+                                        body: ast::SimplePathSegment::Identifier(id),
+                                        ..
+                                    },
+                                generics: None,
+                            },
+                        ..
+                    }],
+                    None
+                    | Some(Spanned {
+                        body: ast::PathRoot::Root,
+                        ..
+                    }),
+                ) => convert_builtin_type(id).ok_or(e),
                 _ => Err(e),
             },
         },
@@ -791,7 +848,7 @@ pub fn convert_type(
             Ok(Type::Pointer(*mt, Box::new(ty)))
         }
         ast::Type::Array(_, _) => todo!("array"),
-        ast::Type::FnType(_) => todo!(),
+        ast::Type::FnType(_) => todo!("fn-ptr"),
         ast::Type::Never => Ok(Type::Never),
         ast::Type::Tuple(tys) => {
             let mut tys = tys

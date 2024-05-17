@@ -30,13 +30,13 @@ use crate::{
 use crate::{lex::StringType, sema::Definitions};
 
 use super::visitor::{
-    ArrayTyVisitor, AttrVisitor, BasicBlockVisitor, BinaryExprVisitor, BranchArmVisitor,
-    BranchVisitor, CallVisitor, CastVisitor, ConstCharVisitor, ConstIntVisitor, ConstStringVisitor,
-    ConstructorDefVisitor, ConstructorVisitor, ExprVisitor, FieldAccessVisitor, FieldInitVisitor,
-    FieldVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, IntTyVisitor,
-    JumpVisitor, LetStatementVisitor, ModVisitor, PointerTyVisitor, ReferenceTyVisitor,
-    StatementVisitor, TailcallVisitor, TerminatorVisitor, TupleExprVisitor, TupleTyVisitor,
-    TypeDefVisitor, TypeVisitor, UnaryExprVisitor, ValueDefVisitor,
+    ArrayTyVisitor, AttrVisitor, BasicBlockVisitor, BinaryExprVisitor, BranchVisitor, CallVisitor,
+    CastVisitor, ConstCharVisitor, ConstIntVisitor, ConstStringVisitor, ConstructorDefVisitor,
+    ConstructorVisitor, ExprVisitor, FieldAccessVisitor, FieldInitVisitor, FieldVisitor,
+    FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, IntTyVisitor, JumpVisitor,
+    LetStatementVisitor, ModVisitor, PointerTyVisitor, ReferenceTyVisitor, StatementVisitor,
+    TailcallVisitor, TerminatorVisitor, TupleExprVisitor, TupleTyVisitor, TypeDefVisitor,
+    TypeVisitor, UnaryExprVisitor, ValueDefVisitor,
 };
 use super::NameMap;
 
@@ -1200,6 +1200,7 @@ impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
             self.stack_height,
             self.var_heights,
             self.var_stack,
+            0,
         )))
     }
 
@@ -1234,6 +1235,8 @@ pub struct XirJumpVisitor<'a> {
     stack_height: &'a mut u32,
     var_heights: &'a mut HashMap<SsaVarId, u32>,
     var_stack: &'a mut Vec<SsaVarId>,
+    volatile_vals: u32,
+    remapped_var_count: u32,
 }
 
 impl<'a> XirJumpVisitor<'a> {
@@ -1250,6 +1253,7 @@ impl<'a> XirJumpVisitor<'a> {
         stack_height: &'a mut u32,
         var_heights: &'a mut HashMap<SsaVarId, u32>,
         var_stack: &'a mut Vec<SsaVarId>,
+        volatile_vals: u32,
     ) -> Self {
         Self {
             defs,
@@ -1264,6 +1268,8 @@ impl<'a> XirJumpVisitor<'a> {
             stack_height,
             var_heights,
             var_stack,
+            volatile_vals,
+            remapped_var_count: 0,
         }
     }
 }
@@ -1293,12 +1299,22 @@ impl<'a> JumpVisitor for XirJumpVisitor<'a> {
         let depth = (*self.stack_height) - (height + 1);
 
         if depth != 0 {
-            self.exprs.push(ir::Expr::Pivot(depth, 1));
+            self.exprs.push(ir::Expr::Pivot(1, depth));
         }
+        self.remapped_var_count += 1;
     }
 
     fn visit_fallthrough(&mut self) {
         self.targ.flags |= ir::JumpTargetFlags::FALLTHROUGH;
+    }
+}
+
+impl<'a> Drop for XirJumpVisitor<'a> {
+    fn drop(&mut self) {
+        if self.remapped_var_count != 0 && self.volatile_vals != 0 {
+            self.exprs
+                .push(ir::Expr::Pivot(self.volatile_vals, self.remapped_var_count));
+        }
     }
 }
 
@@ -1317,6 +1333,7 @@ pub struct XirCallVisitor<'a> {
     late_bound_intrinsic: Option<IntrinsicDef>,
     fnty: ir::FnType,
     targ: Option<ir::JumpTarget>,
+    param_count: u32,
 }
 
 impl<'a> XirCallVisitor<'a> {
@@ -1348,6 +1365,7 @@ impl<'a> XirCallVisitor<'a> {
             late_bound_intrinsic: None,
             fnty: ir::FnType::default(),
             targ: None,
+            param_count: 0,
         }
     }
 }
@@ -1381,6 +1399,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
     }
 
     fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        self.param_count += 1;
         Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
@@ -1413,6 +1432,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
             self.stack_height,
             self.var_heights,
             self.var_stack,
+            self.param_count + 1,
         )))
     }
 
@@ -1717,11 +1737,11 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
         let depth = (*self.stack_height) - (height + 1);
 
         if depth != 0 {
-            self.exprs.push(ir::Expr::Pivot(depth, 1));
+            self.exprs.push(ir::Expr::Pivot(1, depth));
         }
         self.exprs.push(ir::Expr::Dup(1));
         if depth != 0 {
-            self.exprs.push(ir::Expr::Pivot(1, depth + 1));
+            self.exprs.push(ir::Expr::Pivot(depth + 1, 1));
         }
     }
 

@@ -114,7 +114,7 @@ pub enum MirTerminator {
     Return(Spanned<MirExpr>),
     Jump(MirJumpInfo),
     Unreachable,
-    ResumeUnwind,
+    Resume,
     DropInPlace(MirDropInfo),
     Branch(MirBranchInfo),
     SwitchInt(MirSwitchIntInfo),
@@ -130,11 +130,12 @@ pub struct MirSwitchIntInfo {
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct MirBranchInfo {
-    pub conds: Vec<(Spanned<MirExpr>, MirJumpInfo)>,
+    pub cond: Box<Spanned<MirExpr>>,
+    pub if_block: MirJumpInfo,
     pub else_block: MirJumpInfo,
 }
 
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug, Default)]
 pub struct MirJumpInfo {
     pub targbb: BasicBlockId,
     pub remaps: Vec<(SsaVarId, SsaVarId)>,

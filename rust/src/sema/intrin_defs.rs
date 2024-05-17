@@ -28,6 +28,7 @@ def_intrinsics! {
     intrin __builtin_likely(bool) -> bool;
     intrin __builtin_unlikely(bool) -> bool;
 
+    intrin __builtin_cmp<type, type>(Var<0>, Var<0>) -> Var<1>;
 
     intrin __builtin_fadd_fast<type>(Var<0>, Var<0>) -> Var<0>;
     intrin __builtin_fsub_fast<type>(Var<0>, Var<0>) -> Var<0>;
