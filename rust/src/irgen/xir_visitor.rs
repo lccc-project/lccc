@@ -1155,7 +1155,40 @@ impl<'a> XirTerminatorVisitor<'a> {
 
 impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
     fn visit_branch(&mut self) -> Option<Box<dyn BranchVisitor + '_>> {
-        todo!()
+        let (iftarg, elsetarg) = {
+            self.block.term = ir::Terminator::Branch(
+                ir::BranchCondition::NotEqual,
+                ir::JumpTarget {
+                    target: !0,
+                    flags: ir::JumpTargetFlags::empty(),
+                },
+                ir::JumpTarget {
+                    target: !0,
+                    flags: ir::JumpTargetFlags::empty(),
+                },
+            );
+
+            match &mut self.block.term {
+                ir::Terminator::Branch(_, iftarg, elsetarg) => (iftarg, elsetarg),
+                _ => unsafe { core::hint::unreachable_unchecked() },
+            }
+        };
+
+        Some(Box::new(XirBranchVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.cur_fnty,
+            &mut self.block.expr,
+            iftarg,
+            elsetarg,
+            self.locals,
+            self.ssa_tys,
+            self.stack_height,
+            self.var_heights,
+            self.var_stack,
+        )))
     }
 
     fn visit_call(&mut self) -> Option<Box<dyn CallVisitor + '_>> {
@@ -1201,6 +1234,7 @@ impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
             self.var_heights,
             self.var_stack,
             0,
+            false,
         )))
     }
 
@@ -1237,6 +1271,7 @@ pub struct XirJumpVisitor<'a> {
     var_stack: &'a mut Vec<SsaVarId>,
     volatile_vals: u32,
     remapped_var_count: u32,
+    skip_setting_remaps: bool,
 }
 
 impl<'a> XirJumpVisitor<'a> {
@@ -1254,6 +1289,7 @@ impl<'a> XirJumpVisitor<'a> {
         var_heights: &'a mut HashMap<SsaVarId, u32>,
         var_stack: &'a mut Vec<SsaVarId>,
         volatile_vals: u32,
+        skip_setting_remaps: bool,
     ) -> Self {
         Self {
             defs,
@@ -1270,6 +1306,7 @@ impl<'a> XirJumpVisitor<'a> {
             var_stack,
             volatile_vals,
             remapped_var_count: 0,
+            skip_setting_remaps,
         }
     }
 }
@@ -1280,6 +1317,9 @@ impl<'a> JumpVisitor for XirJumpVisitor<'a> {
     }
 
     fn visit_remap(&mut self, src: mir::SsaVarId, _: mir::SsaVarId) {
+        if self.skip_setting_remaps {
+            return;
+        }
         let height = self.var_heights.remove(&src).unwrap().1;
         let i = self
             .var_stack
@@ -1315,6 +1355,110 @@ impl<'a> Drop for XirJumpVisitor<'a> {
             self.exprs
                 .push(ir::Expr::Pivot(self.volatile_vals, self.remapped_var_count));
         }
+    }
+}
+
+pub struct XirBranchVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    cur_fnty: &'a mut ir::FnType,
+    exprs: &'a mut Vec<ir::Expr>,
+    iftarg: &'a mut ir::JumpTarget,
+    elsetarg: &'a mut ir::JumpTarget,
+    locals: &'a mut Vec<ir::Type>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+    stack_height: &'a mut u32,
+    var_heights: &'a mut HashMap<SsaVarId, u32>,
+    var_stack: &'a mut Vec<SsaVarId>,
+}
+
+impl<'a> XirBranchVisitor<'a> {
+    pub fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        cur_fnty: &'a mut ir::FnType,
+        exprs: &'a mut Vec<ir::Expr>,
+        iftarg: &'a mut ir::JumpTarget,
+        elsetarg: &'a mut ir::JumpTarget,
+        locals: &'a mut Vec<ir::Type>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+        stack_height: &'a mut u32,
+        var_heights: &'a mut HashMap<SsaVarId, u32>,
+        var_stack: &'a mut Vec<SsaVarId>,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            cur_fnty,
+            exprs,
+            iftarg,
+            elsetarg,
+            locals,
+            ssa_tys,
+            stack_height,
+            var_heights,
+            var_stack,
+        }
+    }
+}
+
+impl<'a> BranchVisitor for XirBranchVisitor<'a> {
+    fn visit_cond(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        Some(Box::new(XirExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.cur_fnty,
+            self.exprs,
+            self.locals,
+            self.ssa_tys,
+            self.stack_height,
+            self.var_heights,
+            self.var_stack,
+        )))
+    }
+    fn visit_if_arm(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
+        Some(Box::new(XirJumpVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.cur_fnty,
+            self.exprs,
+            self.iftarg,
+            self.locals,
+            self.ssa_tys,
+            self.stack_height,
+            self.var_heights,
+            self.var_stack,
+            1,
+            false,
+        )))
+    }
+    fn visit_else(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
+        Some(Box::new(XirJumpVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.cur_fnty,
+            self.exprs,
+            self.elsetarg,
+            self.locals,
+            self.ssa_tys,
+            self.stack_height,
+            self.var_heights,
+            self.var_stack,
+            1,
+            true,
+        )))
     }
 }
 
@@ -1433,6 +1577,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
             self.var_heights,
             self.var_stack,
             self.param_count + 1,
+            false,
         )))
     }
 
@@ -2208,6 +2353,10 @@ impl<'a> BinaryExprVisitor for XirBinaryExprVisitor<'a> {
             BinaryOp::Mul => ir::BinaryOp::Mul,
             BinaryOp::Div => ir::BinaryOp::Div,
             BinaryOp::Rem => ir::BinaryOp::Mod,
+            BinaryOp::Less => ir::BinaryOp::CmpLt,
+            BinaryOp::Greater => ir::BinaryOp::CmpGt,
+            BinaryOp::Equal => ir::BinaryOp::CmpEq,
+            BinaryOp::BitAnd => ir::BinaryOp::BitAnd,
             x => todo!("{:?}", x),
         });
     }
