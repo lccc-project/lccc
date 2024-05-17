@@ -1,0 +1,16 @@
+intbits=32
+longbits=32
+llongbits=64
+max-align=16
+intmaxbits=64
+sizebits=64
+lock-free-atomics=[8,16,32,64]
+max-atomic-align=16
+ldbl-align=16
+ldbl-format="x87-double-extended"
+
+[ptr]
+nearbits=64
+farbits=64
+data-width="near"
+fn-width="near"

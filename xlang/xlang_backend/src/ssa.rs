@@ -16,7 +16,9 @@ use xlang::{ir::JumpTarget, targets::properties::TargetProperties};
 
 use xlang::ir;
 
-use xlang::abi::{boxed::Box as XLangBox, collection::HashMap, vec::Vec};
+use xlang::abi::{
+    boxed::Box as XLangBox, collection::HashMap, option::None as XLangNone, vec::Vec,
+};
 
 struct SharedCounter(Cell<u32>);
 
@@ -675,6 +677,47 @@ impl<M: Machine> BasicBlockBuilder<M> {
                         utf8,
                         ty: ir::Type::Pointer(new_ty.clone()),
                     }));
+                }
+                (
+                    VStackValue::Constant(ir::Value::Integer {
+                        ty:
+                            ir::ScalarType {
+                                header:
+                                    ir::ScalarTypeHeader {
+                                        vectorsize: XLangNone,
+                                        ..
+                                    },
+                                kind: ir::ScalarTypeKind::Integer { .. },
+                            },
+                        val,
+                    }),
+                    _,
+                    ir::Type::Scalar(
+                        sty @ ir::ScalarType {
+                            header:
+                                ir::ScalarTypeHeader {
+                                    bitsize: b2,
+                                    vectorsize: XLangNone,
+                                    ..
+                                },
+                            kind: ir::ScalarTypeKind::Integer { signed: s2, .. },
+                        },
+                    ),
+                ) => {
+                    let mask = !0u128 >> (128 - *b2);
+
+                    let signext = *s2;
+                    let signmask = !0u128 << *b2;
+                    let mut val = val & mask;
+
+                    if *b2 != 0 && signext {
+                        let sbit = (!(val >> (*b2 - 1))).wrapping_add(1);
+                        val |= sbit & signmask;
+                    }
+
+                    let val = ir::Value::Integer { ty: *sty, val };
+
+                    self.push(VStackValue::Constant(val));
                 }
                 x => todo!("{:?}", x),
             },

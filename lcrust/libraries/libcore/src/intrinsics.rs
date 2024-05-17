@@ -19,19 +19,11 @@
 
 #![unstable(feature = "core_intrinsics", issue = "none")]
 
-#[stable]
-pub use __lccc::builtins::rust::copy;
-#[stable]
-pub use __lccc::builtins::rust::copy_nonoverlapping;
-#[stable]
-pub use __lccc::builtins::rust::transmute;
-#[stable]
-pub use __lccc::builtins::rust::transmute_copy;
-
-pub use __lccc::builtins::C::__builtin_trap;
-pub use __lccc::builtins::C::__builtin_trap as abort;
-
-use __lccc::builtins::Rust::*;
+extern "rust-intrinsics"{
+    pub unsafe fn transmute<T,U>(x: T) -> U;
+    pub unsafe fn construct_in_place<T, F: FnOnce<Args> + FnPointer, Args: Tuple>(*mut T, F, Args);
+    pub fn __builtin_cmp<T: core::marker::Copy + core::cmp::PartialEq, U>(T, T) -> U;
+}
 
 #[track_caller]
 #[inline]

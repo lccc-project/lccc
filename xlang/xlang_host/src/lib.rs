@@ -1,4 +1,5 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery, missing_docs)]
+#![allow(unexpected_cfgs, unknown_lints)] // This is a dumbass lint we can't work arround in general
 
 //!
 //! The `xlang_host` crate provides access to the host target's apis, depending on the interfaces available from the OS

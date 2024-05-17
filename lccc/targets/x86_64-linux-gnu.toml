@@ -1,0 +1,5 @@
+primitives.include="arch/x86_64-lp64"
+os.include="os/linux"
+arch.include="arch/x86_64"
+default-tag-name="SysV64"
+system-tag-name="SysV64"

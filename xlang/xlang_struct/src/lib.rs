@@ -29,6 +29,8 @@ pub mod macros;
 
 pub mod fmt;
 
+pub mod validate;
+
 ///
 /// A component of a [`Path`], the name of a global object in xlang.
 ///
@@ -1576,7 +1578,6 @@ fake_enum::fake_enum! {
         Rsh = 8,
         Lsh = 9,
 
-        CmpInt = 10,
         CmpLt = 11,
         CmpGt = 12,
         CmpEq = 13,
@@ -1599,7 +1600,6 @@ impl core::fmt::Display for BinaryOp {
             Self::BitOr => f.write_str("bit_or"),
             Self::BitXor => f.write_str("bit_xor"),
             Self::Rsh => f.write_str("rsh"),
-            Self::CmpInt => f.write_str("cmp_int"),
             Self::CmpLt => f.write_str("cmp_lt"),
             Self::CmpGt => f.write_str("cmp_gt"),
             Self::CmpLe => f.write_str("cmp_le"),
@@ -2177,7 +2177,39 @@ pub enum Expr {
     /// * As a value used as an incoming value for a jump target
     Member(String),
     MemberIndirect(String),
+    /// Assigns a value to an lvalue according to `class`
+    ///
+    /// ## Stack
+    /// Type Checking: `[.., T, lvalue T]`=>`[..]`
+    ///
+    /// Operands: `[..,v, t]`=>`[..]`.
+    ///
+    /// ## Syntax:
+    /// ```abnf
+    /// expr /= "assign" <access-class>
+    /// ```
+    ///
+    /// ## Semantics
+    ///
+    /// Assigns the value `v` to the object designated by `t`, performing the memory operation according to `class`.
     Assign(AccessClass),
+
+    /// Reads the value designated by an lvalue according to `class`
+    ///
+    /// ## Stack
+    /// Type Checking: `[.., lvalue T]`=>`[..,T]`
+    ///
+    /// Operands: `[.., t]`=>`[.., v]`.
+    ///
+    /// ## Syntax
+    ///```abnf
+    /// expr /= "as_rvalue" <access-class>
+    /// ```
+    ///
+    /// ## Semantics
+    ///
+    /// Reads the value of the object designated by `t`, performing the memory operation according to `class`.
+    ///
     AsRValue(AccessClass),
     CompoundAssign(BinaryOp, OverflowBehaviour, AccessClass),
     FetchAssign(BinaryOp, OverflowBehaviour, AccessClass),

@@ -1,0 +1,10 @@
+lock-free-atomics = [8, 16, 32, 64]
+builtins.include="x86/builtins"
+machines.include="x86/machine"
+default-machine="x86-64"
+width=64
+abi-properties.include="x86/abi"
+
+[meta]
+in-tree-backend="x86"
+backend-maintainers=["Connor Horman <chorman@lcdev.xyz>"]

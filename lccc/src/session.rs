@@ -53,7 +53,7 @@ impl<'a> DriverSession<'a> {
     pub fn find_msvc(&mut self) {
         #[cfg(target_os_family = "windows")]
         {
-            if self.is_crosscompiling {
+            if !self.is_crosscompiling {
                 // Find msvc install
                 self.msvc = Some(MsvcSysroot {})
             }

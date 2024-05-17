@@ -30,10 +30,12 @@ pub trait PartialEq<Rhs = Self> {
     }
 }
 
+#[repr(i8)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Ordering {
-    Less,
-    Equal,
-    Greater,
+    Less = -1,
+    Equal = 0,
+    Greater = 1,
 }
 
 #[lang = "partial_ord"]
@@ -134,3 +136,64 @@ pub macro Ord($item:item) {}
 #[rustc_builtin_macro]
 #[allow_internal_unstable(core_intrinsics)]
 pub macro Eq($item:item) {}
+
+macro_rules! cmp_int {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl PartialEq for $ty{
+                #[inline(always)]
+                fn eq(&self, other: &Self) -> bool{
+                    *self == *other
+                }
+            }
+
+            impl Eq for $ty{}
+
+            impl Ord for $ty{
+                #[inline(always)]
+                fn cmp(&self, other: &Self) -> Ordering{
+                    let ord = core::intrinsics::__builtin_cmp::<$ty, i32>(*self, *other);
+
+                    // Safety:
+                    // `__builtin_cmp` returns `-1`, `0`, or `1` ordering to comparison b/c this is an integer type
+                    unsafe{core::mem::transmute_copy(&ord)}
+                }
+            }
+            impl PartialOrd for $ty{
+                #[inline(always)]
+                fn partial_cmp(&self, other: &Self) -> Option<Ordering>{
+                    Some(<$ty>::cmp(self, other))
+                }
+            }
+        )*
+    }
+}
+
+cmp_int!(i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize);
+
+macro_rules! cmp_float {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl PartialEq for $ty{
+                #[inline(always)]
+                fn eq(&self, other: &Self) -> bool{
+                    *self == *other
+                }
+            }
+            impl PartialOrd for $ty{
+                #[inline]
+                fn partial_cmp(&self, other: &Self) -> Option<Ordering>{
+                    let ord = core::intrinsics::__builtin_cmp::<$ty, core::mem::MaybeUninit<i32>>(*self, *other);
+                    match (self.is_nan(), other.is_nan()){
+                        // SAFETY:
+                        // `__builtin_cmp` returns `-1`, `0`, or `1` ordering to comparison b/c this is an integer type
+                        (false, false) => Some(unsafe{core::mem::transmute_copy(&ord)}),
+                        _ => None
+                    }
+                }
+            }
+        )*
+    }
+}
+
+cmp_float!(f32, f64);

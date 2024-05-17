@@ -31,6 +31,7 @@ pub enum X86ValLocation {
     Register(X86Register),
 }
 
+#[derive(Clone, Debug)]
 pub struct LocationAssignment {
     foreign_location: X86ValLocation,
     owning_bb: u32,
@@ -50,7 +51,12 @@ pub struct X86Assignments {
     assigns: HashMap<u32, LocationAssignment>,
 }
 
-pub struct X86Clobbers {}
+pub struct X86Clobbers {
+    reg_owners: HashMap<X86Register, u32>,
+    clobbered_at: HashMap<u32, usize>,
+}
+
+impl X86Clobbers {}
 
 fn xor_opcode(class: X86RegisterClass, hint_vec_is_int: bool) -> X86CodegenOpcode {
     match class {
@@ -229,7 +235,22 @@ impl Machine for X86Machine {
         incoming_set: &HashMap<u32, xlang::abi::vec::Vec<xlang_backend::ssa::OpaqueLocation>>,
         tys: &TypeInformation,
     ) -> Self::BlockClobbers {
-        let mut clobbers = X86Clobbers {};
+        let mut clobbers = X86Clobbers {
+            reg_owners: HashMap::new(),
+            clobbered_at: HashMap::new(),
+        };
+
+        for loc in incoming {
+            let id = loc.num;
+            if let Some(loc) = assignments.assigns.get(&id) {
+                match &loc.foreign_location {
+                    X86ValLocation::Register(reg) => {
+                        clobbers.reg_owners.insert(*reg, id);
+                    }
+                    X86ValLocation::Null => {}
+                }
+            }
+        }
         for (num, insn) in insns.iter().enumerate() {
             match insn {
                 xlang_backend::ssa::SsaInstruction::Call(targ, locations) => {
@@ -293,6 +314,8 @@ impl Machine for X86Machine {
                 | xlang_backend::ssa::SsaInstruction::Fallthrough(targ, old_locs) => {
                     let foreign_locs = &incoming_set[targ];
 
+                    eprintln!("{:?}", foreign_locs);
+
                     for (old_loc, new_loc) in old_locs.iter().zip(foreign_locs) {
                         match (
                             assignments
@@ -330,9 +353,7 @@ impl Machine for X86Machine {
                                     },
                                 );
                             }
-                            (None, None) => {
-                                todo!("Allocate register {} => {}", old_loc, new_loc);
-                            }
+                            (None, None) => {}
                         }
                     }
                 }

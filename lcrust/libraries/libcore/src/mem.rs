@@ -5,16 +5,16 @@
  * it under the terms of the GNU Lesser General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Lesser General Public License for more details.
- * 
+ *
  * Like all libraries as part of the lccc project,
- *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license. 
+ *  the lcrust standard libraries are additionally dual licensed under the terms of the MIT and Apache v2 license.
  * When dealing in this software, you may, at your option, do so under only those terms,
- *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms. 
+ *  or only under the terms of the GNU Lesser General Public License, or under both sets of terms.
  */
 use crate::default::Default;
 use crate::intrinsics;
@@ -33,7 +33,9 @@ pub union MaybeUninit<T> {
 
 impl<T> MaybeUninit<T> {
     pub const fn new(x: T) -> Self {
-        Self { valid: ManuallyDrop::new(x) }
+        Self {
+            valid: ManuallyDrop::new(x),
+        }
     }
     pub const fn uninit() -> Self {
         Self { uninit: () }
@@ -153,15 +155,19 @@ unsafe impl<T: ?Sized> TrivialDestruction for ManuallyDrop<T> {}
 
 #[deprecated("use MaybeUninit instead")]
 pub unsafe fn uninitialized<T>() -> T {
-    __lccc::xir!("const undef uninit %0"::[yield: T])
+    MaybeUninit::uninit().assume_init()
 }
 
 #[__lccc::allow_constant_promotion]
-pub const fn size_of<T>() -> T{
-    ::__lccc::builtins::rust::size_of::<T>()
+pub const fn size_of<T>() -> usize {
+    intrinsics::__builtin_size_of::<T>()
 }
 
 #[__lccc::allow_constant_promotion]
-pub const fn align_of<T>() -> T{
-    ::__lccc::builtins::rust::align_of::<T>()
+pub const fn align_of<T>() -> usize {
+    intrinsics::__builtin_align_of::<T>()
+}
+
+pub const fn size_of_val<T: ?Sized>(x: &T) -> usize {
+    intrinsics::__builtin_size_of_val(x)
 }

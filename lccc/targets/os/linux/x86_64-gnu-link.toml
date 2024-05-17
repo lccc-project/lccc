@@ -1,0 +1,11 @@
+libdirs = ["lib", "lib64"]
+default-libs=["c"]
+startfiles=["crt1.o", "crti.o"]
+endfiles=["crtn.o"]
+available-formats=[]
+interp="ld-linux-x86-64.so.2"
+obj-binfmt="elf64-x86_64"
+lib-binfmt="elf64-x86_64"
+exec-binfmt="elf64-x86_64"
+stack-attribute-control="gnu-stack"
+uwtable-method="itanium"

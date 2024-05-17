@@ -295,7 +295,7 @@ impl<T, A: Allocator> Vec<T, A> {
     ///
     /// This will permanently leak the allocation and its elements.
     ///
-    /// This function is a convience over `SpanMut::new(self.leak())
+    /// This function is a convience over `SpanMut::new(self.leak())`
     pub fn leak_span<'a>(self) -> SpanMut<'a, T> {
         let this = ManuallyDrop::new(self);
         let ptr = this.ptr.as_ptr();
@@ -404,6 +404,7 @@ impl<T, A: Allocator> Vec<T, A> {
     ///
     /// Panics if `n` is greater than `len()`
     ///
+    #[allow(clippy::manual_assert)] // I don't want the extra "assertion failed" message.
     pub fn drain_back(&mut self, n: usize) -> DrainBack<T> {
         if n > self.len {
             panic!(
@@ -444,6 +445,7 @@ impl<T, A: Allocator> Vec<T, A> {
     }
 
     /// Inserts `val` into `pos`, shifting all elements after `pos` to the right
+    #[allow(clippy::manual_assert)] // I don't want the extra "assertion failed" message.
     pub fn insert(&mut self, val: T, pos: usize) {
         if pos > self.len {
             panic!(
@@ -454,9 +456,9 @@ impl<T, A: Allocator> Vec<T, A> {
 
         if self.len == self.cap {
             if self.cap == 0 {
-                self.reallocate(16)
+                self.reallocate(16);
             } else {
-                self.reallocate(self.cap << 2)
+                self.reallocate(self.cap << 2);
             }
         }
 
@@ -472,7 +474,7 @@ impl<T, A: Allocator> Vec<T, A> {
                 core::ptr::write(loc, val);
             }
         } else {
-            core::mem::forget(val)
+            core::mem::forget(val);
         }
 
         self.len += 1;
@@ -485,6 +487,7 @@ impl<T, A: Allocator> Vec<T, A> {
     /// ## Panics
     ///
     /// Panics if `i` is greater than or equal to `self.len()`
+    #[allow(clippy::manual_assert)] // I don't want the extra "assertion failed" message.
     pub fn remove(&mut self, i: usize) -> T {
         if i >= self.len {
             panic!(
@@ -509,6 +512,7 @@ impl<T, A: Allocator> Vec<T, A> {
     /// ## Panics
     ///
     /// Panics if `i` is greater than or equal to `self.len()`
+    #[allow(clippy::manual_assert)] // I don't want the extra "assertion failed" message.
     pub fn swap_remove(&mut self, i: usize) -> T {
         if i >= self.len {
             panic!(
@@ -532,6 +536,10 @@ impl<T, A: Allocator> Vec<T, A> {
     ///
     /// If `self` is not already properly sorted, or the `Ord` impl of `T` is not transitive and total, then the position is unspecified.
     /// Regardless, no element already preent in the list will be reordered relative to any other element
+    ///
+    /// ## Panics
+    ///
+    /// Panics if the new capacity exceeds `usize::MAX`, or `isize::MAX` bytes
     pub fn insert_sorted(&mut self, val: T) -> usize
     where
         T: Ord,
@@ -545,6 +553,9 @@ impl<T, A: Allocator> Vec<T, A> {
     ///
     /// If `self` is not already properly sorted, or the `Ord` impl of `U` is not transitive and total, then the position is unspecified.
     /// Regardless, no element already preent in the list will be reordered relative to any other element
+    /// ## Panics
+    ///
+    /// Panics if the new capacity exceeds `usize::MAX`, or `isize::MAX` bytes
     pub fn insert_sorted_by_key<U: Ord, F: Fn(&T) -> U>(&mut self, val: T, map: F) -> usize {
         self.insert_sorted_by(val, |a, b| map(a).cmp(&map(b)))
     }
@@ -555,6 +566,9 @@ impl<T, A: Allocator> Vec<T, A> {
     ///
     /// If `self` is not already properly sorted according to `cmp`, or if `F` is not transitive and total, then the position is unspecified.
     /// Regardless, no element already preent in the list will be reordered relative to any other element
+    /// ## Panics
+    ///
+    /// Panics if the new capacity exceeds `usize::MAX`, or `isize::MAX` bytes
     pub fn insert_sorted_by<F: Fn(&T, &T) -> core::cmp::Ordering>(
         &mut self,
         val: T,
