@@ -2,7 +2,7 @@
 name = "xlang_abi"
 version = "0.2.0"
 authors = ["Connor Horman <chorman64@gmail.com>", "Ray Redondo <rdredondo@lcdev.xyz>"]
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause-Patent"
 description = """
 ABI safe interfaces used by xlang

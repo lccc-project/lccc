@@ -1,6 +1,5 @@
 use std::{
     borrow::Borrow,
-    convert::TryInto,
     hash::Hash,
     num::NonZeroU32,
     ops::Deref,

@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::convert::TryInto;
 
 use ast::Mutability;
 use ast::Safety;

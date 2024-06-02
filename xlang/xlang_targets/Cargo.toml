@@ -2,7 +2,7 @@
 name = "xlang_targets"
 version = "0.2.0"
 authors = ["Connor Horman <chorman64@gmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause-Patent"
 description = """
 ABI Safe Interfaces for target triples and discovering compiler-required information about targets

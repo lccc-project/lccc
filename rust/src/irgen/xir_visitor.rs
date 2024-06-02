@@ -1,4 +1,3 @@
-use core::convert::TryInto;
 use core::fmt::Write;
 
 use xlang::ir::{

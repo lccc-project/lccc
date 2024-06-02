@@ -412,7 +412,7 @@ macro_rules! punctuation {
 #[macro_export]
 macro_rules! keywords{
     {
-        type $($pat:pat)|+ in $ident_ty:ty;
+        type $pat:pat in $ident_ty:ty;
         $($tok:tt => $name:ident),* $(,)?
     } => {
         #[derive(Clone, Copy, Hash, PartialEq, Eq)]

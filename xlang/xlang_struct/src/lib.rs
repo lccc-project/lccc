@@ -19,7 +19,6 @@
 //! ````
 //!
 
-use std::convert::TryFrom;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
 use xlang_abi::prelude::v1::*;
