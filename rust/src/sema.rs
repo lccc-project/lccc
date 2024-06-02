@@ -1493,7 +1493,7 @@ impl Definitions {
                 Type::Bool => ty::TypeLayout {
                     size: Some(1),
                     align: Some(1),
-                    enum_discriminant: None,
+                    enum_layout: None,
                     wide_ptr_metadata: None,
                     field_offsets: HashMap::new(),
                     mutable_fields: HashSet::new(),
@@ -1521,7 +1521,7 @@ impl Definitions {
                         size: Some(size),
                         align: Some(align),
                         wide_ptr_metadata: None,
-                        enum_discriminant: None,
+                        enum_layout: None,
                         field_offsets: HashMap::new(),
                         mutable_fields: HashSet::new(),
                         niches: None,
@@ -1542,7 +1542,7 @@ impl Definitions {
                         size: Some(size),
                         align: Some(align),
                         wide_ptr_metadata: None,
-                        enum_discriminant: None,
+                        enum_layout: None,
                         field_offsets: HashMap::new(),
                         mutable_fields: HashSet::new(),
                         niches: None,
@@ -1551,7 +1551,7 @@ impl Definitions {
                 Type::Char => ty::TypeLayout {
                     size: Some(4),
                     align: Some(self.properties.primitives.max_align.min(4) as u64),
-                    enum_discriminant: None,
+                    enum_layout: None,
                     wide_ptr_metadata: None,
                     field_offsets: HashMap::new(),
                     mutable_fields: HashSet::new(),
@@ -1564,7 +1564,7 @@ impl Definitions {
                     size: None,
                     align: Some(1),
                     wide_ptr_metadata: Some(ty::Type::Int(ty::IntType::usize)),
-                    enum_discriminant: None,
+                    enum_layout: None,
                     field_offsets: HashMap::new(),
                     mutable_fields: HashSet::new(),
                     niches: None,
@@ -1572,7 +1572,7 @@ impl Definitions {
                 Type::Never => ty::TypeLayout {
                     size: Some(0),
                     align: Some(1),
-                    enum_discriminant: None,
+                    enum_layout: None,
                     wide_ptr_metadata: None,
                     field_offsets: HashMap::new(),
                     mutable_fields: HashSet::new(),
@@ -1631,7 +1631,7 @@ impl Definitions {
                     ty::TypeLayout {
                         size: Some(size),
                         align: Some(align),
-                        enum_discriminant: None,
+                        enum_layout: None,
                         wide_ptr_metadata: metadata,
                         field_offsets,
                         mutable_fields: HashSet::new(),
@@ -1649,7 +1649,7 @@ impl Definitions {
                     ty::TypeLayout {
                         size: Some(size as u64),
                         align: Some(align as u64),
-                        enum_discriminant: None,
+                        enum_layout: None,
                         wide_ptr_metadata: None,
                         field_offsets: HashMap::new(),
                         mutable_fields: HashSet::new(),
@@ -1659,7 +1659,7 @@ impl Definitions {
                 Type::FnItem(_, _, _) => ty::TypeLayout {
                     size: Some(0),
                     align: Some(1),
-                    enum_discriminant: None,
+                    enum_layout: None,
                     wide_ptr_metadata: None,
                     field_offsets: HashMap::new(),
                     mutable_fields: HashSet::new(),
@@ -1778,7 +1778,7 @@ impl Definitions {
                             ty::TypeLayout {
                                 size,
                                 align,
-                                enum_discriminant: None,
+                                enum_layout: None,
                                 wide_ptr_metadata,
                                 field_offsets,
                                 mutable_fields: HashSet::new(),
@@ -1834,7 +1834,7 @@ impl Definitions {
                         ty::TypeLayout {
                             size: Some(size),
                             align: Some(align),
-                            enum_discriminant: None,
+                            enum_layout: None,
                             wide_ptr_metadata: None,
                             field_offsets: fields,
                             mutable_fields: HashSet::new(),
@@ -1847,7 +1847,7 @@ impl Definitions {
                         ty::TypeLayout {
                             size: Some(size),
                             align: Some(align),
-                            enum_discriminant: None,
+                            enum_layout: None,
                             wide_ptr_metadata: None,
                             field_offsets: HashMap::new(),
                             mutable_fields: HashSet::new(),
@@ -1870,7 +1870,7 @@ impl Definitions {
                     ty::TypeLayout {
                         size: Some(array_size),
                         align: Some(align),
-                        enum_discriminant: None,
+                        enum_layout: None,
                         wide_ptr_metadata: None,
                         field_offsets: HashMap::new(),
                         mutable_fields: HashSet::new(),
@@ -1932,7 +1932,7 @@ impl Definitions {
                         ty::TypeLayout {
                             size: Some(size),
                             align: Some(align),
-                            enum_discriminant: None,
+                            enum_layout: None,
                             wide_ptr_metadata: None,
                             field_offsets: fields,
                             mutable_fields: HashSet::new(),
@@ -1945,7 +1945,7 @@ impl Definitions {
                         ty::TypeLayout {
                             size: Some(size),
                             align: Some(align),
-                            enum_discriminant: None,
+                            enum_layout: None,
                             wide_ptr_metadata: None,
                             field_offsets: HashMap::new(),
                             mutable_fields: HashSet::new(),

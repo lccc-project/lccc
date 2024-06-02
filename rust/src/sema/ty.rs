@@ -899,10 +899,61 @@ pub enum Niches {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct NicheOptEnum {
+    /// The DefId of the construct for which niche optimization applies
+    pub niche_ctor: DefId,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum DiscrimPlacement {
+    /// Offset into the type - in lcrust v0, this is always `0`
+    Offset(u64),
+    /// The Discrimant is elided into niche-opt
+    FillNiche(NicheOptEnum),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct EnumDiscriminant {
+    pub discrim_type: IntType,
+    pub discrim_placement: DiscrimPlacement,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct EnumLayout {
+    pub discrim: EnumDiscriminant,
+    pub variant_layouts: HashMap<DefId, VariantLayout>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct VariantLayout {
+    /// The value of the discriminant for this variant
+    pub discrim_val: u128,
+    /// The layout of the variant, including the discriminant (if not elided)
+    pub variant_layout: TypeLayout,
+    /// If the variant is a niche-ellision variant, indicate how the niche is filled
+    pub variant_niche_fill: Option<NicheFill>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct NicheFill {
+    pub niche_offset: u64,
+    pub niche_size: u64,
+    /// The value to put in the niche.
+    /// `None` means the niched field is uninhabited
+    pub niche_value: Option<NicheValue>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum NicheValue {
+    IntValue(u128),
+    NullPointer,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct TypeLayout {
     pub size: Option<u64>,
     pub align: Option<u64>,
-    pub enum_discriminant: Option<Type>,
+    pub enum_layout: Option<EnumLayout>,
     pub wide_ptr_metadata: Option<Type>,
     pub field_offsets: HashMap<FieldName, u64>,
     pub mutable_fields: HashSet<FieldName>,
