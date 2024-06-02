@@ -24,6 +24,22 @@ pub enum X86Tag {
     SysV64,
 }
 
+impl X86Tag {
+    pub fn volatile_regs(&self) -> &'static [X86Register] {
+        match self {
+            X86Tag::SysV64 => &[
+                X86Register::Rax,
+                X86Register::Rcx,
+                X86Register::Rdx,
+                X86Register::Rsi,
+                X86Register::Rdi,
+                X86Register::R8,
+                X86Register::R9,
+            ],
+        }
+    }
+}
+
 impl Tag for X86Tag {
     type Register = X86Register;
     type TypeClass = X86TypeClass;

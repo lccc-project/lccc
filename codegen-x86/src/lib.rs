@@ -29,6 +29,7 @@ mod callconv;
 pub enum X86ValLocation {
     Null,
     Register(X86Register),
+    StackDisp(i32),
 }
 
 #[derive(Clone, Debug)]
@@ -48,6 +49,7 @@ pub struct X86Assignments {
     available_int_registers: Vec<X86Register>,
     return_reg: Option<X86Register>,
     stack_width: i32,
+    stack_align: u64,
     assigns: HashMap<u32, LocationAssignment>,
 }
 
@@ -56,7 +58,35 @@ pub struct X86Clobbers {
     clobbered_at: HashMap<u32, usize>,
 }
 
-impl X86Clobbers {}
+impl X86Clobbers {
+    pub fn mark_used(
+        &mut self,
+        val: u32,
+        assign: &mut LocationAssignment,
+        stack_width: &mut i32,
+        ty_size: u64,
+        ty_align: u64,
+    ) {
+        if let Some(Pair(_, pos)) = self.clobbered_at.remove(&val) {
+            let align_minus1 = i32::try_from(ty_align).unwrap() - 1;
+            *stack_width = (*stack_width + align_minus1) & align_minus1;
+            let offset = -*stack_width;
+            *stack_width += i32::try_from(ty_size).unwrap();
+            assign
+                .change_owner
+                .push((pos, X86ValLocation::StackDisp(offset)));
+        }
+    }
+    pub fn mark_clobbered(&mut self, reg: X86Register, which: usize, for_val: Option<u32>) {
+        if let Some(Pair(_, val)) = self.reg_owners.remove(&reg) {
+            if for_val == Some(val) {
+                self.reg_owners.insert(reg, val);
+            } else {
+                self.clobbered_at.insert(val, which);
+            }
+        }
+    }
+}
 
 fn xor_opcode(class: X86RegisterClass, hint_vec_is_int: bool) -> X86CodegenOpcode {
     match class {
@@ -151,12 +181,15 @@ impl X86Machine {
         writer: &mut X86Encoder<W>,
         dest: &X86ValLocation,
         src: &X86ValLocation,
+        assigns: &X86Assignments,
     ) -> std::io::Result<()> {
         if dest == src {
             return Ok(());
         }
         match (dest, src) {
-            (X86ValLocation::Null, X86ValLocation::Null) => Ok(()),
+            (X86ValLocation::Null, X86ValLocation::Null)
+            | (X86ValLocation::Null, X86ValLocation::StackDisp(_))
+            | (X86ValLocation::StackDisp(_), X86ValLocation::Null) => Ok(()),
             (X86ValLocation::Register(dest), X86ValLocation::Register(src)) => {
                 if dest.class() != src.class() {
                     panic!("Cannot move between register classes")
@@ -175,9 +208,50 @@ impl X86Machine {
                     }
                 }
             }
+            (X86ValLocation::StackDisp(off), X86ValLocation::Register(reg)) => {
+                let align = (1 << (off | -0x80000000).trailing_zeros()).max(assigns.stack_align);
+                let opcode: X86CodegenOpcode = move_opcode(reg.class(), Some(align), false);
+
+                writer.write_insn(X86Instruction::new(
+                    opcode,
+                    vec![
+                        X86Operand::Memory(
+                            reg.class(),
+                            None,
+                            X86MemoryOperand::Indirect {
+                                reg: assigns.sp,
+                                disp: Some(arch_ops::x86::codegen::X86Displacement::Offset(*off)),
+                            },
+                        ),
+                        X86Operand::Register(*reg),
+                    ],
+                ))
+            }
+            (X86ValLocation::Register(reg), X86ValLocation::StackDisp(off)) => {
+                let align = (1 << (off | -0x80000000).trailing_zeros()).max(assigns.stack_align);
+                let opcode: X86CodegenOpcode = move_opcode(reg.class(), Some(align), false);
+
+                writer.write_insn(X86Instruction::new(
+                    opcode,
+                    vec![
+                        X86Operand::Register(*reg),
+                        X86Operand::Memory(
+                            reg.class(),
+                            None,
+                            X86MemoryOperand::Indirect {
+                                reg: assigns.sp,
+                                disp: Some(arch_ops::x86::codegen::X86Displacement::Offset(*off)),
+                            },
+                        ),
+                    ],
+                ))
+            }
             (X86ValLocation::Null, X86ValLocation::Register(_))
             | (X86ValLocation::Register(_), X86ValLocation::Null) => {
                 panic!("Cannot move a register to/from null")
+            }
+            (X86ValLocation::StackDisp(_), X86ValLocation::StackDisp(_)) => {
+                todo!("memory to memory")
             }
         }
     }
@@ -222,6 +296,7 @@ impl Machine for X86Machine {
             available_int_registers: int_registers,
             return_reg: None,
             stack_width: 0,
+            stack_align: 16,
             assigns: HashMap::new(),
         }
     }
@@ -247,7 +322,7 @@ impl Machine for X86Machine {
                     X86ValLocation::Register(reg) => {
                         clobbers.reg_owners.insert(*reg, id);
                     }
-                    X86ValLocation::Null => {}
+                    X86ValLocation::Null | X86ValLocation::StackDisp(_) => {}
                 }
             }
         }
@@ -270,6 +345,19 @@ impl Machine for X86Machine {
                         match call_loc {
                             CallConvLocation::Null => {}
                             CallConvLocation::Register(reg) => {
+                                let ty_size = tys.type_size(&loc.ty).unwrap();
+                                let ty_align = tys.type_align(&loc.ty).unwrap();
+                                if let Some(assign) = assignments.assigns.get_mut(&loc.num) {
+                                    clobbers.mark_used(
+                                        loc.num,
+                                        assign,
+                                        &mut assignments.stack_width,
+                                        ty_size,
+                                        ty_align,
+                                    );
+                                }
+
+                                clobbers.mark_clobbered(*reg, num, Some(loc.num));
                                 assignments
                                     .assigns
                                     .get_or_insert_with_mut(loc.num, |_| LocationAssignment {
@@ -282,6 +370,10 @@ impl Machine for X86Machine {
                             }
                             loc => todo!("{:?}", loc),
                         }
+                    }
+
+                    for reg in callconv.tag().volatile_regs() {
+                        clobbers.mark_clobbered(*reg, num, None);
                     }
 
                     if let Some(ret) = &locations.ret {
@@ -325,6 +417,15 @@ impl Machine for X86Machine {
                             assignments.assigns.get_mut(&old_loc.num),
                         ) {
                             (Some(foreign), Some(old)) => {
+                                let ty_size = tys.type_size(&old_loc.ty).unwrap();
+                                let ty_align = tys.type_align(&old_loc.ty).unwrap();
+                                clobbers.mark_used(
+                                    old_loc.num,
+                                    old,
+                                    &mut assignments.stack_width,
+                                    ty_size,
+                                    ty_align,
+                                );
                                 old.change_owner.push((num, foreign));
                             }
                             (Some(foreign), None) => {
@@ -343,6 +444,15 @@ impl Machine for X86Machine {
                                     .last()
                                     .map_or(&old.foreign_location, |(_, x)| x)
                                     .clone();
+                                let ty_size = tys.type_size(&old_loc.ty).unwrap();
+                                let ty_align = tys.type_align(&old_loc.ty).unwrap();
+                                clobbers.mark_used(
+                                    old_loc.num,
+                                    old,
+                                    &mut assignments.stack_width,
+                                    ty_size,
+                                    ty_align,
+                                );
 
                                 assignments.assigns.insert(
                                     new_loc.num,
@@ -362,7 +472,19 @@ impl Machine for X86Machine {
                     [retval] => {
                         let reg = assignments.return_reg;
                         if let Some(reg) = reg {
+                            let ty_size = tys.type_size(&retval.ty).unwrap();
+                            let ty_align = tys.type_align(&retval.ty).unwrap();
+                            if let Some(assign) = assignments.assigns.get_mut(&retval.num) {
+                                clobbers.mark_used(
+                                    retval.num,
+                                    assign,
+                                    &mut assignments.stack_width,
+                                    ty_size,
+                                    ty_align,
+                                );
+                            }
                             let loc = X86ValLocation::Register(reg);
+
                             assignments
                                 .assigns
                                 .get_or_insert_with_mut(retval.num, |_| LocationAssignment {
@@ -387,6 +509,17 @@ impl Machine for X86Machine {
                         match call_loc {
                             CallConvLocation::Null => {}
                             CallConvLocation::Register(reg) => {
+                                let ty_size = tys.type_size(&loc.ty).unwrap();
+                                let ty_align = tys.type_align(&loc.ty).unwrap();
+                                if let Some(assign) = assignments.assigns.get_mut(&loc.num) {
+                                    clobbers.mark_used(
+                                        loc.num,
+                                        assign,
+                                        &mut assignments.stack_width,
+                                        ty_size,
+                                        ty_align,
+                                    );
+                                }
                                 assignments
                                     .assigns
                                     .get_or_insert_with_mut(loc.num, |_| LocationAssignment {
@@ -432,7 +565,12 @@ impl Machine for X86Machine {
                 if loc.owning_bb == which {
                     for (at, new_loc) in &loc.change_owner {
                         if *at == num {
-                            self.write_move(&mut encoder, new_loc, &cur_locations[addr])?;
+                            self.write_move(
+                                &mut encoder,
+                                new_loc,
+                                &cur_locations[addr],
+                                assignments,
+                            )?;
                             break;
                         }
                     }
@@ -496,6 +634,7 @@ impl Machine for X86Machine {
                                 ))?;
                             }
                             X86ValLocation::Null => {}
+                            X86ValLocation::StackDisp(_) => todo!("memory"),
                         }
                     }
                 }
@@ -519,6 +658,7 @@ impl Machine for X86Machine {
                                 ))?;
                             }
                             X86ValLocation::Null => {}
+                            X86ValLocation::StackDisp(_) => todo!("memory"),
                         }
                     }
                 }
@@ -543,6 +683,7 @@ impl Machine for X86Machine {
                                 ))?;
                             }
                             X86ValLocation::Null => {}
+                            X86ValLocation::StackDisp(_) => todo!("memory"),
                         }
                     }
                 }
