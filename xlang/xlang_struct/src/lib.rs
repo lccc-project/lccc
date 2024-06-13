@@ -1794,7 +1794,8 @@ pub enum Expr {
     ///
     /// 1. If `access-class` contains `volatile`, the expression performs a observable side effect (`[intro.abstract]#6`).
     /// 2. If `access-class` contains `nontemporal`, then all preceeding operations weekly-sequenced-before this expression *weekly-happens-before* this expression.
-    /// 3. If `access-class` contains an atomic access class, the expression functions the same a fence expression with that atomic access class, except that the fence does not *synchronize-with* atomic operations or fence instructions performed by another thread of execution.
+    /// 3. If `access-class` contains an atomic access class, the expression functions the same a fence expression with that atomic access class,
+    ///   except that the fence does not *synchronize-with* atomic operations or fence instructions performed by another thread of execution.
     /// 4. [_Note: This is suitable for communicating with signal or interrupt handlers executed on the current thread._]
     /// 5. [_Note: The `access-class` modifier `freeze` may appear, but is ignored by this expression. _]
     /// 6. If `access-class` does not contain either `volatile`, `nontemporal`, or an atomic access class, the expression performs no operation.
@@ -2153,8 +2154,10 @@ pub enum Expr {
     /// ## Syntax
     /// ```abnf
     /// member-name := <ident> / <int-literal> / "(" <member-name> ")"
-    /// expr /= "member" <field-name>
+    /// expr /= "member" <member-name>
     /// ```
+    ///
+    /// `member-name` may not be `indirect` without parenthesis.
     ///
     /// ## Semantics
     ///
@@ -2175,6 +2178,29 @@ pub enum Expr {
     /// * As the operand of a `member` or `addr_of` expression
     /// * As a value used as an incoming value for a jump target
     Member(String),
+    /// Projects a Pointer to a field of an aggregate
+    ///
+    /// ## Stack
+    /// Type Checking: `[.., *A]`=> `[.., *F]`  
+    /// Operands: `[.., a]` => `[.., f]`
+    ///
+    /// ## Syntax
+    ///
+    /// ```abnf
+    /// expr /= "member" "indirect" <member-name>
+    /// ```
+    ///
+    /// ## Semantics
+    /// Given `a` is a pointer to a struct, yeilds `f`, a pointer to the named member of `a`.
+    ///
+    /// If `member-name` designates a bitfield, the program is ill-formed.
+    ///
+    /// The behaviour is undefined unless:
+    /// * `a` and `f` are the same pointer, or
+    /// * `a` is a valid pointer, and `f` is inbounds of the same complete object as `a`.
+    ///
+    /// The operation is an implicit derive operation if `a` and `f` are not the same pointer, or if `A` has any non-trivial validity attributes.
+    ///
     MemberIndirect(String),
     /// Assigns a value to an lvalue according to `class`
     ///
@@ -2217,7 +2243,37 @@ pub enum Expr {
     Indirect,
     AddrOf,
 
+    /// Establishes ordering between threads of execution.
+    ///
+    /// ## Stack
+    /// `[..]`=>`[..]`
+    ///
+    /// ## Syntax
+    ///
+    /// ```abnf
+    /// expr /= "fence" <access-class>
+    /// ```
+    ///
+    /// ## Semantics
+    ///
+    /// 1. An *acquire fence* is a fence with an access-class containing an atomic-class of `atomic acquire`, `atomic acq_rel`, or `atomic seq_cst`.
+    /// 2. A *release fence* is a fence with an access-class containing an atomic-class of `atomic release`, `atomic acq_rel`, or `atomic seq_cst`.
+    /// 3. A fence with an access class containing `volatile` performs an observable side effect.
+    /// 4. An *acquire fence* M *synchronizes-with* a *release fence* N, if there exists two atomic operations A and B, such that:
+    ///   * A is *sequenced-before* M,
+    ///   * N is *sequenced-before* B,
+    ///   * A is a load, B is a store, and A takes its value from B or any store in a hypothetical release sequence that would have been headed by B if B was a release operation
+    /// 5. An *acquire fence* M *synchronizes-with* a *release operation* N, if there exists an atomic operation A, such that:
+    ///   * A is *sequenced before* M, and
+    ///   * A is a load and takes its value from a N, or any store in the release sequence headed by N.
+    /// 6. An *acquire operation* M *synchronizes-with* a *release fence* N, if there exists an atomic operation A, such that:
+    ///   * N is *sequenced before* A, and
+    ///   * A is a store, and M takes its value from A, or any store in a hypothetical release sequence that would have been headed by B if B was a release operation.
+    /// 7. A fence with an access-class containing an atomic-class of `atomic seq_cst` participates in `S`.
+    /// 8. If a fence `F` has an access-class containing `nontemporal`, then any operation which is *weekly sequenced before* `F` *happens before* `F`.
+    /// 9. [_Note: The access-class `freeze` may be present but has no effect.]
     Fence(AccessClass),
+
     BeginStorage(u32),
     EndStorage(u32),
 
@@ -2539,6 +2595,40 @@ impl core::fmt::Display for AsmExpr {
 fake_enum::fake_enum! {
     #[repr(pub u8)]
     #[derive(Hash)]
+    /// ## Access Class [expr.class]
+    ///
+    /// ### Syntax
+    /// ```abnf
+    /// atomic-class := "relaxed" / "release" / "acquire" / "acq_rel" / "seq_cst"
+    ///
+    /// access-class-modifier := "volatile" / "nontemporal" / "freeze"
+    ///
+    /// access-class := [*<access-class-modifier>] ["atomic" <atomic-class>]
+    /// ```
+    ///
+    /// ### Memory Ordering [expr.order]
+    ///
+    /// 1. This section defines the relations *weekly sequenced before*, *sequenced before*, *happens before*, and *weekly happens before*.
+    ///  These are all partial ordering relations on the evaluations of two expressions during the execution of a program. The relations are asymmetric and transitive.
+    /// 1. An expression A is *weekly sequenced before* another expression B if A and B are evaluated on the same thread of execution,
+    /// either A and B are both not evaluated during the execution of a signal handler or A and B are both evaluated during the execution of the same signal handler,
+    ///  and A is evaluated before B in program order,
+    /// 2. An expression A is *sequenced before* another expression B if A is *weekly sequenced before* B, and either,
+    ///    * Neither A nor B is a memory operation with the `nontemporal` access class,
+    ///    * A and B are both memory operations, one has the `nontemporal` access-class, one is a store to a memory location, and the other is an access to the same memory location,
+    ///    * A is a `nontemporal` memory operation, and B is a `fence` instruction with the `nontemporal` access-class, or
+    ///    * A is *sequenced before* some expression C, and C is *sequenced before* B.
+    /// 3. _Note: Absent memory operations using the nontemporal access class, *weekly sequenced before* and *sequenced before* are the same relation._
+    /// 4. An expression A *happens before* another expression B, if:
+    ///    * A is *sequenced before* B,
+    ///    * A *synchronizes-with* B, or
+    ///    * There exists an expression C, such that A *happens before* C and C *happens before* B.
+    /// 5. An expression A *weekly happens before* another expression B, if:
+    ///    * A *happens before* B,
+    ///    * A is a memory operation with a nontemporal access class, B is a `sequence` instruction, and A is *weekly sequenced before* B,
+    ///    * There exists an expression C, such that A *weekly happens before* C, and C *weekly happens before* B.
+    /// 6.
+    ///
     pub enum struct AccessClass{
         Normal = 0,
         AtomicRelaxed = 1,
