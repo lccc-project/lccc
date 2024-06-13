@@ -121,19 +121,23 @@ pub trait Ord: PartialOrd<Self> + Eq {
     }
 }
 
-#[rustc_builtin_macro]
+#[lcrust::builtin_macro_def]
+#[lcrust::decl_macro_derive]
 #[allow_internal_unstable(core_intrinsics)]
 pub macro PartialEq($item:item) {}
 
-#[rustc_builtin_macro]
+#[lcrust::builtin_macro_def]
+#[lcrust::decl_macro_derive]
 #[allow_internal_unstable(core_intrinsics)]
 pub macro PartialOrd($item:item) {}
 
-#[rustc_builtin_macro]
+#[lcrust::builtin_macro_def]
+#[lcrust::decl_macro_derive]
 #[allow_internal_unstable(core_intrinsics)]
 pub macro Ord($item:item) {}
 
-#[rustc_builtin_macro]
+#[lcrust::builtin_macro_def]
+#[lcrust::decl_macro_derive]
 #[allow_internal_unstable(core_intrinsics)]
 pub macro Eq($item:item) {}
 
@@ -157,6 +161,26 @@ macro_rules! cmp_int {
                     // Safety:
                     // `__builtin_cmp` returns `-1`, `0`, or `1` ordering to comparison b/c this is an integer type
                     unsafe{core::mem::transmute_copy(&ord)}
+                }
+
+                #[inline]
+                fn max(self, other: Self) -> Self{
+                    core::intrinsics::__builtin_max_val(self, other)
+                }
+
+                #[inline]
+                fn min(self, other: Self) -> Self{
+                    core::intrinsics::__builtin_min_val(self, other)
+                }
+
+                #[inline]
+                fn clamp(self, lower: Self, upper: Self) -> Self{
+
+                    if lower > upper{
+                        panic!("Cannot clamp between {lower} and {upper} (lower must be less than or equal to upper)")
+                    }
+
+                    core::intrinsics::__builtin_clamp_val(self, lower, upper)
                 }
             }
             impl PartialOrd for $ty{
@@ -186,7 +210,7 @@ macro_rules! cmp_float {
                     let ord = core::intrinsics::__builtin_cmp::<$ty, core::mem::MaybeUninit<i32>>(*self, *other);
                     match (self.is_nan(), other.is_nan()){
                         // SAFETY:
-                        // `__builtin_cmp` returns `-1`, `0`, or `1` ordering to comparison b/c this is an integer type
+                        // `__builtin_cmp` returns `-1`, `0`, or `1` ordering to b/c the floating-point comparison is ordered (neither value is NaN)
                         (false, false) => Some(unsafe{core::mem::transmute_copy(&ord)}),
                         _ => None
                     }

@@ -20,445 +20,300 @@ use crate::prelude::v1::*;
 
 use crate::cell::UnsafeCell;
 use crate::default::Default;
-use crate::intrinsics::transmute;
+use crate::intrinsics::{
+    __atomic_compare_exchange_strong, __atomic_compare_exchange_weak, __atomic_interthread_fence,
+    __atomic_intrathread_fence, __atomic_load, __atomic_store,
+};
+use crate::mem::MaybeUninit;
 use crate::{Result, Sync};
 
 #[non_exhaustive]
 #[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum Ordering {
-    Relaxed,
-    Release,
-    Acquire,
-    AcqRel,
-    SeqCst,
+    Relaxed = 0,
+    Release = 1,
+    Acquire = 2,
+    AcqRel = 3,
+    SeqCst = 4,
 }
 
-#[inline]
-#[__lccc::xlang_opt_hint(contains_sequence)]
+macro_rules! call_atomic_intrinsics{
+    ($dyn_ord:expr @ [$($valid_ords:ident),* $(,)?]  => $atomic_intrin:ident ($($params:expr),* $(,)?)) => {
+        (match $dyn_ord{
+            $($crate::sync::atomic::Ordering::$valid_ords => $atomic_intrin :: <$crate::sync::atomic::Ordering::$valid_ords> ($($params),*),)
+            ord => crate::panic!(crate::concat!("Invalid ordering for ", crate::stringify!($atomic_intrin), " {ord:?}."))
+        })
+    };
+
+    ($dyn_ord:expr  => $atomic_intrin:ident ($($params:expr),* $(,)?)) => {
+        call_atomic_intrinsics!($dyn_ord @ [Relaxed, Release, Acquire, AcqRel, SeqCst] => $atomic_intrin ($($params),*))
+    };
+}
+
+macro_rules! call_atomic_cmpxchg_intrinsic{
+    (($dyn_ord_success:expr, $dyn_ord_fail:expr) => $atomic_intrin:ident ($($params:expr),* $(,)?)) => {
+        (match ($dyn_ord_success, $dyn_ord_fail){
+            ($crate::sync::atomic::Ordering::Relaxed, $crate::sync::atomic::Ordering::Relaxed) => $atomic_intrin :: <$crate::sync::atomic::Ordering::Relaxed, $crate::sync::atomic::Ordering::Relaxed> ($($params),*),
+            ($crate::sync::atomic::Ordering::Release, $crate::sync::atomic::Ordering::Relaxed) => $atomic_intrin :: <$crate::sync::atomic::Ordering::Release, $crate::sync::atomic::Ordering::Relaxed> ($($params),*),
+            ($crate::sync::atomic::Ordering::Acquire, $crate::sync::atomic::Ordering::Relaxed) => $atomic_intrin :: <$crate::sync::atomic::Ordering::Acquire, $crate::sync::atomic::Ordering::Relaxed> ($($params),*),
+            ($crate::sync::atomic::Ordering::Acquire, $crate::sync::atomic::Ordering::Acquire) => $atomic_intrin :: <$crate::sync::atomic::Ordering::Acquire, $crate::sync::atomic::Ordering::Acquire> ($($params),*),
+            ($crate::sync::atomic::Ordering::AcqRel, $crate::sync::atomic::Ordering::Relaxed) => $atomic_intrin :: <$crate::sync::atomic::Ordering::AcqRel, $crate::sync::atomic::Ordering::Relaxed> ($($params),*),
+            ($crate::sync::atomic::Ordering::AcqRel, $crate::sync::atomic::Ordering::Acquire) => $atomic_intrin :: <$crate::sync::atomic::Ordering::AcqRel, $crate::sync::atomic::Ordering::Acquire> ($($params),*),
+            ($crate::sync::atomic::Ordering::SeqCst, $crate::sync::atomic::Ordering::Relaxed) => $atomic_intrin :: <$crate::sync::atomic::Ordering::SeqCst, $crate::sync::atomic::Ordering::Relaxed> ($($params),*),
+            ($crate::sync::atomic::Ordering::SeqCst, $crate::sync::atomic::Ordering::Acquire) => $atomic_intrin :: <$crate::sync::atomic::Ordering::SeqCst, $crate::sync::atomic::Ordering::Acquire> ($($params),*),
+            ($crate::sync::atomic::Ordering::SeqCst, $crate::sync::atomic::Ordering::SeqCst) => $atomic_intrin :: <$crate::sync::atomic::Ordering::SeqCst, $crate::sync::atomic::Ordering::SeqCst> ($($params),*),
+            (ord_success, ord_fail) => crate::panic!(crate::concat!("Invalid orderings for ", crate::stringify!($atomic_intrin), " success: {ord_success:?}, fail: {ord_fail:?}."))
+        })
+    };
+}
+
+#[inline(always)]
 pub fn compiler_fence(ord: Ordering) {
-    unsafe {
-        match ord {
-            Ordering::Release => {
-                k#__xir("sequence atomic release")
-            }
-            Ordering::Acquire => {
-                k#__xir("sequence atomic acquire")
-            }
-            Ordering::AcqRel => {
-                k#__xir("sequence atomic acqrel")
-            }
-            Ordering::SeqCst => {
-                k#__xir("sequence atomic seq_cst")
-            }
-            ord => panic!("Invalid ordering {}", ord),
-        }
-    }
+    call_atomic_intrinsics!(ord @ [Release, Acquire, AcqRel, SeqCst] => __atomic_intrathread_fence())
 }
 
-#[inline]
-#[__lccc::xlang_opt_hint(contains_fence)]
+#[inline(always)]
 pub fn fence(ord: Ordering) {
-    unsafe {
-        match ord {
-            Ordering::Release => {
-                k#__xir("fence atomic release")
-            }
-            Ordering::Acquire => {
-                k#__xir("fence atomic acquire")
-            }
-            Ordering::AcqRel => {
-                k#__xir("fence atomic acqrel")
-            }
-            Ordering::SeqCst => {
-                k#__xir("fence atomic seq_cst")
-            }
-            _ => panic!("Invalid ordering {}"),
-        }
-    }
+    call_atomic_intrinsics!(ord @ [Release, Acquire, AcqRel, SeqCst] => __atomic_interthread_fence())
 }
 
-#[cfg(target_has_atomic = "8")]
-#[repr(C, align(1))]
-pub struct AtomicBool {
-    inner: UnsafeCell<u8>,
+mod sealed {
+    pub trait Sealed {}
+
+    #[repr(align(1))]
+    #[derive(Copy, Clone)]
+    pub struct Align1;
+    #[repr(align(2))]
+    #[derive(Copy, Clone)]
+    pub struct Align2;
+    #[repr(align(4))]
+    #[derive(Copy, Clone)]
+    pub struct Align4;
+    #[repr(align(8))]
+    #[derive(Copy, Clone)]
+    pub struct Align8;
+    #[repr(align(16))]
+    #[derive(Copy, Clone)]
+    pub struct Align16;
 }
 
-#[cfg(target_has_atomic = "8")]
-impl Default for AtomicBool {
-    fn default() -> Self {
-        AtomicBool::new(false)
-    }
+#[unstable(
+    feature = "lccc_generic_atomic_type",
+    reason = "Implementation Detail of lccc's implementation of `Atomic`"
+)]
+pub unsafe trait AtomicAccessTy: Sized + Copy + sealed::Sealed {
+    type Align: Sized + Copy;
 }
 
-#[cfg(target_has_atomic = "8")]
-unsafe impl Sync for AtomicBool {}
+#[unstable(
+    feature = "lccc_generic_atomic_type",
+    reason = "Implementation Detail of lccc's implementation of `Atomic`"
+)]
+pub unsafe trait AtomicAccessTySameAlign: AtomicAccessTy {}
 
-#[cfg(target_has_atomic = "8")]
-impl AtomicBool {
-    pub const fn new(x: bool) -> Self {
+#[unstable(
+    feature = "lccc_generic_atomic_type",
+    reason = "Implementation Detail of lccc's implementation of `Atomic`"
+)]
+#[repr(C)]
+pub struct Atomic<T: AtomicAccessTy> {
+    align: MaybeUninit<T::Align>,
+    cell: UnsafeCell<T>,
+}
+
+impl<T: AtomicAccessTy> Atomic<T> {
+    pub const fn new(val: T) -> Self {
         Self {
-            inner: UnsafeCell::new(x as u8),
+            cell: UnsafeCell::new(val),
+            align: MaybeUninit::uninit(),
         }
     }
 
-    pub fn get_mut(&mut self) -> &mut bool {
-        // SAFETY:
-        // This is valid because self is uniquely borrowed for the implicit lifetime
-        unsafe { transmute(self.inner.get_mut()) }
+    #[lcrust::const_unstable(feature = "const_cell_into_inner")]
+    pub const fn into_inner(self) -> T {
+        self.cell.into_inner()
     }
 
-    #[unstable(feature = "atomic_from_mut", issue = "76314")]
-    pub fn from_mut(x: &mut bool) -> &Self {
-        unsafe { &*(x as *mut bool as *mut Self as *const Self) }
+    pub fn get_mut(&mut self) -> &mut T {
+        self.cell.get_mut()
     }
 
-    pub fn into_inner(self) -> bool {
-        // SAFETY:
-        // This is valid because self is uniquely owned here,
-        // So there is a static guarantee that no race occurs.
-        unsafe { *(self.inner.get() as *mut bool) }
+    #[unstable(feature = "atomic_from_mut")]
+    pub fn from_mut(r: &mut T) -> &mut Self
+    where
+        T: AtomicAccessTySameAlign,
+    {
+        unsafe { &mut *(r as *mut T as *mut Self) }
     }
 
-    pub fn load(&self, ord: Ordering) -> bool {
-        // SAFETY:
-        // self.inner.get() is valid because it is contained within &self, which is valid
-        // AtomicBool has a "validity" invariant equivalent to the one for bool
-        unsafe { transmute(ops::atomic_load(self.inner.get(), ord)) }
+    pub unsafe fn from_ptr<'a>(ptr: *mut T) -> &'a Self {
+        unsafe { &*ptr.cast_mut() }
     }
 
-    pub fn store(&self, val: bool, ord: Ordering) {
-        // SAFETY:
-        // self.inner.get() is valid because it is contained within &self, which is valid
-        // self.inner.get() is valid for writing because it points to a mutable subobject of *self
-        unsafe { ops::atomic_store(self.inner.get(), val as u8, ord) }
+    pub const fn as_ptr(&self) -> *mut T {
+        self.cell.get()
     }
 
-    pub fn swap(&self, mut val: bool, ord: Ordering) -> bool {
-        // SAFETY:
-        // Same as load and store
-        unsafe { ops::atomic_swap(self.inner.get(), &mut val as *mut bool as *mut u8, ord) }
-        val
-    }
-
-    pub fn compare_and_swap(&self, mut current: bool, val: bool, ord: Ordering) -> bool {
+    #[inline(always)]
+    pub fn load(&self, ord: Ordering) -> T {
         unsafe {
-            ops::atomic_compare_exchange(
-                self.inner.get(),
-                &mut current as *mut bool as *mut u8,
-                val,
-                ord,
-            )
-        }
-        current
-    }
-
-    pub fn compare_exchange_weak(
-        &self,
-        mut expected: bool,
-        update: bool,
-        success_ord: Ordering,
-        failure_ord: Ordering,
-    ) -> Result<bool, bool> {
-        if match (success_ord, failure_ord) {
-            (o @ Ordering::SeqCst, Ordering::Acquire | Ordering::SeqCst) => unsafe {
-                ops::atomic_compare_exchange_weak(
-                    self.inner.get(),
-                    &mut current as *mut bool as *mut u8,
-                    val as u8,
-                    o,
-                )
-            },
-            (o @ Ordering::AcqRel | Ordering::Acquire, Ordering::Acquire) => unsafe {
-                ops::atomic_compare_exchange_weak(
-                    self.inner.get(),
-                    &mut current as *mut bool as *mut u8,
-                    val as u8,
-                    o,
-                )
-            },
-            (o, Ordering::Relaxed) => unsafe {
-                ops::atomic_compare_exchange_weak_fail_relaxed(
-                    self.inner.get(),
-                    &mut current as *mut bool as *mut u8,
-                    val as u8,
-                    o,
-                )
-            },
-            _ => panic!("Invalid ordering pair for compare_exchange_weak"),
-        } {
-            Ok(expected)
-        } else {
-            Err(expected)
+            call_atomic_intrinsics!(ord @ [Relaxed, Acquire, SeqCst] => __atomic_load (self.as_ptr()))
         }
     }
 
+    #[inline(always)]
+    pub fn store(&self, val: T, ord: Ordering) {
+        unsafe {
+            call_atomic_intrinsics!(ord @ [Relaxed, Release, SeqCst] => __atomic_store (self.as_ptr(), val))
+        }
+    }
+
+    #[inline(always)]
+    pub fn swap(&self, val: T, ord: Ordering) -> Ordering {
+        unsafe { call_atomic_intrinsics!(ord => __atomic_swap (self.as_ptr(), val)) }
+    }
+
+    #[inline(always)]
     pub fn compare_exchange(
         &self,
-        mut expected: bool,
-        update: bool,
-        success_ord: Ordering,
-        failure_ord: Ordering,
-    ) -> Result<bool, bool> {
-        if match (success_ord, failure_ord) {
-            (o @ Ordering::SeqCst, Ordering::Acquire | Ordering::SeqCst) => unsafe {
-                ops::atomic_compare_exchange(
-                    self.inner.get(),
-                    &mut current as *mut bool as *mut u8,
-                    val as u8,
-                    o,
-                )
-            },
-            (o @ Ordering::AcqRel | Ordering::Acquire, Ordering::Acquire) => unsafe {
-                ops::atomic_compare_exchange(
-                    self.inner.get(),
-                    &mut current as *mut bool as *mut u8,
-                    val as u8,
-                    o,
-                )
-            },
-            (o, Ordering::Relaxed) => unsafe {
-                ops::atomic_compare_exchange_fail_relaxed(
-                    self.inner.get(),
-                    &mut current as *mut bool as *mut u8,
-                    val as u8,
-                    o,
-                )
-            },
-            _ => panic!("Invalid ordering pair for compare_exchange"),
+        mut expected: T,
+        new: T,
+        success: Ordering,
+        fail: Ordering,
+    ) -> Result<T, T> {
+        match unsafe {
+            call_atomic_cmpxchg_intrinsic!((success, fail) => __atomic_compare_exchange_strong(self.as_ptr(), &mut expected, new))
         } {
-            Ok(expected)
-        } else {
-            Err(expected)
+            true => Ok(expected),
+            false => Ok(expected),
         }
+    }
+
+    #[inline(always)]
+    pub fn compare_exchange_weak(
+        &self,
+        mut expected: T,
+        new: T,
+        success: Ordering,
+        fail: Ordering,
+    ) -> Result<T, T> {
+        match unsafe {
+            call_atomic_cmpxchg_intrinsic!((success, fail) => __atomic_compare_exchange_weak(self.as_ptr(), &mut expected, new))
+        } {
+            true => Ok(expected),
+            false => Ok(expected),
+        }
+    }
+
+    #[inline(always)]
+    pub fn compare_and_swap(&self, mut expected: T, new: T, order: Ordering) -> T {
+        unsafe {
+            match order {
+                Ordering::Relaxed => __atomic_compare_exchange_strong::<
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                >(self.as_ptr(), &mut expected, new),
+                Ordering::Release => __atomic_compare_exchange_strong::<
+                    Ordering::Release,
+                    Ordering::Relaxed,
+                >(self.as_ptr(), &mut expected, new),
+                Ordering::Acquire => __atomic_compare_exchange_strong::<
+                    Ordering::Acquire,
+                    Ordering::Acquire,
+                >(self.as_ptr(), &mut expected, new),
+                Ordering::AcqRel => __atomic_compare_exchange_strong::<
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                >(self.as_ptr(), &mut expected, new),
+                Ordering::SeqCst => __atomic_compare_exchange_strong::<
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                >(self.as_ptr(), &mut expected, new),
+            }
+        }
+
+        expected
+    }
+
+    #[inline(always)]
+    pub fn fetch_add(&self, val: T, ord: Ordering) -> T
+    where
+        T: crate::ops::Add<T>,
+    {
+        unsafe { call_atomic_intrinsics!(ord => __atomic_fetch_add(self.as_ptr(), val)) }
+    }
+
+    #[inline(always)]
+    pub fn fetch_sub(&self, val: T, ord: Ordering) -> T
+    where
+        T: crate::ops::Sub<T>,
+    {
+        unsafe { call_atomic_intrinsics!(ord => __atomic_fetch_sub(self.as_ptr(), val)) }
+    }
+
+    #[inline]
+    pub fn fetch_update<F: core::ops::FnMut(T) -> Option<T>>(
+        &self,
+        set_order: Ordering,
+        fetch_order: Ordering,
+        mut f: F,
+    ) -> Result<T, T> {
+        let mut val = MaybeUninit::uninit();
+        while unsafe {
+            call_atomic_intrinsics!(fetch_order @ [Relaxed, Acquire, SeqCst] => __atomic_read_transactional(self.as_ptr(), val.as_mut_ptr()))
+        } {
+            // SAFETY:
+            // If `__atomic_read_transactional` returns `true`, it wrote to the second argument
+            let val = unsafe { val.assume_init_read() };
+            if let Some(new_val) = f(val) {
+                match unsafe {
+                    call_atomic_intrinsics!(set_order => __atomic_write_commit(self.as_ptr(), new_val))
+                } {
+                    ..0 => break,
+                    0 => return Ok(val),
+                    1.. => continue,
+                }
+            } else {
+                unsafe {
+                    __atomic_abort_transaction(self.as_ptr());
+                }
+                return Err(val);
+            }
+        }
+        let mut val = self.load(fetch_order);
+        loop {
+            if let Some(new_val) = f(val) {
+                match self.compare_exchange_weak(val, new_val, set_order, fetch_order) {
+                    Ok(old_val) => break Ok(old_val),
+                    Err(old_val) => val = old_val,
+                }
+            } else {
+                break Err(val);
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn fetch_max(&self, new_val: T, ord: Ordering) -> T {
+        self.fetch_update(ord, Ordering::Relaxed, |val| {
+            Some(core::intrinsics::__builtin_max_val(val, new_val))
+        })
     }
 }
 
-#[unstable(feature = "lccc_atomic_impl")]
-pub mod ops {
-    use crate::sync::atomic::Ordering::{self, *};
+macro_rules! def_atomic_ty{
+    {$( $(#[doc($doc:meta)])* #[$cfg_atomic:meta] #[$stability:meta] type $atomic_ty:ty = $base_ty:ty @ $align:ty;)*} => {
+        $(
+            impl sealed::Sealed for $base_ty{}
+            #[$cfg_atomic]
+            unsafe impl AtomicAccessTy for $base_ty{
+                type Align = $align;
+            }
 
-    pub unsafe fn atomic_load<T>(mem: *const T, ord: Ordering) {
-        if ::__lccc::atomic_not_lock_free::<T>() {
-            panic!("Cannot perform non-lock free atomic load")
-        }
-        match ord {
-            Acquire | AcqRel => k#__xir(r"(
-                indirect
-                as_rvalue atomic acquire
-            )":[mem]:[yield: T]),
-            SeqCst => k#__xir(r"(
-                indirect
-                as_rvalue atomic seqcst
-            )":[mem]:[yield: T]),
-            Relaxed => k#__xir(r"
-                indirect
-                as_rvalue atomic
-            ":[mem]:[yield:T]),
-            _ => panic!("Bad ordering"),
-        }
-    }
-
-    pub unsafe fn atomic_store<T>(mem: *mut T, val: T, ord: Ordering) {
-        if ::__lccc::atomic_not_lock_free::<T>() {
-            panic!("Cannot perform non-lock free atomic store")
-        }
-
-        match ord {
-            Release | AcqRel => k#__xir(r"
-                assign atomic release
-            ":[lvalue *mem,val]),
-            Relaxed => k#__xir(r"
-                assign atomic
-            ":[lvalue *mem,val]),
-            SeqCst => k#__xir(r"
-                assign atomic seq_cst
-            ":[lvalue *mem,val]),
-            _ => panic!("Bad ordering"),
-        }
-    }
-
-    pub unsafe fn atomic_compare_exchange<T>(
-        mem: *mut T,
-        expected: *mut T,
-        value: T,
-        ord: Ordering,
-    ) -> bool {
-        if ::__lccc::atomic_not_lock_free::<T>() {
-            panic!("Cannot perform non-lock free atomic store")
-        }
-
-        match ord {
-            Acquire => k#__xir(r"
-                cmp_excg atomic acquire
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Release => k#__xir(r"
-                cmp_excg atomic release
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            AcqRel => k#__xir(r"
-                cmp_excg atomic acqrel
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Relaxed => k#__xir(r"
-                cmp_excg atomic relaxed
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            SeqCst => k#__xir(r"
-                cmp_excg atomic seq_cst
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-        }
-    }
-
-    pub unsafe fn atomic_compare_exchange_fail_relaxed<T>(
-        mem: *mut T,
-        expected: *mut T,
-        value: *const T,
-        ord: Ordering,
-    ) -> bool {
-        if ::__lccc::atomic_not_lock_free::<T>() {
-            panic!("Cannot perform non-lock free atomic store")
-        }
-
-        match ord {
-            Acquire => k#__xir(r"
-                cmp_excg atomic acquire fail relaxed
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,core::ptr::read(val)]:[yield:bool]),
-            Release => k#__xir(r"
-                cmp_excg atomic release fail relaxed
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,core::ptr::read(val)]:[yield:bool]),
-            AcqRel => k#__xir(r"
-                cmp_excg atomic acqrel fail relaxed
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,core::ptr::read(val)]:[yield:bool]),
-            Relaxed => k#__xir(r"
-                cmp_excg atomic relaxed
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,core::ptr::read(val)]:[yield:bool]),
-            SeqCst => k#__xir(r"
-                cmp_excg atomic seq_cst fail relaxed
-                convert strong uint(1)
-            ":[lvalue unsafe{*mem},lvalue *expected,core::ptr::read(val)]:[yield:bool]),
-        }
-    }
-
-    pub unsafe fn atomic_compare_exchange_weak<T>(
-        mem: *mut T,
-        expected: *mut T,
-        value: T,
-        ord: Ordering,
-    ) -> bool {
-        if ::__lccc::atomic_not_lock_free::<T>() {
-            panic!("Cannot perform non-lock free atomic store")
-        }
-
-        match ord {
-            Acquire => k#__xir(r"
-                cmp_excg_weak atomic acquire
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Release => k#__xir(r"
-                cmp_excg_weak atomic release
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            AcqRel => k#__xir(r"
-                cmp_excg_weak atomic acqrel
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Relaxed => k#__xir(r"
-                cmp_excg_weak atomic relaxed
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            SeqCst => k#__xir(r"
-                cmp_excg_weak atomic seq_cst
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-        }
-    }
-
-    pub unsafe fn atomic_compare_exchange_weak_fail_relaxed<T>(
-        mem: *mut T,
-        expected: *mut T,
-        value: T,
-        ord: Ordering,
-    ) -> bool {
-        if ::__lccc::atomic_not_lock_free::<T>() {
-            panic!("Cannot perform non-lock free atomic store")
-        }
-
-        match ord {
-            Acquire => k#__xir(r"
-                cmp_excg_weak atomic acquire fail relaxed
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Release => k#__xir(r"
-                cmp_excg_weak atomic release fail relaxed
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            AcqRel => k#__xir(r"
-                cmp_excg_weak atomic acqrel fail relaxed
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Relaxed => k#__xir(r"
-                cmp_excg_weak atomic relaxed
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            SeqCst => k#__xir(r"
-                cmp_excg_weak atomic seq_cst fail relaxed
-                convert strong uint(1)
-            ":[lvalue unsafe{*mem},lvalue *expected,val]:[yield:bool]),
-        }
-    }
-
-    pub unsafe fn atomic_swap<T>(mem1: *mut T, mem2: *mut T, ord: Ordering) {
-        if ::__lccc::atomic_not_lock_free::<T>() {
-            panic!("Cannot perform non-lock free atomic store")
-        }
-
-        match ord {
-            Acquire => k#__xir(r"
-                swap atomic acquire
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected]:[yield:bool]),
-            Release => k#__xir(r"
-                swap atomic release
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected]:[yield:bool]),
-            AcqRel => k#__xir(r"
-                swap atomic acqrel
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected,val]:[yield:bool]),
-            Relaxed => k#__xir(r"
-                swap atomic 
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected]:[yield:bool]),
-            SeqCst => k#__xir(r"
-                swap atomic seq_cst
-                convert strong uint(1)
-            ":[lvalue *mem,lvalue *expected]:[yield:bool]),
-        }
-    }
-
-    pub unsafe fn fetch_and<T: And>(mem: *mut T, value: T, ord: Ordering) -> T {
-        match ord {
-            Relaxed => k#__xir(r"
-                compound_assign fetch and atomic relaxed 
-            ":[lvalue *mem,value]:[yield:T]),
-            Acquire => k#__xir(r"
-                compound_assign fetch and atomic release 
-            ":[lvalue *mem,value]:[yield:T]),
-            Release => k#__xir(r"
-                compound_assign fetch and atomic release 
-            ":[lvalue *mem,value]:[yield:T]),
-            AcqRel => k#__xir(r"
-                compound_assign fetch and atomic acqrel 
-            ":[lvalue *mem,value]:[yield:T]),
-            SeqCst => k#__xir(r"
-                compound_assign fetch and atomic seqcst 
-            ":[lvalue *mem,value]:[yield:T]),
-        }
+            #[$$cfg_atomic]
+            #[$stability]
+            $(#[doc($doc)])*
+            pub type $atomic_ty = Atomic<$base_ty>;
+        )
     }
 }
