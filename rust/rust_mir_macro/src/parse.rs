@@ -130,6 +130,21 @@ pub fn do_keyword<I: Iterator<Item = TokenTree>>(
     })
 }
 
+pub fn do_keywords<'a, I: Iterator<Item = TokenTree>, K: IntoIterator<Item = &'a str>>(
+    tree: &mut PeekMoreIterator<I>,
+    kws: K,
+) -> Result<(&'a str, Span)> {
+    let mut err = None;
+    for kw in kws {
+        match do_keyword(tree, kw) {
+            Ok(span) => return Ok((kw, span)),
+            Err(e) => err = Some(e),
+        }
+    }
+
+    Err(err.expect("Required at least one keyword in `do_keywords`"))
+}
+
 pub fn do_group<I: Iterator<Item = TokenTree>>(
     tree: &mut PeekMoreIterator<I>,
     gtype: Option<Delimiter>,
@@ -163,6 +178,8 @@ pub fn do_type<I: Iterator<Item = TokenTree>>(
             do_never,
             do_type_interpolation,
             do_type_fnptr,
+            do_type_pointer,
+            do_type_var,
         ],
         take_right,
         dollar_crate,
@@ -232,7 +249,7 @@ fn write_spanned(
 }
 
 fn write_interpolation_for_type<'a, I: IntoIterator<Item = &'a str>>(
-    ty_path: I,
+    ty_crate_path: I,
     dollar_crate: &TokenStream,
     interp: Ident,
 ) -> TokenStream {
@@ -249,7 +266,7 @@ fn write_interpolation_for_type<'a, I: IntoIterator<Item = &'a str>>(
 
     inner_stream.extend([letkw, id, colon]);
 
-    write_crate_path(&mut inner_stream, idspan, dollar_crate, ty_path);
+    write_crate_path(&mut inner_stream, idspan, dollar_crate, ty_crate_path);
 
     let eq = TokenTree::Punct(Punct::new('=', Spacing::Alone));
 
@@ -750,6 +767,88 @@ pub fn do_fnty_no_interp<I: Iterator<Item = TokenTree>>(
     })
 }
 
+pub fn do_type_pointer<I: Iterator<Item = TokenTree>>(
+    tokens: &mut PeekMoreIterator<I>,
+    dollar_crate: &TokenStream,
+) -> Result<TokenStream> {
+    with_rewinder_accept_on_continue(tokens, |tree| {
+        let base_span = do_punct(tree, "*")?;
+
+        let (mt, span) = match do_keywords(tree, ["mut", "const"])? {
+            ("mut", span) => {
+                let mut ts = TokenStream::new();
+                write_crate_path(
+                    &mut ts,
+                    span,
+                    dollar_crate,
+                    ["sema", "ty", "Mutability", "Mut"],
+                );
+                (ts, span)
+            }
+            ("const", span) => {
+                let mut ts = TokenStream::new();
+                write_crate_path(
+                    &mut ts,
+                    span,
+                    dollar_crate,
+                    ["sema", "ty", "Mutability", "Mut"],
+                );
+                (ts, span)
+            }
+            _ => unreachable!(),
+        };
+
+        let inner_ty = do_type(tree, dollar_crate)?;
+
+        let mut stream = TokenStream::new();
+        write_crate_path(
+            &mut stream,
+            base_span,
+            dollar_crate,
+            ["sema", "ty", "Type", "Pointer"],
+        );
+
+        let mut inner_stream = write_spanned(mt, span, false, dollar_crate);
+        inner_stream.extend([TokenTree::Punct(Punct::new(',', Spacing::Alone))]);
+        inner_stream.extend(write_spanned(inner_ty, base_span, true, dollar_crate));
+
+        stream.extend([TokenTree::Group(Group::new(
+            Delimiter::Parenthesis,
+            inner_stream,
+        ))]);
+        Ok(stream)
+    })
+}
+
+pub fn do_type_var<I: Iterator<Item = TokenTree>>(
+    tokens: &mut PeekMoreIterator<I>,
+    dollar_crate: &TokenStream,
+) -> Result<TokenStream> {
+    with_rewinder_accept_on_continue(tokens, |tree| {
+        let base_span = do_punct(tree, "%")?;
+
+        let lit = do_unsuffixed_u32_literal(tree)?;
+
+        let mut inner_stream = TokenStream::new();
+        inner_stream.extend([TokenTree::Literal(lit)]);
+
+        let mut stream = TokenStream::new();
+        write_crate_path(
+            &mut stream,
+            base_span,
+            dollar_crate,
+            ["sema", "ty", "Type", "Param"],
+        );
+
+        stream.extend([TokenTree::Group(Group::new(
+            Delimiter::Parenthesis,
+            inner_stream,
+        ))]);
+
+        Ok(stream)
+    })
+}
+
 pub fn do_expr<I: Iterator<Item = TokenTree>>(
     tokens: &mut PeekMoreIterator<I>,
     dollar_crate: &TokenStream,
@@ -762,6 +861,9 @@ pub fn do_expr<I: Iterator<Item = TokenTree>>(
             do_expr_const_or_constructor,
             do_expr_const_lit,
             do_expr_ssa_var,
+            do_expr_read,
+            do_expr_tuple,
+            do_expr_get_symbol,
         ],
         take_right,
         dollar_crate,
@@ -965,6 +1067,111 @@ pub fn do_ssa_var<I: Iterator<Item = TokenTree>>(
     })
 }
 
+pub fn do_expr_read<I: Iterator<Item = TokenTree>>(
+    tokens: &mut PeekMoreIterator<I>,
+    dollar_crate: &TokenStream,
+) -> Result<TokenStream> {
+    with_rewinder_accept_on_continue(tokens, |tree| {
+        let base_span = do_keyword(tree, "read")?;
+        let group = do_group(tree, Some(Delimiter::Parenthesis))?;
+
+        let mut inner_tree = group.stream().into_iter().peekmore();
+
+        let inner_base_span = do_punct(&mut inner_tree, "*")?;
+
+        let inner_expr = do_expr(&mut inner_tree, dollar_crate)?;
+
+        let mut ts = TokenStream::new();
+        write_crate_path(
+            &mut ts,
+            base_span,
+            dollar_crate,
+            ["sema", "mir", "MirExpr", "Read"],
+        );
+        let inner_stream = write_spanned(inner_expr, inner_base_span, true, dollar_crate);
+        ts.extend([TokenTree::Group(Group::new(
+            Delimiter::Parenthesis,
+            inner_stream,
+        ))]);
+        Ok(ts)
+    })
+}
+
+pub fn do_expr_tuple<I: Iterator<Item = TokenTree>>(
+    tokens: &mut PeekMoreIterator<I>,
+    dollar_crate: &TokenStream,
+) -> Result<TokenStream> {
+    with_rewinder_accept_on_continue(tokens, |tree| {
+        let group = do_group(tree, Some(Delimiter::Parenthesis))?;
+        let mut inner_tree = group.stream().into_iter().peekmore();
+        let base_span = group.span();
+
+        let mut inner_stream = TokenStream::new();
+
+        loop {
+            match do_eof(&mut inner_tree) {
+                Ok(()) => break,
+                Err(_) => {
+                    let expr = do_expr(&mut inner_tree, dollar_crate)?;
+                    inner_stream.extend(write_spanned(expr, base_span, false, dollar_crate));
+                }
+            }
+            match do_punct(&mut inner_tree, ",") {
+                Ok(_) => inner_stream.extend([TokenTree::Punct(Punct::new(',', Spacing::Alone))]),
+                Err(_) => {
+                    do_eof(&mut inner_tree)?;
+                    break;
+                }
+            }
+        }
+
+        let mut exprs_stream = TokenStream::new();
+        write_global_path(&mut exprs_stream, base_span, ["std", "vec"]);
+        exprs_stream.extend([TokenTree::Group(Group::new(
+            Delimiter::Bracket,
+            inner_stream,
+        ))]);
+        let mut ts = TokenStream::new();
+        write_crate_path(
+            &mut ts,
+            base_span,
+            dollar_crate,
+            ["sema", "mir", "MirExpr", "Tuple"],
+        );
+        ts.extend([TokenTree::Group(Group::new(
+            Delimiter::Parenthesis,
+            exprs_stream,
+        ))]);
+
+        Ok(ts)
+    })
+}
+
+pub fn do_expr_get_symbol<I: Iterator<Item = TokenTree>>(
+    tokens: &mut PeekMoreIterator<I>,
+    dollar_crate: &TokenStream,
+) -> Result<TokenStream> {
+    with_rewinder_accept_on_continue(tokens, |tree| {
+        let base_span = do_keyword(tree, "get_symbol")?;
+
+        let group = do_group(tree, Some(Delimiter::Parenthesis))?;
+
+        let mut inner_tree = group.stream().into_iter().peekmore();
+
+        let defid = do_defid(&mut inner_tree, dollar_crate)?;
+
+        let mut ts = TokenStream::new();
+        write_crate_path(
+            &mut ts,
+            base_span,
+            dollar_crate,
+            ["sema", "mir", "MirExpr", "GetSymbol"],
+        );
+        ts.extend([TokenTree::Group(Group::new(Delimiter::Parenthesis, defid))]);
+        Ok(ts)
+    })
+}
+
 pub fn do_terminator<I: Iterator<Item = TokenTree>>(
     tokens: &mut PeekMoreIterator<I>,
     dollar_crate: &TokenStream,
@@ -987,7 +1194,12 @@ pub fn do_statement<I: Iterator<Item = TokenTree>>(
     tokens: &mut PeekMoreIterator<I>,
     dollar_crate: &TokenStream,
 ) -> Result<TokenStream> {
-    do_alternation(tokens, [do_stmt_store_dead], take_right, dollar_crate)
+    do_alternation(
+        tokens,
+        [do_stmt_store_dead, do_stmt_write],
+        take_right,
+        dollar_crate,
+    )
 }
 
 pub fn do_stmt_store_dead<I: Iterator<Item = TokenTree>>(
@@ -1015,7 +1227,76 @@ pub fn do_stmt_store_dead<I: Iterator<Item = TokenTree>>(
     })
 }
 
+pub fn do_stmt_write<I: Iterator<Item = TokenTree>>(
+    tokens: &mut PeekMoreIterator<I>,
+    dollar_crate: &TokenStream,
+) -> Result<TokenStream> {
+    with_rewinder_accept_on_continue(tokens, |tree| {
+        let base_span = do_keyword(tree, "write")?;
+
+        let group = do_group(tree, Some(Delimiter::Parenthesis))?;
+
+        let inner_span = do_punct(tree, "*")?;
+
+        let ptr_expr = do_expr(tree, dollar_crate)?;
+
+        do_punct(tree, ",")?;
+
+        let val_expr = do_expr(tree, dollar_crate)?;
+
+        let mut ts = TokenStream::new();
+        write_crate_path(
+            &mut ts,
+            base_span,
+            dollar_crate,
+            ["sema", "mir", "MirStatement", "Write"],
+        );
+
+        let mut inner_stream = write_spanned(ptr_expr, inner_span, false, dollar_crate);
+        inner_stream.extend(
+            [TokenTree::Punct(Punct::new(',', Spacing::Joint))]
+                .into_iter()
+                .chain(write_spanned(val_expr, inner_span, false, dollar_crate)),
+        );
+
+        ts.extend([TokenTree::Group(Group::new(
+            Delimiter::Parenthesis,
+            inner_stream,
+        ))]);
+        Ok(ts)
+    })
+}
+
 pub fn do_basic_block_id<I: Iterator<Item = TokenTree>>(
+    tokens: &mut PeekMoreIterator<I>,
+    dollar_crate: &TokenStream,
+) -> Result<TokenStream> {
+    do_alternation(
+        tokens,
+        [do_basic_block_id_interp, do_basic_block_id_no_interp],
+        take_right,
+        dollar_crate,
+    )
+}
+
+pub fn do_basic_block_id_interp<I: Iterator<Item = TokenTree>>(
+    tokens: &mut PeekMoreIterator<I>,
+    dollar_crate: &TokenStream,
+) -> Result<TokenStream> {
+    with_rewinder_accept_on_continue(tokens, |tree| {
+        do_punct(tree, "@")?;
+
+        let interp = do_interpolation(tree)?;
+
+        Ok(write_interpolation_for_type(
+            ["sema", "mir", "BasicBlockId"],
+            dollar_crate,
+            interp,
+        ))
+    })
+}
+
+pub fn do_basic_block_id_no_interp<I: Iterator<Item = TokenTree>>(
     tokens: &mut PeekMoreIterator<I>,
     dollar_crate: &TokenStream,
 ) -> Result<TokenStream> {
