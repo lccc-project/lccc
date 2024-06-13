@@ -767,6 +767,7 @@ impl<M: Machine> BasicBlockBuilder<M> {
             ir::Expr::BeginStorage(_) => todo!("begin storage"),
             ir::Expr::EndStorage(_) => todo!("end storage"),
             ir::Expr::Select(_) => todo!("select"),
+            ir::Expr::CompareOp(_, _) => todo!("compare op"),
         }
     }
 

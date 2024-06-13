@@ -657,6 +657,19 @@ const CHAR: ir::Type = ir::Type::Scalar(ir::ScalarType {
     },
 });
 
+const BOOL: ir::ScalarType = ir::ScalarType {
+    kind: ir::ScalarTypeKind::Integer {
+        signed: false,
+        min: XLangNone,
+        max: XLangNone,
+    },
+    header: ir::ScalarTypeHeader {
+        bitsize: 1,
+        vectorsize: XLangNone,
+        validity: ir::ScalarValidity::empty(),
+    },
+};
+
 impl<'a> XirTypeVisitor<'a> {
     fn new(
         defs: &'a Definitions,
@@ -2310,7 +2323,7 @@ pub struct XirBinaryExprVisitor<'a> {
     stack_height: &'a mut u32,
     var_heights: &'a mut HashMap<SsaVarId, u32>,
     var_stack: &'a mut Vec<SsaVarId>,
-    op: Option<ir::BinaryOp>,
+    op: Option<ir::Expr>,
 }
 
 impl<'a> XirBinaryExprVisitor<'a> {
@@ -2347,15 +2360,17 @@ impl<'a> XirBinaryExprVisitor<'a> {
 impl<'a> BinaryExprVisitor for XirBinaryExprVisitor<'a> {
     fn visit_op(&mut self, op: BinaryOp) {
         self.op = Some(match op {
-            BinaryOp::Add => ir::BinaryOp::Add,
-            BinaryOp::Sub => ir::BinaryOp::Sub,
-            BinaryOp::Mul => ir::BinaryOp::Mul,
-            BinaryOp::Div => ir::BinaryOp::Div,
-            BinaryOp::Rem => ir::BinaryOp::Mod,
-            BinaryOp::Less => ir::BinaryOp::CmpLt,
-            BinaryOp::Greater => ir::BinaryOp::CmpGt,
-            BinaryOp::Equal => ir::BinaryOp::CmpEq,
-            BinaryOp::BitAnd => ir::BinaryOp::BitAnd,
+            BinaryOp::Add => ir::Expr::BinaryOp(ir::BinaryOp::Add, ir::OverflowBehaviour::Wrap),
+            BinaryOp::Sub => ir::Expr::BinaryOp(ir::BinaryOp::Sub, ir::OverflowBehaviour::Wrap),
+            BinaryOp::Mul => ir::Expr::BinaryOp(ir::BinaryOp::Mul, ir::OverflowBehaviour::Wrap),
+            BinaryOp::Div => ir::Expr::BinaryOp(ir::BinaryOp::Div, ir::OverflowBehaviour::Wrap),
+            BinaryOp::Rem => ir::Expr::BinaryOp(ir::BinaryOp::Mod, ir::OverflowBehaviour::Wrap),
+            BinaryOp::Less => ir::Expr::CompareOp(ir::CompareOp::CmpLt, BOOL),
+            BinaryOp::Greater => ir::Expr::CompareOp(ir::CompareOp::CmpGt, BOOL),
+            BinaryOp::Equal => ir::Expr::CompareOp(ir::CompareOp::CmpEq, BOOL),
+            BinaryOp::BitAnd => {
+                ir::Expr::BinaryOp(ir::BinaryOp::BitAnd, ir::OverflowBehaviour::Wrap)
+            }
             x => todo!("{:?}", x),
         });
     }
@@ -2396,11 +2411,7 @@ impl<'a> BinaryExprVisitor for XirBinaryExprVisitor<'a> {
 impl<'a> Drop for XirBinaryExprVisitor<'a> {
     fn drop(&mut self) {
         *self.stack_height -= 2;
-        self.exprs.push(ir::Expr::BinaryOp(
-            self.op
-                .expect("BinaryExprVisitor::visit_op was never called"),
-            ir::OverflowBehaviour::Wrap,
-        ));
+        self.exprs.push(self.op.take().unwrap());
     }
 }
 

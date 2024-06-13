@@ -1565,6 +1565,20 @@ impl core::fmt::Display for Value {
 fake_enum::fake_enum! {
     #[repr(u16)]
     #[derive(Hash)]
+    pub enum struct CompareOp {
+        Cmp = 0,
+        CmpLt = 1,
+        CmpGt = 2,
+        CmpEq = 3,
+        CmpNe = 4,
+        CmpGe = 5,
+        CmpLe = 6,
+    }
+}
+
+fake_enum::fake_enum! {
+    #[repr(u16)]
+    #[derive(Hash)]
     pub enum struct BinaryOp {
         Add = 0,
         Sub = 1,
@@ -1577,13 +1591,7 @@ fake_enum::fake_enum! {
         Rsh = 8,
         Lsh = 9,
 
-        CmpLt = 11,
-        CmpGt = 12,
-        CmpEq = 13,
-        CmpNe = 14,
-        CmpGe = 15,
-        CmpLe = 16,
-        Cmp = 17,
+
     }
 }
 
@@ -1599,6 +1607,14 @@ impl core::fmt::Display for BinaryOp {
             Self::BitOr => f.write_str("bit_or"),
             Self::BitXor => f.write_str("bit_xor"),
             Self::Rsh => f.write_str("rsh"),
+            val => todo!("Invalid Operand {:?}", val),
+        }
+    }
+}
+
+impl core::fmt::Display for CompareOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
             Self::CmpLt => f.write_str("cmp_lt"),
             Self::CmpGt => f.write_str("cmp_gt"),
             Self::CmpLe => f.write_str("cmp_le"),
@@ -2048,6 +2064,8 @@ pub enum Expr {
     /// The overflow-behaviour is ignored (overflow-behaviour cannot be `checked`)
     ///
     UnaryOp(UnaryOp, OverflowBehaviour),
+    ///
+    CompareOp(CompareOp, ScalarType),
     Convert(ConversionStrength, Type),
     Derive(PointerType, Box<Self>),
     /// Obtains an lvalue that designates the specified local variable
@@ -2299,6 +2317,7 @@ impl core::fmt::Display for Expr {
                 f.write_str("const ")?;
                 val.fmt(f)
             }
+            Self::CompareOp(op, sty) => f.write_fmt(format_args!("{} {}", op, sty)),
             Self::BinaryOp(op, v) => f.write_fmt(format_args!("{} {}", op, v)),
             Self::UnaryOp(op, v) => f.write_fmt(format_args!("{} {}", op, v)),
             Self::Convert(strength, ty) => f.write_fmt(format_args!("convert {} {}", strength, ty)),
