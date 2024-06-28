@@ -6,19 +6,24 @@ use arch_ops::{
     },
 };
 use callconv::X86CallConvInfo;
+use std::io::Write;
+use std::vec as std_vec;
 use target_tuples::{Architecture, Target};
 use xlang::{
     abi::{pair::Pair, string::StringView},
     ir,
     plugin::XLangCodegen,
-    prelude::v1::{DynBox, HashMap},
+    prelude::v1::{vec, DynBox, HashMap, Vec},
     targets::properties::TargetProperties,
 };
 use xlang_backend::{
     callconv::{compute_call_conv, CallConvLocation},
     expr::Trap,
-    mach::Machine,
-    ssa::OpaquePtr,
+    mach::{
+        mce::{MceInstruction, MceWriter},
+        Machine,
+    },
+    ssa::{OpaquePtr, SsaInstruction},
     ty::TypeInformation,
     SsaCodegenPlugin,
 };
@@ -176,20 +181,20 @@ fn move_opcode(
 }
 
 impl X86Machine {
-    pub fn write_move<W: InsnWrite>(
+    pub fn write_move(
         &self,
-        writer: &mut X86Encoder<W>,
+        insns: &mut Vec<MceInstruction<X86Instruction>>,
         dest: &X86ValLocation,
         src: &X86ValLocation,
         assigns: &X86Assignments,
-    ) -> std::io::Result<()> {
+    ) {
         if dest == src {
-            return Ok(());
+            return;
         }
         match (dest, src) {
             (X86ValLocation::Null, X86ValLocation::Null)
             | (X86ValLocation::Null, X86ValLocation::StackDisp(_))
-            | (X86ValLocation::StackDisp(_), X86ValLocation::Null) => Ok(()),
+            | (X86ValLocation::StackDisp(_), X86ValLocation::Null) => {}
             (X86ValLocation::Register(dest), X86ValLocation::Register(src)) => {
                 if dest.class() != src.class() {
                     panic!("Cannot move between register classes")
@@ -201,10 +206,10 @@ impl X86Machine {
                     _ => {
                         let opcode = move_opcode(dest.class(), None, false);
 
-                        writer.write_insn(X86Instruction::new(
+                        insns.push(MceInstruction::BaseInsn(X86Instruction::new(
                             opcode,
-                            vec![X86Operand::Register(*dest), X86Operand::Register(*src)],
-                        ))
+                            std_vec![X86Operand::Register(*dest), X86Operand::Register(*src)],
+                        )))
                     }
                 }
             }
@@ -212,9 +217,9 @@ impl X86Machine {
                 let align = (1 << (off | -0x80000000).trailing_zeros()).max(assigns.stack_align);
                 let opcode: X86CodegenOpcode = move_opcode(reg.class(), Some(align), false);
 
-                writer.write_insn(X86Instruction::new(
+                insns.push(MceInstruction::BaseInsn(X86Instruction::new(
                     opcode,
-                    vec![
+                    std_vec![
                         X86Operand::Memory(
                             reg.class(),
                             None,
@@ -225,15 +230,15 @@ impl X86Machine {
                         ),
                         X86Operand::Register(*reg),
                     ],
-                ))
+                )));
             }
             (X86ValLocation::Register(reg), X86ValLocation::StackDisp(off)) => {
                 let align = (1 << (off | -0x80000000).trailing_zeros()).max(assigns.stack_align);
                 let opcode: X86CodegenOpcode = move_opcode(reg.class(), Some(align), false);
 
-                writer.write_insn(X86Instruction::new(
+                insns.push(MceInstruction::BaseInsn(X86Instruction::new(
                     opcode,
-                    vec![
+                    std_vec![
                         X86Operand::Register(*reg),
                         X86Operand::Memory(
                             reg.class(),
@@ -244,7 +249,7 @@ impl X86Machine {
                             },
                         ),
                     ],
-                ))
+                )));
             }
             (X86ValLocation::Null, X86ValLocation::Register(_))
             | (X86ValLocation::Register(_), X86ValLocation::Null) => {
@@ -257,7 +262,49 @@ impl X86Machine {
     }
 }
 
-impl Machine for X86Machine {
+impl MceWriter for X86Machine {
+    type Instruction = X86Instruction;
+
+    fn write_machine_code<W: InsnWrite, F: FnMut(u128, String)>(
+        &self,
+        insn: &[xlang_backend::mach::mce::MceInstruction<Self::Instruction>],
+        writer: &mut W,
+        sym_accepter: &mut F,
+    ) -> std::io::Result<()> {
+        let mut encoder = X86Encoder::new(writer, self.mode.unwrap());
+        for insn in insn {
+            match insn {
+                MceInstruction::BaseInsn(insn) => {
+                    encoder.write_insn(insn.clone())?;
+                }
+                xlang_backend::mach::mce::MceInstruction::PrivateLabel(label) => {
+                    sym_accepter(encoder.offset() as u128, label.clone());
+                }
+                xlang_backend::mach::mce::MceInstruction::RawBytes(bytes) => {
+                    encoder.write_all(bytes)?
+                }
+                xlang_backend::mach::mce::MceInstruction::Split(insns) => {
+                    self.write_machine_code(insns, &mut **encoder.inner_mut(), sym_accepter)?
+                }
+                xlang_backend::mach::mce::MceInstruction::Empty
+                | xlang_backend::mach::mce::MceInstruction::DisableAnalyze
+                | xlang_backend::mach::mce::MceInstruction::EnableAnalyze => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    fn write_assembly<W: core::fmt::Write>(
+        &self,
+        insn: &[MceInstruction<Self::Instruction>],
+        writer: &mut W,
+    ) -> core::fmt::Result {
+        todo!("x86 assembly output")
+    }
+}
+
+impl Machine<SsaInstruction> for X86Machine {
     fn matches_target(&self, targ: StringView) -> bool {
         let arch = Target::parse(&targ).arch();
         arch.is_x86() || arch == Architecture::X86_64
@@ -543,34 +590,28 @@ impl Machine for X86Machine {
         clobbers
     }
 
-    fn codegen_block<W: arch_ops::traits::InsnWrite, F: Fn(u32) -> std::prelude::v1::String>(
+    fn codegen_block<F: Fn(u32) -> std::prelude::v1::String>(
         &self,
         assignments: &Self::Assignments,
-        insns: &[xlang_backend::ssa::SsaInstruction],
+        ssa_insns: &[xlang_backend::ssa::SsaInstruction],
         block_clobbers: Self::BlockClobbers,
-        out: &mut W,
         label_sym: F,
         which: u32,
         tys: &TypeInformation,
-    ) -> std::io::Result<()> {
-        let mut encoder = X86Encoder::new(out, assignments.mode);
+    ) -> Vec<MceInstruction<X86Instruction>> {
+        let mut insns = Vec::new();
         let mut cur_locations = HashMap::<_, _>::new();
         for Pair(addr, loc) in &assignments.assigns {
             if loc.owning_bb == which {
                 cur_locations.insert(*addr, loc.foreign_location.clone());
             }
         }
-        for (num, insn) in insns.iter().enumerate() {
+        for (num, insn) in ssa_insns.iter().enumerate() {
             for Pair(addr, loc) in &assignments.assigns {
                 if loc.owning_bb == which {
                     for (at, new_loc) in &loc.change_owner {
                         if *at == num {
-                            self.write_move(
-                                &mut encoder,
-                                new_loc,
-                                &cur_locations[addr],
-                                assignments,
-                            )?;
+                            self.write_move(&mut insns, new_loc, &cur_locations[addr], assignments);
                             break;
                         }
                     }
@@ -579,59 +620,63 @@ impl Machine for X86Machine {
 
             match insn {
                 xlang_backend::ssa::SsaInstruction::Call(targ, _) => match &targ.ptr {
-                    OpaquePtr::Symbol(sym) => encoder.write_insn(X86Instruction::new(
-                        X86CodegenOpcode::Call,
-                        vec![X86Operand::RelOffset(Address::PltSym { name: sym.clone() })],
-                    ))?,
+                    OpaquePtr::Symbol(sym) => {
+                        insns.push(MceInstruction::BaseInsn(X86Instruction::new(
+                            X86CodegenOpcode::Call,
+                            std_vec![X86Operand::RelOffset(Address::PltSym { name: sym.clone() })],
+                        )))
+                    }
                     OpaquePtr::Pointer(ptr) => todo!("indirect call"),
                 },
                 xlang_backend::ssa::SsaInstruction::Jump(targ, _) => {
-                    encoder.write_insn(X86Instruction::new(
+                    insns.push(MceInstruction::BaseInsn(X86Instruction::new(
                         X86CodegenOpcode::Jmp,
-                        vec![X86Operand::RelOffset(Address::Symbol {
+                        std_vec![X86Operand::RelOffset(Address::Symbol {
                             name: label_sym(*targ),
                             disp: 0,
                         })],
-                    ))?;
+                    )));
                 }
                 xlang_backend::ssa::SsaInstruction::Fallthrough(_, _) => {}
                 xlang_backend::ssa::SsaInstruction::Exit(val) => {
                     if assignments.stack_width > 0 {
-                        encoder.write_insn(X86Instruction::new(
+                        insns.push(MceInstruction::BaseInsn(X86Instruction::new(
                             X86CodegenOpcode::Add,
-                            vec![
+                            std_vec![
                                 X86Operand::Register(assignments.sp),
                                 X86Operand::Immediate(assignments.stack_width as i64),
                             ],
-                        ))?;
+                        )));
                     }
-                    encoder.write_insn(X86Instruction::Ret)?;
+                    insns.push(MceInstruction::BaseInsn(X86Instruction::Ret));
                 }
                 xlang_backend::ssa::SsaInstruction::Tailcall(targ, _) => match &targ.ptr {
-                    OpaquePtr::Symbol(sym) => encoder.write_insn(X86Instruction::new(
-                        X86CodegenOpcode::Jmp,
-                        vec![X86Operand::RelOffset(Address::PltSym { name: sym.clone() })],
-                    ))?,
+                    OpaquePtr::Symbol(sym) => {
+                        insns.push(MceInstruction::BaseInsn(X86Instruction::new(
+                            X86CodegenOpcode::Jmp,
+                            std_vec![X86Operand::RelOffset(Address::PltSym { name: sym.clone() })],
+                        )))
+                    }
                     OpaquePtr::Pointer(ptr) => todo!("indirect call"),
                 },
                 xlang_backend::ssa::SsaInstruction::Trap(Trap::Breakpoint) => {
-                    encoder.write_insn(X86Instruction::Int3)?
+                    insns.push(MceInstruction::BaseInsn(X86Instruction::Int3))
                 }
                 xlang_backend::ssa::SsaInstruction::Trap(_) => {
-                    encoder.write_insn(X86Instruction::Ud2)?
+                    insns.push(MceInstruction::BaseInsn(X86Instruction::Ud2))
                 }
                 xlang_backend::ssa::SsaInstruction::LoadImmediate(loc, val) => {
                     if let Some(location) = cur_locations.get(&loc.num) {
                         match location {
                             X86ValLocation::Register(reg) => {
                                 let mov = move_opcode(reg.class(), None, true);
-                                encoder.write_insn(X86Instruction::new(
+                                insns.push(MceInstruction::BaseInsn(X86Instruction::new(
                                     mov,
-                                    vec![
+                                    std_vec![
                                         X86Operand::Register(*reg),
                                         X86Operand::Immediate((*val) as i64),
                                     ],
-                                ))?;
+                                )));
                             }
                             X86ValLocation::Null => {}
                             X86ValLocation::StackDisp(_) => todo!("memory"),
@@ -645,9 +690,9 @@ impl Machine for X86Machine {
                                 let lea = X86CodegenOpcode::Lea;
                                 let cl = reg.class();
 
-                                encoder.write_insn(X86Instruction::new(
+                                insns.push(MceInstruction::BaseInsn(X86Instruction::new(
                                     lea,
-                                    vec![
+                                    std_vec![
                                         X86Operand::Register(*reg),
                                         X86Operand::Memory(
                                             cl,
@@ -655,7 +700,7 @@ impl Machine for X86Machine {
                                             X86MemoryOperand::RelAddr(addr.clone()),
                                         ),
                                     ],
-                                ))?;
+                                )));
                             }
                             X86ValLocation::Null => {}
                             X86ValLocation::StackDisp(_) => todo!("memory"),
@@ -677,10 +722,13 @@ impl Machine for X86Machine {
 
                                 let xor = xor_opcode(reg.class(), is_int);
 
-                                encoder.write_insn(X86Instruction::new(
+                                insns.push(MceInstruction::BaseInsn(X86Instruction::new(
                                     xor,
-                                    vec![X86Operand::Register(*reg), X86Operand::Register(*reg)],
-                                ))?;
+                                    std_vec![
+                                        X86Operand::Register(*reg),
+                                        X86Operand::Register(*reg)
+                                    ],
+                                )));
                             }
                             X86ValLocation::Null => {}
                             X86ValLocation::StackDisp(_) => todo!("memory"),
@@ -690,26 +738,25 @@ impl Machine for X86Machine {
             }
         }
 
-        Ok(())
+        insns
     }
 
-    fn codegen_prologue<W: arch_ops::traits::InsnWrite>(
+    fn codegen_prologue(
         &self,
         assignments: &Self::Assignments,
-        out: &mut W,
-    ) -> std::io::Result<()> {
+    ) -> Vec<MceInstruction<X86Instruction>> {
+        let mut insns = Vec::new();
         if assignments.stack_width != 0 {
-            let mut encoder = X86Encoder::new(out, assignments.mode);
-            encoder.write_insn(X86Instruction::new(
+            insns.push(MceInstruction::BaseInsn(X86Instruction::new(
                 X86CodegenOpcode::Sub,
-                vec![
+                std_vec![
                     X86Operand::Register(assignments.sp),
                     X86Operand::Immediate(assignments.stack_width as i64),
                 ],
-            ))?;
+            )));
         }
 
-        Ok(())
+        insns
     }
 
     fn assign_call_conv(

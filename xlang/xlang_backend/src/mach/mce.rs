@@ -32,14 +32,14 @@ pub trait MceWriter {
     fn write_machine_code<W: InsnWrite, F: FnMut(u128, String)>(
         &self,
         insn: &[MceInstruction<Self::Instruction>],
-        writer: W,
-        sym_accepter: F,
+        writer: &mut W,
+        sym_accepter: &mut F,
     ) -> std::io::Result<()>;
     /// Writes the assembly syntax form of a sequence of [`MceInstruction`]s to a [`fmt::Write`][core::fmt::Write]
     fn write_assembly<W: core::fmt::Write>(
         &self,
         insn: &[MceInstruction<Self::Instruction>],
-        writer: W,
+        writer: &mut W,
     ) -> core::fmt::Result;
 
     /// Transforms a sequence of `insns` so that it is legal on the architecture, or emits an error if it cannot be legalized
