@@ -8,7 +8,7 @@ use std::{io::Write, rc::Rc};
 
 use arch_ops::traits::InsnWrite;
 use mach::Machine;
-use ssa::FunctionBuilder;
+use ssa::{FunctionBuilder, SsaInstruction};
 use str::StringMap;
 use ty::TypeInformation;
 use xlang::{
@@ -103,7 +103,7 @@ impl<M> SsaCodegenPlugin<M> {
     }
 }
 
-impl<M: Machine> XLangPlugin for SsaCodegenPlugin<M> {
+impl<M: Machine<SsaInstruction>> XLangPlugin for SsaCodegenPlugin<M> {
     fn accept_ir(
         &mut self,
         ir: &mut ir::File,
@@ -205,7 +205,7 @@ impl<M: Machine> XLangPlugin for SsaCodegenPlugin<M> {
     }
 }
 
-impl<M: Machine> XLangCodegen for SsaCodegenPlugin<M> {
+impl<M: Machine<SsaInstruction>> XLangCodegen for SsaCodegenPlugin<M> {
     fn target_matches(&self, x: xlang::abi::string::StringView) -> bool {
         self.mach.matches_target(x)
     }
@@ -216,8 +216,9 @@ impl<M: Machine> XLangCodegen for SsaCodegenPlugin<M> {
         mode: xlang::plugin::OutputMode,
     ) -> xlang::abi::io::Result<()> {
         let targ = self.targ.expect("set_target must have been called first");
+        let mut writer = WriteAdapter::new(x);
+
         if mode == xlang::plugin::OutputMode::Obj {
-            let mut writer = WriteAdapter::new(x);
             let fmt =
                 binfmt::format_by_name(&targ.link.obj_binfmt).expect("obj_binfmt is not supported");
 
@@ -277,7 +278,7 @@ impl<M: Machine> XLangCodegen for SsaCodegenPlugin<M> {
                     Linkage::Weak => SymbolKind::Weak,
                 };
 
-                if let Some(mut body) = def.body {
+                if let Some(body) = def.body {
                     let section = match def.section {
                         SectionSpec::Global => 0,
                     };
@@ -292,17 +293,22 @@ impl<M: Machine> XLangCodegen for SsaCodegenPlugin<M> {
                     );
                     syms.push(sym);
 
-                    try_!(body
-                        .write(&mut sections[section as usize], |name, offset| {
-                            let inner_sym = Symbol::new(
-                                name,
+                    let mut built = body.build();
+                    try_!(built.legalize(&*self.mach).map_err(Into::into));
+                    built.optimize(&*self.mach);
+
+                    try_!(built
+                        .write_machine_code(
+                            &*self.mach,
+                            &mut sections[section as usize],
+                            |val, sym| syms.push(Symbol::new(
+                                sym,
                                 section,
-                                offset,
-                                SymbolType::Null,
-                                SymbolKind::Local,
-                            );
-                            syms.push(inner_sym);
-                        })
+                                val,
+                                SymbolType::Function,
+                                SymbolKind::Local
+                            ))
+                        )
                         .map_err(Into::into));
 
                     *syms[sym_idx].size_mut() =

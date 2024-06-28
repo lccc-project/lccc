@@ -4,13 +4,13 @@ use core::cell::RefCell;
 use std::rc::Rc;
 
 use crate::expr::*;
+use crate::mach::mce::BuiltMceFunction;
 use crate::mach::Machine;
 use crate::ty::TypeInformation;
 
 use crate::str::StringMap;
 
 use arch_ops::traits::Address;
-use arch_ops::traits::InsnWrite;
 use xlang::abi::pair::Pair;
 use xlang::{ir::JumpTarget, targets::properties::TargetProperties};
 
@@ -311,52 +311,52 @@ impl<M> FunctionBuilder<M> {
     }
 }
 
-impl<M: Machine> FunctionBuilder<M> {
-    /// Writes the function to the given [`InsnWrite`], with the given function to accept a new symbol
-    pub fn write<W: InsnWrite, F: FnMut(String, u128)>(
-        &mut self,
-        out: &mut W,
-        mut sym_accepter: F,
-    ) -> std::io::Result<()> {
-        let mut assigns = self.mach.new_assignments();
-        let mut block_clobbers = vec![];
+impl<M: Machine<SsaInstruction>> FunctionBuilder<M> {
+    /// Builds the [`SsaInstruction`] function into a [`BuiltMceFunction`]
+    pub fn build(&self) -> BuiltMceFunction<M::Instruction> {
+        let mut assignments = self.mach.new_assignments();
 
-        if let Some(bb) = &self.basic_blocks.first() {
-            self.mach.assign_call_conv(
-                &mut assigns,
-                &self.incoming_locations[&bb.id],
-                &self.fnty,
-                &self.tys,
-                bb.id,
-            )
-        }
+        let mut block_clobbers = Vec::new();
+        let mut call_first = false;
 
         for bb in &self.basic_blocks {
+            let incoming = &self.incoming_locations[&bb.id];
+            if !call_first {
+                call_first = true;
+                self.mach.assign_call_conv(
+                    &mut assignments,
+                    incoming,
+                    &self.fnty,
+                    &self.tys,
+                    bb.id,
+                );
+            }
             block_clobbers.push(self.mach.assign_locations(
-                &mut assigns,
+                &mut assignments,
                 &bb.insns,
-                self.incoming_locations.get(&bb.id).unwrap(),
+                incoming,
                 bb.id,
                 &self.incoming_locations,
                 &self.tys,
             ));
         }
 
-        self.mach.codegen_prologue(&assigns, out)?;
-        for (bb, block_clobbers) in self.basic_blocks.iter().zip(block_clobbers) {
-            let symbol = format!("{}._B{}", self.sym_name, bb.id);
-            sym_accepter(symbol, out.offset() as u128);
-            self.mach.codegen_block(
-                &assigns,
+        let mut mce = BuiltMceFunction::new(self.mach.codegen_prologue(&assignments));
+
+        for (bb, clobbers) in self.basic_blocks.iter().zip(block_clobbers) {
+            let st = format!("{}._T{}", self.sym_name, bb.id);
+            let insns = self.mach.codegen_block(
+                &assignments,
                 &bb.insns,
-                block_clobbers,
-                out,
-                |id| format!("{}._B{}", self.sym_name, id),
+                clobbers,
+                |id| format!("{}._T{}", self.sym_name, id),
                 bb.id,
                 &self.tys,
-            )?;
+            );
+            mce.push_basic_block(st, insns);
         }
-        Ok(())
+
+        mce
     }
 }
 
@@ -389,7 +389,7 @@ pub struct BasicBlockBuilder<M> {
     string_interner: Rc<RefCell<StringMap>>,
 }
 
-impl<M: Machine> BasicBlockBuilder<M> {
+impl<M: Machine<SsaInstruction>> BasicBlockBuilder<M> {
     /// Moves the given [`VStackValue`] into the specified [`OpaqueLocation`], generating appropriate loads and move instructions to place both transparent and opaque values in the new location
     pub fn move_into(&mut self, val: VStackValue<OpaqueLocation>, loc: OpaqueLocation) {
         match val {

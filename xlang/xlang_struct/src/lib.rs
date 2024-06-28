@@ -2371,6 +2371,7 @@ bitflags::bitflags! {
     /// jump-target-flag := "fallthrough" / "cold" / "continue"
     /// ```
     #[repr(transparent)]
+    #[derive(Default)]
     pub struct JumpTargetFlags : u32{
         /// The "fallthrough" flag.
         /// Indicates that the jump does not perform a branch but instead continues on to the next basic block
@@ -2403,7 +2404,7 @@ impl core::fmt::Display for JumpTargetFlags {
 /// jump-target := [*(<jump-target-flags>)] @<int-literal>
 /// ```
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct JumpTarget {
     /// The flags for the jump
     pub flags: JumpTargetFlags,
