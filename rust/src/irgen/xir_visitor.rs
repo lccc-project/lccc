@@ -34,8 +34,8 @@ use super::visitor::{
     ConstructorVisitor, ExprVisitor, FieldAccessVisitor, FieldInitVisitor, FieldVisitor,
     FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, IntTyVisitor, JumpVisitor,
     LetStatementVisitor, ModVisitor, PointerTyVisitor, ReferenceTyVisitor, StatementVisitor,
-    TailcallVisitor, TerminatorVisitor, TupleExprVisitor, TupleTyVisitor, TypeDefVisitor,
-    TypeVisitor, UnaryExprVisitor, ValueDefVisitor,
+    TerminatorVisitor, TupleExprVisitor, TupleTyVisitor, TypeDefVisitor, TypeVisitor,
+    UnaryExprVisitor, ValueDefVisitor,
 };
 use super::NameMap;
 
@@ -1572,29 +1572,38 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
     }
 
     fn visit_next(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
-        Some(Box::new(XirJumpVisitor::new(
-            self.defs,
-            self.names,
-            self.properties,
-            self.deftys,
-            self.cur_fnty,
-            &mut self.block.expr,
-            self.targ.insert(ir::JumpTarget {
-                flags: ir::JumpTargetFlags::empty(),
-                target: !0,
-            }),
-            self.locals,
-            self.ssa_tys,
-            self.stack_height,
-            self.var_heights,
-            self.var_stack,
-            self.param_count + 1,
-            false,
-        )))
+        self.block.term = ir::Terminator::Call(
+            ir::CallFlags::empty(),
+            XLangBox::new(core::mem::take(&mut self.fnty)),
+            ir::JumpTarget::default(),
+        );
+        match &mut self.block.term {
+            ir::Terminator::Call(_, _, targ) => Some(Box::new(XirJumpVisitor::new(
+                self.defs,
+                self.names,
+                self.properties,
+                self.deftys,
+                self.cur_fnty,
+                &mut self.block.expr,
+                targ,
+                self.locals,
+                self.ssa_tys,
+                self.stack_height,
+                self.var_heights,
+                self.var_stack,
+                self.param_count + 1,
+                false,
+            ))),
+            _ => unreachable!(),
+        }
     }
 
-    fn visit_intrinsic(&mut self, intrin: IntrinsicDef, generics: &generics::GenericArgs) {
-        todo!("{}{}", intrin.name(), generics)
+    fn visit_intrinsic(
+        &mut self,
+        intrin: IntrinsicDef,
+        generics: &generics::GenericArgs,
+    ) -> Option<Box<dyn BasicBlockVisitor + 'a>> {
+        todo!("{} {}", intrin.name(), generics)
     }
 
     fn visit_tailcall(&mut self) {
@@ -1603,17 +1612,9 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
             XLangBox::new(core::mem::take(&mut self.fnty)),
         );
     }
-}
 
-impl<'a> Drop for XirCallVisitor<'a> {
-    fn drop(&mut self) {
-        if let Some(targ) = self.targ.take() {
-            self.block.term = ir::Terminator::Call(
-                ir::CallFlags::empty(),
-                XLangBox::new(core::mem::take(&mut self.fnty)),
-                targ,
-            );
-        }
+    fn visit_unwind(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
+        None
     }
 }
 

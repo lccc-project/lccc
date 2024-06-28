@@ -196,7 +196,7 @@ macro_rules! parse_attribute {
 macro_rules! def_intrinsics {
     {
         default |$this_block:ident, $next_block:ident, $unwind_block:ident|;
-        $($(#[$meta:ident])* $(unsafe $(@$_vol:tt)?)? intrin $name:ident $(<$($gen_param:ident),* $(,)?>)?($($param:ty),* $(,)?) -> $retty:ty $($([$($lang_name:ident = $lang_item:expr),*])? {$($inner_tt:tt)*})? $(; $(@$_vol2:tt)?)?)*
+        $($(#[$meta:ident])* $(unsafe $(@$_vol:tt)?)? intrin $name:ident $(<$($gen_param:ident),* $(,)?>)?($($param_name:ident: $param:ty),* $(,)?) -> $retty:ty $($([$($lang_name:ident = $lang_item:expr),*])? {$($inner_tt:tt)*})? $(; $(@$_vol2:tt)?)?)*
     } => {
         #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
         #[allow(non_camel_case_types)]
@@ -232,11 +232,15 @@ macro_rules! def_intrinsics {
             }
 
             #[allow(dead_code, unused_variables)]
-            pub fn default_body(&self, defs: &$crate::sema::Definitions, $this_block: $crate::sema::mir::BasicBlockId, $next_block: $crate::sema::mir::BasicBlockId, $unwind_block: $crate::sema::mir::BasicBlockId) -> Option<$crate::sema::mir::MirBasicBlock>{
+            pub fn default_body(&self, defs: &$crate::sema::Definitions, $this_block: $crate::sema::mir::BasicBlockId, $next_block: $crate::sema::mir::BasicBlockId, $unwind_block: $crate::sema::mir::BasicBlockId, param_vars: &[$crate::sema::mir::SsaVarId]) -> Option<$crate::sema::mir::MirBasicBlock>{
                 match self{
                     $(Self::$name => {
                         $($($(let $lang_name = defs.get_lang_item($lang_item)?;)*)?)?
-                        parse_default_body!($({$($inner_tt)*})? $(; $(@$_vol2)?)?)
+                        match param_vars{
+                            [$($param_name),*] => parse_default_body!($({$($inner_tt)*})? $(; $(@$_vol2)?)?),
+                            params => panic!("Bad call to intrinsic {}. ", ::core::stringify!($name))
+                        }
+
                     }),*
                 }
             }
@@ -260,37 +264,37 @@ def_intrinsics! {
         }
     }
     #[unobservable]
-    unsafe intrin __builtin_assume(bool) -> ();
+    unsafe intrin __builtin_assume(val: bool) -> ();
     intrin __builtin_abort() -> !;
     #[unobservable]
     intrin impl_id() -> &str;
-    unsafe intrin __builtin_allocate<type>(Var<0>) -> *mut u8;
-    unsafe intrin __builtin_deallocate<type>(Var<0>, *mut u8) -> ();
+    unsafe intrin __builtin_allocate<type>(layout: Var<0>) -> *mut u8;
+    unsafe intrin __builtin_deallocate<type>(layout: Var<0>, ptr: *mut u8) -> ();
     #[unobservable]
     intrin type_id<type>() -> (*const u8, usize);
     #[unobservable]
     intrin type_name<type>() -> &str;
-    intrin destroy_at<type>(*mut Var<0>) -> ();
+    intrin destroy_at<type>(ptr: *mut Var<0>) -> ();
     #[unobservable]
-    intrin discriminant<type, type>(&Var<0>) -> Var<1>;
+    intrin discriminant<type, type>(val: &Var<0>) -> Var<1>;
     #[unobservable]
-    unsafe intrin transmute<type, type>(Var<0>) -> Var<1>;
-    intrin black_box<type>(Var<0>) -> Var<1>;
+    unsafe intrin transmute<type, type>(val: Var<0>) -> Var<1>;
+    intrin black_box<type>(val: Var<0>) -> Var<1>;
 
-    unsafe intrin construct_in_place<type, type, type>(*mut Var<0>, Var<1>, Var<2>) -> ();
+    unsafe intrin construct_in_place<type, type, type>(dest: *mut Var<0>, f: Var<1>, params: Var<2>) -> ();
 
     #[unobservable]
-    unsafe intrin __builtin_read<type>(*const Var<0>) -> Var<0>{
+    unsafe intrin __builtin_read<type>(ptr: *const Var<0>) -> Var<0>{
         @<this>: { [_0: *const %0]
             return read(*_0)
         }
     }
     #[unobservable]
-    unsafe intrin __builtin_read_freeze<type>(*const Var<0>) -> Var<0>;
-    unsafe intrin __builtin_read_volatile<type>(*const Var<0>) -> Var<0>;
+    unsafe intrin __builtin_read_freeze<type>(ptr: *const Var<0>) -> Var<0>;
+    unsafe intrin __builtin_read_volatile<type>(ptr: *const Var<0>) -> Var<0>;
     #[unobservable]
-    unsafe intrin __builtin_write<type>(*mut Var<0>,Var<0>) -> ();
-    unsafe intrin __builtin_write_volatile<type>(*mut Var<0>, Var<0>) -> ();
+    unsafe intrin __builtin_write<type>(ptr: *mut Var<0>,val: Var<0>) -> ();
+    unsafe intrin __builtin_write_volatile<type>(ptr: *mut Var<0>, val: Var<0>) -> ();
 
     #[unobservable]
     intrin __builtin_size_of<type>() -> usize;
@@ -298,61 +302,59 @@ def_intrinsics! {
     intrin __builtin_align_of<type>() -> usize;
 
     #[unobservable]
-    intrin __builtin_size_of_val<type>(*const Var<0>) -> usize;
+    intrin __builtin_size_of_val<type>(val: *const Var<0>) -> usize;
     #[unobservable]
-    intrin __builtin_align_of_val<type>(*const Var<0>) -> usize;
+    intrin __builtin_align_of_val<type>(val: *const Var<0>) -> usize;
 
     #[unobservable]
-    intrin __builtin_likely(bool) -> bool;
+    intrin __builtin_likely(val: bool) -> bool;
     #[unobservable]
-    intrin __builtin_unlikely(bool) -> bool;
+    intrin __builtin_unlikely(val: bool) -> bool;
 
     #[unobservable]
-    intrin __builtin_cmp<type, type>(Var<0>, Var<0>) -> Var<1>;
+    intrin __builtin_cmp<type, type>(a: Var<0>, b: Var<0>) -> Var<1>;
     #[unobservable]
-    intrin __builtin_max<type>(Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_max<type>(a: Var<0>, b: Var<0>) -> Var<0>;
     #[unobservable]
-    intrin __builtin_min<type>(Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_min<type>(a: Var<0>, b: Var<0>) -> Var<0>;
     #[unobservable]
-    intrin __builtin_clamp<type>(Var<0>, Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_clamp<type>(val: Var<0>, min: Var<0>, max: Var<0>) -> Var<0>;
 
     #[unobservable]
-    intrin __builtin_fadd_fast<type>(Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_fadd_fast<type>(a: Var<0>, b: Var<0>) -> Var<0>;
     #[unobservable]
-    intrin __builtin_fsub_fast<type>(Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_fsub_fast<type>(a: Var<0>, b: Var<0>) -> Var<0>;
     #[unobservable]
-    intrin __builtin_fmul_fast<type>(Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_fmul_fast<type>(a: Var<0>, b: Var<0>) -> Var<0>;
     #[unobservable]
-    intrin __builtin_fdiv_fast<type>(Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_fdiv_fast<type>(a: Var<0>, b: Var<0>) -> Var<0>;
     #[unobservable]
-    intrin __builtin_frem_fast<type>(Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_frem_fast<type>(a: Var<0>, b: Var<0>) -> Var<0>;
     #[unobservable]
-    intrin __builtin_ffma_fast<type>(Var<0>, Var<0>, Var<0>) -> Var<0>;
+    intrin __builtin_ffma_fast<type>(a: Var<0>, b: Var<0>, c: Var<0>) -> Var<0>;
     #[unobservable]
-    intrin __builtin_fneg_fast<type>(Var<0>) -> Var<0>;
+    intrin __builtin_fneg_fast<type>(a: Var<0>) -> Var<0>;
 
     #[unobservable]
-    unsafe intrin __atomic_load<type, const>(*mut Var<0>) -> Var<0>;
+    unsafe intrin __atomic_load<type, const>(ptr: *mut Var<0>) -> Var<0>;
     #[unobservable]
-    unsafe intrin __atomic_store<type, const>(*mut Var<0>, Var<0>) -> ();
+    unsafe intrin __atomic_store<type, const>(dest: *mut Var<0>, val: Var<0>) -> ();
     #[unobservable]
-    unsafe intrin __atomic_compare_exchange_strong<type, const, const>(*mut Var<0>, *mut Var<0>, Var<0>) -> bool;
+    unsafe intrin __atomic_compare_exchange_strong<type, const, const>(dest: *mut Var<0>, expected: *mut Var<0>, new: Var<0>) -> bool;
     #[unobservable]
-    unsafe intrin __atomic_compare_exchange_weak<type, const, const>(*mut Var<0>, *mut Var<0>, Var<0>) -> bool;
+    unsafe intrin __atomic_compare_exchange_weak<type, const, const>(dest: *mut Var<0>, expected: *mut Var<0>, new: Var<0>) -> bool;
     #[unobservable]
-    unsafe intrin __atomic_swap<type, const>(*mut Var<0>, Var<0>) -> Var<0>;
+    unsafe intrin __atomic_swap<type, const>(dest: *mut Var<0>, new: Var<0>) -> Var<0>;
     #[unobservable]
-    unsafe intrin __atomic_fetch_add<type, const>(*mut Var<0>, Var<0>) -> Var<0>;
+    unsafe intrin __atomic_fetch_add<type, const>(dest: *mut Var<0>, val: Var<0>) -> Var<0>;
     #[unobservable]
-    unsafe intrin __atomic_fetch_sub<type, const>(*mut Var<0>, Var<0>) -> Var<0>;
+    unsafe intrin __atomic_fetch_sub<type, const>(dest: *mut Var<0>, val: Var<0>) -> Var<0>;
+
 
     #[unobservable]
-    unsafe intrin __atomic_begin_transaction<type>(*mut Var<0>) -> bool;
-
+    unsafe intrin __atomic_read_in_transaction<type, const>(ptr: *mut Var<0>) -> Var<0>;
     #[unobservable]
-    unsafe intrin __atomic_read_in_transaction<type, const>(*mut Var<0>) -> Var<0>;
+    unsafe intrin __atomic_write_in_transaction<type, const>(ptr: *mut Var<0>, val: Var<0>) -> ();
     #[unobservable]
-    unsafe intrin __atomic_write_in_transaction<type, const>(*mut Var<0>, Var<0>) -> ();
-    #[unobservable]
-    unsafe intrin __atomic_commit_transaction<type>(*mut Var<0>) -> i32;
+    unsafe intrin __atomic_commit_transaction<type>(ptr: *mut Var<0>) -> i32;
 }

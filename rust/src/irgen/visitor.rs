@@ -9,7 +9,7 @@ use crate::{
         cx, generics,
         hir::BinaryOp,
         intrin::IntrinsicDef,
-        mir::{self, SsaVarId, UnaryOp},
+        mir::{self, BasicBlockId, SsaVarId, UnaryOp},
         ty, Attr, Constructor, DefId, DefinitionInner, Definitions, FunctionBody, UserTypeKind,
     },
 };
@@ -346,19 +346,24 @@ pub fn visit_call<V: CallVisitor>(mut visitor: V, info: &mir::MirCallInfo, defs:
     if visitor.is_none() {
         return;
     }
-    visitor.visit_retplace(info.retplace.body);
-    visit_fnty(visitor.visit_fnty(), &info.fnty, defs);
+
     if let mir::MirExpr::Intrinsic(intrin, generics) = &info.targ.body {
-        visitor.visit_intrinsic(*intrin, generics)
+        visitor.visit_intrinsic(*intrin, generics);
     } else {
         visit_expr(visitor.visit_target(), &info.targ, defs);
     }
+
+    visitor.visit_retplace(info.retplace.body);
+    visit_fnty(visitor.visit_fnty(), &info.fnty, defs);
 
     for expr in &info.params {
         visit_expr(visitor.visit_param(), expr, defs);
     }
 
     visit_jump(visitor.visit_next(), &info.next);
+    if let Some(uw) = &info.unwind {
+        visit_jump(visitor.visit_unwind(), &uw);
+    }
 }
 
 #[allow(unused_variables, unused_mut)]
@@ -373,7 +378,7 @@ pub fn visit_tailcall<V: CallVisitor>(
     visit_fnty(visitor.visit_fnty(), &info.fnty, defs);
 
     if let mir::MirExpr::Intrinsic(intrin, generics) = &info.targ.body {
-        visitor.visit_intrinsic(*intrin, generics)
+        visitor.visit_intrinsic(*intrin, generics);
     } else {
         visit_expr(visitor.visit_target(), &info.targ, defs);
     }
@@ -382,7 +387,10 @@ pub fn visit_tailcall<V: CallVisitor>(
         visit_expr(visitor.visit_param(), expr, defs);
     }
 
-    visitor.visit_tailcall()
+    visitor.visit_tailcall();
+    if let Some(uw) = &info.unwind {
+        visit_jump(visitor.visit_unwind(), &uw);
+    }
 }
 
 pub fn visit_branch<V: BranchVisitor>(
@@ -819,18 +827,9 @@ def_visitors! {
         fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>>;
         fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
         fn visit_next(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
-        fn visit_intrinsic(&mut self, intrin: IntrinsicDef, generics: &generics::GenericArgs);
+        fn visit_intrinsic(&mut self, intrin: IntrinsicDef, generics: &generics::GenericArgs) -> Option<Box<dyn BasicBlockVisitor + '_>>;
         fn visit_tailcall(&mut self);
-
-        // TODO: visit unwind
-    }
-
-    pub trait TailcallVisitor {
-        fn visit_target(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
-        fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>>;
-        fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
-        fn visit_intrinsic(&mut self, intrin: IntrinsicDef);
-        // TODO: visit unwind
+        fn visit_unwind(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
     }
 
     pub trait BranchVisitor {
