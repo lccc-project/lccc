@@ -488,7 +488,9 @@ impl Machine<SsaInstruction> for X86Machine {
                     }
                 }
                 xlang_backend::ssa::SsaInstruction::Jump(targ, old_locs)
-                | xlang_backend::ssa::SsaInstruction::Fallthrough(targ, old_locs) => {
+                | xlang_backend::ssa::SsaInstruction::Fallthrough(targ, old_locs)
+                | SsaInstruction::Branch(_, _, _, targ, old_locs)
+                | SsaInstruction::BranchZero(_, _, targ, old_locs) => {
                     let foreign_locs = &incoming_set[targ];
 
                     for (old_loc, new_loc) in old_locs.iter().zip(foreign_locs) {
@@ -805,6 +807,8 @@ impl Machine<SsaInstruction> for X86Machine {
                         }
                     }
                 }
+                SsaInstruction::Branch(_, _, _, _, _) => todo!("branch"),
+                SsaInstruction::BranchZero(_, _, _, _) => todo!("branch"),
             }
         }
 

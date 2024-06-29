@@ -1730,6 +1730,21 @@ pub enum BranchCondition {
     Never,
 }
 
+impl BranchCondition {
+    pub const fn invert(self) -> BranchCondition {
+        match self {
+            Self::Always => Self::Never,
+            Self::Less => Self::GreaterEqual,
+            Self::LessEqual => Self::Greater,
+            Self::Equal => Self::NotEqual,
+            Self::NotEqual => Self::Equal,
+            Self::Greater => Self::LessEqual,
+            Self::GreaterEqual => Self::Less,
+            Self::Never => Self::Always,
+        }
+    }
+}
+
 impl core::fmt::Display for BranchCondition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

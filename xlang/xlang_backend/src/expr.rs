@@ -1,6 +1,6 @@
 use xlang::{
-    abi::{collection::HashMap, option::None as XLangNone, pair::Pair},
-    ir::{ArrayType, Path, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type, Value},
+    abi::{collection::HashMap, pair::Pair},
+    ir::{ArrayType, CompareOp, Path, PointerType, ScalarType, Type, Value},
 };
 
 use core::{fmt::Debug, hash::Hash};
@@ -10,6 +10,9 @@ use std::num::NonZeroU128;
 pub trait ValLocation: Eq + Debug + Clone {
     /// Checks if this location is addressable (is not a register)
     fn addressible(&self) -> bool;
+
+    /// Returns the type of the value location
+    fn val_type(&self) -> &Type;
 }
 
 /// The pointee of a pointer
@@ -72,7 +75,7 @@ pub enum VStackValue<Loc: ValLocation> {
     OpaqueAggregate(Type, Loc),
 
     /// The result of the `cmp` instruction
-    CompareResult(Box<VStackValue<Loc>>, Box<VStackValue<Loc>>),
+    CompareResult(CompareOp, ScalarType, Loc, Loc),
 
     /// Placeholder for a value that's already caused a [`Trap`]
     Trapped,
@@ -108,8 +111,8 @@ impl<Loc: ValLocation> core::fmt::Display for VStackValue<Loc> {
             VStackValue::OpaqueAggregate(ty, loc) => {
                 f.write_fmt(format_args!("{} (opaque({:?}))", ty, loc))
             }
-            VStackValue::CompareResult(l, r) => {
-                f.write_fmt(format_args!("cmp result ({},{})", l, r))
+            VStackValue::CompareResult(op, ty, l, r) => {
+                f.write_fmt(format_args!("{} result ({:?},{:?}): {}", op, l, r, ty))
             }
             VStackValue::Trapped => f.write_str("trapped"),
             VStackValue::ArrayRepeat(value, count) => {
@@ -178,17 +181,7 @@ impl<Loc: ValLocation> VStackValue<Loc> {
             VStackValue::OpaqueScalar(scalar, _) => Type::Scalar(*scalar),
             VStackValue::AggregatePieced(ty, _) => ty.clone(),
             VStackValue::OpaqueAggregate(ty, _) => ty.clone(),
-            VStackValue::CompareResult(_, _) => Type::Scalar(ScalarType {
-                header: ScalarTypeHeader {
-                    bitsize: 32,
-                    ..Default::default()
-                },
-                kind: ScalarTypeKind::Integer {
-                    signed: false,
-                    min: XLangNone,
-                    max: XLangNone,
-                },
-            }),
+            VStackValue::CompareResult(_, sty, _, _) => Type::Scalar(*sty),
             VStackValue::Trapped => Type::Null,
             VStackValue::ArrayRepeat(val, len) => {
                 Type::Array(xlang::abi::boxed::Box::new(ArrayType {
@@ -232,6 +225,10 @@ impl ValLocation for NoOpaque {
     fn addressible(&self) -> bool {
         match *self {}
     }
+
+    fn val_type(&self) -> &Type {
+        match *self {}
+    }
 }
 
 impl VStackValue<NoOpaque> {
@@ -251,10 +248,7 @@ impl VStackValue<NoOpaque> {
                     .collect(),
             ),
             VStackValue::OpaqueAggregate(_, loc) => match loc {},
-            VStackValue::CompareResult(left, right) => VStackValue::CompareResult(
-                Box::new((*left).into_transparent_for()),
-                Box::new((*right).into_transparent_for()),
-            ),
+            VStackValue::CompareResult(_, _, left, _) => match left {},
             VStackValue::Trapped => VStackValue::Trapped,
             VStackValue::ArrayRepeat(val, count) => {
                 VStackValue::ArrayRepeat(Box::new((*val).into_transparent_for()), count)

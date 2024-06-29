@@ -12,6 +12,9 @@ use crate::str::StringMap;
 
 use arch_ops::traits::Address;
 use xlang::abi::pair::Pair;
+use xlang::ir::BranchCondition;
+use xlang::ir::CompareOp;
+use xlang::ir::JumpTargetFlags;
 use xlang::{ir::JumpTarget, targets::properties::TargetProperties};
 
 use xlang::ir;
@@ -65,6 +68,16 @@ pub enum SsaInstruction {
     LoadSymAddr(OpaqueLocation, Address),
     /// Initializes a (potentially large) memory location with zeroes
     ZeroInit(OpaqueLocation),
+    /// Conditionally branches to the destination basic block if the comparison is satisfied.
+    Branch(
+        BranchCondition,
+        OpaqueLocation,
+        OpaqueLocation,
+        u32,
+        Vec<OpaqueLocation>,
+    ),
+    /// Conditionally branches to the destination basic block if the comparison with the value `0` is satisfied.
+    BranchZero(BranchCondition, OpaqueLocation, u32, Vec<OpaqueLocation>),
 }
 
 impl core::fmt::Display for SsaInstruction {
@@ -133,6 +146,26 @@ impl core::fmt::Display for SsaInstruction {
                 f.write_fmt(format_args!("loadsymaddr {}, {}", dest, addr))
             }
             SsaInstruction::ZeroInit(dest) => f.write_fmt(format_args!("zeroinit {}", dest)),
+            SsaInstruction::Branch(op, l, r, dest, stack) => {
+                f.write_fmt(format_args!("branch {op} ({l}, {r}) @{dest} ["))?;
+                let mut sep = "";
+                for item in stack {
+                    f.write_str(sep)?;
+                    sep = ", ";
+                    item.fmt(f)?;
+                }
+                f.write_str("]")
+            }
+            SsaInstruction::BranchZero(op, l, dest, stack) => {
+                f.write_fmt(format_args!("branch {op} ({l}, 0) @{dest} ["))?;
+                let mut sep = "";
+                for item in stack {
+                    f.write_str(sep)?;
+                    sep = ", ";
+                    item.fmt(f)?;
+                }
+                f.write_str("]")
+            }
         }
     }
 }
@@ -199,6 +232,10 @@ impl core::fmt::Display for OpaqueLocation {
 impl ValLocation for OpaqueLocation {
     fn addressible(&self) -> bool {
         self.has_addr
+    }
+
+    fn val_type(&self) -> &ir::Type {
+        &self.ty
     }
 }
 
@@ -444,7 +481,7 @@ impl<M: Machine<SsaInstruction>> BasicBlockBuilder<M> {
                 }
             }
             VStackValue::OpaqueAggregate(_, _) => todo!(),
-            VStackValue::CompareResult(_, _) => todo!(),
+            VStackValue::CompareResult(_, _, _, _) => todo!(),
             VStackValue::Trapped => todo!(),
             VStackValue::ArrayRepeat(_, _) => todo!(),
         }
@@ -509,6 +546,24 @@ impl<M: Machine<SsaInstruction>> BasicBlockBuilder<M> {
             .collect();
         self.vstack = vstack;
         ret
+    }
+
+    /// Pops `N` values as opaque locations from the basic block's eval stack and returns them as a vector, moving them into a new [`OpaqueLocation`] if necessary.
+    ///
+    /// This provides better destructuring when the number of values is known.
+    pub fn pop_opaque_static<const N: usize>(&mut self) -> [OpaqueLocation; N] {
+        use core::mem::MaybeUninit;
+        let mut val = MaybeUninit::<[_; N]>::uninit();
+        let mut ptr = val.as_mut_ptr().cast::<OpaqueLocation>();
+        let mut vstack = core::mem::take(&mut self.vstack);
+
+        for val in vstack.drain_back(N) {
+            unsafe { ptr.write(self.make_opaque(val)) };
+            ptr = unsafe { ptr.add(1) };
+        }
+        self.vstack = vstack;
+        // SAFETY: We just initialized all `N` elements
+        unsafe { val.assume_init() }
     }
 
     /// Returns the [`OpaqueLocation`] currently storing the specified [`VStackValue`], if any,
@@ -614,7 +669,7 @@ impl<M: Machine<SsaInstruction>> BasicBlockBuilder<M> {
             VStackValue::OpaqueScalar(_, _) => todo!(),
             VStackValue::AggregatePieced(_, _) => todo!(),
             VStackValue::OpaqueAggregate(_, _) => todo!(),
-            VStackValue::CompareResult(_, _) => todo!(),
+            VStackValue::CompareResult(_, _, _, _) => todo!(),
             VStackValue::Trapped => todo!(),
             VStackValue::ArrayRepeat(_, _) => todo!(),
         }
@@ -767,7 +822,11 @@ impl<M: Machine<SsaInstruction>> BasicBlockBuilder<M> {
             ir::Expr::BeginStorage(_) => todo!("begin storage"),
             ir::Expr::EndStorage(_) => todo!("end storage"),
             ir::Expr::Select(_) => todo!("select"),
-            ir::Expr::CompareOp(_, _) => todo!("compare op"),
+            ir::Expr::CompareOp(op, sty) => {
+                let [val1, val2] = self.pop_opaque_static();
+
+                self.push(VStackValue::CompareResult(*op, *sty, val1, val2));
+            }
         }
     }
 
@@ -783,7 +842,142 @@ impl<M: Machine<SsaInstruction>> BasicBlockBuilder<M> {
             ir::Terminator::Jump(targ) => {
                 self.write_jump(targ, core::iter::empty());
             }
-            ir::Terminator::Branch(_, _, _) => todo!("branch"),
+            ir::Terminator::Branch(cond, targ1, targ2) => {
+                let cond_val = self.pop();
+
+                let (real_cond, val1, val2) = match (cond_val, cond) {
+                    (_, cond @ (BranchCondition::Always | BranchCondition::Never)) => {
+                        (*cond, None, None)
+                    }
+                    (VStackValue::CompareResult(CompareOp::Cmp, _, l, r), cond) => {
+                        (*cond, Some(l), Some(r))
+                    }
+                    (
+                        VStackValue::CompareResult(CompareOp::CmpEq, _, l, r),
+                        BranchCondition::NotEqual,
+                    )
+                    | (
+                        VStackValue::CompareResult(CompareOp::CmpNe, _, l, r),
+                        BranchCondition::Equal,
+                    ) => (BranchCondition::NotEqual, Some(l), Some(r)),
+                    (
+                        VStackValue::CompareResult(CompareOp::CmpNe, _, l, r),
+                        BranchCondition::NotEqual,
+                    )
+                    | (
+                        VStackValue::CompareResult(CompareOp::CmpEq, _, l, r),
+                        BranchCondition::Equal,
+                    ) => (BranchCondition::NotEqual, Some(l), Some(r)),
+                    (
+                        VStackValue::CompareResult(CompareOp::CmpLt, _, l, r),
+                        BranchCondition::NotEqual,
+                    )
+                    | (
+                        VStackValue::CompareResult(CompareOp::CmpGe, _, l, r),
+                        BranchCondition::Equal,
+                    ) => (BranchCondition::Less, Some(l), Some(r)),
+                    (
+                        VStackValue::CompareResult(CompareOp::CmpLe, _, l, r),
+                        BranchCondition::NotEqual,
+                    )
+                    | (
+                        VStackValue::CompareResult(CompareOp::CmpGt, _, l, r),
+                        BranchCondition::Equal,
+                    ) => (BranchCondition::LessEqual, Some(l), Some(r)),
+                    (
+                        VStackValue::CompareResult(CompareOp::CmpGt, _, l, r),
+                        BranchCondition::NotEqual,
+                    )
+                    | (
+                        VStackValue::CompareResult(CompareOp::CmpLe, _, l, r),
+                        BranchCondition::Equal,
+                    ) => (BranchCondition::Greater, Some(l), Some(r)),
+                    (
+                        VStackValue::CompareResult(CompareOp::CmpGe, _, l, r),
+                        BranchCondition::NotEqual,
+                    )
+                    | (
+                        VStackValue::CompareResult(CompareOp::CmpLt, _, l, r),
+                        BranchCondition::Equal,
+                    ) => (BranchCondition::GreaterEqual, Some(l), Some(r)),
+                    (val, cond) => {
+                        let loc = self.make_opaque(val);
+                        (*cond, Some(loc), None)
+                    }
+                };
+
+                let top_values_count =
+                    self.incoming_count[&targ1.target].min(self.incoming_count[&targ2.target]);
+
+                let targ1_skip = top_values_count - self.incoming_count[&targ1.target];
+                let targ2_skip = top_values_count - self.incoming_count[&targ2.target];
+
+                let top_values = self.pop_opaque(top_values_count);
+
+                match real_cond {
+                    BranchCondition::Always => {
+                        self.write_jump(targ1, top_values.into_iter().skip(targ1_skip));
+                    }
+                    BranchCondition::Never => {
+                        self.write_jump(targ2, top_values.into_iter().skip(targ2_skip));
+                    }
+                    cond => {
+                        if targ1.flags.contains(JumpTargetFlags::FALLTHROUGH)
+                            && targ2.flags.contains(JumpTargetFlags::FALLTHROUGH)
+                        {
+                            // Branches must be the same, fallthrough to take your pick of target
+                            self.write_jump(targ1, top_values.into_iter().skip(targ1_skip))
+                        } else if targ1.flags.contains(JumpTargetFlags::FALLTHROUGH)
+                            || targ2.flags.contains(JumpTargetFlags::COLD)
+                        {
+                            let cond = cond.invert();
+                            let targ2_vals = top_values.iter().skip(targ2_skip).cloned().collect();
+
+                            match (val1, val2) {
+                                (Some(l), Some(r)) => self.insns.push(SsaInstruction::Branch(
+                                    cond,
+                                    l,
+                                    r,
+                                    targ2.target,
+                                    targ2_vals,
+                                )),
+                                (Some(l), None) => self.insns.push(SsaInstruction::BranchZero(
+                                    cond,
+                                    l,
+                                    targ2.target,
+                                    targ2_vals,
+                                )),
+                                (None, _) => unreachable!(
+                                    "Left compare val always provided for non-trivial conditions"
+                                ),
+                            }
+                            self.write_jump(&targ1, top_values.into_iter().skip(targ1_skip));
+                        } else {
+                            let targ1_vals = top_values.iter().skip(targ1_skip).cloned().collect();
+
+                            match (val1, val2) {
+                                (Some(l), Some(r)) => self.insns.push(SsaInstruction::Branch(
+                                    cond,
+                                    l,
+                                    r,
+                                    targ1.target,
+                                    targ1_vals,
+                                )),
+                                (Some(l), None) => self.insns.push(SsaInstruction::BranchZero(
+                                    cond,
+                                    l,
+                                    targ1.target,
+                                    targ1_vals,
+                                )),
+                                (None, _) => unreachable!(
+                                    "Left compare val always provided for non-trivial conditions"
+                                ),
+                            }
+                            self.write_jump(&targ2, top_values.into_iter().skip(targ1_skip));
+                        }
+                    }
+                }
+            }
             ir::Terminator::BranchIndirect => todo!("branch indirect"),
             ir::Terminator::Call(_, call_fnty, next) => {
                 let params_count = call_fnty.params.len();
