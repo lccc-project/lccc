@@ -72,9 +72,11 @@ impl X86Clobbers {
         ty_size: u64,
         ty_align: u64,
     ) {
+        println!("mark_used({val}): stack width is {stack_width}, type layout is (size={ty_size}, align={ty_align})");
         if let Some(Pair(_, pos)) = self.clobbered_at.remove(&val) {
+            println!("Clobbered at: {pos}");
             let align_minus1 = i32::try_from(ty_align).unwrap() - 1;
-            *stack_width = (*stack_width + align_minus1) & align_minus1;
+            *stack_width = (*stack_width + align_minus1) & !align_minus1;
             let offset = -*stack_width;
             *stack_width += i32::try_from(ty_size).unwrap();
             assign
@@ -83,6 +85,7 @@ impl X86Clobbers {
         }
     }
     pub fn mark_clobbered(&mut self, reg: X86Register, which: usize, for_val: Option<u32>) {
+        println!("mark_clobbered({reg:?})");
         if let Some(Pair(_, val)) = self.reg_owners.remove(&reg) {
             if for_val == Some(val) {
                 self.reg_owners.insert(reg, val);
@@ -191,6 +194,7 @@ impl X86Machine {
         if dest == src {
             return;
         }
+        println!("write_move({dest:?}, {src:?})");
         match (dest, src) {
             (X86ValLocation::Null, X86ValLocation::Null)
             | (X86ValLocation::Null, X86ValLocation::StackDisp(_))
@@ -259,6 +263,13 @@ impl X86Machine {
                 todo!("memory to memory")
             }
         }
+    }
+
+    fn real_stack_width(assignments: &X86Assignments) -> i32 {
+        (assignments.stack_width
+            + ((8 & (assignments.stack_align - 1)) as i32)
+            + (assignments.stack_align as i32 - 1))
+            & !(assignments.stack_align - 1) as i32
     }
 }
 
@@ -343,7 +354,7 @@ impl Machine<SsaInstruction> for X86Machine {
             available_int_registers: int_registers,
             return_reg: None,
             stack_width: 0,
-            stack_align: 16,
+            stack_align: 1,
             assigns: HashMap::new(),
         }
     }
@@ -373,12 +384,12 @@ impl Machine<SsaInstruction> for X86Machine {
                 }
             }
         }
+        println!("Reg Owners: {:?}", clobbers.reg_owners);
+        println!("Which bb: {which}");
         for (num, insn) in insns.iter().enumerate() {
             match insn {
                 xlang_backend::ssa::SsaInstruction::Call(targ, locations) => {
-                    eprintln!("Current width {:?}", assignments.stack_width);
-                    assignments.stack_width = ((assignments.stack_width + 7) & !15) + 8;
-                    eprintln!("Aligned width width {:?}", assignments.stack_width);
+                    assignments.stack_align = assignments.stack_align.max(16);
 
                     let callconv = X86CallConvInfo {
                         mode: assignments.mode,
@@ -414,6 +425,11 @@ impl Machine<SsaInstruction> for X86Machine {
                                     })
                                     .change_owner
                                     .push((num, X86ValLocation::Register(*reg)));
+
+                                eprintln!(
+                                    "Param Location: {loc:?} (assigns {:?})",
+                                    assignments.assigns[&loc.num]
+                                );
                             }
                             loc => todo!("{:?}", loc),
                         }
@@ -453,8 +469,6 @@ impl Machine<SsaInstruction> for X86Machine {
                 | xlang_backend::ssa::SsaInstruction::Fallthrough(targ, old_locs) => {
                     let foreign_locs = &incoming_set[targ];
 
-                    eprintln!("{:?}", foreign_locs);
-
                     for (old_loc, new_loc) in old_locs.iter().zip(foreign_locs) {
                         match (
                             assignments
@@ -473,6 +487,7 @@ impl Machine<SsaInstruction> for X86Machine {
                                     ty_size,
                                     ty_align,
                                 );
+
                                 old.change_owner.push((num, foreign));
                             }
                             (Some(foreign), None) => {
@@ -486,11 +501,6 @@ impl Machine<SsaInstruction> for X86Machine {
                                 );
                             }
                             (None, Some(old)) => {
-                                let incoming = old
-                                    .change_owner
-                                    .last()
-                                    .map_or(&old.foreign_location, |(_, x)| x)
-                                    .clone();
                                 let ty_size = tys.type_size(&old_loc.ty).unwrap();
                                 let ty_align = tys.type_align(&old_loc.ty).unwrap();
                                 clobbers.mark_used(
@@ -500,6 +510,17 @@ impl Machine<SsaInstruction> for X86Machine {
                                     ty_size,
                                     ty_align,
                                 );
+                                let incoming = old
+                                    .change_owner
+                                    .last()
+                                    .map_or(&old.foreign_location, |(_, x)| x)
+                                    .clone();
+
+                                println!("{old_loc}: {:?}", old.change_owner);
+
+                                println!("{old_loc}=>{new_loc}: {incoming:?}");
+
+                                println!("{old_loc}: {old:?}");
 
                                 assignments.assigns.insert(
                                     new_loc.num,
@@ -594,7 +615,7 @@ impl Machine<SsaInstruction> for X86Machine {
         &self,
         assignments: &Self::Assignments,
         ssa_insns: &[xlang_backend::ssa::SsaInstruction],
-        block_clobbers: Self::BlockClobbers,
+        _: Self::BlockClobbers,
         label_sym: F,
         which: u32,
         tys: &TypeInformation,
@@ -611,8 +632,12 @@ impl Machine<SsaInstruction> for X86Machine {
                 if loc.owning_bb == which {
                     for (at, new_loc) in &loc.change_owner {
                         if *at == num {
+                            println!(
+                                "Moving {addr} to {new_loc:?} from {:?}",
+                                &cur_locations[addr]
+                            );
                             self.write_move(&mut insns, new_loc, &cur_locations[addr], assignments);
-                            break;
+                            *cur_locations.get_mut(addr).unwrap() = new_loc.clone();
                         }
                     }
                 }
@@ -639,12 +664,13 @@ impl Machine<SsaInstruction> for X86Machine {
                 }
                 xlang_backend::ssa::SsaInstruction::Fallthrough(_, _) => {}
                 xlang_backend::ssa::SsaInstruction::Exit(val) => {
-                    if assignments.stack_width > 0 {
+                    let real_stack_width = Self::real_stack_width(assignments);
+                    if real_stack_width > 0 {
                         insns.push(MceInstruction::BaseInsn(X86Instruction::new(
                             X86CodegenOpcode::Add,
                             std_vec![
                                 X86Operand::Register(assignments.sp),
-                                X86Operand::Immediate(assignments.stack_width as i64),
+                                X86Operand::Immediate(real_stack_width as i64 - 8),
                             ],
                         )));
                     }
@@ -745,13 +771,19 @@ impl Machine<SsaInstruction> for X86Machine {
         &self,
         assignments: &Self::Assignments,
     ) -> Vec<MceInstruction<X86Instruction>> {
+        println!(
+            "Stack width: {} (align={})",
+            assignments.stack_width, assignments.stack_align
+        );
+        let real_stack_width = Self::real_stack_width(assignments);
+        println!("Real stack Width: {real_stack_width}");
         let mut insns = Vec::new();
-        if assignments.stack_width != 0 {
+        if real_stack_width != 0 {
             insns.push(MceInstruction::BaseInsn(X86Instruction::new(
                 X86CodegenOpcode::Sub,
                 std_vec![
                     X86Operand::Register(assignments.sp),
-                    X86Operand::Immediate(assignments.stack_width as i64),
+                    X86Operand::Immediate((real_stack_width as i64).saturating_sub(8)),
                 ],
             )));
         }
