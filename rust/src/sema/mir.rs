@@ -1320,33 +1320,41 @@ impl<'a> MirConverter<'a> {
 
                 let (mut muljmps, assigns, incoming) =
                     self.make_many_jumps(&[if_assigns, else_assigns], nextbb);
-
-                let (ifinitstats, ifjmp) = core::mem::take(&mut muljmps[0]);
-                if_end_block
-                    .stmts
-                    .extend(ifinitstats.into_iter().map(|stmt| Spanned {
-                        body: stmt,
+                let mut diverges = true;
+                if if_end_block.id != BasicBlockId::UNUSED {
+                    let (ifinitstats, ifjmp) = core::mem::take(&mut muljmps[0]);
+                    if_end_block
+                        .stmts
+                        .extend(ifinitstats.into_iter().map(|stmt| Spanned {
+                            body: stmt,
+                            span: thir_block.span,
+                        }));
+                    self.basic_blocks.push(if_end_block.finish(Spanned {
+                        body: MirTerminator::Jump(ifjmp),
                         span: thir_block.span,
                     }));
-                self.basic_blocks.push(if_end_block.finish(Spanned {
-                    body: MirTerminator::Jump(ifjmp),
-                    span: thir_block.span,
-                }));
-                let (elseinitstats, elsejmp) = core::mem::take(&mut muljmps[1]);
-                self.cur_basic_block
-                    .stmts
-                    .extend(elseinitstats.into_iter().map(|stmt| Spanned {
-                        body: stmt,
-                        span: thir_block.span,
-                    }));
-                self.basic_blocks
-                    .push(self.cur_basic_block.finish_and_reset(Spanned {
-                        body: MirTerminator::Jump(elsejmp),
-                        span: thir_block.span,
-                    }));
-                self.cur_basic_block.id = nextbb;
-                self.cur_basic_block.incoming_vars = incoming;
-                self.var_names = assigns;
+                    diverges = false;
+                }
+                if self.cur_basic_block.id != BasicBlockId::UNUSED {
+                    let (elseinitstats, elsejmp) = core::mem::take(&mut muljmps[1]);
+                    self.cur_basic_block
+                        .stmts
+                        .extend(elseinitstats.into_iter().map(|stmt| Spanned {
+                            body: stmt,
+                            span: thir_block.span,
+                        }));
+                    self.basic_blocks
+                        .push(self.cur_basic_block.finish_and_reset(Spanned {
+                            body: MirTerminator::Jump(elsejmp),
+                            span: thir_block.span,
+                        }));
+                    diverges = false;
+                }
+                if !diverges {
+                    self.cur_basic_block.id = nextbb;
+                    self.cur_basic_block.incoming_vars = incoming;
+                    self.var_names = assigns;
+                }
             }
             super::tyck::ThirBlock::Match(m) => {
                 let ty = m.discriminee.ty.clone();
