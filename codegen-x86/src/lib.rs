@@ -74,7 +74,6 @@ impl X86Clobbers {
         ty_size: u64,
         ty_align: u64,
     ) {
-        println!("mark_used({val}): stack width is {stack_width}, type layout is (size={ty_size}, align={ty_align})");
         if let Some(Pair(_, pos)) = self.clobbered_at.remove(&val) {
             let offset = *assign.stack_slot.get_or_insert_with(|| {
                 let align_minus1 = i32::try_from(ty_align).unwrap() - 1;
@@ -90,7 +89,6 @@ impl X86Clobbers {
         }
     }
     pub fn mark_clobbered(&mut self, reg: X86Register, which: usize, for_val: Option<u32>) {
-        println!("mark_clobbered({reg:?})");
         if let Some(Pair(_, val)) = self.reg_owners.remove(&reg) {
             if for_val == Some(val) {
                 self.reg_owners.insert(reg, val);
@@ -200,7 +198,6 @@ impl X86Machine {
         if dest == src {
             return;
         }
-        println!("write_move({dest:?}, {src:?})");
         match (dest, src) {
             (X86ValLocation::Null, X86ValLocation::Null)
             | (X86ValLocation::Null, X86ValLocation::StackDisp(_))
@@ -396,8 +393,6 @@ impl Machine<SsaInstruction> for X86Machine {
                 }
             }
         }
-        println!("Reg Owners: {:?}", clobbers.reg_owners);
-        println!("Which bb: {which}");
         for (num, insn) in insns.iter().enumerate() {
             match insn {
                 xlang_backend::ssa::SsaInstruction::Call(targ, locations) => {
@@ -442,11 +437,6 @@ impl Machine<SsaInstruction> for X86Machine {
                                     .push((num, X86ValLocation::Register(*reg)));
 
                                 clobbers.reg_owners.insert(*reg, loc.num);
-
-                                eprintln!(
-                                    "Param Location: {loc:?} (assigns {:?})",
-                                    assignments.assigns[&loc.num]
-                                );
                             }
                             loc => todo!("{:?}", loc),
                         }
@@ -543,11 +533,6 @@ impl Machine<SsaInstruction> for X86Machine {
                                     .map_or(&old.foreign_location, |(_, x)| x)
                                     .clone();
 
-                                println!("{old_loc}: {:?}", old.change_owner);
-
-                                println!("{old_loc}=>{new_loc}: {incoming:?}");
-
-                                println!("{old_loc}: {old:?}");
                                 let old_slot = old.stack_slot;
                                 assignments.assigns.insert(
                                     new_loc.num,
@@ -672,10 +657,6 @@ impl Machine<SsaInstruction> for X86Machine {
                             } else {
                                 None
                             };
-                            println!(
-                                "Moving {addr} to {new_loc:?} from {:?}",
-                                &cur_locations[addr]
-                            );
                             self.write_move(
                                 &mut insns,
                                 new_loc,
@@ -819,12 +800,7 @@ impl Machine<SsaInstruction> for X86Machine {
         &self,
         assignments: &Self::Assignments,
     ) -> Vec<MceInstruction<X86Instruction>> {
-        println!(
-            "Stack width: {} (align={})",
-            assignments.stack_width, assignments.stack_align
-        );
         let real_stack_width = Self::real_stack_width(assignments);
-        println!("Real stack Width: {real_stack_width}");
         let mut insns = Vec::new();
         if real_stack_width != 0 {
             insns.push(MceInstruction::BaseInsn(X86Instruction::new(
