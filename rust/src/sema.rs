@@ -1385,6 +1385,7 @@ impl Definitions {
             ty::Type::Tuple(inner) => inner.iter().all(|ty| self.is_copy(ty)),
             ty::Type::UserType(_, _) => false, // for now
             ty::Type::IncompleteAlias(_) => panic!("incomplete alias held too late"),
+            ty::Type::UnresolvedLangItem(_, _) => panic!("Unresolved lang item"),
             ty::Type::Array(ty, _) => self.is_copy(ty),
             ty::Type::InferableInt(_) | ty::Type::Inferable(_) => {
                 panic!("Cannot determine copyability of an uninfered type")
@@ -1397,6 +1398,18 @@ impl Definitions {
 
     pub fn get_lang_item(&self, lang: LangItem) -> Option<DefId> {
         self.lang_items.get(&lang).copied()
+    }
+
+    pub fn require_lang_item(&self, lang: LangItem) -> Result<DefId> {
+        self.get_lang_item(lang).ok_or_else(|| Error {
+            span: Span::synthetic(),
+            text: format!("Lang item {} required but not defined", lang.name()),
+            category: ErrorCategory::CannotFindName,
+            containing_item: self.curcrate,
+            at_item: self.curcrate,
+            relevant_item: DefId::ROOT,
+            hints: vec![],
+        })
     }
 
     pub fn type_defid(&self, ty: &ty::Type) -> DefId {
@@ -1788,6 +1801,7 @@ impl Definitions {
                     }
                 }
                 Type::IncompleteAlias(_) => todo!("incomplete alias held too late"),
+                Type::UnresolvedLangItem(_, _) => panic!("Unresolved lang item not resolved"),
                 Type::Pointer(_, pte) => {
                     let layout = self.layout_of(pte, at_item, containing_item);
 
@@ -2013,7 +2027,8 @@ impl Definitions {
                 | Type::Reference(_, _, _)
                 | Type::Pointer(_, _)
                 | Type::Array(_, _)
-                | Type::TraitSelf(_) => Vec::new(),
+                | Type::TraitSelf(_)
+                | Type::UnresolvedLangItem(_, _) => Vec::new(),
                 Type::Tuple(elems) => {
                     let mut fields = Vec::new();
 

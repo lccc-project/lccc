@@ -622,44 +622,44 @@ impl<'a> ThirConverter<'a> {
         Ok(ret)
     }
 
-    pub fn convert_syntatic_type(&mut self, ty: Spanned<Type>) -> Spanned<Type> {
-        ty.map_span(|ty| match ty {
-            Type::Inferable(None) => {
-                Type::Inferable(Some(InferId(self.next_infer.fetch_increment())))
-            }
+    pub fn convert_syntatic_type(&mut self, ty: Spanned<Type>) -> super::Result<Spanned<Type>> {
+        ty.try_map_span(|ty| match ty {
+            Type::Inferable(None) => Ok(Type::Inferable(Some(InferId(
+                self.next_infer.fetch_increment(),
+            )))),
 
             Type::IncompleteAlias(_) => todo!("incomplete alias"),
 
-            Type::Tuple(tys) => Type::Tuple(
+            Type::Tuple(tys) => Ok(Type::Tuple(
                 tys.into_iter()
                     .map(|ty| self.convert_syntatic_type(ty))
-                    .collect(),
-            ),
+                    .collect::<super::Result<_>>()?,
+            )),
             Type::FnPtr(mut fnty) => {
                 fnty.paramtys = fnty
                     .paramtys
                     .into_iter()
                     .map(|ty| self.convert_syntatic_type(ty))
-                    .collect();
-                *fnty.retty = self.convert_syntatic_type(*fnty.retty);
+                    .collect::<super::Result<_>>()?;
+                *fnty.retty = self.convert_syntatic_type(*fnty.retty)?;
 
-                Type::FnPtr(fnty)
+                Ok(Type::FnPtr(fnty))
             }
 
             Type::Pointer(mt, mut ty) => {
-                *ty = self.convert_syntatic_type(*ty);
+                *ty = self.convert_syntatic_type(*ty)?;
 
-                Type::Pointer(mt, ty)
+                Ok(Type::Pointer(mt, ty))
             }
             Type::Array(mut ty, cx) => {
-                *ty = self.convert_syntatic_type(*ty);
+                *ty = self.convert_syntatic_type(*ty)?;
 
-                Type::Array(ty, cx)
+                Ok(Type::Array(ty, cx))
             }
             Type::Reference(life, mt, mut ty) => {
-                *ty = self.convert_syntatic_type(*ty);
+                *ty = self.convert_syntatic_type(*ty)?;
 
-                Type::Reference(life, mt, ty)
+                Ok(Type::Reference(life, mt, ty))
             }
             val @ (Type::Inferable(Some(_))
             | Type::InferableInt(_)
@@ -673,7 +673,10 @@ impl<'a> ThirConverter<'a> {
             | Type::Str
             | Type::FnItem(_, _, _)
             | Type::UserType(_, _)
-            | Type::Never) => val,
+            | Type::Never) => Ok(val),
+            Type::UnresolvedLangItem(lang, args) => {
+                Ok(Type::UserType(self.defs.require_lang_item(lang)?, args))
+            }
         })
     }
 
@@ -794,7 +797,7 @@ impl<'a> ThirConverter<'a> {
                 inner: ThirExprInner::Unreachable,
             }),
             hir::HirExpr::Cast(expr, ty) => {
-                let ty = self.convert_syntatic_type(ty.clone());
+                let ty = self.convert_syntatic_type(ty.clone())?;
                 Ok(ThirExpr {
                     ty: ty.body.clone(),
                     cat: ValueCategory::Rvalue,
@@ -1168,11 +1171,11 @@ impl<'a> ThirConverter<'a> {
                     .unwrap_or_else(|| {
                         let infer = InferId(self.next_infer.fetch_increment());
 
-                        Spanned {
+                        Ok(Spanned {
                             span: var.span,
                             body: Type::Inferable(Some(infer)),
-                        }
-                    });
+                        })
+                    })?;
 
                 let mutability = *mutability;
 

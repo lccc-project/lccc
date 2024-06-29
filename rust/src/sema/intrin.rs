@@ -89,61 +89,64 @@ macro_rules! parse_cvarargs {
 }
 
 macro_rules! parse_type_inner {
-    (($inner:ty)) => {
+    (|$defs:ident| ($inner:ty)) => {
         parse_type!($inner)
     };
-    (Var$(::)?<$id:literal>) => {
+    (|$defs:ident| Var$(::)?<$id:literal>) => {
         (super::ty::Type::Param($id))
     };
-    ($ident:ident) => {
+    (|$defs:ident| Lang$(::)?<$id:ident>) => {
+        (super::ty::Type::UnresolvedLangItem($crate::lang::LangItem::$id, super::generics::GenericArgs::default()))
+    };
+    (|$defs:ident| $ident:ident) => {
         super::ty::convert_builtin_type(::core::stringify!($ident)).unwrap() // TODO: also support lang item types and generics
     };
-    (&$inner:ty) => {
-        {Type::Reference(None, spanned!(Mutability::Const), spanned!(box parse_type!($inner)))}
+    (|$defs:ident| &$inner:ty) => {
+        {Type::Reference(None, spanned!(Mutability::Const), spanned!(box parse_type!(|$defs| $inner)))}
     };
-    (&mut $inner:ty) => {
-        {Type::Reference(None, spanned!(Mutability::Mut), spanned!(box parse_type!($inner)))}
+    (|$defs:ident| &mut $inner:ty) => {
+        {Type::Reference(None, spanned!(Mutability::Mut), spanned!(box parse_type!(|$defs| $inner)))}
     };
-    (*const $inner:ty) => {
-        {Type::Pointer(spanned!(Mutability::Const), spanned!(box parse_type!($inner)))}
+    (|$defs:ident| *const $inner:ty) => {
+        {Type::Pointer(spanned!(Mutability::Const), spanned!(box parse_type!(|$defs| $inner)))}
     };
-    (*mut $inner:ty) => {
-        {Type::Pointer(spanned!(Mutability::Mut), spanned!(box parse_type!($inner)))}
+    (|$defs:ident| *mut $inner:ty) => {
+        {Type::Pointer(spanned!(Mutability::Mut), spanned!(box parse_type!(|$defs| $inner)))}
     };
-    (($($inner:ty),* $(,)?)) => {
-        {{Type::Tuple(vec![$(spanned!(parse_type!($inner))),*])}}
+    (|$defs:ident| ($($inner:ty),* $(,)?)) => {
+        {{Type::Tuple(vec![$(spanned!(parse_type!(|$defs| $inner))),*])}}
     };
-    (!) => {
+    (|$_defs:ident| !) => {
         Type::Never
     };
-    ($(unsafe $(@$_vol:tt)?)? $(extern $lit:literal)? fn($($param:ty),* $(, $(... $(@$_vol2:tt)?)?)?) -> $ret:ty) => {
+    (|$defs:ident| $(unsafe $(@$_vol:tt)?)? $(extern $lit:literal)? fn($($param:ty),* $(, $(... $(@$_vol2:tt)?)?)?) -> $ret:ty) => {
         Type::FnType (FnType{
             safety: spanned!(parse_safety!($(unsafe $($_vol)?)?)),
             constness: spanned!(Mutability::Const),
             asyncness: spanned!(ty::AsyncType::Normal),
             tag: spanned!(parse_tag!($(extern $lit)?)),
-            retty: spanned!(box parse_type!($ret)),
-            paramtys: vec![$(spanned!($param)),*],
+            retty: spanned!(box parse_type!(|$defs| $ret)),
+            paramtys: vec![$(spanned!(parse_type!(|$defs| $param))),*],
             iscvarargs: spanned!(parse_cvarargs!($($(... $($_vol2)?)?)?))
         })
     };
 }
 
 macro_rules! parse_type {
-    ($inner:ty) => {
-        {::defile::defile!({parse_type_inner!(@$inner)})}
+    (|$defs:ident| $inner:ty) => {
+        {::defile::defile!({parse_type_inner!(|$defs| @$inner)})}
     };
 }
 
 macro_rules! parse_intrinsic_signature {
-    ($(unsafe $(@$_vol:tt)?)? fn($($param:ty),* $(,)?) -> $retty:ty) => {
+    (|$defs:ident| $(unsafe $(@$_vol:tt)?)? fn($($param:ty),* $(,)?) -> $retty:ty) => {
         ty::FnType {
             safety: spanned!(parse_safety!($(unsafe $($_vol)?)?)),
             constness: spanned!(Mutability::Const),
             asyncness: spanned!(ty::AsyncType::Normal),
             tag: spanned!(AbiTag::RustIntrinsic),
-            retty: spanned!(box parse_type!($retty)),
-            paramtys: vec![$(spanned!(parse_type!($param))),*],
+            retty: spanned!(box parse_type!(|$defs| $retty)),
+            paramtys: vec![$(spanned!(parse_type!(|$defs| $param))),*],
             iscvarargs: spanned!(false),
         }
     };
@@ -220,7 +223,7 @@ macro_rules! def_intrinsics {
 
             pub fn signature(&self) -> ty::FnType {
                 match self{
-                    $(Self::$name => parse_intrinsic_signature!($(unsafe $($_vol)?)? fn($($param),*) -> $retty)),*
+                    $(Self::$name => parse_intrinsic_signature!(|defs| $(unsafe $($_vol)?)? fn($($param),*) -> $retty)),*
                 }
             }
 
@@ -357,4 +360,9 @@ def_intrinsics! {
     unsafe intrin __atomic_write_in_transaction<type, const>(ptr: *mut Var<0>, val: Var<0>) -> ();
     #[unobservable]
     unsafe intrin __atomic_commit_transaction<type>(ptr: *mut Var<0>) -> i32;
+
+
+    unsafe intrin __builtin_va_arg<type>(va_list: *mut Lang<VaList>) -> Var<0>;
+    unsafe intrin __builtin_va_copy(va_list: *mut Lang<VaList>, out:*mut Lang<VaList>)->();
+    unsafe intrin __builtin_va_end(va_list: *mut Lang<VaList>) -> ();
 }

@@ -97,6 +97,7 @@ pub enum Type {
     FnPtr(Box<FnType>),
     FnItem(Box<FnType>, DefId, GenericArgs),
     UserType(DefId, GenericArgs),
+    UnresolvedLangItem(LangItem, GenericArgs),
     IncompleteAlias(DefId),
     Pointer(Spanned<Mutability>, Box<Spanned<Type>>),
     Array(Box<Spanned<Type>>, Spanned<ConstExpr>),
@@ -764,6 +765,9 @@ impl core::fmt::Display for Type {
             Self::Param(var) => f.write_fmt(format_args!("%{}", var)),
             Self::TraitSelf(tr) => f.write_fmt(format_args!("Self(impl #{})", tr)),
             Self::DropFlags(ty) => f.write_fmt(format_args!("DropFlags({})", ty)),
+            Self::UnresolvedLangItem(lang, args) => {
+                f.write_fmt(format_args!("{} {}", lang.name(), args))
+            }
         }
     }
 }

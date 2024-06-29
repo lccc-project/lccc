@@ -95,4 +95,5 @@ define_lang_items! {
     LayoutTy: layout @ Type,
     AllocSym: alloc_sym @ Function,
     DeallocSym: dealloc_sym @ Function,
+    VaList : va_list @ Type,
 }
