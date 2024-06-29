@@ -1210,6 +1210,9 @@ impl<'a> MirConverter<'a> {
     }
 
     pub fn write_block(&mut self, thir_block: Spanned<ThirBlock>) -> super::Result<()> {
+        if self.cur_basic_block.id == BasicBlockId::UNUSED {
+            return Ok(());
+        }
         match thir_block.body {
             super::tyck::ThirBlock::Normal(stmts) | super::tyck::ThirBlock::Unsafe(stmts) => {
                 let newbb = BasicBlockId(self.nextbb.fetch_increment());
