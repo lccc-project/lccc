@@ -42,6 +42,8 @@ pub struct LocationAssignment {
     foreign_location: X86ValLocation,
     owning_bb: u32,
     change_owner: Vec<(usize, X86ValLocation)>,
+    size: u64,
+    stack_slot: Option<i32>,
 }
 
 pub struct X86Machine {
@@ -74,11 +76,14 @@ impl X86Clobbers {
     ) {
         println!("mark_used({val}): stack width is {stack_width}, type layout is (size={ty_size}, align={ty_align})");
         if let Some(Pair(_, pos)) = self.clobbered_at.remove(&val) {
-            println!("Clobbered at: {pos}");
-            let align_minus1 = i32::try_from(ty_align).unwrap() - 1;
-            *stack_width = (*stack_width + align_minus1) & !align_minus1;
-            let offset = -*stack_width;
-            *stack_width += i32::try_from(ty_size).unwrap();
+            let offset = *assign.stack_slot.get_or_insert_with(|| {
+                let align_minus1 = i32::try_from(ty_align).unwrap() - 1;
+                *stack_width = (*stack_width + align_minus1) & !align_minus1;
+                let offset = -*stack_width;
+                *stack_width += i32::try_from(ty_size).unwrap();
+                offset
+            });
+
             assign
                 .change_owner
                 .push((pos, X86ValLocation::StackDisp(offset)));
@@ -190,6 +195,7 @@ impl X86Machine {
         dest: &X86ValLocation,
         src: &X86ValLocation,
         assigns: &X86Assignments,
+        override_mode: Option<X86RegisterClass>,
     ) {
         if dest == src {
             return;
@@ -218,6 +224,9 @@ impl X86Machine {
                 }
             }
             (X86ValLocation::StackDisp(off), X86ValLocation::Register(reg)) => {
+                let reg = override_mode
+                    .and_then(|r| X86Register::from_class(r, reg.regnum()))
+                    .unwrap_or(*reg);
                 let align = (1 << (off | -0x80000000).trailing_zeros()).max(assigns.stack_align);
                 let opcode: X86CodegenOpcode = move_opcode(reg.class(), Some(align), false);
 
@@ -232,18 +241,21 @@ impl X86Machine {
                                 disp: Some(arch_ops::x86::codegen::X86Displacement::Offset(*off)),
                             },
                         ),
-                        X86Operand::Register(*reg),
+                        X86Operand::Register(reg),
                     ],
                 )));
             }
             (X86ValLocation::Register(reg), X86ValLocation::StackDisp(off)) => {
+                let reg = override_mode
+                    .and_then(|r| X86Register::from_class(r, reg.regnum()))
+                    .unwrap_or(*reg);
                 let align = (1 << (off | -0x80000000).trailing_zeros()).max(assigns.stack_align);
                 let opcode: X86CodegenOpcode = move_opcode(reg.class(), Some(align), false);
 
                 insns.push(MceInstruction::BaseInsn(X86Instruction::new(
                     opcode,
                     std_vec![
-                        X86Operand::Register(*reg),
+                        X86Operand::Register(reg),
                         X86Operand::Memory(
                             reg.class(),
                             None,
@@ -400,6 +412,7 @@ impl Machine<SsaInstruction> for X86Machine {
                     // TODO: Clobber non-saved registers
 
                     for (loc, call_loc) in locations.params.iter().zip(callconv.params()) {
+                        let size = tys.type_size(&loc.ty).unwrap();
                         match call_loc {
                             CallConvLocation::Null => {}
                             CallConvLocation::Register(reg) => {
@@ -422,9 +435,13 @@ impl Machine<SsaInstruction> for X86Machine {
                                         foreign_location: X86ValLocation::Register(*reg),
                                         owning_bb: which,
                                         change_owner: vec![],
+                                        size,
+                                        stack_slot: None,
                                     })
                                     .change_owner
                                     .push((num, X86ValLocation::Register(*reg)));
+
+                                clobbers.reg_owners.insert(*reg, loc.num);
 
                                 eprintln!(
                                     "Param Location: {loc:?} (assigns {:?})",
@@ -440,6 +457,7 @@ impl Machine<SsaInstruction> for X86Machine {
                     }
 
                     if let Some(ret) = &locations.ret {
+                        let size = tys.type_size(&ret.ty).unwrap();
                         match callconv.ret_location() {
                             CallConvLocation::Null => {
                                 assignments.assigns.insert(
@@ -448,6 +466,8 @@ impl Machine<SsaInstruction> for X86Machine {
                                         foreign_location: X86ValLocation::Null,
                                         owning_bb: which,
                                         change_owner: vec![],
+                                        size,
+                                        stack_slot: None,
                                     },
                                 );
                             }
@@ -458,6 +478,8 @@ impl Machine<SsaInstruction> for X86Machine {
                                         foreign_location: X86ValLocation::Register(*reg),
                                         owning_bb: which,
                                         change_owner: vec![],
+                                        size,
+                                        stack_slot: None,
                                     },
                                 );
                             }
@@ -470,6 +492,7 @@ impl Machine<SsaInstruction> for X86Machine {
                     let foreign_locs = &incoming_set[targ];
 
                     for (old_loc, new_loc) in old_locs.iter().zip(foreign_locs) {
+                        let size = tys.type_size(&old_loc.ty).unwrap();
                         match (
                             assignments
                                 .assigns
@@ -497,6 +520,8 @@ impl Machine<SsaInstruction> for X86Machine {
                                         foreign_location: foreign,
                                         owning_bb: which,
                                         change_owner: vec![],
+                                        size,
+                                        stack_slot: None,
                                     },
                                 );
                             }
@@ -521,13 +546,15 @@ impl Machine<SsaInstruction> for X86Machine {
                                 println!("{old_loc}=>{new_loc}: {incoming:?}");
 
                                 println!("{old_loc}: {old:?}");
-
+                                let old_slot = old.stack_slot;
                                 assignments.assigns.insert(
                                     new_loc.num,
                                     LocationAssignment {
                                         foreign_location: incoming,
                                         owning_bb: *targ,
                                         change_owner: vec![],
+                                        size,
+                                        stack_slot: old_slot,
                                     },
                                 );
                             }
@@ -538,6 +565,7 @@ impl Machine<SsaInstruction> for X86Machine {
                 xlang_backend::ssa::SsaInstruction::Exit(val) => match &**val {
                     [] => {}
                     [retval] => {
+                        let size = tys.type_size(&retval.ty).unwrap();
                         let reg = assignments.return_reg;
                         if let Some(reg) = reg {
                             let ty_size = tys.type_size(&retval.ty).unwrap();
@@ -559,6 +587,8 @@ impl Machine<SsaInstruction> for X86Machine {
                                     foreign_location: loc.clone(),
                                     owning_bb: which,
                                     change_owner: vec![],
+                                    size,
+                                    stack_slot: None,
                                 })
                                 .change_owner
                                 .push((num, loc));
@@ -594,6 +624,8 @@ impl Machine<SsaInstruction> for X86Machine {
                                         foreign_location: X86ValLocation::Register(*reg),
                                         owning_bb: which,
                                         change_owner: vec![],
+                                        size: ty_size,
+                                        stack_slot: None,
                                     })
                                     .change_owner
                                     .push((num, X86ValLocation::Register(*reg)));
@@ -632,11 +664,23 @@ impl Machine<SsaInstruction> for X86Machine {
                 if loc.owning_bb == which {
                     for (at, new_loc) in &loc.change_owner {
                         if *at == num {
+                            let size = loc.size;
+                            let over = if (size <= 8) && size.is_power_of_two() {
+                                X86RegisterClass::gpr_size(size as usize, assignments.mode)
+                            } else {
+                                None
+                            };
                             println!(
                                 "Moving {addr} to {new_loc:?} from {:?}",
                                 &cur_locations[addr]
                             );
-                            self.write_move(&mut insns, new_loc, &cur_locations[addr], assignments);
+                            self.write_move(
+                                &mut insns,
+                                new_loc,
+                                &cur_locations[addr],
+                                assignments,
+                                over,
+                            );
                             *cur_locations.get_mut(addr).unwrap() = new_loc.clone();
                         }
                     }
@@ -805,6 +849,7 @@ impl Machine<SsaInstruction> for X86Machine {
         let callconv = compute_call_conv(&callconv, fnty, fnty, tys);
 
         for (param, incoming) in callconv.params().iter().zip(incoming) {
+            let size = tys.type_size(&incoming.ty).unwrap();
             let loc = match param {
                 CallConvLocation::Null => X86ValLocation::Null,
                 CallConvLocation::Register(reg) => X86ValLocation::Register(*reg),
@@ -815,6 +860,8 @@ impl Machine<SsaInstruction> for X86Machine {
                 foreign_location: loc,
                 change_owner: vec![],
                 owning_bb: which,
+                size,
+                stack_slot: None,
             };
 
             assignments.assigns.insert(incoming.num, assignment);

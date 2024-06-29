@@ -1,5 +1,6 @@
 extern "C" {
     fn putchar(x: i32) -> i32;
+    fn puts(c: *mut u8) -> i32;
 }
 
 fn uh_oh(x: i32) {
@@ -8,6 +9,7 @@ fn uh_oh(x: i32) {
         putchar(x);
         putchar(x);
         putchar(x);
+        puts(b"\0" as *mut u8);
     }
 }
 
