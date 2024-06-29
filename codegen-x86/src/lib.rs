@@ -2,6 +2,7 @@ use arch_ops::{
     traits::{Address, InsnWrite},
     x86::{
         codegen::{X86CodegenOpcode, X86Encoder, X86Instruction, X86MemoryOperand, X86Operand},
+        insn::X86Opcode,
         X86Mode, X86Register, X86RegisterClass,
     },
 };
@@ -27,6 +28,7 @@ use xlang_backend::{
     ty::TypeInformation,
     SsaCodegenPlugin,
 };
+use xlang_struct::BranchCondition;
 
 mod callconv;
 
@@ -132,6 +134,17 @@ fn xor_opcode(class: X86RegisterClass, hint_vec_is_int: bool) -> X86CodegenOpcod
     }
 }
 
+fn cmp_opcode(class: X86RegisterClass) -> X86CodegenOpcode {
+    match class {
+        X86RegisterClass::Xmm
+        | X86RegisterClass::Ymm
+        | X86RegisterClass::Zmm
+        | X86RegisterClass::St
+        | X86RegisterClass::Tmm => todo!("fp, vectors, and tiles"),
+        _ => X86CodegenOpcode::Cmp,
+    }
+}
+
 fn move_opcode(
     class: X86RegisterClass,
     align: Option<u64>,
@@ -187,6 +200,91 @@ fn move_opcode(
 }
 
 impl X86Machine {
+    pub fn write_cmp(
+        &self,
+        insns: &mut Vec<MceInstruction<X86Instruction>>,
+        src1: &X86ValLocation,
+        src2: &X86ValLocation,
+        cmp_op: BranchCondition,
+        assigns: &X86Assignments,
+        override_mode: Option<X86RegisterClass>,
+    ) {
+        match (src1, src2) {
+            (X86ValLocation::Null, X86ValLocation::Null)
+            | (X86ValLocation::Null, X86ValLocation::StackDisp(_))
+            | (X86ValLocation::StackDisp(_), X86ValLocation::Null) => {}
+            (X86ValLocation::Register(dest), X86ValLocation::Register(src)) => {
+                if dest.class() != src.class() {
+                    panic!("Cannot move between register classes")
+                }
+
+                match dest.class() {
+                    X86RegisterClass::St => todo!("fpreg"), // We need to do shenanigans to move between arbitrary st slots
+                    X86RegisterClass::Tmm => todo!("tmmreg"),
+                    X86RegisterClass::Xmm | X86RegisterClass::Ymm | X86RegisterClass::Zmm => {
+                        todo!("xmmreg")
+                    } // also need shenanigans for fp
+                    _ => {
+                        let opcode = cmp_opcode(dest.class());
+
+                        insns.push(MceInstruction::BaseInsn(X86Instruction::new(
+                            opcode,
+                            std_vec![X86Operand::Register(*dest), X86Operand::Register(*src)],
+                        )))
+                    }
+                }
+            }
+            (X86ValLocation::StackDisp(off), X86ValLocation::Register(reg)) => {
+                let reg = override_mode
+                    .and_then(|r| X86Register::from_class(r, reg.regnum()))
+                    .unwrap_or(*reg);
+                let opcode: X86CodegenOpcode = cmp_opcode(reg.class());
+
+                insns.push(MceInstruction::BaseInsn(X86Instruction::new(
+                    opcode,
+                    std_vec![
+                        X86Operand::Memory(
+                            reg.class(),
+                            None,
+                            X86MemoryOperand::Indirect {
+                                reg: assigns.sp,
+                                disp: Some(arch_ops::x86::codegen::X86Displacement::Offset(*off)),
+                            },
+                        ),
+                        X86Operand::Register(reg),
+                    ],
+                )));
+            }
+            (X86ValLocation::Register(reg), X86ValLocation::StackDisp(off)) => {
+                let reg = override_mode
+                    .and_then(|r| X86Register::from_class(r, reg.regnum()))
+                    .unwrap_or(*reg);
+                let opcode: X86CodegenOpcode = cmp_opcode(reg.class());
+
+                insns.push(MceInstruction::BaseInsn(X86Instruction::new(
+                    opcode,
+                    std_vec![
+                        X86Operand::Register(reg),
+                        X86Operand::Memory(
+                            reg.class(),
+                            None,
+                            X86MemoryOperand::Indirect {
+                                reg: assigns.sp,
+                                disp: Some(arch_ops::x86::codegen::X86Displacement::Offset(*off)),
+                            },
+                        ),
+                    ],
+                )));
+            }
+            (X86ValLocation::Null, X86ValLocation::Register(_))
+            | (X86ValLocation::Register(_), X86ValLocation::Null) => {
+                panic!("Cannot move a register to/from null")
+            }
+            (X86ValLocation::StackDisp(_), X86ValLocation::StackDisp(_)) => {
+                todo!("memory to memory")
+            }
+        }
+    }
     pub fn write_move(
         &self,
         insns: &mut Vec<MceInstruction<X86Instruction>>,
@@ -477,10 +575,148 @@ impl Machine<SsaInstruction> for X86Machine {
                         }
                     }
                 }
+
+                SsaInstruction::Branch(_, l, r, targ, old_locs) => {
+                    let foreign_locs = &incoming_set[targ];
+
+                    for (old_loc, new_loc) in old_locs.iter().zip(foreign_locs) {
+                        let size = tys.type_size(&old_loc.ty).unwrap();
+                        match (
+                            assignments
+                                .assigns
+                                .get_mut(&new_loc.num)
+                                .map(|x| x.foreign_location.clone()),
+                            assignments.assigns.get_mut(&old_loc.num),
+                        ) {
+                            (Some(foreign), Some(old)) => {
+                                let ty_size = tys.type_size(&old_loc.ty).unwrap();
+                                let ty_align = tys.type_align(&old_loc.ty).unwrap();
+                                clobbers.mark_used(
+                                    old_loc.num,
+                                    old,
+                                    &mut assignments.stack_width,
+                                    ty_size,
+                                    ty_align,
+                                );
+
+                                old.change_owner.push((num, foreign));
+                            }
+                            (Some(foreign), None) => {
+                                assignments.assigns.insert(
+                                    old_loc.num,
+                                    LocationAssignment {
+                                        foreign_location: foreign,
+                                        owning_bb: which,
+                                        change_owner: vec![],
+                                        size,
+                                        stack_slot: None,
+                                    },
+                                );
+                            }
+                            (None, Some(old)) => {
+                                let ty_size = tys.type_size(&old_loc.ty).unwrap();
+                                let ty_align = tys.type_align(&old_loc.ty).unwrap();
+                                clobbers.mark_used(
+                                    old_loc.num,
+                                    old,
+                                    &mut assignments.stack_width,
+                                    ty_size,
+                                    ty_align,
+                                );
+                                let incoming = old
+                                    .change_owner
+                                    .last()
+                                    .map_or(&old.foreign_location, |(_, x)| x)
+                                    .clone();
+
+                                let old_slot = old.stack_slot;
+                                assignments.assigns.insert(
+                                    new_loc.num,
+                                    LocationAssignment {
+                                        foreign_location: incoming,
+                                        owning_bb: *targ,
+                                        change_owner: vec![],
+                                        size,
+                                        stack_slot: old_slot,
+                                    },
+                                );
+                            }
+                            (None, None) => {}
+                        }
+                    }
+                }
+                SsaInstruction::BranchZero(_, l, targ, old_locs) => {
+                    let foreign_locs = &incoming_set[targ];
+
+                    for (old_loc, new_loc) in old_locs.iter().zip(foreign_locs) {
+                        let size = tys.type_size(&old_loc.ty).unwrap();
+                        match (
+                            assignments
+                                .assigns
+                                .get_mut(&new_loc.num)
+                                .map(|x| x.foreign_location.clone()),
+                            assignments.assigns.get_mut(&old_loc.num),
+                        ) {
+                            (Some(foreign), Some(old)) => {
+                                let ty_size = tys.type_size(&old_loc.ty).unwrap();
+                                let ty_align = tys.type_align(&old_loc.ty).unwrap();
+                                clobbers.mark_used(
+                                    old_loc.num,
+                                    old,
+                                    &mut assignments.stack_width,
+                                    ty_size,
+                                    ty_align,
+                                );
+
+                                old.change_owner.push((num, foreign));
+                            }
+                            (Some(foreign), None) => {
+                                assignments.assigns.insert(
+                                    old_loc.num,
+                                    LocationAssignment {
+                                        foreign_location: foreign,
+                                        owning_bb: which,
+                                        change_owner: vec![],
+                                        size,
+                                        stack_slot: None,
+                                    },
+                                );
+                            }
+                            (None, Some(old)) => {
+                                let ty_size = tys.type_size(&old_loc.ty).unwrap();
+                                let ty_align = tys.type_align(&old_loc.ty).unwrap();
+                                clobbers.mark_used(
+                                    old_loc.num,
+                                    old,
+                                    &mut assignments.stack_width,
+                                    ty_size,
+                                    ty_align,
+                                );
+                                let incoming = old
+                                    .change_owner
+                                    .last()
+                                    .map_or(&old.foreign_location, |(_, x)| x)
+                                    .clone();
+
+                                let old_slot = old.stack_slot;
+                                assignments.assigns.insert(
+                                    new_loc.num,
+                                    LocationAssignment {
+                                        foreign_location: incoming,
+                                        owning_bb: *targ,
+                                        change_owner: vec![],
+                                        size,
+                                        stack_slot: old_slot,
+                                    },
+                                );
+                            }
+                            (None, None) => {}
+                        }
+                    }
+                }
+
                 xlang_backend::ssa::SsaInstruction::Jump(targ, old_locs)
-                | xlang_backend::ssa::SsaInstruction::Fallthrough(targ, old_locs)
-                | SsaInstruction::Branch(_, _, _, targ, old_locs)
-                | SsaInstruction::BranchZero(_, _, targ, old_locs) => {
+                | xlang_backend::ssa::SsaInstruction::Fallthrough(targ, old_locs) => {
                     let foreign_locs = &incoming_set[targ];
 
                     for (old_loc, new_loc) in old_locs.iter().zip(foreign_locs) {
@@ -788,7 +1024,63 @@ impl Machine<SsaInstruction> for X86Machine {
                         }
                     }
                 }
-                SsaInstruction::Branch(_, _, _, _, _) => todo!("branch"),
+                SsaInstruction::Branch(op, l, r, targ, vals) => {
+                    let jmp_insn = match (op, &*l.ty) {
+                        (BranchCondition::Equal, _) => X86CodegenOpcode::Jz,
+                        (BranchCondition::NotEqual, _) => X86CodegenOpcode::Jnz,
+                        (
+                            BranchCondition::Less,
+                            ir::Type::Scalar(ir::ScalarType {
+                                kind: ir::ScalarTypeKind::Integer { signed: false, .. },
+                                ..
+                            }),
+                        ) => X86CodegenOpcode::Jb,
+                        (BranchCondition::Less, _) => X86CodegenOpcode::Jl,
+                        (
+                            BranchCondition::Greater,
+                            ir::Type::Scalar(ir::ScalarType {
+                                kind: ir::ScalarTypeKind::Integer { signed: false, .. },
+                                ..
+                            }),
+                        ) => X86CodegenOpcode::Jnbe,
+                        (BranchCondition::Greater, _) => X86CodegenOpcode::Jnle,
+                        (
+                            BranchCondition::LessEqual,
+                            ir::Type::Scalar(ir::ScalarType {
+                                kind: ir::ScalarTypeKind::Integer { signed: false, .. },
+                                ..
+                            }),
+                        ) => X86CodegenOpcode::Jbe,
+                        (BranchCondition::LessEqual, _) => X86CodegenOpcode::Jle,
+                        (
+                            BranchCondition::GreaterEqual,
+                            ir::Type::Scalar(ir::ScalarType {
+                                kind: ir::ScalarTypeKind::Integer { signed: false, .. },
+                                ..
+                            }),
+                        ) => X86CodegenOpcode::Jnb,
+                        (BranchCondition::GreaterEqual, _) => X86CodegenOpcode::Jnl,
+                        _ => unreachable!("Trivial branches aren't passed as branch"),
+                    };
+
+                    let lloc = &cur_locations[&l.num];
+                    let rloc = &cur_locations[&r.num];
+                    let size = tys.type_size(&l.ty).unwrap();
+                    let over = if (size <= 8) && size.is_power_of_two() {
+                        X86RegisterClass::gpr_size(size as usize, assignments.mode)
+                    } else {
+                        None
+                    };
+
+                    self.write_cmp(&mut insns, lloc, rloc, *op, assignments, over);
+                    insns.push(MceInstruction::BaseInsn(X86Instruction::new(
+                        jmp_insn,
+                        std_vec![X86Operand::RelOffset(Address::Symbol {
+                            name: label_sym(*targ),
+                            disp: 0,
+                        })],
+                    )));
+                }
                 SsaInstruction::BranchZero(_, _, _, _) => todo!("branch"),
             }
         }
