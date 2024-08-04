@@ -843,7 +843,11 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                                         ty: TokenType::Character(_),
                                         body,
                                     }) => {
-                                        break Ok(Token::new(TokenType::Character(CharType::Byte), id + &body).with_span(span));
+                                        break Ok(Token::new(
+                                            TokenType::Character(CharType::Byte),
+                                            id + &body,
+                                        )
+                                        .with_span(span));
                                     }
                                     LexemeBody::Token(_) => {
                                         todo!("validation error for \"byte lifetimes\"");
