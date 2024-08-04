@@ -816,6 +816,7 @@ impl<'a, K, V> Iterator for IterMut<'a, K, V> {
 impl<'a, K, V> FusedIterator for IterMut<'a, K, V> {}
 
 /// An [`Iterator`] over the mutable values in a [`HashMap`]
+#[allow(dead_code)] // Public api, false positive
 pub struct ValuesMut<'a, K, V>(IterMut<'a, K, V>);
 
 impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
