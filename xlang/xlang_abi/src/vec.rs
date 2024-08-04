@@ -5,7 +5,7 @@ use std::{
     iter::{FromIterator, FusedIterator},
     marker::PhantomData,
     mem::{size_of, ManuallyDrop},
-    ops::{Deref, DerefMut},
+    ops::{Bound, Deref, DerefMut, RangeBounds},
     ptr::NonNull,
 };
 
@@ -296,7 +296,10 @@ impl<T, A: Allocator> Vec<T, A> {
     /// This will permanently leak the allocation and its elements.
     ///
     /// This function is a convience over `SpanMut::new(self.leak())`
-    pub fn leak_span<'a>(self) -> SpanMut<'a, T> {
+    pub fn leak_span<'a>(self) -> SpanMut<'a, T>
+    where
+        A: 'a,
+    {
         let this = ManuallyDrop::new(self);
         let ptr = this.ptr.as_ptr();
         let len = this.len;
@@ -323,14 +326,68 @@ impl<T, A: Allocator> Vec<T, A> {
         }
     }
 
+    /// Extends the [`Vec`] by [`Clone`]ing the elements from `range`
+    ///
+    /// ## Panics
+    /// Panics if the range ends out of bounds of the [`Vec`], or the end of the range is placed before the beginning.
+    pub fn extend_from_within<R: RangeBounds<usize>>(&mut self, range: R)
+    where
+        T: Clone,
+    {
+        let begin = match range.start_bound() {
+            Bound::Included(x) => *x,
+            Bound::Excluded(x) => *x + 1,
+            Bound::Unbounded => 0,
+        };
+
+        let end = match range.end_bound() {
+            Bound::Included(x) => *x + 1,
+            Bound::Excluded(x) => *x,
+            Bound::Unbounded => self.len,
+        };
+
+        if end < begin {
+            panic!("Range beginnning {begin} must be less than or equal to range end {end}");
+        }
+
+        if self.len < end {
+            panic!("Range {begin}..{end} is out of bounds");
+        }
+
+        let len = end - begin;
+
+        self.reserve(len);
+        let ptr = self.ptr.as_ptr();
+        let read_ptr = unsafe { ptr.add(begin) };
+        let write_ptr = unsafe { ptr.add(self.len) };
+
+        if is_copy::<T>() {
+            unsafe { core::ptr::copy_nonoverlapping(read_ptr, write_ptr, len) }
+        } else {
+            for i in 0..len {
+                unsafe {
+                    write_ptr.add(i).write((&*read_ptr.add(i)).clone());
+                }
+            }
+        }
+    }
+
     /// Clones the elements of `x` and pushes them into the Vec, reallocating at most once.
     pub fn extend_from_slice(&mut self, x: &[T])
     where
         T: Clone,
     {
         self.reserve(x.len());
-        for v in x {
-            self.push(v.clone());
+
+        if is_copy::<T>() {
+            let write_ptr = unsafe { self.ptr.as_ptr().add(self.len) };
+            let read_ptr = x.as_ptr();
+            let len = x.len();
+            unsafe { core::ptr::copy_nonoverlapping(read_ptr, write_ptr, len) }
+        } else {
+            for v in x {
+                self.push(v.clone());
+            }
         }
     }
 
@@ -646,10 +703,11 @@ impl<T, A: Allocator> DerefMut for Vec<T, A> {
     }
 }
 
-#[inline]
+#[inline(always)]
 fn is_copy<T>() -> bool {
     struct TestIsCopy<T>(bool, PhantomData<T>);
     impl<T> Clone for TestIsCopy<T> {
+        #[inline(always)]
         fn clone(&self) -> Self {
             Self(false, self.1)
         }
@@ -665,23 +723,14 @@ impl<T: Clone, A: Allocator + Clone> Clone for Vec<T, A> {
     fn clone(&self) -> Self {
         let nalloc = self.alloc.clone();
         let mut nvec = Self::with_capacity_in(self.len, nalloc);
-        let ptr = nvec.ptr.as_ptr();
-
-        if is_copy::<T>() {
-            unsafe { core::ptr::copy_nonoverlapping(self.ptr.as_ptr(), ptr, self.len) }
-        } else {
-            for i in 0..self.len {
-                unsafe {
-                    core::ptr::write(ptr.add(i), self[i].clone());
-                }
-            }
-        }
-
-        unsafe {
-            nvec.set_len(self.len);
-        }
-
+        nvec.extend_from_slice(self);
         nvec
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.clear();
+        self.reserve(source.len);
+        self.extend_from_slice(source);
     }
 }
 
