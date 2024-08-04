@@ -2662,7 +2662,7 @@ fake_enum::fake_enum! {
     ///    * A *happens before* B,
     ///    * A is a memory operation with a nontemporal access class, B is a `sequence` instruction, and A is *weekly sequenced before* B,
     ///    * There exists an expression C, such that A *weekly happens before* C, and C *weekly happens before* B.
-    /// 6.
+    /// 6. _Note: Weekly happens before allows a `sequence` instruction to synchronize `nontemporal` accesses with _
     ///
     pub enum struct AccessClass{
         Normal = 0,
