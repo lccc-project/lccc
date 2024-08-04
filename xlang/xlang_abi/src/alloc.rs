@@ -1107,6 +1107,7 @@ mod test {
     #[test]
     pub fn test_alloc_align() {
         #[repr(align(256))]
+        #[allow(dead_code)]
         struct Foo(u8);
         let p = unsafe { xlang_allocate_aligned(256, 256) } as *mut Foo;
         if p.is_null() {

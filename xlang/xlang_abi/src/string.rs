@@ -363,7 +363,7 @@ impl Deref for StringView<'_> {
         unsafe {
             core::str::from_utf8_unchecked(core::slice::from_raw_parts(
                 self.begin.as_ptr(),
-                (self.end.as_ptr() as usize) - (self.begin.as_ptr() as usize), // This is really annoying that have to do this
+                self.end.offset_from(self.begin) as usize, // This is really annoying that have to do this
             ))
         }
     }
@@ -407,7 +407,7 @@ impl core::fmt::Debug for StringView<'_> {
 
 impl core::fmt::Display for StringView<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        <str as core::fmt::Display>::fmt(self, f)
+        f.write_str(self)
     }
 }
 
@@ -604,6 +604,6 @@ mod test {
     #[test]
     pub fn test_display() {
         let x = StringView::new("Hello World");
-        assert_eq!(&*x, &*format!("{}", x))
+        assert_eq!(*x, *format!("{}", x))
     }
 }
