@@ -7,3 +7,4 @@ autom4te.cache/
 testfile
 test-output.txt
 /build*/
+rustc-ice-*.txt
