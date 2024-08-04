@@ -38,6 +38,9 @@ pub mod intrinsic;
 /// Module for handling calling convention, and calling functions
 pub mod callconv;
 
+/// Module for handling regalloc
+pub mod regalloc;
+
 /// Module for name mangling
 pub mod mangle;
 
