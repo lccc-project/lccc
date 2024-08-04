@@ -604,6 +604,6 @@ mod test {
     #[test]
     pub fn test_display() {
         let x = StringView::new("Hello World");
-        assert_eq!(*x, *format!("{}", x))
+        assert_eq!(*x, *std::format!("{}", x))
     }
 }
