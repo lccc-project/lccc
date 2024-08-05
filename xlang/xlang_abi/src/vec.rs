@@ -370,6 +370,8 @@ impl<T, A: Allocator> Vec<T, A> {
                 }
             }
         }
+
+        self.len += len;
     }
 
     /// Clones the elements of `x` and pushes them into the Vec, reallocating at most once.
@@ -383,7 +385,10 @@ impl<T, A: Allocator> Vec<T, A> {
             let write_ptr = unsafe { self.ptr.as_ptr().add(self.len) };
             let read_ptr = x.as_ptr();
             let len = x.len();
-            unsafe { core::ptr::copy_nonoverlapping(read_ptr, write_ptr, len) }
+            unsafe {
+                core::ptr::copy_nonoverlapping(read_ptr, write_ptr, len);
+            }
+            self.len += len;
         } else {
             for v in x {
                 self.push(v.clone());
@@ -1000,7 +1005,7 @@ macro_rules! vec{
             __check(&val);
             let mut vec = $crate::vec::Vec::with_capacity(__repeat);
             for _ in 0..($repeat){
-                vec.push(val.clone());
+                vec.push(::core::clone::Clone::clone(&val));
             }
             vec
         }
@@ -1160,5 +1165,57 @@ mod test {
 
         assert_eq!(vec[0], 4);
         assert_eq!(vec[1], 5);
+    }
+
+    #[test]
+    fn test_vec_macro_slice() {
+        let vec = vec![0, 1, 2, 3];
+
+        assert_eq!(vec[..], [0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn test_vec_macro_repeat() {
+        let vec = vec![0; 4];
+
+        assert_eq!(vec[..], [0; 4])
+    }
+
+    #[test]
+    fn test_vec_extend_from_slice_non_copy() {
+        #[derive(Clone, Debug, PartialEq)]
+        pub struct NotCopy(u8);
+
+        const NOT_COPY: NotCopy = NotCopy(1);
+
+        let mut base = Vec::new();
+        base.extend_from_slice(&[NOT_COPY; 16]);
+
+        assert_eq!(base[..], [NOT_COPY; 16])
+    }
+
+    #[test]
+    fn test_vec_extend_from_slice_copy() {
+        let mut base = Vec::new();
+        base.extend_from_slice(&[0u8; 16]);
+
+        assert_eq!(base[..], [0; 16])
+    }
+
+    #[test]
+    fn test_vec_extend_from_within_non_copy() {
+        #[derive(Clone, Debug, PartialEq)]
+        pub struct NotCopy(u8);
+        const NOT_COPY: NotCopy = NotCopy(1);
+        let mut base = vec![NotCopy(1); 32];
+        base.extend_from_within(0..8);
+        assert_eq!(base[..], [NOT_COPY; 40]);
+    }
+
+    #[test]
+    fn test_vec_extend_from_within_copy() {
+        let mut base = vec![1u8; 32];
+        base.extend_from_within(0..8);
+        assert_eq!(base[..], [1; 40]);
     }
 }
