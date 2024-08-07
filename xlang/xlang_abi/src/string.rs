@@ -444,7 +444,7 @@ impl<'a> StringView<'a> {
 
     /// Returns a view over the string referred to by `v`
     #[must_use]
-    pub fn new(v: &'a str) -> Self {
+    pub const fn new(v: &'a str) -> Self {
         let bytes = v.as_bytes();
 
         let begin = bytes.as_ptr();
@@ -536,26 +536,7 @@ pub use core::ptr::addr_of as __addr_of;
 #[macro_export]
 macro_rules! const_sv {
     ($str:expr) => {{
-        const __RET: $crate::string::StringView = {
-            #[repr(C)]
-            union AsArray<'a, T> {
-                reff: &'a T,
-                arr: &'a [T; 1],
-            }
-
-            let st: &'static $crate::string::__rust_str = $str;
-            let slice = st.as_bytes();
-            let begin = slice.as_ptr();
-            let end = if let [.., reff] = slice {
-                let [_, end @ ..] = unsafe { AsArray { reff }.arr };
-                end.as_ptr()
-            } else {
-                slice.as_ptr()
-            };
-
-            unsafe { $crate::string::StringView::from_raw_parts(begin, end) }
-        };
-        __RET
+        $crate::string::StringView::new($str)
     }};
 }
 
