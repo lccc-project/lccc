@@ -1,7 +1,7 @@
 use std::{
     borrow::Borrow,
     hash::Hash,
-    num::NonZeroUsize,
+    num::NonZeroU32,
     ops::Deref,
     sync::{
         atomic::{self, AtomicUsize},
@@ -13,11 +13,11 @@ use xlang::abi::{collection::HashMap, string::String, string::StringView, sync::
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct Symbol(NonZeroUsize);
+pub struct Symbol(NonZeroU32);
 
 type SymHashMap = (
-    HashMap<NonZeroUsize, &'static str>,
-    HashMap<&'static str, NonZeroUsize>,
+    HashMap<NonZeroU32, &'static str>,
+    HashMap<&'static str, NonZeroU32>,
 );
 
 struct SymbolMap {
@@ -37,9 +37,10 @@ impl SymbolMap {
             .get_or_insert_with(|| RwLock::new((HashMap::new(), HashMap::new())))
     }
 
-    fn allocate_counter(&self) -> NonZeroUsize {
+    fn allocate_counter(&self) -> NonZeroU32 {
         let val = self.counter.fetch_add(1, atomic::Ordering::Relaxed);
-        NonZeroUsize::new(val).expect("Exhausted Counter Limit")
+        NonZeroU32::new(val.try_into().expect("Exhausted Counter Limit"))
+            .expect("Exhausted Counter Limit")
     }
 }
 

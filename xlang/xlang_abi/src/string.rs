@@ -7,6 +7,7 @@ use std::{
     ffi::OsStr,
     fmt::{Formatter, Write},
     hash::{Hash, Hasher},
+    iter::FromIterator,
     marker::PhantomData,
     ops::{Add, AddAssign},
     path::Path,
@@ -136,6 +137,23 @@ impl<A: Allocator> String<A> {
     /// Pushes a character
     pub fn push(&mut self, c: char) {
         self.push_str(c.encode_utf8(&mut [0u8; 4]));
+    }
+
+    /// Pops the last character from the string
+    pub fn pop(&mut self) -> Option<char> {
+        let mut b = self.0.pop()?;
+        let mut val = 0;
+        while b & 0xC0 == 0x80 {
+            val |= (b & 0x3F) as u32;
+            val <<= 6;
+
+            b = self.0.pop().unwrap();
+        }
+        let bits = b.leading_ones();
+        val |= (b & (!0 >> bits)) as u32;
+
+        // SAFETY: the `String` is valid UTF-8 so we just decoded a valid `char`
+        Some(unsafe { char::from_u32_unchecked(val) })
     }
 
     /// Converts a [`String`] into a [`crate::vec::Vec`] of UTF-8 bytes
@@ -275,6 +293,37 @@ impl<A: Allocator> Write for String<A> {
     }
 }
 
+impl<A: Allocator> Extend<char> for String<A> {
+    fn extend<T: IntoIterator<Item = char>>(&mut self, iter: T) {
+        let iter = iter.into_iter();
+        let (c_count, _) = iter.size_hint();
+        self.0.reserve(c_count);
+
+        for c in iter {
+            self.push(c)
+        }
+    }
+}
+
+impl<'a, A: Allocator> Extend<&'a str> for String<A> {
+    fn extend<T: IntoIterator<Item = &'a str>>(&mut self, iter: T) {
+        for s in iter {
+            self.push_str(s)
+        }
+    }
+}
+
+impl<I> FromIterator<I> for String
+where
+    String: Extend<I>,
+{
+    fn from_iter<T: IntoIterator<Item = I>>(iter: T) -> Self {
+        let mut st = String::new();
+        st.extend(iter);
+        st
+    }
+}
+
 /// Version of [`std::format`] that returns a [`String`]
 #[macro_export]
 macro_rules! format{
@@ -314,7 +363,7 @@ impl Deref for StringView<'_> {
         unsafe {
             core::str::from_utf8_unchecked(core::slice::from_raw_parts(
                 self.begin.as_ptr(),
-                (self.end.as_ptr() as usize) - (self.begin.as_ptr() as usize), // This is really annoying that have to do this
+                self.end.offset_from(self.begin) as usize, // This is really annoying that have to do this
             ))
         }
     }
@@ -358,7 +407,7 @@ impl core::fmt::Debug for StringView<'_> {
 
 impl core::fmt::Display for StringView<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        <str as core::fmt::Display>::fmt(self, f)
+        f.write_str(self)
     }
 }
 
@@ -395,7 +444,7 @@ impl<'a> StringView<'a> {
 
     /// Returns a view over the string referred to by `v`
     #[must_use]
-    pub fn new(v: &'a str) -> Self {
+    pub const fn new(v: &'a str) -> Self {
         let bytes = v.as_bytes();
 
         let begin = bytes.as_ptr();
@@ -487,26 +536,7 @@ pub use core::ptr::addr_of as __addr_of;
 #[macro_export]
 macro_rules! const_sv {
     ($str:expr) => {{
-        const __RET: $crate::string::StringView = {
-            #[repr(C)]
-            union AsArray<'a, T> {
-                reff: &'a T,
-                arr: &'a [T; 1],
-            }
-
-            let st: &'static $crate::string::__rust_str = $str;
-            let slice = st.as_bytes();
-            let begin = slice.as_ptr();
-            let end = if let [.., reff] = slice {
-                let [_, end @ ..] = unsafe { AsArray { reff }.arr };
-                end.as_ptr()
-            } else {
-                slice.as_ptr()
-            };
-
-            unsafe { $crate::string::StringView::from_raw_parts(begin, end) }
-        };
-        __RET
+        $crate::string::StringView::new($str)
     }};
 }
 
@@ -555,6 +585,11 @@ mod test {
     #[test]
     pub fn test_display() {
         let x = StringView::new("Hello World");
-        assert_eq!(&*x, &*format!("{}", x))
+        assert_eq!(*x, *std::format!("{}", x))
+    }
+
+    #[test]
+    fn test_format() {
+        assert_eq!(*"5", *format!("{}", 5))
     }
 }

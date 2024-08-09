@@ -1,7 +1,7 @@
-use unicode_xid::UnicodeXID;
 use xlang::abi::string::String;
 use xlang::abi::try_;
 use xlang_frontend::iter::{IntoRewinder, PeekMoreIterator};
+use xlang_frontend::lexer::{is_ident_part_unicode, is_ident_start_unicode};
 use xlang_frontend::span::{Pos, Spanned, Speekable};
 use xlang_frontend::symbol::Symbol;
 
@@ -171,11 +171,11 @@ pub fn lex_one<I: Iterator<Item = char>>(
                     )
                 }
             }
-        } else if c.is_xid_start() {
+        } else if is_ident_start_unicode(c) {
             let mut string = String::from(c);
 
             while let Some((_, c)) = lex_char(tree) {
-                if c.is_xid_continue() {
+                if is_ident_part_unicode(c) {
                     tree.consume_peaked();
                     string.push(c)
                 } else if c == '\\' {

@@ -1,5 +1,5 @@
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery, missing_docs)]
-#![cfg_attr(has_feature_c_unwind = "feature", feature(c_unwind))]
+#![allow(unexpected_cfgs, unknown_lints)] // This is a dumbass lint we can't work arround in general
 
 //!
 //! The `xlang_host` crate provides access to the host target's apis, depending on the interfaces available from the OS
@@ -10,5 +10,8 @@
 pub mod dso;
 /// Primitive types defined by the OS (such as the size type and the pointer-sized type).
 pub mod primitives;
+
+/// Synchronization Primitives, like `wait_by_address`
+pub mod sync;
 
 mod rustcall;

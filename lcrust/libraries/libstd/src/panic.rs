@@ -12,12 +12,20 @@ fn unwrap_erased_unchecked<T>(p: *mut !) -> T {
 
 pub fn catch_unwind<F: UnwindSafe + FnOnce() -> T>(f: F) -> Result<T, Box<dyn Any>> {
     let mut slot = MaybeUninit::new()
-    let mut wrapper = ManuallyDrop::new(move || box_erased(f));
+    let mut wrapper = ManuallyDrop::new(move || 
+        unsafe{
+            core::intrinsics::construct_in_place(
+                slot.as_mut_ptr(), 
+                FnOnce::call_once, 
+                (f,),)
+        }
+    );
+    let (raw, metadata) = (addr_of_mut!(wrapper) as *mut ManuallyDrop<dyn FnOnce()>).to_raw_parts();
     catch_unwind_erased(
-        core::mem::transmute(addr_of_mut!(wrapper) as *mut ManuallyDrop<dyn FnOnce() -> *mut !>),
+        core::ptr::from_raw_parts_mut(raw, metadata),
         core::ptr::null_mut(),
     )
-    .map(unwrap_erased_unchecked)
+    .map(|()| unsafe{slot.assume_init()})
 }
 
 /**
@@ -31,7 +39,7 @@ pub fn catch_unwind<F: UnwindSafe + FnOnce() -> T>(f: F) -> Result<T, Box<dyn An
  */
 #[lang = "lcrust_catch_unwind_fn"]
 #[inline(never)]
-fn catch_unwind_erased(f: *mut dyn FnOnce() -> *mut !, _: *mut !) -> Result<*mut !, Box<dyn Any>> {
+fn catch_unwind_erased(f: *mut dyn FnOnce(), _: *mut !) -> Result<(), Box<dyn Any>> {
     Ok(FnOnce::call_once_unsized(f, ()))
 }
 

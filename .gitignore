@@ -3,6 +3,8 @@ autom4te.cache/
 /config.toml
 *.o
 *.a
-a.out
+*.out
 testfile
 test-output.txt
+/build*/
+rustc-ice-*.txt

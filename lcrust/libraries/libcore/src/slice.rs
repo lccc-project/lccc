@@ -18,6 +18,11 @@
  */
 use crate::intrinsics::transmute;
 
+use crate::iter::{
+    DoubleEndedIterator, ExactSizeIterator, FusedIterator, IntoIterator, Iterator, TrustedLen,
+};
+use crate::ptr::NonNull;
+
 // lcrust implementation detail. Might open an RFC to make this part of rust
 #[doc(hidden)]
 #[unstable(feature = "lccc_slice_layout")]
@@ -179,3 +184,72 @@ impl<T> SliceIndex<[T]> for usize {
         }
     }
 }
+
+pub(crate) struct RawSliceIter<T> {
+    base: core::ptr::NonNull<T>,
+    end_or_len: *const T,
+}
+
+impl<T> core::iter::Iterator for RawSliceIter<T> {
+    type Item = core::ptr::NonNull<T>;
+
+    fn next(&mut self) -> Option<core::ptr::NonNull<T>> {
+        if const { core::mem::size_of::<T>() == 0 } {
+            if self.end_or_len.addr() == 0 {
+                None
+            } else {
+                self.end_or_len = self.end_or_len.wrapping_sub(1);
+                Some(self.base)
+            }
+        } else {
+            if self.base == self.end_or_len {
+                None
+            } else {
+                let val = self.base;
+                self.base = unsafe { val.add(1) };
+                Some(val)
+            }
+        }
+    }
+
+    fn advance_by(&mut self, n: usize) -> Result<(), core::num::NonZero<usize>> {
+        if const { core::mem::size_of::<T>() == 0 } {
+            if self.end_or_len.addr() < n {
+                Err(unsafe { NonZero::new_unchecked(n - self.end_or_len.addr()) })
+            } else {
+                self.end_or_len = self.end_or_len.wrapping_sub(n);
+                Ok(())
+            }
+        } else {
+            let cur_len = unsafe { self.end_or_len.offset_from(self.base.as_ptr()) };
+            if cur_len < n {
+                Err(unsafe { NonZero::new_unchecked(n - cur_len) })
+            } else {
+                self.base = unsafe { self.base.add(n) };
+                Ok(())
+            }
+        }
+    }
+
+    fn count(self) -> usize {
+        self.len()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len(), Some(self.len()))
+    }
+}
+
+impl<T> FusedIterator for RawSliceIter<T> {}
+
+impl<T> ExactSizeIterator for RawSliceIter<T> {
+    fn len(&self) -> usize {
+        if const { core::mem::size_of::<T>() == 0 } {
+            self.end_or_len.addr()
+        } else {
+            unsafe { self.end_or_len.offset_from(self.base.as_ptr()) }
+        }
+    }
+}
+
+unsafe impl<T> TrustedLen for RawSliceIter<T> {}

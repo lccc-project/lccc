@@ -1,10 +1,13 @@
 function puts(_0: *const char(8)) -> int(32);
 
 function main() -> int(32){
-    const global_address puts
-    const *const char(8) "Hello, world!"
-    call function(*const char(8))->int(32)
-    pop
-    const int(32) 0
-    exit 1
+    target @0 [] {
+        const *const char(8) "Hello World!\0"
+        const global_address function(*const char(8))->int(32) puts
+        call puts function(*const char(8))->int(32) next fallthrough @1
+    }
+    target @1 [] {
+        const int(32) 0
+        exit 1
+    }
 }

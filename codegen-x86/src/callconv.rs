@@ -1,299 +1,296 @@
-use std::{collections::HashSet, rc::Rc};
-
-use arch_ops::x86::{features::X86Feature, X86Register, X86RegisterClass};
-
-use xlang::{
-    prelude::v1::{Pair, Some as XLangSome},
-    targets::properties::TargetProperties,
-};
-use xlang_backend::{callconv::CallingConvention, ty::TypeInformation};
-use xlang_struct::{
-    AggregateDefinition, FloatFormat, FnType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type,
+use arch_ops::x86::{X86Mode, X86Register, X86RegisterClass};
+use xlang_backend::callconv::{
+    CallConvInfo, ClassifyAggregateDisposition, ParamPosition, RegisterDisposition,
+    ReturnPointerBehaviour, StackedParamsOrder, Tag,
 };
 
-use crate::ValLocation;
+use xlang::abi::option::Some as XLangSome;
 
-#[allow(dead_code)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum TypeClass {
-    Float,
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum X86TypeClass {
+    NoClass,
     X87,
+    X87Up,
     Sse,
+    SseUp,
+    SseWide(X86RegisterClass),
+    Float,
     Integer,
     Memory,
-    Zero,
 }
 
-#[allow(clippy::missing_panics_doc)] // TODO: remove todo!()
-#[must_use]
-pub fn classify_type(ty: &Type) -> Option<TypeClass> {
-    match ty {
-        Type::Scalar(ScalarType {
-            header:
-                ScalarTypeHeader {
-                    vectorsize: XLangSome(1..=65535),
-                    ..
-                },
-            ..
-        }) => Some(TypeClass::Sse),
-        Type::Scalar(ScalarType {
-            header: ScalarTypeHeader { bitsize: 80, .. },
-            kind:
-                ScalarTypeKind::Float {
-                    format: FloatFormat::IeeeExtPrecision,
-                },
-            ..
-        }) => Some(TypeClass::X87),
-        Type::Scalar(ScalarType {
-            header: ScalarTypeHeader {
-                bitsize: 65..=128, ..
-            },
-            kind: ScalarTypeKind::Float { .. },
-        }) => Some(TypeClass::Sse),
-        Type::Scalar(ScalarType {
-            kind: ScalarTypeKind::Float { .. },
-            ..
-        }) => Some(TypeClass::Float),
-        Type::Scalar(_) | Type::Pointer(_) => Some(TypeClass::Integer),
-        Type::Void | Type::FnType(_) | Type::Null => None,
-        Type::Array(ty) => classify_type(&ty.ty),
-        Type::TaggedType(_, ty) => classify_type(ty),
-        Type::Product(tys) => {
-            let mut infected = TypeClass::Zero;
-            for ty in tys {
-                infected = match (classify_type(ty)?, infected) {
-                    (a, TypeClass::Zero) => a,
-                    (_, TypeClass::Memory) => TypeClass::Memory,
-                    (TypeClass::Float, TypeClass::Sse) => TypeClass::Sse,
-                    (TypeClass::Float, TypeClass::X87) => TypeClass::X87,
-                    (a, b) if a == b => a,
-                    _ => TypeClass::Memory,
-                };
-            }
-            Some(infected)
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum X86Tag {
+    SysV64,
+}
+
+impl X86Tag {
+    pub fn volatile_regs(&self) -> &'static [X86Register] {
+        match self {
+            X86Tag::SysV64 => &[
+                X86Register::Rax,
+                X86Register::Rcx,
+                X86Register::Rdx,
+                X86Register::Rsi,
+                X86Register::Rdi,
+                X86Register::R8,
+                X86Register::R9,
+            ],
         }
-        Type::Aligned(_, _) => todo!(),
-        Type::Aggregate(AggregateDefinition { fields, .. }) => {
-            let mut infected = TypeClass::Zero;
-            for ty in fields.iter().map(|Pair(_, ty)| ty) {
-                infected = match (classify_type(ty)?, infected) {
-                    (a, TypeClass::Zero) => a,
-                    (_, TypeClass::Memory) => TypeClass::Memory,
-                    (TypeClass::Float, TypeClass::Sse) => TypeClass::Sse,
-                    (TypeClass::Float, TypeClass::X87) => TypeClass::X87,
-                    (a, b) if a == b => a,
-                    _ => TypeClass::Memory,
-                };
-            }
-            Some(infected)
-        }
-        Type::Named(path) => todo!("named type {:?}", path),
     }
 }
 
-pub trait X86CallConv {
-    fn prepare_stack(&self, ty: &FnType, frame_size: usize) -> usize;
-    fn find_parameter(&self, off: u32, ty: &FnType, infn: bool) -> ValLocation;
-    fn find_return_val(&self, ty: &Type) -> Option<ValLocation>;
-    fn pass_return_place(&self, ty: &Type, frame_size: usize) -> Option<ValLocation>;
-    fn with_tag(&self, tag: &str) -> Option<Box<dyn X86CallConv>>;
-    fn callee_saved(&self) -> &[X86Register];
-}
+impl Tag for X86Tag {
+    type Register = X86Register;
+    type TypeClass = X86TypeClass;
 
-#[derive(Clone, Debug)]
-pub struct SysV64CC<S: std::hash::BuildHasher + Clone = std::collections::hash_map::RandomState>(
-    &'static TargetProperties<'static>,
-    HashSet<X86Feature, S>,
-    Rc<TypeInformation>,
-);
-
-impl<S: std::hash::BuildHasher + Clone + 'static> X86CallConv for SysV64CC<S> {
-    fn prepare_stack(&self, _ty: &FnType, _frame_size: usize) -> usize {
-        todo!()
+    fn tag_name(&self) -> &'static str {
+        match self {
+            Self::SysV64 => "SysV64",
+        }
     }
 
-    #[allow(clippy::no_effect_underscore_binding)] // TODO: use xmm_regs
-    fn find_parameter(&self, off: u32, ty: &FnType, _: bool) -> ValLocation {
-        let mut int_regs: &[X86Register] = &[
-            X86Register::Rdi,
-            X86Register::Rsi,
-            X86Register::Rdx,
-            X86Register::Rcx,
-            X86Register::R8,
-            X86Register::R9,
-        ];
-        let mut _xmm_regs: &[X86Register] = &[
-            X86Register::Xmm(0),
-            X86Register::Xmm(1),
-            X86Register::Xmm(2),
-            X86Register::Xmm(3),
-            X86Register::Xmm(4),
-            X86Register::Xmm(5),
-        ];
-
-        let has_return_param = self.pass_return_place(&ty.ret, 0).is_some();
-        if has_return_param {
-            int_regs = &int_regs[1..];
+    fn param_regs_for_class(&self, cl: &Self::TypeClass) -> &[Self::Register] {
+        match (self, cl) {
+            (X86Tag::SysV64, X86TypeClass::SseWide(X86RegisterClass::Tmm)) => &[],
+            (X86Tag::SysV64, X86TypeClass::Sse)
+            | (X86Tag::SysV64, X86TypeClass::SseUp)
+            | (X86Tag::SysV64, X86TypeClass::SseWide(X86RegisterClass::Xmm))
+            | (X86Tag::SysV64, X86TypeClass::Float) => &[
+                X86Register::Xmm(0),
+                X86Register::Xmm(1),
+                X86Register::Xmm(2),
+                X86Register::Xmm(3),
+                X86Register::Xmm(4),
+                X86Register::Xmm(5),
+            ],
+            (X86Tag::SysV64, X86TypeClass::SseWide(X86RegisterClass::Ymm)) => &[
+                X86Register::Ymm(0),
+                X86Register::Ymm(1),
+                X86Register::Ymm(2),
+                X86Register::Ymm(3),
+                X86Register::Ymm(4),
+                X86Register::Ymm(5),
+            ],
+            (X86Tag::SysV64, X86TypeClass::SseWide(X86RegisterClass::Zmm)) => &[
+                X86Register::Zmm(0),
+                X86Register::Zmm(1),
+                X86Register::Zmm(2),
+                X86Register::Zmm(3),
+                X86Register::Zmm(4),
+                X86Register::Zmm(5),
+            ],
+            (X86Tag::SysV64, X86TypeClass::Integer) => &[
+                X86Register::Rdi,
+                X86Register::Rsi,
+                X86Register::Rdx,
+                X86Register::Rcx,
+                X86Register::R8,
+                X86Register::R9,
+            ],
+            (X86Tag::SysV64, _) => &[],
         }
-        let mut last_val = ValLocation::Unassigned(0);
-        for ty in ty.params.iter().take(off as usize + 1) {
-            match (classify_type(ty).unwrap(), self.2.type_size(ty).unwrap()) {
-                (_, 0) => last_val = ValLocation::Null,
-                (TypeClass::Integer, 1) => {
-                    int_regs.get(0).map_or_else(
-                        || todo!(),
-                        |reg| {
-                            int_regs = &int_regs[1..];
-                            let reg =
-                                X86Register::from_class(X86RegisterClass::ByteRex, reg.regnum())
-                                    .unwrap();
-                            last_val = ValLocation::Register(reg);
-                        },
-                    );
-                }
-                (TypeClass::Integer, 2) => {
-                    int_regs.get(0).map_or_else(
-                        || todo!(),
-                        |reg| {
-                            int_regs = &int_regs[1..];
-                            let reg = X86Register::from_class(X86RegisterClass::Word, reg.regnum())
-                                .unwrap();
-                            last_val = ValLocation::Register(reg);
-                        },
-                    );
-                }
-                (TypeClass::Integer, 3 | 4) => {
-                    int_regs.get(0).map_or_else(
-                        || todo!(),
-                        |reg| {
-                            int_regs = &int_regs[1..];
-                            let reg =
-                                X86Register::from_class(X86RegisterClass::Double, reg.regnum())
-                                    .unwrap();
-                            last_val = ValLocation::Register(reg);
-                        },
-                    );
-                }
-                (TypeClass::Integer, 5..=8) => {
-                    int_regs.get(0).map_or_else(
-                        || todo!(),
-                        |reg| {
-                            int_regs = &int_regs[1..];
-                            last_val = ValLocation::Register(*reg);
-                        },
-                    );
-                }
-                (TypeClass::Integer, 9..=16) => {
-                    int_regs.get(0..2).map_or_else(
-                        || todo!(),
-                        |reg| {
-                            int_regs = &int_regs[2..];
-                            last_val = ValLocation::Regs(reg.to_owned());
-                        },
-                    );
-                }
-                (TypeClass::Integer, 17..=24) => {
-                    int_regs.get(0..3).map_or_else(
-                        || todo!(),
-                        |reg| {
-                            int_regs = &int_regs[3..];
-                            last_val = ValLocation::Regs(reg.to_owned());
-                        },
-                    );
-                }
-                (TypeClass::Integer, 25..=32) => {
-                    int_regs.get(0..4).map_or_else(
-                        || todo!(),
-                        |reg| {
-                            int_regs = &int_regs[4..];
-                            last_val = ValLocation::Regs(reg.to_owned());
-                        },
-                    );
-                }
-                _ => todo!(),
-            }
-        }
-
-        last_val
     }
 
-    #[allow(clippy::unnested_or_patterns)]
-    fn find_return_val(&self, ty: &Type) -> Option<ValLocation> {
-        match (classify_type(ty), self.2.type_size(ty)) {
-            (None, Some(_)) | (Some(_), None) => unreachable!(),
-            (Some(TypeClass::Zero), Some(0)) => Some(ValLocation::Null),
-            (Some(TypeClass::Zero), Some(_)) => {
-                panic!("Impossible situation (type has zst class, but has a size)")
+    fn return_regs_for_class(&self, cl: &Self::TypeClass) -> &[Self::Register] {
+        match (self, cl) {
+            (X86Tag::SysV64, X86TypeClass::X87) => &[X86Register::Fp(0), X86Register::Fp(1)],
+            (X86Tag::SysV64, X86TypeClass::Sse)
+            | (X86Tag::SysV64, X86TypeClass::SseUp)
+            | (X86Tag::SysV64, X86TypeClass::Float) => &[X86Register::Xmm(0), X86Register::Xmm(1)],
+            (X86Tag::SysV64, X86TypeClass::SseWide(X86RegisterClass::Tmm)) => &[],
+            (X86Tag::SysV64, X86TypeClass::SseWide(X86RegisterClass::Xmm)) => {
+                &[X86Register::Xmm(0)]
             }
-            (Some(TypeClass::Integer), Some(1)) => Some(ValLocation::Register(X86Register::Al)),
-            (Some(TypeClass::Integer), Some(2)) => Some(ValLocation::Register(X86Register::Ax)),
-            (Some(TypeClass::Integer), Some(4)) => Some(ValLocation::Register(X86Register::Eax)),
-            (Some(TypeClass::Integer), Some(8)) => Some(ValLocation::Register(X86Register::Rax)),
-            (Some(TypeClass::Integer), Some(16)) => {
-                Some(ValLocation::Regs(vec![X86Register::Rax, X86Register::Rdx]))
+            (X86Tag::SysV64, X86TypeClass::SseWide(X86RegisterClass::Ymm)) => {
+                &[X86Register::Ymm(0)]
             }
-            (Some(TypeClass::X87), Some(16)) => Some(ValLocation::Register(X86Register::Fp(0))),
-            (Some(TypeClass::Float), Some(4))
-            | (Some(TypeClass::Float), Some(8))
-            | (Some(TypeClass::Float), Some(16)) => {
-                Some(ValLocation::Register(X86Register::Xmm(0)))
+            (X86Tag::SysV64, X86TypeClass::SseWide(X86RegisterClass::Zmm)) => {
+                &[X86Register::Zmm(0)]
             }
-            (Some(TypeClass::Sse), Some(4))
-            | (Some(TypeClass::Sse), Some(8))
-            | (Some(TypeClass::Sse), Some(16)) => Some(ValLocation::Register(X86Register::Xmm(0))),
-            (Some(TypeClass::Sse), Some(32)) if self.1.contains(&X86Feature::Avx) => {
-                Some(ValLocation::Register(X86Register::Ymm(0)))
+            (X86Tag::SysV64, X86TypeClass::Integer) => &[X86Register::Rax, X86Register::Rdx],
+            (X86Tag::SysV64, _) => &[],
+        }
+    }
+
+    fn replace_param_with_pointer(&self, cl: &[Self::TypeClass]) -> Option<Self::TypeClass> {
+        eprintln!("replace_param_with_pointer({:?})", cl);
+        match self {
+            Self::SysV64 => {
+                if cl.len() > 2 {
+                    Some(X86TypeClass::Integer)
+                } else if cl.iter().any(|x| {
+                    *x == X86TypeClass::Memory
+                        || *x == X86TypeClass::X87
+                        || *x == X86TypeClass::X87Up
+                }) {
+                    Some(X86TypeClass::Integer)
+                } else {
+                    None
+                }
             }
-            (Some(TypeClass::Sse), Some(64)) if self.1.contains(&X86Feature::Avx512f) => {
-                Some(ValLocation::Register(X86Register::Zmm(0)))
+        }
+    }
+
+    fn combine_wide(&self, cl: &[Self::TypeClass]) -> Option<Self::TypeClass> {
+        match cl {
+            [X86TypeClass::Sse, X86TypeClass::SseUp] => {
+                Some(X86TypeClass::SseWide(X86RegisterClass::Xmm))
+            }
+            [X86TypeClass::Sse, X86TypeClass::SseUp, X86TypeClass::SseUp, X86TypeClass::SseUp] => {
+                Some(X86TypeClass::SseWide(X86RegisterClass::Ymm))
+            }
+            [X86TypeClass::Sse, X86TypeClass::SseUp, X86TypeClass::SseUp, X86TypeClass::SseUp, X86TypeClass::SseUp, X86TypeClass::SseUp, X86TypeClass::SseUp, X86TypeClass::SseUp] => {
+                Some(X86TypeClass::SseWide(X86RegisterClass::Zmm))
+            }
+            [X86TypeClass::X87, X86TypeClass::X87Up]
+            | [X86TypeClass::X87, X86TypeClass::X87Up, X86TypeClass::X87Up, X86TypeClass::X87Up]
+            | [X86TypeClass::X87, X86TypeClass::X87Up, X86TypeClass::X87Up, X86TypeClass::X87Up, X86TypeClass::X87Up, X86TypeClass::X87Up, X86TypeClass::X87Up, X86TypeClass::X87Up] => {
+                Some(X86TypeClass::X87)
             }
             _ => None,
         }
     }
 
-    fn pass_return_place(&self, _ty: &Type, _frame_size: usize) -> Option<ValLocation> {
-        None // For now
+    fn replace_return_with_pointer(
+        &self,
+        cl: &[Self::TypeClass],
+    ) -> Option<ReturnPointerBehaviour<Self::Register, Self::TypeClass>> {
+        match self {
+            Self::SysV64 => {
+                if cl.len() > 2 {
+                    Some(ReturnPointerBehaviour::Param(
+                        ParamPosition::First,
+                        X86TypeClass::Integer,
+                    ))
+                } else if cl.iter().any(|x| *x == X86TypeClass::Memory) {
+                    Some(ReturnPointerBehaviour::Param(
+                        ParamPosition::First,
+                        X86TypeClass::Integer,
+                    ))
+                } else {
+                    None
+                }
+            }
+        }
     }
 
-    fn with_tag(&self, _: &str) -> Option<Box<dyn X86CallConv>> {
-        Some(Box::new((*self).clone()))
+    fn replace_class_as_varargs(&self, _: &Self::TypeClass) -> Option<Self::TypeClass> {
+        None
     }
 
-    fn callee_saved(&self) -> &[X86Register] {
-        &[
-            X86Register::Rbx,
-            X86Register::Rbp,
-            X86Register::Rsp, // note: This is hardcoded in the codegen
-            X86Register::R12,
-            X86Register::R13,
-            X86Register::R14,
-            X86Register::R15,
-        ]
+    fn register_disposition(&self, cl: &Self::TypeClass) -> RegisterDisposition {
+        match self {
+            X86Tag::SysV64 => match cl {
+                X86TypeClass::Sse
+                | X86TypeClass::SseUp
+                | X86TypeClass::SseWide(_)
+                | X86TypeClass::Float => RegisterDisposition::Consume,
+                _ => RegisterDisposition::Interleave,
+            },
+        }
+    }
+
+    fn stacked_params_order(&self) -> StackedParamsOrder {
+        match self {
+            X86Tag::SysV64 => StackedParamsOrder::Rtl,
+        }
     }
 }
 
-impl<'a> CallingConvention for dyn X86CallConv + 'a {
-    type Loc = ValLocation;
-
-    fn pass_return_place(&self, ty: &Type) -> Option<Self::Loc> {
-        self.pass_return_place(ty, 0)
-    }
-
-    fn find_param(&self, fnty: &FnType, _: &FnType, param: u32, infn: bool) -> Self::Loc {
-        self.find_parameter(param, fnty, infn)
-    }
-
-    fn find_return_val(&self, fnty: &FnType) -> Self::Loc {
-        self.find_return_val(&fnty.ret).unwrap()
-    }
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct X86CallConvInfo {
+    pub mode: X86Mode,
 }
 
-#[allow(clippy::module_name_repetitions)]
-pub fn get_callconv<S: std::hash::BuildHasher + Clone + 'static>(
-    _tag: &str,
-    target: &'static TargetProperties<'static>,
-    features: HashSet<X86Feature, S>,
-    tys: Rc<TypeInformation>,
-) -> Option<Box<dyn X86CallConv>> {
-    Some(Box::new(SysV64CC(target, features, tys)))
+impl CallConvInfo for X86CallConvInfo {
+    type Tag = X86Tag;
+
+    type TypeClass = X86TypeClass;
+
+    type Register = X86Register;
+
+    fn get_tag(&self, tag: &str) -> Self::Tag {
+        match (self.mode, tag) {
+            (X86Mode::Long, "SysV64") => X86Tag::SysV64,
+            (mode, tag) => todo!("{} in {:?}", tag, mode),
+        }
+    }
+
+    fn no_class(&self) -> Self::TypeClass {
+        X86TypeClass::NoClass
+    }
+
+    fn classify_scalar(&self, sty: xlang_struct::ScalarType) -> Vec<Self::TypeClass> {
+        let width = self.mode.width();
+        let scalar_regs = ((sty.header.bitsize + (width - 1)) as usize) >> (width.trailing_zeros());
+
+        if let XLangSome(elements) = sty.header.vectorsize {
+            let total_regs = (scalar_regs) * (elements as usize);
+            if total_regs > 0 {
+                let mut regs = Vec::with_capacity(total_regs);
+                regs.push(X86TypeClass::Sse);
+                for _ in 1..total_regs {
+                    regs.push(X86TypeClass::SseUp)
+                }
+                regs
+            } else {
+                vec![X86TypeClass::NoClass]
+            }
+        } else {
+            if scalar_regs == 0 {
+                vec![X86TypeClass::NoClass]
+            } else {
+                match sty.kind {
+                    xlang_struct::ScalarTypeKind::Empty => vec![X86TypeClass::NoClass; scalar_regs],
+                    xlang_struct::ScalarTypeKind::Integer { .. }
+                    | xlang_struct::ScalarTypeKind::Fixed { .. }
+                    | xlang_struct::ScalarTypeKind::Char { .. } => {
+                        vec![X86TypeClass::Integer; scalar_regs]
+                    }
+                    xlang_struct::ScalarTypeKind::Float {
+                        format: xlang::ir::FloatFormat::IeeeExtPrecision,
+                    } if sty.header.bitsize < 80 => {
+                        let mut regs = Vec::with_capacity(scalar_regs);
+                        regs.push(X86TypeClass::X87);
+                        for _ in 1..scalar_regs {
+                            regs.push(X86TypeClass::X87Up)
+                        }
+                        regs
+                    }
+                    xlang_struct::ScalarTypeKind::Float { .. } => {
+                        vec![X86TypeClass::Float; scalar_regs]
+                    }
+                    xlang_struct::ScalarTypeKind::Posit => vec![X86TypeClass::Float; scalar_regs],
+                }
+            }
+        }
+    }
+
+    fn classify_pointer(&self, _: xlang::ir::PointerKind) -> Self::TypeClass {
+        X86TypeClass::Integer
+    }
+
+    fn classify_aggregate_disposition(
+        &self,
+    ) -> xlang_backend::callconv::ClassifyAggregateDisposition<Self::TypeClass> {
+        ClassifyAggregateDisposition::SplitFlat((self.mode.width() as u64) >> 3)
+    }
+
+    fn merge_class(&self, left: Self::TypeClass, right: Self::TypeClass) -> Self::TypeClass {
+        if left == right {
+            left
+        } else {
+            match (left, right) {
+                (X86TypeClass::NoClass, other) | (other, X86TypeClass::NoClass) => other,
+                (X86TypeClass::Memory, _) | (_, X86TypeClass::Memory) => X86TypeClass::Memory,
+                (X86TypeClass::Sse, X86TypeClass::SseUp)
+                | (X86TypeClass::SseUp, X86TypeClass::Sse) => X86TypeClass::Sse,
+                (X86TypeClass::Integer, _) | (_, X86TypeClass::Integer) => X86TypeClass::Integer,
+                _ => X86TypeClass::Memory,
+            }
+        }
+    }
+
+    fn adjust_classes_after_combine(&self, _: &mut [Self::TypeClass]) {}
 }

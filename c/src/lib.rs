@@ -57,6 +57,7 @@ impl XLangPlugin for CFrontend {
 xlang::host::rustcall! {
     #[allow(clippy::missing_const_for_fn)]
     #[no_mangle]
+    #[allow(improper_ctypes_definitions)]
     pub extern "rustcall" fn xlang_frontend_main() -> DynBox<dyn XLangFrontend> {
         DynBox::unsize_box(Box::new(CFrontend::new()))
     }

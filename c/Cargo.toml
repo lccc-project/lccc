@@ -1,16 +1,14 @@
 [package]
 name = "frontend-c"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause-Patent"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 xlang = {path="../xlang"}
-xlang_struct = {path="../xlang/xlang_struct"}
 xlang_frontend = {path="../xlang/xlang_frontend"}
-unicode-xid = "0.2.2"
 
 [lib]
 crate-type = ["cdylib"]

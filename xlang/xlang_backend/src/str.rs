@@ -90,7 +90,7 @@ impl StringMap {
     }
 
     /// Obtains a symbol for the given string, interning the content if necessary
-    pub fn get_string_symbol(&mut self, bytes: Vec<u8>, enc: Encoding) -> String {
+    pub fn get_string_symbol(&mut self, bytes: Vec<u8>, enc: Encoding) -> &str {
         let StringInterner { map, idx } =
             self.inner.get_or_insert_with_mut(enc, |_| StringInterner {
                 map: HashMap::new(),
@@ -118,17 +118,15 @@ impl StringMap {
                 st
             )
         })
-        .clone()
     }
 
     /// Enumerates all of the symbols in the file
-    pub fn symbols(&self) -> impl Iterator<Item = (Encoding, &str, &[u8])> {
-        self.inner.iter().flat_map(|Pair(enc, intern)| {
-            let enc = *enc;
+    pub fn symbols(&self) -> impl Iterator<Item = (&str, &[u8])> {
+        self.inner.iter().flat_map(|Pair(_, intern)| {
             intern
                 .map
                 .iter()
-                .map(move |Pair(bytes, sym)| (enc, &**sym, &**bytes))
+                .map(move |Pair(bytes, sym)| (&**sym, &**bytes))
         })
     }
 }

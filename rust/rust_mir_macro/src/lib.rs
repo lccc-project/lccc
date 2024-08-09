@@ -55,7 +55,8 @@ fn write_error(e: Error) -> TokenStream {
     let mut bang = Punct::new('!', Spacing::Alone);
     bang.set_span(e.span);
     let mut inner = TokenStream::new();
-    let st = Literal::string(&e.text);
+    let mut st = Literal::string(&e.text);
+    st.set_span(e.span);
     inner.extend([TokenTree::Literal(st)]);
 
     ts.extend([

@@ -235,6 +235,46 @@ macro_rules! try_ {
 /// A type alias that changes the `Output` type of `R` to `T`
 pub type ChangeOutputType<R, T> = <<R as Try>::Residual as Residual<T>>::Try;
 
+/// Implement [`FromResidual`] of [`Yeet`] for this type, to support the [`yeet`] macro
+pub struct Yeet<T>(pub T);
+
+impl<T> FromResidual<Yeet<()>> for core::option::Option<T> {
+    fn from_residual(_: Yeet<()>) -> Self {
+        Self::None
+    }
+}
+
+impl<T> FromResidual<Yeet<()>> for crate::option::Option<T> {
+    fn from_residual(_: Yeet<()>) -> Self {
+        Self::None
+    }
+}
+
+impl<T, E> FromResidual<Yeet<E>> for core::result::Result<T, E> {
+    fn from_residual(res: Yeet<E>) -> Self {
+        Self::Err(res.0)
+    }
+}
+
+impl<T, E> FromResidual<Yeet<E>> for crate::result::Result<T, E> {
+    fn from_residual(res: Yeet<E>) -> Self {
+        Self::Err(res.0)
+    }
+}
+
+/// Yeets an expression, breaking out of a [`Try`] context with an explicit `None`/`Err`
+#[macro_export]
+macro_rules! yeet {
+    () => {
+        return $crate::ops::FromResidual::from_residual($crate::ops::Yeet(()))
+    };
+    ($e:expr) => {
+        return $crate::ops::FromResidual::from_residual($crate::ops::Yeet($e))
+    };
+}
+
+pub use yeet;
+
 #[cfg(test)]
 mod test {
     use crate::prelude::v1::*;

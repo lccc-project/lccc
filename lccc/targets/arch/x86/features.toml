@@ -1,0 +1,71 @@
+
+[x87.meta]
+description="""
+Enables use of the x87 Floating-point unix.
+Required for the calling conventions of most 32-bit non-softfloat x86 targets
+"""
+
+
+[mmx.meta]
+description="""
+Multimedia Extension Technologies.
+Not generally used, except via intrinsics
+"""
+
+
+[sse.meta]
+description="""
+Streaming SIMD Extensions.
+Required for the calling conventions of most 64-bit non-softfloat x86 targets 
+"""
+
+[sse2.meta]
+description="""
+Streaming SIMD Extensions 2
+"""
+
+[sse3.meta]
+description="""
+Streaming SIMD Extensions 3
+"""
+
+[ssse3.meta]
+description="""
+Supplemental Streaming SIMD Extensions 3
+"""
+
+[sse4.meta]
+description="""
+Streaming SIMD Extensions 4
+"""
+
+[sse4a.meta]
+description="""
+Streaming SIMD Extensions 4 (AMD Additional Instructions)
+"""
+
+['sse4.1'.meta]
+description="""
+Streaming SIMD Extensions 4.1
+"""
+
+['sse4.2'.meta]
+description="""
+Streaming SIMD Extensions 4.2 (String and Text New Instructions)
+"""
+
+[avx.meta]
+description="""
+Advanced Vector Extensions
+"""
+
+[avx2.meta]
+description="""
+Advanced Vector Extensions 2
+"""
+
+[avx512f.meta]
+description="""
+Advanced Vector Extensions (512-bit) Floating-point instructions
+"""
+

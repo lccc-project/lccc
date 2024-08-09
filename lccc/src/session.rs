@@ -1,12 +1,14 @@
 use core::cell::RefCell;
 use std::path::PathBuf;
 
-use xlang::abi::io::Read;
+use xlang::abi::io::{Read, Write};
 use xlang::abi::prelude::v1::*;
 use xlang::abi::string::StringView;
 use xlang::plugin::{XLangCodegen, XLangFrontend, XLangPlugin};
 use xlang::targets::properties::{MachineProperties, TargetProperties};
 use xlang_host::dso::Handle;
+
+use crate::Mode;
 
 use super::{DebugLevel, OptimizeLevel};
 
@@ -51,7 +53,7 @@ impl<'a> DriverSession<'a> {
     pub fn find_msvc(&mut self) {
         #[cfg(target_os_family = "windows")]
         {
-            if self.is_crosscompiling {
+            if !self.is_crosscompiling {
                 // Find msvc install
                 self.msvc = Some(MsvcSysroot {})
             }
@@ -63,6 +65,9 @@ pub struct CompileSession<'a> {
     driver: &'a DriverSession<'a>,
     frontend: DynBox<dyn XLangFrontend>,
     backend: Option<DynBox<dyn XLangCodegen>>,
+    middle_plugins: Vec<DynBox<dyn XLangPlugin>>,
     file: PathBuf,
-    output_file: Box<dyn Read>,
+    output_file: Box<dyn Write + 'a>,
 }
+
+impl<'a> CompileSession<'a> {}

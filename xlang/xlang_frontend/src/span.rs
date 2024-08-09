@@ -7,31 +7,46 @@ use xlang::abi::try_;
 use crate::helpers::FetchIncrement;
 use crate::symbol::Symbol;
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Pos {
-    row: u32,
-    col: u32,
+    row_col: u32,
 }
 
 impl Pos {
     pub const fn new(row: u32, col: u32) -> Self {
-        Self { row, col }
+        [()][(row > 0xFFFFF) as usize];
+        [()][(col > 0xFFF) as usize];
+        Self {
+            row_col: row | (col << 20),
+        }
     }
 
     pub const fn synthetic() -> Self {
-        Self::new(!0, !0)
+        Self { row_col: !0 }
     }
 
+    pub const fn is_synthetic(&self) -> bool {
+        self.row_col == !0
+    }
+
+    #[allow(dead_code)]
     pub const fn row(self) -> u32 {
-        self.row
+        self.row_col & 0xFFFFF
     }
 
+    #[allow(dead_code)]
     pub const fn col(self) -> u32 {
-        self.col
+        self.row_col >> 20
     }
 
-    pub const fn is_synthetic(self) -> bool {
-        self.row == !0 && self.col == !0
+    pub const fn next_col(mut self) -> Self {
+        Self::new(self.row(), self.col() + 1)
+    }
+}
+
+impl core::fmt::Debug for Pos {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}:{}", self.row(), self.col())
     }
 }
 
@@ -132,6 +147,10 @@ impl<T, H> Spanned<T, H> {
         &self.span
     }
 
+    pub const fn body(&self) -> &T {
+        &self.val
+    }
+
     pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> Spanned<U, H> {
         let Self { val, span } = self;
 
@@ -170,6 +189,17 @@ impl<T, H> Spanned<T, H> {
         let Self { val, span } = self;
 
         Try::from_output(Spanned::new(try_!(f(val)), *span))
+    }
+}
+
+impl<A, B, H> Spanned<(A, B), H> {
+    pub fn unzip(self) -> (Spanned<A, H>, Spanned<B, H>)
+    where
+        H: Copy,
+    {
+        let Self { val, span } = self;
+
+        (Spanned::new(val.0, span), Spanned::new(val.1, span))
     }
 }
 
@@ -226,11 +256,11 @@ impl<I: Iterator<Item = char>> Speekable<I> {
             } else if let Some(c) = c {
                 let idx = self.index.fetch_increment();
                 let next_pos = match c {
-                    '\n' => Pos::new(self.pos.row + 1, 1),
-                    _ => Pos::new(self.pos.row, self.pos.col + 1),
+                    '\n' => Pos::new(self.pos.row() + 1, 1),
+                    _ => Pos::new(self.pos.row(), self.pos.col() + 1),
                 };
 
-                if next_pos.row != self.pos.row {
+                if next_pos.row() != self.pos.row() {
                     self.row_map.push(idx);
                 }
 

@@ -1,0 +1,24 @@
+[_mm_2intersect_epi32]
+return="void()"
+params = ["int vectorsize(4)(32)", "int vectorsize(4)(32)", "*uint(8)", "*uint(8)"]
+
+[_mm256_2intersect_epi32]
+return="void()"
+params = ["int vectorsize(8)(32)", "int vectorsize(8)(32)", "*uint(8)", "*uint(8)"]
+
+[_mm512_2intersect_epi32]
+return="void()"
+params = ["int vectorsize(16)(32)", "int vectorsize(16)(32)", "*uint(16)", "*uint(16)"]
+
+[_mm_2intersect_epi64]
+return="void()"
+params = ["int vectorsize(4)(32)", "int vectorsize(4)(32)", "*uint(8)", "*uint(8)"]
+
+[_mm256_2intersect_epi64]
+return="void()"
+params = ["int vectorsize(8)(32)", "int vectorsize(8)(32)", "*uint(8)", "*uint(8)"]
+
+[_mm512_2intersect_epi64]
+return="void()"
+params = ["int vectorsize(16)(32)", "int vectorsize(16)(32)", "*uint(8)", "*uint(8)"]
+

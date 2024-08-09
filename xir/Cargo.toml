@@ -1,7 +1,7 @@
 [package]
 name = "frontend-xir"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause-Patent"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -10,9 +10,7 @@ license = "BSD-2-Clause-Patent"
 xlang = {path="../xlang"}
 xlang_struct = {path="../xlang/xlang_struct"}
 unicode-xid = "0.2.2"
-target-tuples = "0.5"
-peekmore = "1.0.0"
-binary-io = "0.1.0"
+xlang_frontend = {path="../xlang/xlang_frontend"}
 
 [lib]
 crate-type = ["cdylib"]

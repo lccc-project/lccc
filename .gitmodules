@@ -7,3 +7,9 @@
 [submodule "rtlibs"]
 	path = rtlibs
 	url = https://github.com/lccc-project/rtlibs.git
+[submodule "autobuild"]
+	path = autobuild
+	url = https://github.com/lccc-project/autobuild.git
+[submodule "lcrust/libraries/lccc-siphash"]
+	path = lcrust/libraries/lccc-siphash
+	url = https://github.com/lccc-project/lccc-siphash.git

@@ -2,7 +2,7 @@
 name = "xlang_interface"
 version = "0.1.0"
 authors = ["Connor Horman <chorman64@gmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause-Patent"
 description = """
 Minimal cdylib that exposes interfaces to be shared by the xlang environment (backend, frontend, plugins, driver)

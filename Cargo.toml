@@ -14,3 +14,5 @@ members = [
     "rust/interning-static-syms",
     "rust/rust_mir_macro",
 ]
+exclude = []
+resolver = "2"

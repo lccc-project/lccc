@@ -23,7 +23,7 @@ extern "C" {
     ///
     /// # Safety
     /// size, rounded to the next multiple of the alignment used by this function, must not be greater than `isize::MAX`
-    pub fn xlang_allocate(size: xlang_host::primitives::size_t) -> *mut core::ffi::c_void;
+    pub fn xlang_allocate(size: usize) -> *mut core::ffi::c_void;
     /// Function that allocates memory suitable for storing an object of size `size`, with at least the alignment given by `align`.
     ///
     /// This function permits allocations of size `0`, returning a pointer that is aligned to at least the given alignment
@@ -33,37 +33,25 @@ extern "C" {
     ///
     /// # Safety
     /// `align` must be a power of two. size, rounded to the next multiple of `align`, must not be greater than `isize::MAX`
-    pub fn xlang_allocate_aligned(
-        size: xlang_host::primitives::size_t,
-        align: xlang_host::primitives::size_t,
-    ) -> *mut core::ffi::c_void;
+    pub fn xlang_allocate_aligned(size: usize, align: usize) -> *mut core::ffi::c_void;
     /// Deallocates memory allocated using [`xlang_allocate`]
     ///
     /// # Safety
     /// ptr must be a null pointer, or have been allocated using [`xlang_allocate`] with `size`
-    pub fn xlang_deallocate(ptr: *mut core::ffi::c_void, size: xlang_host::primitives::size_t);
+    pub fn xlang_deallocate(ptr: *mut core::ffi::c_void, size: usize);
     /// Deallocates memory allocated using [`xlang_allocate`]
     ///
     /// # Safety
     /// ptr must be a null pointer, or have been allocated using [`xlang_allocate_aligned`] with `size` and `align`
-    pub fn xlang_deallocate_aligned(
-        ptr: *mut core::ffi::c_void,
-        size: xlang_host::primitives::size_t,
-        align: xlang_host::primitives::size_t,
-    );
+    pub fn xlang_deallocate_aligned(ptr: *mut core::ffi::c_void, size: usize, align: usize);
 
     /// Function to call when allocation fails.
-    pub fn xlang_on_allocation_failure(
-        size: xlang_host::primitives::size_t,
-        align: xlang_host::primitives::size_t,
-    ) -> !;
+    pub fn xlang_on_allocation_failure(size: usize, align: usize) -> !;
 }
 
 #[cfg(any(miri, test))]
 #[no_mangle]
-pub unsafe extern "C" fn xlang_allocate(
-    size: xlang_host::primitives::size_t,
-) -> *mut core::ffi::c_void {
+pub unsafe extern "C" fn xlang_allocate(size: usize) -> *mut core::ffi::c_void {
     if size == 0 {
         return 32usize as *mut core::ffi::c_void;
     }
@@ -80,8 +68,8 @@ pub unsafe extern "C" fn xlang_allocate(
 #[cfg(any(miri, test))]
 #[no_mangle]
 pub unsafe extern "C" fn xlang_allocate_aligned(
-    size: xlang_host::primitives::size_t,
-    align: xlang_host::primitives::size_t,
+    size: usize,
+    align: usize,
 ) -> *mut core::ffi::c_void {
     if size == 0 {
         return align as *mut core::ffi::c_void;
@@ -93,10 +81,7 @@ pub unsafe extern "C" fn xlang_allocate_aligned(
 
 #[cfg(any(miri, test))]
 #[no_mangle]
-pub unsafe extern "C" fn xlang_deallocate(
-    ptr: *mut core::ffi::c_void,
-    size: xlang_host::primitives::size_t,
-) {
+pub unsafe extern "C" fn xlang_deallocate(ptr: *mut core::ffi::c_void, size: usize) {
     if size == 0 {
         return;
     }
@@ -118,8 +103,8 @@ pub unsafe extern "C" fn xlang_deallocate(
 #[no_mangle]
 pub unsafe extern "C" fn xlang_deallocate_aligned(
     ptr: *mut core::ffi::c_void,
-    size: xlang_host::primitives::size_t,
-    align: xlang_host::primitives::size_t,
+    size: usize,
+    align: usize,
 ) {
     if size == 0 || ptr.is_null() {
         return;
@@ -131,10 +116,7 @@ pub unsafe extern "C" fn xlang_deallocate_aligned(
 
 #[cfg(any(miri, test))]
 #[no_mangle]
-pub extern "C" fn xlang_on_allocation_failure(
-    size: xlang_host::primitives::size_t,
-    align: xlang_host::primitives::size_t,
-) -> ! {
+pub extern "C" fn xlang_on_allocation_failure(size: usize, align: usize) -> ! {
     eprintln!(
         "Failed to allocate with size: {}, and alignment: {}",
         size, align
@@ -593,7 +575,7 @@ unsafe impl<A: ?Sized + Allocator> Allocator for &mut A {
 // TODO: Should this be changed? No. XLangAlloc is the correct name. This isn't the `Global` or `System` allocator, it's the xlang allocator
 #[derive(Copy, Clone)]
 #[repr(transparent)]
-pub struct XLangAlloc(core::mem::MaybeUninit<u8>);
+pub struct XLangAlloc(());
 
 impl XLangAlloc {
     ///
@@ -602,7 +584,7 @@ impl XLangAlloc {
     /// All values of type [`XLangAlloc`] are identical, and may be used interchangeably
     #[must_use]
     pub const fn new() -> Self {
-        Self(core::mem::MaybeUninit::uninit())
+        Self(())
     }
 }
 
@@ -633,19 +615,15 @@ impl Default for XLangAlloc {
 unsafe impl Allocator for XLangAlloc {
     fn allocate(&self, layout: Layout) -> Option<NonNull<u8>> {
         NonNull::new(unsafe {
-            xlang_allocate_aligned(
-                layout.size() as xlang_host::primitives::size_t,
-                layout.align() as xlang_host::primitives::size_t,
-            )
-            .cast::<u8>()
+            xlang_allocate_aligned(layout.size() as usize, layout.align() as usize).cast::<u8>()
         })
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         xlang_deallocate_aligned(
             ptr.as_ptr().cast(),
-            layout.size() as xlang_host::primitives::size_t,
-            layout.align() as xlang_host::primitives::size_t,
+            layout.size() as usize,
+            layout.align() as usize,
         );
     }
 }
@@ -1106,12 +1084,7 @@ where
 /// Called when allocation returns an unhandled error
 pub fn handle_alloc_error(layout: Layout) -> ! {
     #![cfg_attr(test, allow(unused_unsafe))]
-    unsafe {
-        xlang_on_allocation_failure(
-            layout.size() as xlang_host::primitives::size_t,
-            layout.align() as xlang_host::primitives::size_t,
-        )
-    }
+    unsafe { xlang_on_allocation_failure(layout.size() as usize, layout.align() as usize) }
 }
 
 #[cfg(all(test, miri))]
@@ -1134,6 +1107,7 @@ mod test {
     #[test]
     pub fn test_alloc_align() {
         #[repr(align(256))]
+        #[allow(dead_code)]
         struct Foo(u8);
         let p = unsafe { xlang_allocate_aligned(256, 256) } as *mut Foo;
         if p.is_null() {

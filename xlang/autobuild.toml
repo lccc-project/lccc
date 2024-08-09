@@ -1,0 +1,50 @@
+
+[targets.xlang_host]
+src="xlang_host/src/lib.rs"
+
+
+[target.xlang_abi]
+deps=["xlang_host"]
+src="xlang_abi/src/lib.rs"
+
+[target.xlang_targets]
+deps=["xlang_abi"]
+src="xlang_targets/src/lib.rs"
+
+[target.xlang_struct]
+deps=["xlang_abi", "xlang_targets", "vendor:bitflags-1.3", "vendor:fake-enum-0.1.4"]
+src="xlang_struct/src/lib.rs"
+
+[target.xlang-interface]
+deps=["xlang_abi"]
+src="xlang_interface/src/lib.rs"
+
+[target.xlang-interface.library]
+library-type="dynamic"
+soversion="0.1"
+
+[target.xlang]
+deps=["xlang_abi", "xlang_host", "xlang_struct", "xlang_targets"]
+links=["xlang-interface"]
+src="src/lib.rs"
+
+[target.xlang_backend]
+deps=["xlang"]
+src="xlang_backend/src/lib.rs"
+
+[target.xlang_frontend]
+deps=["xlang"]
+src="xlang_frontend/src/lib.rs"
+
+[build.xlang-plugin]
+base="rust" # Use the rust compiler for this build step
+leaf=true # Don't allow `link`s or `dep`s keys
+
+[build.xlang-plugin.defaults.library]
+library-type="dynamic" # We want a shared object/dll
+generate-link=false # Don't generate a <target-name>.lib on windows
+
+
+[build.xlang-plugin.defaults.artifact]
+prefix="xlang" # replace `lib` or `` prefix with `xlang`
+install="{lcccdir}"

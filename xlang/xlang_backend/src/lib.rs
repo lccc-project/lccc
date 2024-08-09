@@ -1,30 +1,26 @@
 #![deny(missing_docs, warnings)] // No clippy::nursery
 //! A helper crate for implementing [`xlang::plugin::XLangCodegen`]s without duplicating code (also can be used to evaluate constant expressions)
 //! the `xlang_backend` crate provides a general interface for writing expressions to an output.
-use std::{
-    collections::{HashSet, VecDeque},
-    convert::{TryFrom, TryInto},
-    fmt::Debug,
-    io::Write,
-    mem::MaybeUninit,
-    option::Option::Some as StdSome,
-    rc::Rc,
-};
 
-use self::str::Encoding;
-use callconv::CallingConvention;
-use expr::{LValue, Trap, VStackValue, ValLocation};
+use core::cell::RefCell;
+
+use std::{io::Write, rc::Rc};
+
+use arch_ops::traits::InsnWrite;
+use mach::Machine;
+use ssa::{FunctionBuilder, SsaInstruction};
+use str::StringMap;
 use ty::TypeInformation;
 use xlang::{
-    abi::string::StringView,
-    ir::{
-        AccessClass, AsmExpr, BinaryOp, Block, BranchCondition, CharFlags, Expr, FnType,
-        FunctionBody, HashSwitch, LinearSwitch, OverflowBehaviour, Path, PointerType, ScalarType,
-        ScalarTypeHeader, ScalarTypeKind, ScalarValidity, StackItem, StackValueKind, Switch, Type,
-        UnaryOp, Value,
-    },
-    prelude::v1::*,
-    targets::properties::TargetProperties,
+    abi::{io::WriteAdapter, option::Some as XLangSome, pair::Pair, try_},
+    ir::{self, Linkage},
+    plugin::{XLangCodegen, XLangPlugin},
+    targets::properties::{StackAttributeControlStyle, TargetProperties},
+};
+
+use binfmt::{
+    fmt::{Section, SectionFlag, SectionType},
+    sym::{Symbol, SymbolKind, SymbolType},
 };
 
 /// Module for handling and internalizing string literal values
@@ -42,2840 +38,322 @@ pub mod intrinsic;
 /// Module for handling calling convention, and calling functions
 pub mod callconv;
 
+/// Module for handling regalloc
+pub mod regalloc;
+
 /// Module for name mangling
 pub mod mangle;
 
-/// Module for generic Machine Code
-pub mod mc;
+/// Module for Machine Support
+pub mod mach;
 
-///
-/// Basic Trait for creating the code generator
-pub trait FunctionRawCodegen {
-    /// The type for Locations
-    type Loc: ValLocation;
+/// Module for building SSA from XIR that can be readily lowered to machine code
+pub mod ssa;
 
-    /// The type of calling conventions used by this backend
-    type CallConv: CallingConvention<Loc = Self::Loc> + ?Sized;
-
-    /// Handles the `__lccc::xlang::deoptimize` intrinsic. Implemented as a no-op by default.
-    /// Implementations that generate IR that is run through a separate optimizer should override the default impl
-    fn write_deoptimize(&mut self, val: Self::Loc) -> Self::Loc {
-        val
-    }
-
-    /// Writes an instruction corresponding to the given [`Trap`]
-    fn write_trap(&mut self, trap: Trap);
-
-    /// Writes a full thread fence for the given AccessClass
-    fn write_barrier(&mut self, acc: AccessClass);
-
-    /// Performs a binary operatation on a val location and a constant
-    fn write_int_binary_imm(
-        &mut self,
-        dest: Self::Loc,
-        a: Self::Loc,
-        b: u128,
-        ty: &Type,
-        op: BinaryOp,
-    );
-
-    /// Performs a binary operatation on two val locations
-    fn write_int_binary(
-        &mut self,
-        dest: Self::Loc,
-        src1: Self::Loc,
-        src2: Self::Loc,
-        ty: &Type,
-        op: BinaryOp,
-    );
-
-    /// Performs a unary operation on  a val location
-    fn write_unary(&mut self, val: Self::Loc, ty: &Type, op: UnaryOp);
-
-    /// Moves a value between two [`ValLocation`]s
-    fn move_val(&mut self, src: Self::Loc, dest: Self::Loc);
-
-    /// Stores an immediate value into the given location
-    fn move_imm(&mut self, src: u128, dest: Self::Loc, ty: &Type);
-
-    /// Stores an immediate value into the pointer in `ptr`
-    fn store_indirect_imm(&mut self, src: Value, ptr: Self::Loc);
-
-    /// Loads a value into the pointer in the given value location
-    fn load_val(&mut self, lvalue: Self::Loc, loc: Self::Loc);
-
-    /// Stores a value into the given value location
-    fn store_indirect(&mut self, lvalue: Self::Loc, loc: Self::Loc, ty: &Type);
-
-    /// Obtains the calling convention for the current function
-    fn get_callconv(&self) -> &Self::CallConv;
-
-    /// The maximum integer size (in bits) supported natively (without emulation)
-    fn native_int_size(&self) -> u16;
-    /// The maximum floating point size (in bits) supported natively, or None if no floating-point support exists
-    fn native_float_size(&self) -> Option<u16>;
-
-    /// The maximum Vector size supported natively, in bytes
-    fn native_vec_size(&self) -> Option<u64> {
-        None
-    }
-
-    /// Preferred Vector size of the current codegen, in total bytes
-    /// This need not be the same as the [`FunctionRawCodegen::native_vec_size`], for example, if some vector types incur a significant runtime performance penalty
-    /// (such as AVX-512)
-    fn preferred_vec_size(&self) -> Option<u64> {
-        None
-    }
-
-    /// Writes a call to a target intrinsic (such as `x86::_mm_addp_i8`)
-    fn write_intrinsic(
-        &mut self,
-        name: StringView,
-        params: Vec<VStackValue<Self::Loc>>,
-    ) -> VStackValue<Self::Loc>;
-
-    /// Writes a new target at the current location
-    fn write_target(&mut self, target: u32);
-    /// Performs a direct call to a named function
-    fn call_direct(&mut self, path: &Path, realty: &FnType);
-    /// Performs an indirect call to the pointer stored in `value`
-    fn call_indirect(&mut self, value: Self::Loc);
-    /// Performs a direct call to the given address
-    fn call_absolute(&mut self, addr: u128, realty: &FnType);
-
-    /// Performs a guaranteed tail call to the target
-    /// Note: The signature is assumed to be compatible with the current function
-    fn tailcall_direct(&mut self, value: &Path, realty: &FnType);
-
-    /// Performs a guaranteed tail call to the target
-    /// Note: The signature is assumed to be compatible with the current function
-    fn tailcall_indirect(&mut self, value: Self::Loc, realty: &FnType);
-
-    /// Performs the exit sequence of a function
-    fn leave_function(&mut self);
-
-    /// Performs a conditional branch to `target` based on `condition` and `val`
-    fn branch(&mut self, target: u32, condition: BranchCondition, val: Self::Loc);
-    /// Performs a conditional branch based on comparing `v1` and `v2` according to `condition`
-    /// This is used for the sequence `cmp; branch <condition> @<target>`
-    fn branch_compare(
-        &mut self,
-        target: u32,
-        condition: BranchCondition,
-        v1: VStackValue<Self::Loc>,
-        v2: VStackValue<Self::Loc>,
-    );
-    /// Branches to the `target` unconditionally (IE. when the condition is always, or based on constant-folded values)
-    fn branch_unconditional(&mut self, target: u32);
-
-    /// Branches to the target given in `target`
-    fn branch_indirect(&mut self, target: Self::Loc);
-
-    /// Computes the address of a global, and moves the pointer into `Self::Loc`
-    fn compute_global_address(&mut self, path: &Path, loc: Self::Loc);
-
-    /// Computes the address of a label, and moves the pointer into `Self::Loc`
-    fn compute_label_address(&mut self, target: u32, loc: Self::Loc);
-
-    /// Computes the address of a parameter and moves the pointer into `Self::Loc`
-    fn compute_parameter_address(&mut self, param: u32, loc: Self::Loc);
-
-    /// Computes the address of a local variable in `inloc` (used only if addressable), and moves the pointer into `Self::Loc`
-    fn compute_local_address(&mut self, inloc: Self::Loc, loc: Self::Loc);
-
-    /// Computes the address of a string literal
-    fn compute_string_address(&mut self, enc: Encoding, bytes: Vec<u8>, loc: Self::Loc);
-
-    /// Marks the given location as freed and allows other allocations to use the location without clobbering it
-    fn free(&mut self, loc: Self::Loc);
-
-    /// Clobbers the given location, saving the value and then freeing it.
-    fn clobber(&mut self, loc: Self::Loc);
-
-    /// Allocates space to store a local variable or stack value of type `Type`
-    fn allocate(&mut self, ty: &Type, needs_addr: bool) -> Self::Loc;
-
-    /// Allocates space to store an lvalue
-    fn allocate_lvalue(&mut self, needs_addr: bool) -> Self::Loc;
-
-    /// Prepares the stack frame (as necessary) for a call to a function with the given `callty` and `realty`
-    fn prepare_call_frame(&mut self, callty: &FnType, realty: &FnType);
-
-    /// Whether or not lock-free atomic ops of some size should issue a call to libatomic for this backend.
-    fn lockfree_use_libatomic(&mut self, size: u64) -> bool;
-
-    /// Whether or not lock-free atomic rmws use libatomic
-    fn lockfree_cmpxchg_use_libatomic(&mut self, size: u64) -> bool;
-
-    /// Whether or not BinaryOp can be implemented directly by the CPU
-    fn has_wait_free_compound(&mut self, op: BinaryOp, size: u64) -> bool;
-
-    /// Whether or not the fecth version of BinaryOp can be implemented directly by the CPU
-    fn has_wait_free_compound_fetch(&mut self, op: BinaryOp, size: u64) -> bool;
-
-    /// Writes a Compare Exchange Instruction, according to the atomic Access class in `ord`
-    /// Padding bytes in `ctrl` and `val` are zeroed prior to the call to this funtion
-    /// dest and ctrl both contain pointers to the destination and the compare
-    fn compare_exchange(
-        &mut self,
-        dest: Self::Loc,
-        ctrl: Self::Loc,
-        val: Self::Loc,
-        ty: &Type,
-        ord: AccessClass,
-    );
-
-    /// Writes a Weak Compare Exchange Instruction, according to the atomic Access class in `ord`
-    /// Padding bytes in `ctrl` and `val` are zeroed prior to the call to this funtion
-    /// dest and ctrl both contain pointers to the destination and the compare
-    fn weak_compare_exchange(
-        &mut self,
-        dest: Self::Loc,
-        ctrl: Self::Loc,
-        val: Self::Loc,
-        ty: &Type,
-        ord: AccessClass,
-    );
-
-    /// Generates a sequence (compiler) fence - synchronizing with signal handlers on the current thread of execution
-    /// This is generally a runtime no-op
-    fn sequence(&mut self, _: AccessClass) {
-        /* by default, do nothing. This is for something like xlangcodegen-llvm that drops down to a lower-level IR */
-    }
-
-    /// Writes an assembly expression
-    fn write_asm(&mut self, asm: &AsmExpr, inputs: Vec<VStackValue<Self::Loc>>) -> Vec<Self::Loc>;
-
-    /// Converts between two scalar types
-    fn write_scalar_convert(
-        &mut self,
-        target_ty: ScalarType,
-        incoming_ty: ScalarType,
-        new_loc: Self::Loc,
-        old_loc: Self::Loc,
-    );
+/// The section a symbol definition is placed in
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum SectionSpec {
+    /// The global section for the current type of definition, which (on ELF platforms), are generally:
+    /// * `.text` (RX) for functions
+    /// * `.data` (RW) for mutable statics
+    /// * `.rodata` (RO) for immutable statics
+    /// * `.bss` (RW - no data) for uninitialized statics
+    /// * `.tdata` (RW TLS) for thread-local statics
+    /// * `.tbss` (RW TLS - no data) for uninitialized thread-local statics
+    ///
+    /// Note that there is no guarantee as to the exact name of the sections, or which section a particular symbol is placed in if multiple sections are valid (For example, immutable statics may be placed in `.data` or `.bss`).
+    ///
+    /// However, the same set of sections will be used for all symbols defined in the [`SectionSpec::Global`].
+    ///
+    ///
+    Global,
 }
 
-#[derive(Default, Debug)]
-struct BranchToInfo {
-    fallthrough_from: u32,
-    branch_from: HashSet<u32>,
-}
-/// A type for handling the generation of code for functions.
-pub struct FunctionCodegen<F: FunctionRawCodegen> {
-    inner: F,
-    vstack: VecDeque<VStackValue<F::Loc>>,
-    properties: &'static TargetProperties<'static>,
-    targets: HashMap<u32, Vec<VStackValue<F::Loc>>>,
-    diverged: bool,
-    locals: Vec<(VStackValue<F::Loc>, Type)>,
-    fnty: FnType,
-    locals_opaque: bool,
-    tys: Rc<TypeInformation>,
-    ctarg: u32,
-    cfg: HashMap<u32, BranchToInfo>,
+impl core::fmt::Display for SectionSpec {
+    #[allow(unused_variables)] // we'll have more sections than `Global` at some point
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Self::Global => Ok(()),
+        }
+    }
 }
 
-impl<F: FunctionRawCodegen> FunctionCodegen<F> {
-    /// Constructs a new [`FunctionCodegen`] with a given [`FunctionRawCodegen`], the given function name and signature, and the target properties
-    pub fn new(
-        inner: F,
-        _path: Path,
-        fnty: FnType,
-        properties: &'static TargetProperties,
-        tys: Rc<TypeInformation>,
-    ) -> Self {
+/// A codegen definition of a [`ir::FunctionDeclaration`]
+pub struct FunctionDef<M> {
+    section: SectionSpec,
+    linkage: Linkage,
+    fnty: Rc<ir::FnType>,
+    body: Option<FunctionBuilder<M>>,
+}
+
+/// an [`XLangCodegen`] implementation parameterized on a [`Machine`] that uses [`ssa::FunctionBuilder`] to generate machine code or assembly
+pub struct SsaCodegenPlugin<M> {
+    mach: Rc<M>,
+    targ: Option<&'static TargetProperties<'static>>,
+    functions: Vec<(String, FunctionDef<M>)>,
+    string_interner: Rc<RefCell<StringMap>>,
+}
+
+impl<M> SsaCodegenPlugin<M> {
+    /// Constructs a new [`SsaCodegenPlugin`] based on `mach`.
+    pub fn new(mach: M) -> Self {
         Self {
-            inner,
-            properties,
-            vstack: VecDeque::new(),
-            targets: HashMap::new(),
-            diverged: false,
-            locals: Vec::new(),
-            fnty,
-            locals_opaque: false,
-            tys,
-            ctarg: !0,
-            cfg: HashMap::new(),
+            mach: Rc::new(mach),
+            targ: None,
+            functions: Vec::new(),
+            string_interner: Rc::new(RefCell::new(StringMap::new())),
         }
     }
+}
 
-    fn get_type_information(&self) -> &TypeInformation {
-        &self.tys
-    }
-
-    fn print_vstack(&self) {
-        let mut iter = self.vstack.iter();
-        let stdout = std::io::stdout();
-        let mut stdout = stdout.lock();
-        core::write!(stdout, "[").unwrap();
-        if let StdSome(val) = iter.next() {
-            core::write!(stdout, "{}", val).unwrap();
-        }
-
-        for val in iter {
-            core::write!(stdout, ", {}", val).unwrap();
-        }
-
-        core::writeln!(stdout, "]").unwrap();
-    }
-
-    /// Obtains the target properties.
-    /// Convience Method for some code generators
-    pub fn properties(&self) -> &'static TargetProperties {
-        self.properties
-    }
-
-    /// Obtains a mutable reference to the inner `F`
-    pub fn raw_inner(&mut self) -> &mut F {
-        &mut self.inner
-    }
-
-    /// Obtains the inner `F` from self
-    pub fn into_inner(self) -> F {
-        self.inner
-    }
-
-    /// Obtains the inner `F` from self
-    pub fn is_atomic_lock_free(&self, asize: u64) -> bool {
-        let lockfree_mask = self.properties.primitives.lock_free_atomic_mask
-            | self.properties.arch.lock_free_atomic_masks;
-
-        if asize > (1 << 15) {
-            return false;
-        } else {
-            let bits = (asize.next_power_of_two() - 1).count_ones();
-
-            (lockfree_mask & (1 << bits)) != 0
-        }
-    }
-
-    /// Writes a value according to access class to the pointer in `ptr`
-    pub fn store_val(&mut self, ptr: F::Loc, val: VStackValue<F::Loc>, cl: AccessClass) {
-        if cl.0 & 0xF != 0 {
-            let ty = self.type_of(&val);
-            let size = self.tys.type_size(&ty).unwrap();
-
-            let align = ty::scalar_align(size, self.properties.primitives.max_atomic_align);
-            let asize = ty::align_size(size, align);
-
-            if !self.is_atomic_lock_free(asize) || self.inner.lockfree_use_libatomic(asize) {
-                todo!("libatomic call")
-            }
-        }
-        match val {
-            VStackValue::Constant(Value::Invalid(_)) => {
-                self.inner.write_trap(Trap::Unreachable);
-                self.vstack.push_back(VStackValue::Trapped);
-            }
-            VStackValue::Constant(Value::Uninitialized(_)) | VStackValue::Trapped => {}
-            VStackValue::Constant(val) => {
-                self.inner.store_indirect_imm(val, ptr);
-            }
-            VStackValue::LValue(_, _) => panic!("Cannot store an lvalue"),
-            VStackValue::Pointer(ty, val) => match val {
-                LValue::OpaquePointer(loc) => {
-                    self.inner.store_indirect(ptr, loc, &Type::Pointer(ty))
+impl<M: Machine<SsaInstruction>> XLangPlugin for SsaCodegenPlugin<M> {
+    fn accept_ir(
+        &mut self,
+        ir: &mut ir::File,
+    ) -> xlang::abi::result::Result<(), xlang::plugin::Error> {
+        let targ = self.targ.expect("set_target must be called first");
+        let mut tys = TypeInformation::from_properties(targ);
+        for Pair(path, field) in &ir.root.members {
+            match &field.member_decl {
+                ir::MemberDeclaration::Scope(_) => todo!("non-root scope"),
+                ir::MemberDeclaration::OpaqueAggregate(_) => tys.add_opaque_aggregate(path.clone()),
+                ir::MemberDeclaration::AggregateDefinition(def) => {
+                    tys.add_aggregate(path.clone(), def.clone())
                 }
-                lval => {
-                    let loc = self.inner.allocate_lvalue(false);
-                    self.move_val(VStackValue::Pointer(ty.clone(), lval), loc.clone());
-                    self.inner.store_indirect(ptr, loc, &Type::Pointer(ty));
-                }
-            },
-            VStackValue::OpaqueScalar(ty, loc) => {
-                self.inner.store_indirect(ptr, loc, &Type::Scalar(ty))
+                ir::MemberDeclaration::Function(_)
+                | ir::MemberDeclaration::Static(_)
+                | ir::MemberDeclaration::Empty => {}
             }
-            VStackValue::AggregatePieced(_, _) => todo!(),
-            VStackValue::OpaqueAggregate(ty, loc) => self.inner.store_indirect(ptr, loc, &ty),
-            VStackValue::CompareResult(_, _) => todo!(),
-            VStackValue::ArrayRepeat(_, _) => todo!(),
         }
-    }
 
-    /// Moves a given value into the given value location
-    pub fn move_val(&mut self, val: VStackValue<F::Loc>, loc: F::Loc) {
-        match val {
-            VStackValue::Constant(Value::Invalid(_)) => {
-                self.inner.write_trap(Trap::Unreachable);
-                self.vstack.push_back(VStackValue::Trapped);
-            }
-            VStackValue::Constant(Value::Uninitialized(_)) | VStackValue::Trapped => {}
-            VStackValue::Constant(Value::GlobalAddress { item, .. }) => {
-                self.inner.compute_global_address(&item, loc)
-            }
-            VStackValue::Constant(Value::LabelAddress(n)) => {
-                self.inner.compute_label_address(n, loc)
-            }
-            VStackValue::Constant(Value::String {
-                encoding,
-                utf8,
-                ty: Type::Pointer(_),
-            }) => {
-                self.inner
-                    .compute_string_address(Encoding::XLang(encoding), utf8.into_bytes(), loc)
-            }
-            VStackValue::Constant(Value::String { ty, .. }) => todo!("string {:?}", ty),
-            VStackValue::Constant(Value::ByteString { content }) => self
-                .inner
-                .compute_string_address(Encoding::Byte, content, loc),
-            VStackValue::Constant(Value::Integer { val, ty }) => {
-                self.inner.move_imm(val, loc, &Type::Scalar(ty))
-            }
-            VStackValue::Constant(Value::GenericParameter(n)) => todo!("%{}", n),
-            VStackValue::Constant(Value::Empty) => panic!("Cannot move an empty value"),
-            VStackValue::Pointer(pty, lvalue) => match lvalue {
-                LValue::OpaquePointer(loc2) => self.inner.move_val(loc2, loc),
-                LValue::Temporary(_) => todo!("temporary address"),
-                LValue::Local(n) => todo!("local {:?}", n),
-                LValue::GlobalAddress(item) => self.inner.compute_global_address(&item, loc),
-                LValue::Label(n) => self.inner.compute_label_address(n, loc),
-                LValue::Field(_, _, _) => todo!("field"),
-                LValue::StringLiteral(enc, bytes) => {
-                    self.inner.compute_string_address(enc, bytes, loc)
-                }
-                LValue::Offset(_, _) => todo!("offset"),
-                LValue::Null => self.inner.move_imm(0, loc, &Type::Pointer(pty)),
-                LValue::TransparentAddr(addr) => {
-                    self.inner.move_imm(addr.get(), loc, &Type::Pointer(pty))
-                }
-            },
-            VStackValue::LValue(ty, lvalue) => {
-                let pty = PointerType {
-                    inner: Box::new(ty),
-                    ..Default::default()
-                };
-                match lvalue {
-                    LValue::OpaquePointer(loc2) => self.inner.move_val(loc2, loc),
-                    LValue::Temporary(_) => todo!("temporary address"),
-                    LValue::Local(n) => todo!("local {:?}", n),
-                    LValue::GlobalAddress(item) => self.inner.compute_global_address(&item, loc),
-                    LValue::Label(n) => self.inner.compute_label_address(n, loc),
-                    LValue::Field(_, _, _) => todo!("field"),
-                    LValue::StringLiteral(enc, bytes) => {
-                        self.inner.compute_string_address(enc, bytes, loc)
-                    }
-                    LValue::Offset(_, _) => todo!("offset"),
-                    LValue::Null => self.inner.move_imm(0, loc, &Type::Pointer(pty)),
-                    LValue::TransparentAddr(addr) => {
-                        self.inner.move_imm(addr.get(), loc, &Type::Pointer(pty))
-                    }
-                }
-            }
-            VStackValue::OpaqueScalar(_, loc2) => self.inner.move_val(loc2, loc),
-            VStackValue::AggregatePieced(ty, fields) => {
-                if self.tys.type_size(&ty) != StdSome(0) {
-                    let fields = fields.iter().collect::<Vec<_>>();
+        let tys = Rc::new(tys);
+        for Pair(path, field) in &ir.root.members {
+            match &field.member_decl {
+                ir::MemberDeclaration::Scope(_) => todo!("non-root scope"),
+                ir::MemberDeclaration::Function(f) => {
+                    let sym = match &*path.components {
+                        [ir::PathComponent::Text(name)]
+                        | [ir::PathComponent::Root, ir::PathComponent::Text(name)] => {
+                            name.to_string()
+                        }
+                        [ir::PathComponent::Root, rest @ ..] | [rest @ ..] => {
+                            self.mach.mangle(rest)
+                        }
+                    };
+                    let ty = Rc::new(f.ty.clone());
 
-                    if fields.len() == 1 {
-                        self.move_val(fields[0].1.clone(), loc);
-                    } else if fields.len() == 0 {
+                    let section = SectionSpec::Global;
+                    let linkage = f.linkage;
+                    let body = if let XLangSome(body) = &f.body {
+                        let mut builder = ssa::FunctionBuilder::new(
+                            sym.clone(),
+                            self.mach.clone(),
+                            tys.clone(),
+                            targ,
+                            ty.clone(),
+                            self.string_interner.clone(),
+                        );
+                        for local in &body.locals {
+                            builder.push_local(local.clone());
+                        }
+                        for block in &body.blocks {
+                            builder.push_incoming(block.target, &block.incoming_stack);
+                        }
+                        for block in &body.blocks {
+                            let block_builder =
+                                builder.new_basic_block(block.target, &block.incoming_stack);
+                            for expr in &block.expr {
+                                block_builder.write_expr(expr);
+                            }
+                            block_builder.write_terminator(&block.term);
+                        }
+
+                        Some(builder)
                     } else {
-                        todo!("pieced aggregate")
-                    }
-                }
-            }
-            VStackValue::OpaqueAggregate(_, loc2) => self.inner.move_val(loc2, loc),
-            VStackValue::CompareResult(_, _) => todo!("compare result"),
-            VStackValue::ArrayRepeat(_, _) => todo!("array repeat"),
-        }
-    }
-
-    ///
-    /// Pushes a single value onto the vstack
-    pub fn push_value(&mut self, val: VStackValue<F::Loc>) {
-        self.vstack.push_back(val)
-    }
-
-    ///
-    /// Pops a single value from the vstack
-    pub fn pop_value(&mut self) -> Option<VStackValue<F::Loc>> {
-        self.vstack.pop_back().into()
-    }
-
-    ///
-    /// Pops `n` values from the vstack
-    pub fn pop_values(&mut self, n: usize) -> Option<Vec<VStackValue<F::Loc>>> {
-        let len = self.vstack.len();
-        if len < n {
-            None
-        } else {
-            Some(self.vstack.drain((len - n)..).collect())
-        }
-    }
-
-    /// Pops `N` values from the stack, and returns them in a statically-sized array, or otherwise returns `None`.
-    pub fn pop_values_static<const N: usize>(&mut self) -> Option<[VStackValue<F::Loc>; N]> {
-        let len = self.vstack.len();
-        if len < N {
-            None
-        } else {
-            let mut array = MaybeUninit::<[VStackValue<F::Loc>; N]>::uninit();
-            let ptr = array.as_mut_ptr().cast::<VStackValue<F::Loc>>();
-
-            let vals = self.vstack.drain((len - N)..);
-
-            for (i, val) in vals.enumerate() {
-                // SAFETY:
-                // i is less than the length of the array
-                unsafe {
-                    ptr.add(i).write(val);
-                }
-            }
-
-            // SAFETY:
-            // The loop above has initialized array
-            Some(unsafe { array.assume_init() })
-        }
-    }
-
-    ///
-    /// Pushes all of the incoming values to the stack, in order
-    pub fn push_values<I: IntoIterator<Item = VStackValue<F::Loc>>>(&mut self, vals: I) {
-        self.vstack.extend(vals);
-    }
-
-    /// Obtains an opaque value of the given type that is placed in `loc`
-    pub fn opaque_value(&mut self, ty: &Type, loc: F::Loc) -> VStackValue<F::Loc> {
-        match ty {
-            Type::Null | Type::Void | Type::FnType(_) => panic!("Invalid type"),
-            Type::Scalar(sty) => VStackValue::OpaqueScalar(*sty, loc),
-            Type::Pointer(pty) => VStackValue::Pointer(pty.clone(), LValue::OpaquePointer(loc)),
-            Type::Array(_) => todo!("array"),
-            Type::TaggedType(_, ty) => self.opaque_value(ty, loc),
-            Type::Product(_) | Type::Aggregate(_) => VStackValue::OpaqueAggregate(ty.clone(), loc),
-            Type::Aligned(_, ty) => self.opaque_value(ty, loc),
-            Type::Named(_) => VStackValue::OpaqueAggregate(ty.clone(), loc),
-        }
-    }
-
-    /// Determines the type of a vstack value
-    pub fn type_of(&mut self, val: &VStackValue<F::Loc>) -> Type {
-        match val {
-            VStackValue::Constant(val) => match val {
-                Value::Invalid(ty) | Value::Uninitialized(ty) => ty.clone(),
-                Value::GenericParameter(_) => panic!("Generic Parameter held too late"),
-                Value::Integer { ty, .. } => Type::Scalar(*ty),
-                Value::GlobalAddress { ty, .. } => Type::Pointer(PointerType {
-                    inner: Box::new(ty.clone()),
-                    ..Default::default()
-                }),
-                Value::ByteString { .. } => todo!("byte string"),
-                Value::String { ty, .. } => ty.clone(),
-                Value::LabelAddress(_) => Type::Pointer(PointerType {
-                    inner: Box::new(Type::Void),
-                    ..Default::default()
-                }),
-                Value::Empty => panic!("Cannot use an empty value"),
-            },
-            VStackValue::LValue(_, _) => panic!("Cannot typeof an lvalue"),
-            VStackValue::Pointer(pty, _) => Type::Pointer(pty.clone()),
-            VStackValue::OpaqueScalar(sty, _) => Type::Scalar(*sty),
-            VStackValue::AggregatePieced(ty, _) => ty.clone(),
-            VStackValue::OpaqueAggregate(ty, _) => ty.clone(),
-            VStackValue::CompareResult(_, _) => todo!("compare result"),
-            VStackValue::Trapped => Type::Null,
-            VStackValue::ArrayRepeat(_, _) => todo!("array repeat"),
-        }
-    }
-
-    /// Makes the given value opaque, if it is not already.
-    pub fn make_opaque(&mut self, val: VStackValue<F::Loc>) -> VStackValue<F::Loc> {
-        match val {
-            VStackValue::Constant(v) => match v {
-                Value::Invalid(ty) => {
-                    self.inner.write_trap(Trap::Unreachable);
-                    let loc = self.inner.allocate(&ty, false);
-                    self.opaque_value(&ty, loc)
-                }
-                Value::Uninitialized(ty) => {
-                    let loc = self.inner.allocate(&ty, false);
-                    self.opaque_value(&ty, loc)
-                }
-                Value::GenericParameter(_) => todo!("generic parameters"),
-                Value::Integer { ty, val } => {
-                    let loc = self.inner.allocate(&Type::Scalar(ty), false);
-                    self.move_val(
-                        VStackValue::Constant(Value::Integer { ty, val }),
-                        loc.clone(),
-                    );
-                    VStackValue::OpaqueScalar(ty, loc)
-                }
-                Value::GlobalAddress { ty, item } => {
-                    let pty = PointerType {
-                        inner: Box::new(ty.clone()),
-                        ..Default::default()
+                        None
                     };
-                    let loc = self.inner.allocate(&Type::Pointer(pty.clone()), false);
-                    self.move_val(
-                        VStackValue::Constant(Value::GlobalAddress { ty, item }),
-                        loc.clone(),
-                    );
-                    VStackValue::Pointer(pty, LValue::OpaquePointer(loc))
+
+                    self.functions.push((
+                        sym,
+                        FunctionDef {
+                            section,
+                            linkage,
+                            fnty: ty,
+                            body,
+                        },
+                    ));
                 }
-                Value::ByteString { content } => {
-                    let pty = PointerType {
-                        inner: Box::new(Type::Scalar(ScalarType {
-                            header: ScalarTypeHeader {
-                                bitsize: 8,
-                                ..Default::default()
-                            },
-                            kind: ScalarTypeKind::Char {
-                                flags: CharFlags::empty(),
-                            },
-                        })),
-                        ..Default::default()
-                    };
-                    let loc = self.inner.allocate(&Type::Pointer(pty.clone()), false);
-                    self.move_val(
-                        VStackValue::Constant(Value::ByteString { content }),
-                        loc.clone(),
-                    );
-                    VStackValue::Pointer(pty, LValue::OpaquePointer(loc))
-                }
-                Value::String { encoding, utf8, ty } => {
-                    let loc = self.inner.allocate(&ty, false);
-                    self.move_val(
-                        VStackValue::Constant(Value::String {
-                            encoding,
-                            utf8,
-                            ty: ty.clone(),
-                        }),
-                        loc.clone(),
-                    );
-                    self.opaque_value(&ty, loc)
-                }
-                Value::LabelAddress(n) => {
-                    let pty = PointerType {
-                        inner: Box::new(Type::Void),
-                        ..Default::default()
-                    };
-                    let loc = self.inner.allocate(&Type::Pointer(pty.clone()), false);
-                    self.move_val(VStackValue::Constant(Value::LabelAddress(n)), loc.clone());
-                    VStackValue::Pointer(pty, LValue::OpaquePointer(loc))
-                }
-                Value::Empty => panic!("Cannot use an empty value"),
-            },
-            VStackValue::LValue(ty, LValue::OpaquePointer(loc)) => {
-                VStackValue::LValue(ty, LValue::OpaquePointer(loc))
+                ir::MemberDeclaration::Static(_) => todo!("static"),
+                ir::MemberDeclaration::OpaqueAggregate(_)
+                | ir::MemberDeclaration::AggregateDefinition(_)
+                | ir::MemberDeclaration::Empty => {}
             }
-            VStackValue::Pointer(ty, LValue::OpaquePointer(loc)) => {
-                VStackValue::Pointer(ty, LValue::OpaquePointer(loc))
+        }
+
+        for (name, def) in &self.functions {
+            print!("{}{} {}{}", def.section, def.linkage, name, def.fnty);
+            if let Some(body) = &def.body {
+                println!("{}", body);
+            } else {
+                println!(";");
             }
-            VStackValue::LValue(ty, lval) => {
-                let loc = self.inner.allocate_lvalue(false);
-                self.move_val(VStackValue::LValue(ty.clone(), lval), loc.clone());
-                VStackValue::LValue(ty, LValue::OpaquePointer(loc))
-            }
-            VStackValue::Pointer(ty, lval) => {
-                let loc = self.inner.allocate_lvalue(false);
-                self.move_val(VStackValue::Pointer(ty.clone(), lval), loc.clone());
-                VStackValue::Pointer(ty, LValue::OpaquePointer(loc))
-            }
-            VStackValue::OpaqueScalar(sty, loc) => VStackValue::OpaqueScalar(sty, loc),
-            VStackValue::AggregatePieced(ty, pieces) => {
-                let loc = self.inner.allocate(&ty, false);
-                self.move_val(
-                    VStackValue::AggregatePieced(ty.clone(), pieces),
-                    loc.clone(),
+        }
+
+        xlang::abi::result::Ok(())
+    }
+
+    fn set_target(&mut self, targ: &'static xlang::targets::properties::TargetProperties<'static>) {
+        Rc::get_mut(&mut self.mach).unwrap().init_from_target(targ);
+        self.targ = Some(targ);
+    }
+}
+
+impl<M: Machine<SsaInstruction>> XLangCodegen for SsaCodegenPlugin<M> {
+    fn target_matches(&self, x: xlang::abi::string::StringView) -> bool {
+        self.mach.matches_target(x)
+    }
+
+    fn write_output(
+        &mut self,
+        x: xlang::prelude::v1::DynMut<dyn xlang::abi::io::Write>,
+        mode: xlang::plugin::OutputMode,
+    ) -> xlang::abi::io::Result<()> {
+        let targ = self.targ.expect("set_target must have been called first");
+        let mut writer = WriteAdapter::new(x);
+
+        if mode == xlang::plugin::OutputMode::Obj {
+            let fmt =
+                binfmt::format_by_name(&targ.link.obj_binfmt).expect("obj_binfmt is not supported");
+
+            let mut output = fmt.create_file(binfmt::fmt::FileType::Relocatable);
+
+            let mut sections = vec![
+                Section {
+                    name: format!(".text"),
+                    align: 1024,
+                    ty: binfmt::fmt::SectionType::ProgBits,
+                    flags: Some(SectionFlag::Alloc | SectionFlag::Executable),
+                    ..Section::default()
+                },
+                Section {
+                    name: format!(".rodata"),
+                    align: 1024,
+                    ty: binfmt::fmt::SectionType::ProgBits,
+                    flags: Some(SectionFlag::Alloc.into()),
+                    ..Section::default()
+                },
+                Section {
+                    name: format!(".data"),
+                    align: 1024,
+                    ty: binfmt::fmt::SectionType::ProgBits,
+                    flags: Some(SectionFlag::Alloc | SectionFlag::Writable),
+                    ..Section::default()
+                },
+                Section {
+                    name: format!(".bss"),
+                    align: 1024,
+                    ty: binfmt::fmt::SectionType::NoBits,
+                    flags: Some(SectionFlag::Alloc | SectionFlag::Writable),
+                    ..Section::default()
+                },
+            ];
+            let mut syms = vec![];
+            let str_map = self.string_interner.borrow();
+            for (sym, bytes) in str_map.symbols() {
+                let sec = &mut sections[1];
+                let sym = Symbol::new(
+                    sym.to_string(),
+                    1,
+                    sec.offset() as u128,
+                    SymbolType::Object,
+                    SymbolKind::Local,
                 );
-                VStackValue::OpaqueAggregate(ty, loc)
+                syms.push(sym);
+                sec.write_all(bytes)
+                    .expect("Section::write should not error");
             }
-            VStackValue::OpaqueAggregate(ty, loc) => VStackValue::OpaqueAggregate(ty, loc),
-            VStackValue::CompareResult(_, _) => todo!("compare results"),
-            VStackValue::Trapped => VStackValue::Trapped,
-            VStackValue::ArrayRepeat(_, _) => todo!("array repeat"),
-        }
-    }
 
-    /// Pushes an opaque value of the given type
-    pub fn push_opaque(&mut self, ty: &Type, loc: F::Loc) {
-        let val = self.opaque_value(ty, loc);
-        self.push_value(val);
-    }
+            for (sym_name, def) in core::mem::take(&mut self.functions) {
+                let sym_kind = match def.linkage {
+                    Linkage::External => SymbolKind::Global,
+                    Linkage::Internal => SymbolKind::Local,
+                    Linkage::Constant => SymbolKind::Local,
+                    Linkage::Weak => SymbolKind::Weak,
+                };
 
-    /// Clears the expression stack
-    pub fn clear_stack(&mut self) {
-        self.vstack.clear()
-    }
+                if let Some(body) = def.body {
+                    let section = match def.section {
+                        SectionSpec::Global => 0,
+                    };
+                    let offset = sections[section as usize].offset();
+                    let sym_idx = syms.len();
+                    let sym = Symbol::new(
+                        sym_name,
+                        section,
+                        offset as u128,
+                        SymbolType::Function,
+                        sym_kind,
+                    );
+                    syms.push(sym);
 
-    /// Calls a function by memory address stored in `loc`
-    pub fn call_indirect(
-        &mut self,
-        callty: &FnType,
-        realty: &FnType,
-        loc: F::Loc,
-        vals: Vec<VStackValue<F::Loc>>,
-        is_tailcall: bool,
-    ) {
-        self.inner.prepare_call_frame(callty, realty);
-        if let std::option::Option::Some(place) =
-            self.inner.get_callconv().pass_return_place(&callty.ret)
-        {
-            todo!("return place {:?}", place);
-        }
+                    let mut built = body.build();
+                    try_!(built.legalize(&*self.mach).map_err(Into::into));
+                    built.optimize(&*self.mach);
 
-        for (i, val) in vals.into_iter().enumerate() {
-            let param_loc =
-                self.inner
-                    .get_callconv()
-                    .find_param(callty, realty, i.try_into().unwrap(), false);
-            self.move_val(val, param_loc);
-        }
+                    try_!(built
+                        .write_machine_code(
+                            &*self.mach,
+                            &mut sections[section as usize],
+                            |val, sym| syms.push(Symbol::new(
+                                sym,
+                                section,
+                                val,
+                                SymbolType::Function,
+                                SymbolKind::Local
+                            ))
+                        )
+                        .map_err(Into::into));
 
-        if is_tailcall {
-            self.inner.tailcall_indirect(loc, realty);
-            self.diverged = true;
+                    *syms[sym_idx].size_mut() =
+                        Some((sections[section as usize].offset() - offset) as u64);
+                } else if sym_kind == SymbolKind::Weak {
+                    syms.push(Symbol::new_undef(sym_name, SymbolType::Function, sym_kind));
+                }
+            }
+            match targ.link.stack_attribute_control {
+                StackAttributeControlStyle::NoExec => {}
+                StackAttributeControlStyle::CveFactory => {
+                    eprintln!("Warning: Codegen for target selected sets Stack as Writable")
+                }
+                StackAttributeControlStyle::GnuStack => {
+                    sections.push(Section {
+                        name: format!(".note.GNU-stack"),
+                        align: 1024,
+                        ty: SectionType::NoBits,
+                        flags: Some(SectionFlag::Writable.into()),
+                        ..Default::default()
+                    });
+                }
+                ctrl => eprintln!("Warning: Unknown stack attribute control style {:?}", ctrl),
+            }
+            let mut section_map = vec![];
+            for section in sections {
+                let new_off = output
+                    .add_section(section)
+                    .expect("Could not add a section");
+                section_map.push(new_off)
+            }
+
+            for sym in syms.iter_mut() {
+                if let Some(sect) = sym.section_mut() {
+                    *sect = section_map[(*sect) as usize];
+                }
+            }
+            output.add_symbols(syms).expect("Could not add symbols");
+            try_!(fmt.write_file(&mut writer, &output).map_err(Into::into));
+            xlang::abi::result::Ok(())
         } else {
-            self.inner.call_indirect(loc);
-            match &callty.ret {
-                Type::Void => {}
-                Type::Scalar(ScalarType {
-                    kind: kind @ ScalarTypeKind::Integer { .. },
-                    header: header @ ScalarTypeHeader { bitsize: 0, .. },
-                }) if header.validity.contains(ScalarValidity::NONZERO) => {
-                    // special case uint nonzero(0)/int nonzero(0)
-                    self.push_value(VStackValue::Constant(Value::Uninitialized(Type::Scalar(
-                        ScalarType {
-                            kind: *kind,
-                            header: *header,
-                        },
-                    ))));
-                }
-                ty => {
-                    let retloc = self.inner.get_callconv().find_return_val(callty);
-                    self.push_opaque(ty, retloc);
-                }
-            }
-        }
-    }
-
-    /// Calls a function by name
-    pub fn call_fn(
-        &mut self,
-        callty: &FnType,
-        realty: &FnType,
-        path: &Path,
-        mut vals: Vec<VStackValue<F::Loc>>,
-        is_tailcall: bool,
-    ) {
-        if intrinsic::call_intrinsic(path, self, realty, self.properties, &mut vals) {
-            if is_tailcall {
-                self.write_exit(1);
-                self.diverged = true;
-            }
-            return;
-        }
-
-        self.inner.prepare_call_frame(callty, realty);
-        if let std::option::Option::Some(place) =
-            self.inner.get_callconv().pass_return_place(&callty.ret)
-        {
-            todo!("return place {:?}", place);
-        }
-
-        for (i, val) in vals.into_iter().enumerate() {
-            let param_loc =
-                self.inner
-                    .get_callconv()
-                    .find_param(callty, realty, i.try_into().unwrap(), false);
-            self.move_val(val, param_loc);
-        }
-        if is_tailcall {
-            self.inner.tailcall_direct(path, realty);
-            self.diverged = true;
-        } else {
-            self.inner.call_direct(path, realty);
-            match &callty.ret {
-                Type::Void => {}
-                Type::Scalar(ScalarType {
-                    kind: kind @ ScalarTypeKind::Integer { .. },
-                    header: header @ ScalarTypeHeader { bitsize: 0, .. },
-                }) if header.validity.contains(ScalarValidity::NONZERO) => {
-                    // special case uint nonzero(0)/int nonzero(0)
-                    self.push_value(VStackValue::Constant(Value::Invalid(Type::Scalar(
-                        ScalarType {
-                            kind: *kind,
-                            header: *header,
-                        },
-                    ))));
-                }
-                ty => {
-                    let retloc = self.inner.get_callconv().find_return_val(callty);
-                    self.push_opaque(ty, retloc);
-                }
-            }
-        }
-    }
-
-    /// Writes the exit point of the given block with the given number of values
-    pub fn write_exit(&mut self, values: u16) {
-        self.diverged = true;
-        if values == 1 {
-            let val = self.pop_value().unwrap();
-            match val {
-                VStackValue::Constant(Value::Invalid(_)) => {
-                    self.inner.write_trap(Trap::Unreachable);
-                    return;
-                }
-                VStackValue::Trapped => return,
-                val => {
-                    let loc = self.inner.get_callconv().find_return_val(&self.fnty);
-                    self.move_val(val, loc);
-                }
-            }
-            self.inner.leave_function();
-        } else if values == 0 {
-            self.inner.leave_function();
-        } else {
-            panic!("Attempt to exit function with more than one value");
-        }
-    }
-
-    /// Writes the given binary operator to the stream
-    pub fn write_binary_op(&mut self, op: BinaryOp, v: OverflowBehaviour) {
-        let [val1, val2] = self.pop_values_static().unwrap();
-
-        match (val1, val2) {
-            (VStackValue::Trapped, _) | (_, VStackValue::Trapped) => {
-                self.push_value(VStackValue::Trapped)
-            }
-            (VStackValue::LValue(_, _), _) | (_, VStackValue::LValue(_, _)) => {
-                panic!("Cannot apply {:?} to an lvalue", op)
-            }
-            (VStackValue::Constant(Value::Invalid(_)), _)
-            | (_, VStackValue::Constant(Value::Invalid(_))) => {
-                self.inner.write_trap(Trap::Unreachable);
-                self.push_value(VStackValue::Trapped);
-            }
-            (VStackValue::Constant(Value::Uninitialized(ty)), _)
-            | (_, VStackValue::Constant(Value::Uninitialized(ty))) => match op {
-                BinaryOp::Cmp | BinaryOp::CmpInt => self.push_value(VStackValue::Constant(
-                    Value::Uninitialized(Type::Scalar(ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: true,
-                            min: None,
-                            max: None,
-                        },
-                    })),
-                )),
-                BinaryOp::CmpLt
-                | BinaryOp::CmpGt
-                | BinaryOp::CmpLe
-                | BinaryOp::CmpGe
-                | BinaryOp::CmpEq
-                | BinaryOp::CmpNe => self.push_value(VStackValue::Constant(Value::Uninitialized(
-                    Type::Scalar(ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: true,
-                            min: None,
-                            max: None,
-                        },
-                    }),
-                ))),
-                _ => match v {
-                    OverflowBehaviour::Wrap | OverflowBehaviour::Unchecked => {
-                        self.push_value(VStackValue::Constant(Value::Uninitialized(ty)))
-                    }
-                    OverflowBehaviour::Trap => {
-                        self.inner.write_trap(Trap::Unreachable);
-                        self.push_value(VStackValue::Trapped);
-                    }
-                    OverflowBehaviour::Checked => {
-                        self.push_values([
-                            VStackValue::Constant(Value::Uninitialized(ty)),
-                            VStackValue::Constant(Value::Uninitialized(Type::Scalar(ScalarType {
-                                header: ScalarTypeHeader {
-                                    bitsize: 1,
-                                    ..Default::default()
-                                },
-                                kind: ScalarTypeKind::Integer {
-                                    signed: false,
-                                    min: None,
-                                    max: None,
-                                },
-                            }))),
-                        ]);
-                    }
-                    v => todo!("Unexpected Overflow behaviour {:?}", v),
-                },
-            },
-            (
-                VStackValue::Constant(Value::Integer {
-                    ty:
-                        ty1 @ ScalarType {
-                            header:
-                                ScalarTypeHeader {
-                                    vectorsize: None, ..
-                                },
-                            kind: ScalarTypeKind::Integer { signed: false, .. },
-                        },
-                    val: val1,
-                }),
-                VStackValue::Constant(Value::Integer {
-                    ty:
-                        ty2 @ ScalarType {
-                            header:
-                                ScalarTypeHeader {
-                                    vectorsize: None, ..
-                                },
-                            kind: ScalarTypeKind::Integer { signed: false, .. },
-                        },
-                    val: val2,
-                }),
-            ) if ty1.header.bitsize == ty2.header.bitsize => match op {
-                BinaryOp::Cmp | BinaryOp::CmpInt => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = match val1.cmp(&val2) {
-                        std::cmp::Ordering::Less => !0,
-                        std::cmp::Ordering::Equal => 0,
-                        std::cmp::Ordering::Greater => 1,
-                    };
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                BinaryOp::CmpLt => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = (val1 < val2) as u128;
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                BinaryOp::CmpGt => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = (val1 > val2) as u128;
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                BinaryOp::CmpLe => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = (val1 <= val2) as u128;
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                BinaryOp::CmpGe => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = (val1 >= val2) as u128;
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                BinaryOp::CmpEq => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = (val1 == val2) as u128;
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                BinaryOp::CmpNe => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = (val1 != val2) as u128;
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                _ => {
-                    let (val, overflow) = match op {
-                        BinaryOp::Add => val1.overflowing_add(val2),
-                        BinaryOp::Sub => val1.overflowing_sub(val2),
-                        BinaryOp::Mul => val1.overflowing_mul(val2),
-                        BinaryOp::Div => {
-                            if val2 == 0 {
-                                (0, true)
-                            } else {
-                                val1.overflowing_div(val2)
-                            }
-                        }
-                        BinaryOp::Mod => {
-                            if val2 == 0 {
-                                (0, true)
-                            } else {
-                                val1.overflowing_rem(val2)
-                            }
-                        }
-                        BinaryOp::BitOr => (val1 | val2, false),
-                        BinaryOp::BitAnd => (val1 & val2, false),
-                        BinaryOp::BitXor => (val1 ^ val2, false),
-                        BinaryOp::Lsh => (
-                            val1.wrapping_shl(val2 as u32),
-                            val2 > (ty1.header.bitsize.into()),
-                        ),
-                        BinaryOp::Rsh => (
-                            val1.wrapping_shr(val2 as u32),
-                            val2 > (ty1.header.bitsize.into()),
-                        ),
-                        BinaryOp::Cmp
-                        | BinaryOp::CmpInt
-                        | BinaryOp::CmpLt
-                        | BinaryOp::CmpLe
-                        | BinaryOp::CmpEq
-                        | BinaryOp::CmpNe
-                        | BinaryOp::CmpGe
-                        | BinaryOp::CmpGt => unreachable!(),
-                        op => todo!("{:?}", op),
-                    };
-
-                    let overflow = overflow || (val.leading_zeros() < (ty1.header.bitsize as u32));
-                    let val = val & (!((!0u128).wrapping_shl(128 - (ty1.header.bitsize as u32))));
-
-                    match v {
-                        OverflowBehaviour::Wrap => self
-                            .vstack
-                            .push_back(VStackValue::Constant(Value::Integer { ty: ty1, val })),
-                        OverflowBehaviour::Unchecked => {
-                            if overflow {
-                                self.vstack
-                                    .push_back(VStackValue::Constant(Value::Uninitialized(
-                                        Type::Scalar(ty1),
-                                    )))
-                            } else {
-                                self.vstack.push_back(VStackValue::Constant(Value::Integer {
-                                    ty: ty1,
-                                    val,
-                                }))
-                            }
-                        }
-                        OverflowBehaviour::Checked => {
-                            self.vstack
-                                .push_back(VStackValue::Constant(Value::Integer { ty: ty1, val }));
-                            self.vstack.push_back(VStackValue::Constant(Value::Integer {
-                                ty: ScalarType {
-                                    header: ScalarTypeHeader {
-                                        bitsize: 1,
-                                        ..Default::default()
-                                    },
-                                    kind: ScalarTypeKind::Integer {
-                                        signed: false,
-                                        min: None,
-                                        max: None,
-                                    },
-                                },
-                                val: overflow as u128,
-                            }));
-                        }
-                        OverflowBehaviour::Trap => {
-                            if overflow {
-                                self.inner.write_trap(Trap::Overflow);
-                                self.vstack.push_back(VStackValue::Trapped);
-                            } else {
-                                self.vstack.push_back(VStackValue::Constant(Value::Integer {
-                                    ty: ty1,
-                                    val,
-                                }));
-                            }
-                        }
-                        OverflowBehaviour::Saturate => {
-                            if (op == BinaryOp::Sub || op == BinaryOp::Rsh) && overflow {
-                                self.vstack.push_back(VStackValue::Constant(Value::Integer {
-                                    ty: ty1,
-                                    val: 0,
-                                }));
-                            } else if overflow {
-                                self.vstack.push_back(VStackValue::Constant(Value::Integer {
-                                    ty: ty1,
-                                    val: !((!0u128)
-                                        .wrapping_shl(128 - (ty1.header.bitsize as u32))),
-                                }));
-                            } else {
-                                self.vstack.push_back(VStackValue::Constant(Value::Integer {
-                                    ty: ty1,
-                                    val,
-                                }));
-                            }
-                        }
-                        v => todo!("{:?} {:?}", op, v),
-                    }
-                }
-            },
-            (
-                VStackValue::Constant(Value::Integer {
-                    ty:
-                        ty1 @ ScalarType {
-                            header:
-                                ScalarTypeHeader {
-                                    vectorsize: None, ..
-                                },
-                            kind: ScalarTypeKind::Integer { signed: true, .. },
-                        },
-                    val: val1,
-                }),
-                VStackValue::Constant(Value::Integer {
-                    ty:
-                        ty2 @ ScalarType {
-                            header:
-                                ScalarTypeHeader {
-                                    vectorsize: None, ..
-                                },
-                            kind: ScalarTypeKind::Integer { signed: true, .. },
-                        },
-                    val: val2,
-                }),
-            ) if ty1.header.bitsize == ty2.header.bitsize => match op {
-                BinaryOp::Cmp | BinaryOp::CmpInt => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = match (val1 as i128).cmp(&(val2 as i128)) {
-                        std::cmp::Ordering::Less => !0,
-                        std::cmp::Ordering::Equal => 0,
-                        std::cmp::Ordering::Greater => 1,
-                    };
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                BinaryOp::CmpLt => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = ((val1 as i128) < (val2 as i128)) as u128;
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                BinaryOp::CmpGt => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = ((val1 as i128) > (val2 as i128)) as u128;
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                BinaryOp::CmpLe => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = ((val1 as i128) <= (val2 as i128)) as u128;
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                BinaryOp::CmpGe => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = ((val1 as i128) >= (val2 as i128)) as u128;
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                BinaryOp::CmpEq => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = (val1 == val2) as u128;
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                BinaryOp::CmpNe => {
-                    let sty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 32,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    let val = (val1 != val2) as u128;
-
-                    self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                }
-                _ => {
-                    let val1 = val1 as i128;
-                    let val2 = val2 as i128;
-                    let (val, overflow) = match op {
-                        BinaryOp::Add => val1.overflowing_add(val2),
-                        BinaryOp::Sub => val1.overflowing_sub(val2),
-                        BinaryOp::Mul => val1.overflowing_mul(val2),
-                        BinaryOp::Div => {
-                            if val2 == 0 {
-                                (0, true)
-                            } else {
-                                val1.overflowing_div(val2)
-                            }
-                        }
-                        BinaryOp::Mod => {
-                            if val2 == 0 {
-                                (0, true)
-                            } else {
-                                val1.overflowing_rem(val2)
-                            }
-                        }
-                        BinaryOp::BitOr => (val1 | val2, false),
-                        BinaryOp::BitAnd => (val1 & val2, false),
-                        BinaryOp::BitXor => (val1 ^ val2, false),
-                        BinaryOp::Lsh => (
-                            val1.wrapping_shl(val2 as u32),
-                            val2 > (ty1.header.bitsize.into()),
-                        ),
-                        BinaryOp::Rsh => (
-                            val1.wrapping_shr(val2 as u32),
-                            val2 > (ty1.header.bitsize.into()),
-                        ),
-                        BinaryOp::Cmp
-                        | BinaryOp::CmpInt
-                        | BinaryOp::CmpLt
-                        | BinaryOp::CmpLe
-                        | BinaryOp::CmpEq
-                        | BinaryOp::CmpNe
-                        | BinaryOp::CmpGe
-                        | BinaryOp::CmpGt => unreachable!(),
-                        op => todo!("{:?}", op),
-                    };
-
-                    let overflow = overflow
-                        || ((val.leading_zeros() < (ty1.header.bitsize as u32))
-                            && (val.leading_ones() < (ty1.header.bitsize as u32)));
-                    let val = val & (!((!0i128).wrapping_shl(128 - (ty1.header.bitsize as u32))));
-
-                    let val = (((val as i128) << ((128 - (ty1.header.bitsize - 1)) as u32))
-                        >> ((128 - (ty1.header.bitsize - 1)) as u32))
-                        as u128; // sign extend signed integers. This makes implementing Cmp et. al above easier
-
-                    match v {
-                        OverflowBehaviour::Wrap => self
-                            .vstack
-                            .push_back(VStackValue::Constant(Value::Integer { ty: ty1, val })),
-                        OverflowBehaviour::Unchecked => {
-                            if overflow {
-                                self.vstack
-                                    .push_back(VStackValue::Constant(Value::Uninitialized(
-                                        Type::Scalar(ty1),
-                                    )))
-                            } else {
-                                self.vstack.push_back(VStackValue::Constant(Value::Integer {
-                                    ty: ty1,
-                                    val,
-                                }))
-                            }
-                        }
-                        OverflowBehaviour::Checked => {
-                            self.vstack
-                                .push_back(VStackValue::Constant(Value::Integer { ty: ty1, val }));
-                            self.vstack.push_back(VStackValue::Constant(Value::Integer {
-                                ty: ScalarType {
-                                    header: ScalarTypeHeader {
-                                        bitsize: 1,
-                                        ..Default::default()
-                                    },
-                                    kind: ScalarTypeKind::Integer {
-                                        signed: false,
-                                        min: None,
-                                        max: None,
-                                    },
-                                },
-                                val: overflow as u128,
-                            }));
-                        }
-                        OverflowBehaviour::Trap => {
-                            if overflow {
-                                self.inner.write_trap(Trap::Abort);
-                                self.vstack.push_back(VStackValue::Trapped);
-                            } else {
-                                self.vstack.push_back(VStackValue::Constant(Value::Integer {
-                                    ty: ty1,
-                                    val,
-                                }));
-                            }
-                        }
-                        OverflowBehaviour::Saturate => {
-                            if (op == BinaryOp::Sub || op == BinaryOp::Rsh) && overflow {
-                                self.vstack.push_back(VStackValue::Constant(Value::Integer {
-                                    ty: ty1,
-                                    val: 0,
-                                }));
-                            } else if overflow {
-                                self.vstack.push_back(VStackValue::Constant(Value::Integer {
-                                    ty: ty1,
-                                    val: !((!0u128)
-                                        .wrapping_shl(128 - (ty1.header.bitsize as u32))),
-                                }));
-                            } else {
-                                self.vstack.push_back(VStackValue::Constant(Value::Integer {
-                                    ty: ty1,
-                                    val,
-                                }));
-                            }
-                        }
-                        v => todo!("{:?} {:?}", op, v),
-                    }
-                }
-            },
-            (
-                VStackValue::OpaqueScalar(
-                    st @ ScalarType {
-                        kind: ScalarTypeKind::Integer { .. },
-                        ..
-                    },
-                    loc,
-                ),
-                VStackValue::Constant(Value::Integer { ty, val }),
-            ) if st == ty => {
-                let header = st.header;
-                match header.vectorsize {
-                    None => {
-                        if header.bitsize.is_power_of_two()
-                            && header.bitsize <= self.inner.native_int_size()
-                        {
-                            match v {
-                                OverflowBehaviour::Wrap | OverflowBehaviour::Unchecked => {
-                                    let new_loc = match op {
-                                        BinaryOp::CmpEq
-                                        | BinaryOp::CmpNe
-                                        | BinaryOp::CmpGt
-                                        | BinaryOp::CmpLt
-                                        | BinaryOp::CmpGe
-                                        | BinaryOp::CmpLe => self.inner.allocate(
-                                            &Type::Scalar(ScalarType {
-                                                kind: ScalarTypeKind::Integer {
-                                                    signed: false,
-                                                    min: None,
-                                                    max: None,
-                                                },
-                                                header: ScalarTypeHeader {
-                                                    bitsize: 1,
-                                                    vectorsize: None,
-                                                    validity: Default::default(),
-                                                },
-                                            }),
-                                            false,
-                                        ),
-                                        BinaryOp::CmpInt => self.inner.allocate(
-                                            &Type::Scalar(ScalarType {
-                                                kind: ScalarTypeKind::Integer {
-                                                    signed: true,
-                                                    min: None,
-                                                    max: None,
-                                                },
-                                                header: ScalarTypeHeader {
-                                                    bitsize: 32,
-                                                    vectorsize: None,
-                                                    validity: Default::default(),
-                                                },
-                                            }),
-                                            false,
-                                        ),
-                                        _ => self.inner.allocate(&Type::Scalar(st), false),
-                                    };
-                                    self.inner.write_int_binary_imm(
-                                        new_loc.clone(),
-                                        loc,
-                                        val,
-                                        &Type::Scalar(st),
-                                        op,
-                                    );
-                                    self.push_value(VStackValue::OpaqueScalar(st, new_loc));
-                                }
-                                v => todo!("{:?} {:?}", op, v),
-                            }
-                        } else {
-                            todo!("Non-native integer")
-                        }
-                    }
-                    Some(vector) => todo!("vectorsize({:?})", vector),
-                }
-            }
-            (a, b) => todo!("{:?}: {:?}, {:?}", op, a, b),
-        }
-    }
-
-    fn branch_to(&mut self, target: u32) {
-        let values = self.pop_values(self.targets[&target].len()).unwrap();
-        for (targ_val, val) in self.targets[&target].clone().into_iter().zip(values) {
-            let loc = targ_val.opaque_location().unwrap().clone();
-            self.move_val(val, loc);
-        }
-
-        if !self.locals_opaque {
-            let mut locals = std::mem::take(&mut self.locals);
-
-            for (local, _) in &mut locals {
-                let val = core::mem::replace(local, VStackValue::Trapped);
-
-                *local = self.make_opaque(val);
-            }
-
-            self.locals = locals;
-            self.locals_opaque = true;
-        }
-
-        self.diverged = true;
-        if let StdSome(targ) = self.cfg.get(&target) {
-            if targ.fallthrough_from == self.ctarg {
-                return;
-            }
-        }
-
-        self.inner.branch_unconditional(target);
-    }
-
-    fn branch_conditional_to(&mut self, target: u32, cond: BranchCondition, loc: F::Loc) {
-        let values = self.pop_values(self.targets[&target].len()).unwrap();
-        for (targ_val, val) in self.targets[&target].clone().into_iter().zip(values) {
-            let loc = targ_val.opaque_location().unwrap().clone();
-            self.move_val(val, loc);
-            self.push_value(targ_val);
-        }
-
-        if !self.locals_opaque {
-            let mut locals = std::mem::take(&mut self.locals);
-
-            for (local, _) in &mut locals {
-                let val = core::mem::replace(local, VStackValue::Trapped);
-
-                *local = self.make_opaque(val);
-            }
-
-            self.locals = locals;
-            self.locals_opaque = true;
-        }
-
-        if let StdSome(targ) = self.cfg.get(&target) {
-            if targ.fallthrough_from == self.ctarg {
-                return;
-            }
-        }
-
-        self.inner.branch(target, cond, loc);
-    }
-
-    /// Writes a (potentially conditional) branch to `target` based on `cond`
-    pub fn write_branch(&mut self, cond: BranchCondition, target: u32) {
-        match cond {
-            BranchCondition::Always => {
-                self.branch_to(target);
-            }
-            BranchCondition::Never => {}
-            cond => {
-                let control = self.pop_value().unwrap();
-                match control {
-                    VStackValue::Constant(Value::Uninitialized(_))
-                    | VStackValue::Constant(Value::Invalid(_)) => {
-                        self.inner.write_trap(Trap::Unreachable);
-                        self.vstack.push_back(VStackValue::Trapped);
-                    }
-                    VStackValue::Constant(Value::Integer {
-                        ty:
-                            ScalarType {
-                                kind: ScalarTypeKind::Integer { signed, .. },
-                                ..
-                            },
-                        val,
-                    }) => {
-                        let taken = match cond {
-                            BranchCondition::Equal => val == 0,
-                            BranchCondition::NotEqual => val != 0,
-                            BranchCondition::Less => signed && ((val as i128) < 0),
-                            BranchCondition::LessEqual => {
-                                (signed && ((val as i128) <= 0)) || val == 0
-                            }
-                            BranchCondition::Greater => {
-                                if signed {
-                                    (val as i128) > 0
-                                } else {
-                                    val > 0
-                                }
-                            }
-                            BranchCondition::GreaterEqual => (!signed) || ((val as i128) >= 0),
-                            _ => unreachable!(),
-                        };
-
-                        if taken {
-                            self.branch_to(target);
-                        }
-                    }
-                    VStackValue::OpaqueScalar(_, loc) => {
-                        self.branch_conditional_to(target, cond, loc);
-                    }
-                    VStackValue::CompareResult(_, _) => todo!("compare"),
-                    VStackValue::Trapped => {
-                        self.push_value(VStackValue::Trapped);
-                    }
-                    val => panic!("Invalid Branch Control {:?}", val),
-                }
-            }
-        }
-    }
-
-    fn get_field_paths(
-        &self,
-        lval: LValue<F::Loc>,
-        ty: &Type,
-    ) -> (Type, LValue<F::Loc>, Vec<String>) {
-        match lval {
-            LValue::Field(base_ty, base, field) => {
-                let base_type = self.tys.get_field_type(&base_ty, &field).unwrap();
-                if &base_type == ty {
-                    let (inner_ty, base, mut fields) =
-                        self.get_field_paths(Box::into_inner(base), &base_ty);
-                    fields.push(field);
-                    (inner_ty, base, fields)
-                } else {
-                    (
-                        ty.clone(),
-                        LValue::Field(base_ty, base, field),
-                        xlang::abi::vec![],
-                    )
-                }
-            }
-            lval => (ty.clone(), lval, xlang::abi::vec![]),
-        }
-    }
-
-    /// Writes a unary operator
-    pub fn write_unary_op(&mut self, op: UnaryOp, v: OverflowBehaviour) {
-        let val = self.pop_value().unwrap();
-        match val {
-            VStackValue::Constant(Value::Invalid(_)) => {
-                self.inner.write_trap(Trap::Unreachable);
-                self.push_value(VStackValue::Trapped);
-            }
-            VStackValue::Constant(Value::Uninitialized(ty)) => match v {
-                OverflowBehaviour::Checked => {
-                    let check_ty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 1,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    self.push_value(VStackValue::Constant(Value::Uninitialized(ty)));
-                    self.push_value(VStackValue::Constant(Value::Uninitialized(Type::Scalar(
-                        check_ty,
-                    ))));
-                }
-                OverflowBehaviour::Trap => {
-                    self.inner.write_trap(Trap::Unreachable);
-                    self.push_value(VStackValue::Trapped);
-                }
-                _ => self.push_value(VStackValue::Constant(Value::Uninitialized(ty))),
-            },
-            VStackValue::Constant(Value::Integer {
-                ty:
-                    sty @ ScalarType {
-                        kind: ScalarTypeKind::Integer { signed: false, .. },
-                        ..
-                    },
-                val,
-            }) => {
-                let base_val = match op {
-                    UnaryOp::Minus => (-(val as i128)) as u128,
-                    UnaryOp::BitNot => !val,
-                    UnaryOp::LogicNot => (val == 0) as u128,
-                    op => panic!("Invalid unary op {:?}", op),
-                };
-
-                let mask = (!0u128).wrapping_shr((128 - sty.header.bitsize) as u32);
-
-                self.push_value(VStackValue::Constant(Value::Integer {
-                    ty: sty,
-                    val: base_val & mask,
-                }));
-
-                if v == OverflowBehaviour::Checked {
-                    let check_ty = ScalarType {
-                        header: ScalarTypeHeader {
-                            bitsize: 1,
-                            ..Default::default()
-                        },
-                        kind: ScalarTypeKind::Integer {
-                            signed: false,
-                            min: None,
-                            max: None,
-                        },
-                    };
-                    self.push_value(VStackValue::Constant(Value::Integer {
-                        ty: check_ty,
-                        val: 1,
-                    }));
-                }
-            }
-
-            VStackValue::Constant(Value::Integer {
-                ty:
-                    sty @ ScalarType {
-                        kind: ScalarTypeKind::Integer { signed: true, .. },
-                        ..
-                    },
-                val,
-            }) => {
-                let base_val = match op {
-                    UnaryOp::Minus => (-(val as i128)) as u128,
-                    UnaryOp::BitNot => !val,
-                    UnaryOp::LogicNot => (val == 0) as u128,
-                    op => panic!("Invalid unary op {:?}", op),
-                };
-
-                let overflow = op == UnaryOp::Minus && (base_val == val);
-
-                let mask = (!0u128).wrapping_shr((128 - sty.header.bitsize) as u32);
-
-                let val = base_val & mask;
-
-                let val = (((val as i128) << ((128 - (sty.header.bitsize - 1)) as u32))
-                    >> ((128 - (sty.header.bitsize - 1)) as u32)) as u128;
-
-                match (v, overflow) {
-                    (OverflowBehaviour::Wrap | OverflowBehaviour::Saturate, _)
-                    | (OverflowBehaviour::Unchecked | OverflowBehaviour::Trap, false) => {
-                        self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }))
-                    }
-                    (OverflowBehaviour::Unchecked, true) => self.push_value(VStackValue::Constant(
-                        Value::Uninitialized(Type::Scalar(sty)),
-                    )),
-                    (OverflowBehaviour::Trap, true) => {
-                        self.inner.write_trap(Trap::Abort);
-                        self.push_value(VStackValue::Trapped);
-                    }
-                    (OverflowBehaviour::Checked, overflow) => {
-                        self.push_value(VStackValue::Constant(Value::Integer { ty: sty, val }));
-                        let check_ty = ScalarType {
-                            header: ScalarTypeHeader {
-                                bitsize: 1,
-                                ..Default::default()
-                            },
-                            kind: ScalarTypeKind::Integer {
-                                signed: false,
-                                min: None,
-                                max: None,
-                            },
-                        };
-                        self.push_value(VStackValue::Constant(Value::Integer {
-                            ty: check_ty,
-                            val: overflow as u128,
-                        }));
-                    }
-                    (v, _) => panic!("Invalid overflow behaviour {:?}", v),
-                }
-            }
-            VStackValue::OpaqueScalar(sty, loc) => {
-                todo!("OpaqueScalar({},{:?})", sty, loc);
-            }
-            val => panic!("Invalid value {}", val),
-        }
-    }
-
-    /// Writes an expression in linear order into the codegen
-    pub fn write_expr(&mut self, expr: &Expr) {
-        if self.diverged {
-            return;
-        }
-        eprintln!("{:?}", expr);
-        self.print_vstack();
-        match expr {
-            Expr::Const(v) => self.push_value(VStackValue::Constant(v.clone())),
-            Expr::Exit { values } => self.write_exit(*values),
-            Expr::BinaryOp(op, v) => self.write_binary_op(*op, *v),
-            Expr::UnaryOp(op, v) => self.write_unary_op(*op, *v),
-            Expr::CallFunction(fnty) => {
-                let vals = self.pop_values(fnty.params.len()).unwrap();
-                let target = self.pop_value().unwrap();
-                match target {
-                    VStackValue::Constant(Value::GlobalAddress { ty, item }) => {
-                        let realty = match &ty {
-                            Type::FnType(ty) => &**ty,
-                            _ => fnty,
-                        };
-                        self.call_fn(fnty, realty, &item, vals, false);
-                    }
-                    VStackValue::Constant(Value::Invalid(_))
-                    | VStackValue::Constant(Value::Uninitialized(_))
-                    | VStackValue::Constant(Value::LabelAddress(_)) => {
-                        self.inner.write_trap(Trap::Unreachable);
-                        self.push_value(VStackValue::Trapped);
-                    }
-                    VStackValue::Pointer(pty, lvalue) => {
-                        let ty = &*pty.inner;
-                        let realty = match &ty {
-                            Type::FnType(ty) => &**ty,
-                            _ => fnty,
-                        };
-                        match lvalue {
-                            LValue::OpaquePointer(loc) => {
-                                self.call_indirect(fnty, realty, loc, vals, false)
-                            }
-                            LValue::GlobalAddress(path) => {
-                                self.call_fn(fnty, realty, &path, vals, false)
-                            }
-                            LValue::TransparentAddr(_) => todo!("call abs"),
-                            _ => {
-                                self.inner.write_trap(Trap::Unreachable);
-                                self.push_value(VStackValue::Trapped);
-                            }
-                        }
-                    }
-                    val => panic!("Invalid value {}", val),
-                }
-            }
-            Expr::Branch { cond, target } => self.write_branch(*cond, *target),
-            Expr::BranchIndirect => {
-                let val = self.pop_value().unwrap();
-
-                match val {
-                    VStackValue::Constant(Value::LabelAddress(n)) => {
-                        self.branch_to(n);
-                    }
-                    VStackValue::Pointer(_, LValue::Label(n)) => self.branch_to(n),
-                    VStackValue::Pointer(_, LValue::OpaquePointer(loc)) => {
-                        self.inner.branch_indirect(loc);
-                    }
-                    VStackValue::Pointer(_, _) => {
-                        self.inner.write_trap(Trap::Unreachable);
-                        self.diverged = true;
-                    }
-                    VStackValue::Trapped => self.diverged = true,
-                    val => panic!("Invalid value {}", val),
-                }
-            }
-
-            Expr::Convert(_, Type::Pointer(pty)) => match self.pop_value().unwrap() {
-                VStackValue::Constant(Value::LabelAddress(n)) => {
-                    self.push_value(VStackValue::Pointer(pty.clone(), LValue::Label(n)))
-                }
-                VStackValue::Constant(Value::String { encoding, utf8, .. }) => {
-                    self.push_value(VStackValue::Pointer(
-                        pty.clone(),
-                        LValue::StringLiteral(Encoding::XLang(encoding), utf8.into_bytes()),
-                    ))
-                }
-                VStackValue::Constant(Value::ByteString { content }) => {
-                    self.push_value(VStackValue::Pointer(
-                        pty.clone(),
-                        LValue::StringLiteral(Encoding::Byte, content),
-                    ))
-                }
-                VStackValue::Constant(Value::GlobalAddress { item, .. }) => self.push_value(
-                    VStackValue::Pointer(pty.clone(), LValue::GlobalAddress(item)),
-                ),
-                VStackValue::Constant(Value::Uninitialized(Type::Pointer(_))) => self.push_value(
-                    VStackValue::Constant(Value::Uninitialized(Type::Pointer(pty.clone()))),
-                ),
-                VStackValue::Constant(Value::Invalid(Type::Pointer(_))) => {
-                    self.push_value(VStackValue::Trapped);
-                    self.inner.write_trap(Trap::Unreachable)
-                }
-                VStackValue::Pointer(_, lval) => {
-                    self.push_value(VStackValue::Pointer(pty.clone(), lval))
-                }
-                VStackValue::Trapped => {
-                    self.push_value(VStackValue::Trapped);
-                }
-                VStackValue::OpaqueScalar(sty, _) => todo!("{:?} as {:?}", sty, pty),
-                val => panic!("Invalid value for convert _ {:?}: {:?}", pty, val),
-            },
-            Expr::Convert(_, Type::Scalar(sty)) => match self.pop_value().unwrap() {
-                VStackValue::Constant(Value::Uninitialized(Type::Scalar(_))) => self.push_value(
-                    VStackValue::Constant(Value::Uninitialized(Type::Scalar(*sty))),
-                ),
-                VStackValue::Constant(Value::Invalid(Type::Scalar(_))) => {
-                    self.push_value(VStackValue::Trapped);
-                    self.inner.write_trap(Trap::Unreachable)
-                }
-                VStackValue::Constant(Value::Integer { ty, val }) => {
-                    let mut newval = val & (!0 >> (128 - sty.header.bitsize.min(128)));
-
-                    if matches!(
-                        sty,
-                        ScalarType {
-                            kind: ScalarTypeKind::Integer { signed: true, .. },
-                            ..
-                        }
-                    ) {
-                        let bits = match ty {
-                            ScalarType {
-                                kind: ScalarTypeKind::Integer { signed: true, .. },
-                                header: ScalarTypeHeader { bitsize, .. },
-                            } => bitsize,
-                            _ => sty.header.bitsize.min(128),
-                        };
-
-                        let bit = newval >> bits.saturating_sub(1);
-
-                        newval |= !(bit.wrapping_sub(1)) << bits.saturating_sub(1);
-                    }
-
-                    self.push_value(VStackValue::Constant(Value::Integer {
-                        ty: *sty,
-                        val: newval,
-                    }));
-                }
-                VStackValue::OpaqueScalar(psty, loc) => {
-                    let ty = Type::Scalar(*sty);
-
-                    let newloc = self.inner.allocate(&ty, false);
-
-                    self.inner
-                        .write_scalar_convert(*sty, psty, newloc.clone(), loc);
-
-                    self.push_value(VStackValue::OpaqueScalar(*sty, newloc));
-                }
-                val => panic!("Invalind input for convert {}: {:?}", sty, val),
-            },
-            Expr::Convert(str, ty) => todo!("convert {:?} {:?}", str, ty),
-            Expr::Derive(_, expr) => {
-                self.write_expr(expr);
-            }
-            Expr::Local(n) => {
-                let param_cnt = u32::try_from(self.fnty.params.len()).unwrap();
-                let ty = if *n < param_cnt {
-                    self.fnty.params[*n as usize].clone()
-                } else {
-                    self.locals[((*n) - param_cnt) as usize].1.clone()
-                };
-                self.push_value(VStackValue::LValue(ty, LValue::Local(*n)))
-            }
-            Expr::Pop(n) => {
-                for val in self.pop_values((*n).try_into().unwrap()).unwrap() {
-                    match val {
-                        VStackValue::Constant(Value::Invalid(_)) => {
-                            self.inner.write_trap(Trap::Unreachable);
-                            self.diverged = true;
-                            break;
-                        }
-                        VStackValue::Trapped => self.diverged = true,
-                        _ => {}
-                    }
-                }
-            }
-            Expr::Dup(n) => {
-                let values = self.pop_values((*n).try_into().unwrap()).unwrap();
-                self.push_values(values.clone());
-                self.push_values(values);
-            }
-            Expr::Pivot(n, m) => {
-                eprintln!("pivot {} {}", n, m);
-                let vals1 = self.pop_values((*m).try_into().unwrap()).unwrap();
-                let vals2 = self.pop_values((*n).try_into().unwrap()).unwrap();
-                self.push_values(vals1);
-                self.push_values(vals2);
-            }
-            Expr::Aggregate(ctor) => {
-                let vals = self.pop_values(ctor.fields.len()).unwrap();
-                self.push_value(VStackValue::AggregatePieced(
-                    ctor.ty.clone(),
-                    ctor.fields.iter().cloned().zip(vals).collect(),
-                ));
-            }
-            Expr::Member(m) => {
-                let val = self.pop_value().unwrap();
-
-                match val {
-                    VStackValue::LValue(ty, lval) => {
-                        let layout = self.tys.aggregate_layout(&ty).unwrap();
-                        let inner_ty = layout.fields.get(&m.to_string());
-
-                        match inner_ty {
-                            StdSome((_, inner_ty)) => self.push_value(VStackValue::LValue(
-                                inner_ty.clone(),
-                                LValue::Field(ty, Box::new(lval), m.clone()),
-                            )),
-                            _ => panic!("Cannot get member {} of {}", m, ty),
-                        }
-                    }
-                    VStackValue::OpaqueAggregate(ty, loc) => {
-                        let layout = self.tys.aggregate_layout(&ty).unwrap();
-                        let inner_ty = layout.fields.get(&m.to_string()).unwrap();
-
-                        if (inner_ty.0 == 0) && layout.fields.iter().count() == 1 {
-                            let val = self.opaque_value(&inner_ty.1, loc);
-                            self.push_value(val);
-                        } else {
-                            todo!("opaque aggregate")
-                        }
-                    }
-                    val => panic!("cannot get member {} of {}", m, val),
-                }
-            }
-            Expr::MemberIndirect(_) => todo!(),
-            Expr::Assign(cl) => {
-                let lval = self.vstack.pop_back().unwrap();
-                let value = self.vstack.pop_back().unwrap();
-
-                let (_, lval) = match lval {
-                    VStackValue::LValue(ty, lval) => (ty, lval),
-                    val => panic!("Cannot assign to rvalue stack value {:?}", val),
-                };
-
-                match (lval, value) {
-                    (LValue::Null, _)
-                    | (LValue::Label(_), _)
-                    | (LValue::StringLiteral(_, _), _)
-                    | (_, VStackValue::Constant(Value::Invalid(_))) => {
-                        self.inner.write_trap(Trap::Unreachable);
-                        self.push_value(VStackValue::Trapped);
-                    }
-                    (_, VStackValue::Trapped) => {
-                        self.push_value(VStackValue::Trapped);
-                    }
-                    (LValue::Local(n), val) => {
-                        let loc = self.locals[n as usize].0.clone();
-
-                        match loc {
-                            VStackValue::Trapped => {
-                                self.push_value(VStackValue::Trapped);
-                            }
-                            VStackValue::OpaqueScalar(_, loc)
-                            | VStackValue::OpaqueAggregate(_, loc)
-                            | VStackValue::Pointer(_, LValue::OpaquePointer(loc)) => {
-                                self.move_val(val, loc);
-                            }
-                            _ => {
-                                self.locals[n as usize].0 = val;
-                            }
-                        }
-                    }
-                    (LValue::OpaquePointer(loc), val) => self.store_val(loc, val, *cl),
-                    (a, b) => todo!("store {:?} <- {:?}", a, b),
-                }
-            }
-            Expr::AsRValue(_) => {
-                let lvalue = self.pop_value().unwrap();
-                let (ty, lvalue) = match lvalue {
-                    VStackValue::LValue(ty, lvalue) => (ty, lvalue),
-                    val => panic!("Invalid value for as_rvalue {:?}", val),
-                };
-
-                let (_, base, path) = self.get_field_paths(lvalue, &ty);
-
-                let mut val = match base {
-                    LValue::Null => {
-                        self.inner.write_trap(Trap::Unreachable);
-                        VStackValue::Trapped
-                    }
-                    LValue::Temporary(val) => Box::into_inner(val),
-                    LValue::OpaquePointer(loc) => {
-                        let dst = self.inner.allocate(&ty, false);
-                        self.inner.load_val(loc, dst.clone());
-
-                        self.opaque_value(&ty, dst)
-                    }
-
-                    LValue::Local(n) => {
-                        let local = self.locals[n as usize].0.clone();
-                        if let Some(loc) = local.opaque_location() {
-                            let dst = self.inner.allocate(&ty, false);
-                            self.inner.move_val(loc.clone(), dst.clone());
-                            self.opaque_value(&ty, dst)
-                        } else {
-                            local
-                        }
-                    }
-                    LValue::GlobalAddress(_) => todo!("as_rvalue global_address"),
-                    LValue::Label(_) => {
-                        self.inner.write_trap(Trap::Unreachable);
-                        VStackValue::Trapped
-                    }
-                    LValue::Field(_, _, _) => todo!("as_rvalue field"),
-                    LValue::StringLiteral(_, _) => todo!("as_rvalue string_literal"),
-                    LValue::Offset(_, _) => todo!("as_rvalue offset"),
-                    LValue::TransparentAddr(_) => todo!("absolute addr"),
-                };
-
-                for f in &path {
-                    val = match val {
-                        VStackValue::Constant(_) => todo!(),
-                        VStackValue::LValue(_, _) => todo!(),
-                        VStackValue::Pointer(_, _) => todo!(),
-                        VStackValue::OpaqueScalar(_, _) => todo!(),
-                        VStackValue::AggregatePieced(base, mut fields) => {
-                            let inner = fields.remove(f);
-
-                            if let StdSome(Pair(_, inner)) = inner {
-                                inner
-                            } else {
-                                let fty = self.tys.get_field_type(&base, f).unwrap();
-                                self.tys.zero_init(&fty).unwrap().into_transparent_for()
-                            }
-                        }
-                        VStackValue::OpaqueAggregate(_, _) => todo!(),
-                        VStackValue::CompareResult(_, _) => todo!(),
-                        VStackValue::Trapped => VStackValue::Trapped,
-                        VStackValue::ArrayRepeat(_, _) => todo!(),
-                    }
-                }
-                self.push_value(val);
-            }
-            Expr::CompoundAssign(op, v, acc) => {
-                let [rhs, lval] = self.pop_values_static().unwrap();
-
-                let (ty, lval) = match lval {
-                    VStackValue::Trapped => {
-                        self.push_value(VStackValue::Trapped);
-                        return;
-                    }
-                    VStackValue::LValue(ty, lval) => (ty, lval),
-                    val => panic!("Invalid value {}", val),
-                };
-
-                let (_, base, fields) = self.get_field_paths(lval, &ty);
-
-                match base {
-                    LValue::OpaquePointer(_) => todo!(),
-                    LValue::Local(n) => {
-                        let mut val = &mut self.locals[n as usize].0;
-
-                        let tys = &self.tys;
-
-                        let mut it = fields.into_iter();
-
-                        for field in &mut it {
-                            match val {
-                                VStackValue::Constant(Value::Invalid(_)) => {
-                                    self.inner.write_trap(Trap::Unreachable);
-                                    self.push_value(VStackValue::Trapped);
-                                    return;
-                                }
-                                VStackValue::Constant(Value::Uninitialized(ty)) => {
-                                    let mut aggregate = HashMap::<String, _>::new();
-
-                                    for Pair(name, (_, ty)) in
-                                        tys.aggregate_layout(ty).unwrap().fields
-                                    {
-                                        let _ = aggregate.insert(
-                                            name.into(),
-                                            VStackValue::Constant(Value::Uninitialized(ty)),
-                                        );
-                                    }
-
-                                    *val = VStackValue::AggregatePieced(
-                                        core::mem::replace(ty, Type::Null),
-                                        aggregate,
-                                    );
-
-                                    match val {
-                                        VStackValue::AggregatePieced(_, vals) => {
-                                            val = vals.get_mut(&field).unwrap()
-                                        }
-                                        _ => unsafe { core::hint::unreachable_unchecked() },
-                                    }
-                                }
-                                VStackValue::AggregatePieced(ty, vals) => {
-                                    val = vals.get_or_insert_with_mut(field, |field| {
-                                        let field_ty = tys.get_field_type(ty, field).unwrap();
-                                        tys.zero_init(&field_ty).unwrap().into_transparent_for()
-                                    });
-                                }
-                                VStackValue::OpaqueAggregate(_, _) => todo!("opaque aggregate"),
-                                VStackValue::Trapped => break,
-                                val => panic!("Invalid value {}", val),
-                            }
-                        }
-
-                        if *acc == AccessClass::Normal {
-                            let underlying = core::mem::replace(val, VStackValue::Trapped);
-
-                            match (underlying, rhs) {
-                                (VStackValue::Constant(Value::Invalid(_)), _)
-                                | (_, VStackValue::Constant(Value::Invalid(_))) => {
-                                    self.inner.write_trap(Trap::Unreachable);
-                                }
-                                (VStackValue::Trapped, _) | (_, VStackValue::Trapped) => {}
-                                (
-                                    underlying @ VStackValue::Constant(Value::Uninitialized(_)),
-                                    _,
-                                )
-                                | (
-                                    underlying @ VStackValue::OpaqueScalar(_, _),
-                                    VStackValue::Constant(Value::Uninitialized(_)),
-                                ) => {
-                                    *val = underlying;
-                                    match *v {
-                                        OverflowBehaviour::Trap => {
-                                            self.inner.write_trap(Trap::Unreachable);
-                                            self.diverged = true;
-                                        }
-                                        OverflowBehaviour::Checked => {
-                                            let bool_sty = ScalarType {
-                                                header: ScalarTypeHeader {
-                                                    bitsize: 1,
-                                                    ..Default::default()
-                                                },
-                                                kind: ScalarTypeKind::Integer {
-                                                    signed: false,
-                                                    min: None,
-                                                    max: None,
-                                                },
-                                            };
-                                            self.push_value(VStackValue::Constant(
-                                                Value::Uninitialized(Type::Scalar(bool_sty)),
-                                            ))
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                (_, res @ VStackValue::Constant(Value::Uninitialized(_))) => {
-                                    *val = res;
-                                    match *v {
-                                        OverflowBehaviour::Trap => {
-                                            self.inner.write_trap(Trap::Unreachable);
-                                            self.diverged = true;
-                                        }
-                                        OverflowBehaviour::Checked => {
-                                            let bool_sty = ScalarType {
-                                                header: ScalarTypeHeader {
-                                                    bitsize: 1,
-                                                    ..Default::default()
-                                                },
-                                                kind: ScalarTypeKind::Integer {
-                                                    signed: false,
-                                                    min: None,
-                                                    max: None,
-                                                },
-                                            };
-                                            self.push_value(VStackValue::Constant(
-                                                Value::Uninitialized(Type::Scalar(bool_sty)),
-                                            ))
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                (
-                                    VStackValue::Constant(Value::Integer {
-                                        ty: sty1,
-                                        val: val1,
-                                    }),
-                                    VStackValue::Constant(Value::Integer {
-                                        ty: sty2,
-                                        val: val2,
-                                    }),
-                                ) => match (sty1, sty2) {
-                                    (
-                                        ScalarType {
-                                            header:
-                                                ScalarTypeHeader {
-                                                    bitsize: bit1,
-                                                    vectorsize: None,
-                                                    ..
-                                                },
-                                            kind: ScalarTypeKind::Integer { signed: false, .. },
-                                        },
-                                        ScalarType {
-                                            header:
-                                                ScalarTypeHeader {
-                                                    vectorsize: None, ..
-                                                },
-                                            kind: ScalarTypeKind::Integer { signed: false, .. },
-                                        },
-                                    ) => {
-                                        let (res, overflow) = match *op{
-                                                    BinaryOp::Add => val1.overflowing_add(val2),
-                                                    BinaryOp::Sub => val1.overflowing_sub(val2),
-                                                    BinaryOp::Mul => val1.overflowing_mul(val2),
-                                                    BinaryOp::Div => {
-                                                        if val2==0{
-                                                            (0,true)
-                                                        }else{
-                                                            val1.overflowing_div(val2)
-                                                        }
-                                                    }
-                                                    BinaryOp::Mod => {
-                                                        if val2==0{
-                                                            (0,true)
-                                                        }else{
-                                                            val1.overflowing_rem(val2)
-                                                        }
-                                                    }
-                                                    BinaryOp::BitAnd => (val1&val2,false),
-                                                    BinaryOp::BitOr => (val1|val2,false),
-                                                    BinaryOp::BitXor => (val1|val2,false),
-                                                    BinaryOp::Lsh => (val1.wrapping_shl(val2 as u32),u16::try_from(val2).map(|val|val>bit1).unwrap_or(true)),
-                                                    BinaryOp::Rsh => (val1.wrapping_shr(val2 as u32),u16::try_from(val2).map(|val|val>bit1).unwrap_or(true)),
-                                                    op => panic!("Cannot perform binary operation {} as compound_assign",op)
-                                                };
-
-                                        let mask = (!0u128).wrapping_shr(128 - (bit1 as u32));
-
-                                        let mres = res & mask;
-
-                                        let overflow = overflow || (mres != res);
-
-                                        let res = match *v {
-                                            OverflowBehaviour::Saturate => {
-                                                let mres = if overflow {
-                                                    if *op == BinaryOp::Rsh || *op == BinaryOp::Sub
-                                                    {
-                                                        0
-                                                    } else {
-                                                        mask
-                                                    }
-                                                } else {
-                                                    res
-                                                };
-                                                VStackValue::Constant(Value::Integer {
-                                                    ty: sty1,
-                                                    val: mres,
-                                                })
-                                            }
-                                            OverflowBehaviour::Wrap => {
-                                                VStackValue::Constant(Value::Integer {
-                                                    ty: sty1,
-                                                    val: mres,
-                                                })
-                                            }
-                                            OverflowBehaviour::Checked => {
-                                                let bool_sty = ScalarType {
-                                                    header: ScalarTypeHeader {
-                                                        bitsize: 1,
-                                                        ..Default::default()
-                                                    },
-                                                    kind: ScalarTypeKind::Integer {
-                                                        signed: false,
-                                                        min: None,
-                                                        max: None,
-                                                    },
-                                                };
-
-                                                self.vstack.push_back(VStackValue::Constant(
-                                                    Value::Integer {
-                                                        ty: bool_sty,
-                                                        val: overflow as u128,
-                                                    },
-                                                ));
-                                                VStackValue::Constant(Value::Integer {
-                                                    ty: sty1,
-                                                    val: mres,
-                                                })
-                                            }
-                                            OverflowBehaviour::Trap => {
-                                                if overflow {
-                                                    self.inner.write_trap(Trap::Abort);
-                                                    self.diverged = true;
-                                                    return;
-                                                } else {
-                                                    VStackValue::Constant(Value::Integer {
-                                                        ty: sty1,
-                                                        val: mres,
-                                                    })
-                                                }
-                                            }
-                                            OverflowBehaviour::Unchecked => {
-                                                if overflow {
-                                                    VStackValue::Constant(Value::Uninitialized(
-                                                        Type::Scalar(sty1),
-                                                    ))
-                                                } else {
-                                                    VStackValue::Constant(Value::Integer {
-                                                        ty: sty1,
-                                                        val: mres,
-                                                    })
-                                                }
-                                            }
-                                            _ => panic!("Invalid overflow behaviour {}", v),
-                                        };
-
-                                        *val = res;
-                                    }
-                                    (
-                                        ScalarType {
-                                            header:
-                                                ScalarTypeHeader {
-                                                    bitsize: bit1,
-                                                    vectorsize: None,
-                                                    ..
-                                                },
-                                            kind: ScalarTypeKind::Integer { signed: true, .. },
-                                        },
-                                        ScalarType {
-                                            header:
-                                                ScalarTypeHeader {
-                                                    vectorsize: None, ..
-                                                },
-                                            kind: ScalarTypeKind::Integer { signed: true, .. },
-                                        },
-                                    ) => {
-                                        let val1 = val1 as i128;
-                                        let val2 = val2 as i128;
-                                        let (res, overflow) = match *op{
-                                            BinaryOp::Add => val1.overflowing_add(val2),
-                                            BinaryOp::Sub => val1.overflowing_sub(val2),
-                                            BinaryOp::Mul => val1.overflowing_mul(val2),
-                                            BinaryOp::Div => {
-                                                if val2==0{
-                                                    (0,true)
-                                                }else{
-                                                    val1.overflowing_div(val2)
-                                                }
-                                            }
-                                            BinaryOp::Mod => {
-                                                if val2==0{
-                                                    (0,true)
-                                                }else{
-                                                    val1.overflowing_rem(val2)
-                                                }
-                                            }
-                                            BinaryOp::BitAnd => (val1&val2,false),
-                                            BinaryOp::BitOr => (val1|val2,false),
-                                            BinaryOp::BitXor => (val1|val2,false),
-                                            BinaryOp::Lsh => (val1.wrapping_shl(val2 as u32),u16::try_from(val2).map(|val|val>bit1).unwrap_or(true)),
-                                            BinaryOp::Rsh => (val1.wrapping_shr(val2 as u32),u16::try_from(val2).map(|val|val>bit1).unwrap_or(true)),
-                                            op => panic!("Cannot perform binary operation {} as compound_assign",op)
-                                        };
-
-                                        let mask =
-                                            (!0u128).wrapping_shr(128 - (bit1 as u32)) as i128;
-
-                                        let mres = res & mask;
-
-                                        let overflow = overflow
-                                            || ((128 - res.leading_ones() - res.leading_zeros())
-                                                < 128 - (bit1 as u32));
-
-                                        let mres = ((0i128
-                                            .wrapping_sub(mres.wrapping_shr(bit1.into()) & 1))
-                                        .wrapping_shl(bit1.into()))
-                                            as u128;
-
-                                        let res = match *v {
-                                            OverflowBehaviour::Saturate => {
-                                                let mres = if overflow {
-                                                    if *op == BinaryOp::Rsh || *op == BinaryOp::Sub
-                                                    {
-                                                        0
-                                                    } else {
-                                                        mask as u128
-                                                    }
-                                                } else {
-                                                    mres
-                                                };
-                                                VStackValue::Constant(Value::Integer {
-                                                    ty: sty1,
-                                                    val: mres,
-                                                })
-                                            }
-                                            OverflowBehaviour::Wrap => {
-                                                VStackValue::Constant(Value::Integer {
-                                                    ty: sty1,
-                                                    val: mres,
-                                                })
-                                            }
-                                            OverflowBehaviour::Checked => {
-                                                let bool_sty = ScalarType {
-                                                    header: ScalarTypeHeader {
-                                                        bitsize: 1,
-                                                        ..Default::default()
-                                                    },
-                                                    kind: ScalarTypeKind::Integer {
-                                                        signed: false,
-                                                        min: None,
-                                                        max: None,
-                                                    },
-                                                };
-
-                                                self.vstack.push_back(VStackValue::Constant(
-                                                    Value::Integer {
-                                                        ty: bool_sty,
-                                                        val: overflow as u128,
-                                                    },
-                                                ));
-                                                VStackValue::Constant(Value::Integer {
-                                                    ty: sty1,
-                                                    val: mres,
-                                                })
-                                            }
-                                            OverflowBehaviour::Trap => {
-                                                if overflow {
-                                                    self.inner.write_trap(Trap::Abort);
-                                                    self.diverged = true;
-                                                    return;
-                                                } else {
-                                                    VStackValue::Constant(Value::Integer {
-                                                        ty: sty1,
-                                                        val: mres,
-                                                    })
-                                                }
-                                            }
-                                            OverflowBehaviour::Unchecked => {
-                                                if overflow {
-                                                    VStackValue::Constant(Value::Uninitialized(
-                                                        Type::Scalar(sty1),
-                                                    ))
-                                                } else {
-                                                    VStackValue::Constant(Value::Integer {
-                                                        ty: sty1,
-                                                        val: mres,
-                                                    })
-                                                }
-                                            }
-                                            _ => panic!("Invalid overflow behaviour {}", v),
-                                        };
-
-                                        *val = res;
-                                    }
-                                    (sty1, sty2) => todo!("({},{})", sty1, sty2),
-                                },
-                                (val1, val2) => panic!("Invalid values {}, {}", val1, val2),
-                            }
-                        } else {
-                            todo!("compound_assign {}", acc)
-                        }
-                    }
-                    LValue::Temporary(_) => todo!(),
-                    LValue::GlobalAddress(_) => todo!(),
-                    LValue::TransparentAddr(_) => todo!(),
-                    _ => {
-                        self.inner.write_trap(Trap::Unreachable);
-                        self.push_value(VStackValue::Trapped);
-                    }
-                }
-            }
-            Expr::FetchAssign(_, _, _) => todo!(),
-            Expr::LValueOp(_, _) => todo!(),
-            Expr::UnaryLValue(_, _, _) => todo!(),
-            Expr::Indirect => {
-                let val = self.pop_value().unwrap();
-                match val {
-                    VStackValue::Pointer(pty, lval) => {
-                        self.push_value(VStackValue::LValue(Box::into_inner(pty.inner), lval))
-                    }
-                    val => panic!("Invalid value for instruction {:?}", val),
-                }
-            }
-            Expr::AddrOf => {
-                let val = self.pop_value().unwrap();
-                match val {
-                    VStackValue::LValue(ty, lval) => self.push_value(VStackValue::Pointer(
-                        PointerType {
-                            inner: Box::new(ty),
-                            ..Default::default()
-                        },
-                        lval,
-                    )),
-                    val => panic!("Invalid value for instruction {:?}", val),
-                }
-            }
-            Expr::Sequence(_) => {}
-            Expr::Fence(barrier) => self.inner.write_barrier(*barrier),
-            Expr::Switch(Switch::Linear(s)) => {
-                let ctrl = self.pop_value().unwrap();
-                match ctrl {
-                    VStackValue::Constant(Value::Uninitialized(_) | Value::Invalid(_)) => {
-                        self.inner.write_trap(Trap::Unreachable);
-                    }
-                    VStackValue::Constant(Value::Integer { val, .. }) => {
-                        let val = val.wrapping_sub(s.min);
-                        let (idx, rem) = ((val / (s.scale as u128)), val % (s.scale as u128));
-                        let target = if rem != 0 || idx >= (s.cases.len() as u128) {
-                            s.default
-                        } else {
-                            s.cases[usize::try_from(idx).unwrap()]
-                        };
-
-                        self.branch_to(target);
-                    }
-                    VStackValue::OpaqueScalar(ty, loc) => {
-                        todo!("switch OpaqueScalar({:?},{:?})", ty, loc)
-                    }
-                    VStackValue::CompareResult(a, b) => {
-                        todo!("switch CompareResult({:?},{:?})", a, b)
-                    }
-                    VStackValue::Trapped => {}
-                    v => panic!("Invalid value for switch {:?}", v),
-                }
-            }
-            Expr::Switch(Switch::Hash(s)) => {
-                let ctrl = self.pop_value().unwrap();
-                match ctrl {
-                    VStackValue::Constant(Value::Uninitialized(_) | Value::Invalid(_)) => {
-                        self.inner.write_trap(Trap::Unreachable);
-                    }
-                    VStackValue::Constant(v @ Value::Integer { .. }) => {
-                        let mut found = None;
-                        for Pair(case, target) in &s.cases {
-                            if &v == case {
-                                found = Some(*target);
-                                break;
-                            }
-                        }
-                        let target = found.unwrap_or(s.default);
-
-                        self.branch_to(target);
-                    }
-                    VStackValue::OpaqueScalar(ty, loc) => {
-                        todo!("switch OpaqueScalar({:?},{:?})", ty, loc)
-                    }
-                    VStackValue::CompareResult(a, b) => {
-                        todo!("switch CompareResult({:?},{:?})", a, b)
-                    }
-                    VStackValue::Trapped => {}
-                    v => panic!("Invalid value for switch {:?}", v),
-                }
-            }
-            Expr::Tailcall(fnty) => {
-                let vals = self.pop_values(fnty.params.len()).unwrap();
-                let target = self.pop_value().unwrap();
-                match target {
-                    VStackValue::Constant(Value::GlobalAddress { ty, item }) => {
-                        let realty = match &ty {
-                            Type::FnType(ty) => &**ty,
-                            _ => fnty,
-                        };
-                        self.call_fn(fnty, realty, &item, vals, true);
-                    }
-                    VStackValue::Constant(Value::Invalid(_))
-                    | VStackValue::Constant(Value::Uninitialized(_))
-                    | VStackValue::Constant(Value::LabelAddress(_)) => {
-                        self.inner.write_trap(Trap::Unreachable);
-                    }
-                    VStackValue::Pointer(pty, lvalue) => {
-                        let ty = &*pty.inner;
-                        let realty = match &ty {
-                            Type::FnType(ty) => &**ty,
-                            _ => fnty,
-                        };
-                        match lvalue {
-                            LValue::OpaquePointer(loc) => {
-                                self.call_indirect(fnty, realty, loc, vals, true)
-                            }
-                            LValue::GlobalAddress(path) => {
-                                self.call_fn(fnty, realty, &path, vals, true)
-                            }
-                            LValue::TransparentAddr(_) => todo!("call abs"),
-                            _ => {
-                                self.inner.write_trap(Trap::Unreachable);
-                            }
-                        }
-                    }
-                    val => panic!("Invalid value {}", val),
-                }
-            }
-            Expr::Asm(asm) => self.write_asm(asm),
-            Expr::BeginStorage(n) => {
-                let local = &mut self.locals[(*n) as usize];
-                local.0 = VStackValue::Constant(Value::Uninitialized(local.1.clone()));
-            }
-            Expr::EndStorage(n) => {
-                let local = &mut self.locals[(*n) as usize];
-                local.0 = VStackValue::Constant(Value::Invalid(local.1.clone()));
-            }
-            Expr::Select(n) => {
-                let sel = self.pop_value().unwrap();
-                let possible_vals = self.pop_values(*n as usize).unwrap();
-                let tyof = possible_vals[0].value_type();
-                match sel {
-                    VStackValue::Trapped => {
-                        self.push_value(VStackValue::Trapped);
-                    }
-                    VStackValue::Constant(Value::Invalid(_)) => {
-                        self.inner.write_trap(Trap::Unreachable);
-                        self.push_value(VStackValue::Trapped);
-                    }
-                    VStackValue::Constant(Value::Uninitialized(_)) => {
-                        self.inner.write_trap(Trap::Unreachable);
-                        self.push_value(VStackValue::Trapped);
-                    }
-                    VStackValue::Constant(Value::Integer {
-                        ty:
-                            ScalarType {
-                                kind: ScalarTypeKind::Integer { .. },
-                                ..
-                            },
-                        val,
-                    }) => {
-                        if val > (*n as u128) {
-                            self.push_value(VStackValue::Constant(Value::Invalid(tyof)))
-                        } else {
-                            self.push_value(possible_vals.into_iter().nth(val as usize).unwrap())
-                        }
-                    }
-                    val => todo!("{:?}", val),
-                }
-            }
-        }
-    }
-
-    /// Writes an asm-expr
-    pub fn write_asm(&mut self, asm: &AsmExpr) {
-        let nexprs = asm.inputs.len();
-
-        let inputs = self.pop_values(nexprs).unwrap();
-
-        let vals = self.inner.write_asm(asm, inputs);
-
-        let vals = vals
-            .into_iter()
-            .zip(&asm.outputs)
-            .map(|(loc, ty)| self.opaque_value(&ty.ty, loc))
-            .collect::<Vec<_>>();
-
-        self.push_values(vals);
-    }
-
-    /// Writes the body of a function to the codegen
-    pub fn write_function_body(&mut self, body: &FunctionBody) {
-        let fnty: FnType = self.fnty.clone();
-        self.vstack.reserve(fnty.params.len());
-
-        for (i, ty) in fnty.params.iter().enumerate() {
-            let loc =
-                self.inner
-                    .get_callconv()
-                    .find_param(&fnty, &fnty, u32::try_from(i).unwrap(), true);
-            let val = self.opaque_value(ty, loc);
-            self.push_value(val);
-        }
-
-        self.locals.reserve(body.locals.len());
-        for ty in &body.locals {
-            self.locals.push((
-                VStackValue::Constant(Value::Uninitialized(ty.clone())),
-                ty.clone(),
-            ))
-        }
-        self.write_block(&body.block, 0);
-        if !self.diverged {
-            self.inner.leave_function();
-        }
-    }
-
-    /// Writes the elements of a block to the codegen, usually the top level block of a function
-    pub fn write_block(&mut self, block: &Block, _: u32) {
-        for item in &block.items {
-            match item {
-                xlang::ir::BlockItem::Target { num, stack } => {
-                    self.cfg
-                        .get_or_insert_with_mut(*num, |_| BranchToInfo::default())
-                        .fallthrough_from = self.ctarg;
-
-                    self.ctarg = *num;
-
-                    let values = stack
-                        .iter()
-                        .map(|item| match item {
-                            StackItem {
-                                kind: StackValueKind::LValue,
-                                ty,
-                            } => VStackValue::LValue(
-                                ty.clone(),
-                                LValue::OpaquePointer(self.inner.allocate_lvalue(false)),
-                            ),
-                            StackItem {
-                                kind: StackValueKind::RValue,
-                                ty,
-                            } => {
-                                let loc = self.inner.allocate(ty, false);
-                                self.opaque_value(ty, loc)
-                            }
-                        })
-                        .collect();
-                    self.targets.insert(*num, values);
-                }
-                xlang::ir::BlockItem::Expr(expr) => match expr {
-                    Expr::Branch {
-                        cond: BranchCondition::Never,
-                        ..
-                    } => {}
-                    Expr::Const(Value::LabelAddress(targ)) => {
-                        self.cfg
-                            .get_or_insert_with_mut(*targ, |_| BranchToInfo::default())
-                            .branch_from
-                            .insert(self.ctarg);
-                    }
-                    Expr::Branch { target, .. } => {
-                        self.cfg
-                            .get_or_insert_with_mut(*target, |_| BranchToInfo::default())
-                            .branch_from
-                            .insert(self.ctarg);
-                    }
-                    Expr::Switch(s) => match s {
-                        Switch::Linear(LinearSwitch { default, cases, .. }) => {
-                            self.cfg
-                                .get_or_insert_with_mut(*default, |_| BranchToInfo::default())
-                                .branch_from
-                                .insert(self.ctarg);
-
-                            for targ in cases {
-                                self.cfg
-                                    .get_or_insert_with_mut(*targ, |_| BranchToInfo::default())
-                                    .branch_from
-                                    .insert(self.ctarg);
-                            }
-                        }
-                        Switch::Hash(HashSwitch { default, cases, .. }) => {
-                            self.cfg
-                                .get_or_insert_with_mut(*default, |_| BranchToInfo::default())
-                                .branch_from
-                                .insert(self.ctarg);
-
-                            for Pair(_, targ) in cases {
-                                self.cfg
-                                    .get_or_insert_with_mut(*targ, |_| BranchToInfo::default())
-                                    .branch_from
-                                    .insert(self.ctarg);
-                            }
-                        }
-                    },
-                    _ => {}
-                },
-            }
-        }
-        self.ctarg = !0; // reset block position
-        for item in &block.items {
-            match item {
-                xlang::ir::BlockItem::Expr(expr) => self.write_expr(expr),
-                xlang::ir::BlockItem::Target { num, .. } => {
-                    self.ctarg = *num;
-                    if !self.locals_opaque {
-                        let mut locals = std::mem::take(&mut self.locals);
-
-                        for (local, _) in &mut locals {
-                            let val = core::mem::replace(local, VStackValue::Trapped);
-
-                            *local = self.make_opaque(val);
-                        }
-
-                        self.locals = locals;
-                        self.locals_opaque = true;
-                    }
-                    if !self.diverged {
-                        let locs = self.targets[num].clone();
-                        let vals = self.pop_values(locs.len()).unwrap();
-                        for (val, stack_val) in vals.into_iter().zip(locs) {
-                            self.move_val(val, stack_val.opaque_location().unwrap().clone());
-                        }
-                        self.clear_stack();
-                        for val in self.targets[num].clone() {
-                            self.push_value(val.clone());
-                        }
-                    } else if let StdSome(br) = self.cfg.get(num) {
-                        if !br.branch_from.is_empty() {
-                            self.clear_stack();
-                            for val in self.targets[num].clone() {
-                                self.push_value(val.clone());
-                            }
-                            self.diverged = false;
-                        } else {
-                            self.clear_stack();
-                        }
-                    }
-
-                    self.inner.write_target(*num);
-                }
-            }
+            todo!("asm file")
         }
     }
 }

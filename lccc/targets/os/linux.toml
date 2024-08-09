@@ -1,0 +1,13 @@
+unix-like = true
+windows-like = true
+os-family = ["linux", "unix"]
+static-prefix = "lib"
+static-suffix = ".a"
+dynamic-prefix = "lib"
+dynamic-suffix=".so"
+exec-suffix=""
+obj-suffix=".o"
+ld-flavour="ld"
+ar-flavour="ar"
+base-dirs=["/", "/usr", "/usr/local"]
+so-kind="linkable"

@@ -1,0 +1,10 @@
+
+[target.liblccc]
+deps=["xlang:xlang", "xlang:xlang_interface"]
+src="src/lib.rs"
+crate-type="rlib"
+
+[target.lccc]
+deps=["liblccc"]
+src="src/main.rs"
+crate-type="bin"

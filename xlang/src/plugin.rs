@@ -5,6 +5,8 @@
 //! xlang plugins should be installed to the xlang plugin directory
 //!
 
+#![allow(improper_ctypes_definitions)]
+
 pub mod v1 {
     use xlang_abi::{
         io::{self, Read, ReadSeek, Write},

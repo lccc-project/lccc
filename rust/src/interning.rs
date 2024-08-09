@@ -1,12 +1,11 @@
 use core::borrow::Borrow;
 use core::convert::AsRef;
-use core::convert::TryInto;
 use core::num::NonZeroU32;
 use core::ops::Deref;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fxhash::FxHashMap;
-use parking_lot::RwLock;
+use std::sync::RwLock;
+use xlang::abi::collection::HashMap;
 use xlang::abi::string::StringView;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -86,19 +85,19 @@ impl core::fmt::Debug for Symbol {
 static COUNTER: AtomicUsize = AtomicUsize::new(INIT_DYN_VAL as usize);
 
 lazy_static::lazy_static! {
-    static ref MAP: RwLock<(FxHashMap<&'static str, NonZeroU32>,FxHashMap<NonZeroU32,&'static str>)> = {
-        let mut map: (FxHashMap<&'static str, NonZeroU32>,FxHashMap<NonZeroU32,&'static str>) = Default::default();
+    static ref MAP: RwLock<InitBlob> = {
+        let mut map: InitBlob = Default::default();
 
         init_static_symbols(&mut map);
 
-        parking_lot::const_rwlock(map)
+        RwLock::new(map)
     };
 }
 
 // Do not remove
 type InitBlob = (
-    FxHashMap<&'static str, NonZeroU32>,
-    FxHashMap<NonZeroU32, &'static str>,
+    HashMap<&'static str, NonZeroU32>,
+    HashMap<NonZeroU32, &'static str>,
 );
 
 // Do not remove
@@ -147,7 +146,7 @@ impl<S: AsRef<str>> From<&S> for Symbol {
 
 impl Symbol {
     pub fn intern_by_val(st: String) -> Self {
-        let rdgrd = MAP.read();
+        let rdgrd = MAP.read().unwrap();
         if let Some(sym) = rdgrd.0.get(&*st).copied() {
             Symbol(sym)
         } else {
@@ -162,7 +161,7 @@ impl Symbol {
 
             let leaked = Box::leak(st.into_boxed_str());
 
-            let mut guard = MAP.write();
+            let mut guard = MAP.write().unwrap();
 
             let sym = unsafe { NonZeroU32::new_unchecked(val) };
             guard.0.insert(leaked, sym);
@@ -172,7 +171,7 @@ impl Symbol {
         }
     }
     pub fn intern(st: &str) -> Self {
-        let rdgrd = MAP.read();
+        let rdgrd = MAP.read().unwrap();
         if let Some(sym) = rdgrd.0.get(st).copied() {
             Symbol(sym)
         } else {
@@ -185,7 +184,7 @@ impl Symbol {
                 .try_into()
                 .expect("Overflowed number of symbols");
             let leaked = Box::leak(Box::<str>::from(st));
-            let mut guard = MAP.write();
+            let mut guard = MAP.write().unwrap();
             let sym = unsafe { NonZeroU32::new_unchecked(val) };
             guard.0.insert(leaked, sym);
             guard.1.insert(sym, leaked);
@@ -195,7 +194,7 @@ impl Symbol {
     }
 
     pub fn as_str(&self) -> &str {
-        MAP.read().1[&self.0]
+        MAP.read().unwrap().1[&self.0]
     }
 }
 

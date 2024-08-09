@@ -1,20 +1,18 @@
 use xlang::{
-    ir::{ArrayType, Path, PointerType, ScalarType, ScalarTypeHeader, ScalarTypeKind, Type, Value},
-    prelude::v1::*,
+    abi::{collection::HashMap, pair::Pair},
+    ir::{ArrayType, CompareOp, Path, PointerType, ScalarType, Type, Value},
 };
 
 use core::{fmt::Debug, hash::Hash};
 use std::num::NonZeroU128;
-
-use crate::str::Encoding;
 
 /// Represents the location of opaque values both as locals and on the value stack
 pub trait ValLocation: Eq + Debug + Clone {
     /// Checks if this location is addressable (is not a register)
     fn addressible(&self) -> bool;
 
-    /// Gets an unassigned location, used by [`super::FunctionCodegen`] to keep track of values before asking the raw codegen to assign locations.
-    fn unassigned(n: usize) -> Self;
+    /// Returns the type of the value location
+    fn val_type(&self) -> &Type;
 }
 
 /// The pointee of a pointer
@@ -22,8 +20,6 @@ pub trait ValLocation: Eq + Debug + Clone {
 pub enum LValue<Loc: ValLocation> {
     /// An LValue from an Opaque pointer stored in `Loc`
     OpaquePointer(Loc),
-    /// A pointer to a temporary value (`as_temporary`)
-    Temporary(Box<VStackValue<Loc>>),
     /// A pointer to a local variable
     Local(u32),
     /// A pointer to a global static/function
@@ -32,11 +28,9 @@ pub enum LValue<Loc: ValLocation> {
     Label(u32),
     /// Aggregate Element Field
     Field(Type, Box<LValue<Loc>>, String),
-    /// A pointer to a string literal
-    StringLiteral(Encoding, Vec<u8>),
 
     /// Offset (in bytes) to some other lvalue
-    Offset(Box<LValue<Loc>>, u64),
+    Offset(Box<LValue<Loc>>, i64),
 
     /// A Null pointer
     Null,
@@ -49,50 +43,11 @@ impl<Loc: ValLocation> core::fmt::Display for LValue<Loc> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             LValue::OpaquePointer(loc) => f.write_fmt(format_args!("opaque({:?})", loc)),
-            LValue::Temporary(val) => f.write_fmt(format_args!("temporary({})", val)),
             LValue::Local(n) => f.write_fmt(format_args!("_{}", n)),
             LValue::GlobalAddress(path) => f.write_fmt(format_args!("global_addr({})", path)),
             LValue::Label(n) => f.write_fmt(format_args!("&&@{}", n)),
             LValue::Field(ty, lval, name) => {
                 f.write_fmt(format_args!("{}.({})::{}", lval, ty, name))
-            }
-            LValue::StringLiteral(enc, bytes) => {
-                core::fmt::Display::fmt(enc, f)?;
-                f.write_str(" ")?;
-                match core::str::from_utf8(bytes) {
-                    Ok(s) => f.write_fmt(format_args!(" \"{}\"", s.escape_default())),
-                    Err(mut e) => {
-                        let mut bytes = &bytes[..];
-                        f.write_str(" \"")?;
-                        while !bytes.is_empty() {
-                            let (l, r) = bytes.split_at(e.valid_up_to());
-                            core::fmt::Display::fmt(
-                                &core::str::from_utf8(l).unwrap().escape_default(),
-                                f,
-                            )?;
-                            if let core::option::Option::Some(len) = e.error_len() {
-                                let (ebytes, rest) = r.split_at(len);
-                                bytes = rest;
-                                for b in ebytes {
-                                    f.write_fmt(format_args!("\\x{:02x}", b))?;
-                                }
-                            } else {
-                                let ebytes = core::mem::take(&mut bytes);
-                                for b in ebytes {
-                                    f.write_fmt(format_args!("\\x{:02x}", b))?;
-                                }
-                            }
-                            match core::str::from_utf8(bytes) {
-                                Ok(s) => {
-                                    core::fmt::Display::fmt(&s.escape_default(), f)?;
-                                    break;
-                                }
-                                Err(next_err) => e = next_err,
-                            }
-                        }
-                        f.write_str("\"")
-                    }
-                }
             }
             LValue::Offset(loc, off) => f.write_fmt(format_args!("{}+{}", loc, off)),
             LValue::Null => f.write_str("null"),
@@ -120,7 +75,7 @@ pub enum VStackValue<Loc: ValLocation> {
     OpaqueAggregate(Type, Loc),
 
     /// The result of the `cmp` instruction
-    CompareResult(Box<VStackValue<Loc>>, Box<VStackValue<Loc>>),
+    CompareResult(CompareOp, ScalarType, Loc, Loc),
 
     /// Placeholder for a value that's already caused a [`Trap`]
     Trapped,
@@ -156,8 +111,8 @@ impl<Loc: ValLocation> core::fmt::Display for VStackValue<Loc> {
             VStackValue::OpaqueAggregate(ty, loc) => {
                 f.write_fmt(format_args!("{} (opaque({:?}))", ty, loc))
             }
-            VStackValue::CompareResult(l, r) => {
-                f.write_fmt(format_args!("cmp result ({},{})", l, r))
+            VStackValue::CompareResult(op, ty, l, r) => {
+                f.write_fmt(format_args!("{} result ({:?},{:?}): {}", op, l, r, ty))
             }
             VStackValue::Trapped => f.write_str("trapped"),
             VStackValue::ArrayRepeat(value, count) => {
@@ -180,31 +135,60 @@ impl<Loc: ValLocation> VStackValue<Loc> {
         }
     }
 
+    /// Creates an opaque value corresponding to the specified [`Type`]
+    pub fn opaque_value(ty: Type, loc: Loc) -> Self {
+        match ty {
+            Type::Void | Type::FnType(_) | Type::Null => {
+                panic!("opaque_value requires a complete value type")
+            }
+            Type::Scalar(sty) => Self::OpaqueScalar(sty, loc),
+            Type::Aligned(_, ty) | Type::TaggedType(_, ty) => {
+                Self::opaque_value(xlang::abi::boxed::Box::into_inner(ty), loc)
+            }
+            Type::Pointer(pty) => Self::Pointer(pty, LValue::OpaquePointer(loc)),
+            ty => VStackValue::OpaqueAggregate(ty, loc),
+        }
+    }
+
+    /// Creates an opaque [`VStackValue::LValue`] of the specified [`Type`]
+    pub fn opaque_lvalue(ty: Type, loc: Loc) -> Self {
+        Self::LValue(ty, LValue::OpaquePointer(loc))
+    }
+
     /// Obtains the type of the value
     pub fn value_type(&self) -> Type {
         match self {
-            VStackValue::Constant(_) => todo!(),
+            VStackValue::Constant(val) => match val {
+                Value::Invalid(ty) | Value::Uninitialized(ty) => ty.clone(),
+                Value::GenericParameter(_) => panic!("Cannot handle generic params this late"),
+                Value::Integer { ty, .. } => Type::Scalar(*ty),
+                Value::GlobalAddress { ty, .. } => {
+                    let mut pty = PointerType::default();
+                    *pty.inner = ty.clone();
+                    Type::Pointer(pty)
+                }
+                Value::ByteString { .. } => todo!("what type is byte string constant again?"),
+                Value::String { ty, .. } => ty.clone(),
+                Value::LabelAddress(_) => {
+                    let mut pty = PointerType::default();
+                    *pty.inner = Type::Void;
+                    Type::Pointer(pty)
+                }
+                Value::Empty => Type::Null,
+            },
             VStackValue::LValue(ty, _) => ty.clone(),
             VStackValue::Pointer(ptrty, _) => Type::Pointer(ptrty.clone()),
             VStackValue::OpaqueScalar(scalar, _) => Type::Scalar(*scalar),
             VStackValue::AggregatePieced(ty, _) => ty.clone(),
             VStackValue::OpaqueAggregate(ty, _) => ty.clone(),
-            VStackValue::CompareResult(_, _) => Type::Scalar(ScalarType {
-                header: ScalarTypeHeader {
-                    bitsize: 32,
-                    ..Default::default()
-                },
-                kind: ScalarTypeKind::Integer {
-                    signed: false,
-                    min: None,
-                    max: None,
-                },
-            }),
-            VStackValue::Trapped => Type::Void,
-            VStackValue::ArrayRepeat(val, len) => Type::Array(Box::new(ArrayType {
-                ty: val.value_type(),
-                len: len.clone(),
-            })),
+            VStackValue::CompareResult(_, sty, _, _) => Type::Scalar(*sty),
+            VStackValue::Trapped => Type::Null,
+            VStackValue::ArrayRepeat(val, len) => {
+                Type::Array(xlang::abi::boxed::Box::new(ArrayType {
+                    ty: val.value_type(),
+                    len: len.clone(),
+                }))
+            }
         }
     }
 }
@@ -222,6 +206,17 @@ pub enum Trap {
     Overflow,
 }
 
+impl core::fmt::Display for Trap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Trap::Unreachable => f.write_str("unreachable"),
+            Trap::Breakpoint => f.write_str("breakpoint"),
+            Trap::Abort => f.write_str("abort"),
+            Trap::Overflow => f.write_str("overflow"),
+        }
+    }
+}
+
 /// A ValLocation that cannot be instantiated - that is, no opaque values can be produced within this location
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum NoOpaque {}
@@ -231,8 +226,8 @@ impl ValLocation for NoOpaque {
         match *self {}
     }
 
-    fn unassigned(_: usize) -> Self {
-        panic!("Unassigned location")
+    fn val_type(&self) -> &Type {
+        match *self {}
     }
 }
 
@@ -253,15 +248,11 @@ impl VStackValue<NoOpaque> {
                     .collect(),
             ),
             VStackValue::OpaqueAggregate(_, loc) => match loc {},
-            VStackValue::CompareResult(left, right) => VStackValue::CompareResult(
-                Box::new(Box::into_inner(left).into_transparent_for()),
-                Box::new(Box::into_inner(right).into_transparent_for()),
-            ),
+            VStackValue::CompareResult(_, _, left, _) => match left {},
             VStackValue::Trapped => VStackValue::Trapped,
-            VStackValue::ArrayRepeat(val, count) => VStackValue::ArrayRepeat(
-                Box::new(Box::into_inner(val).into_transparent_for()),
-                count,
-            ),
+            VStackValue::ArrayRepeat(val, count) => {
+                VStackValue::ArrayRepeat(Box::new((*val).into_transparent_for()), count)
+            }
         }
     }
 }
@@ -271,22 +262,15 @@ impl LValue<NoOpaque> {
     pub fn into_transparent_for<T: ValLocation>(self) -> LValue<T> {
         match self {
             LValue::OpaquePointer(val) => match val {},
-            LValue::Temporary(val) => {
-                LValue::Temporary(Box::new(Box::into_inner(val).into_transparent_for()))
-            }
             LValue::Local(n) => LValue::Local(n),
             LValue::GlobalAddress(path) => LValue::GlobalAddress(path),
             LValue::Label(n) => LValue::Label(n),
-            LValue::Field(ty, base, field) => LValue::Field(
-                ty,
-                Box::new(Box::into_inner(base).into_transparent_for()),
-                field,
-            ),
-            LValue::StringLiteral(enc, bytes) => LValue::StringLiteral(enc, bytes),
-            LValue::Offset(base, bytes) => LValue::Offset(
-                Box::new(Box::into_inner(base).into_transparent_for()),
-                bytes,
-            ),
+            LValue::Field(ty, base, field) => {
+                LValue::Field(ty, Box::new((*base).into_transparent_for()), field)
+            }
+            LValue::Offset(base, bytes) => {
+                LValue::Offset(Box::new((*base).into_transparent_for()), bytes)
+            }
             LValue::Null => LValue::Null,
             LValue::TransparentAddr(addr) => LValue::TransparentAddr(addr),
         }

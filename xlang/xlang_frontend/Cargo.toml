@@ -1,9 +1,10 @@
 [package]
 name = "xlang_frontend"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 xlang = {path=".."}
+unicode-xid = {version = "0.2.4", features=["no_std"]}

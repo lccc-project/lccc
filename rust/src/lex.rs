@@ -512,7 +512,6 @@ impl LexemeClass {
                 AstFrag::Vis(_) => Self::AstFrag(Some(AstFragClass::Vis)),
                 AstFrag::Meta(_) => Self::AstFrag(Some(AstFragClass::Meta)),
             },
-            _ => todo!(),
         }
     }
 
@@ -838,19 +837,23 @@ fn do_lexeme(file: &mut Speekable<impl Iterator<Item = char>>) -> Result<Lexeme>
                             } else if file.peek() == Some(&'\'') {
                                 file.next();
                                 let mut result = do_char(file, start)?;
+                                let span = result.span;
                                 match &mut result.body {
                                     LexemeBody::Token(Token {
-                                        ty: TokenType::Character(ref mut char_ty),
-                                        ..
+                                        ty: TokenType::Character(_),
+                                        body,
                                     }) => {
-                                        *char_ty = CharType::Byte;
+                                        break Ok(Token::new(
+                                            TokenType::Character(CharType::Byte),
+                                            id + &body,
+                                        )
+                                        .with_span(span));
                                     }
                                     LexemeBody::Token(_) => {
                                         todo!("validation error for \"byte lifetimes\"");
                                     }
                                     _ => unreachable!("do_char returns a Token always"),
                                 }
-                                break Ok(result);
                             }
                         }
                         break Ok(Token::new(ty, id).with_span(Span::new_simple(

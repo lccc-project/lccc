@@ -115,11 +115,9 @@ pub unsafe fn begin_unwind(o: *mut PanicUnwindInfo) -> !{
 
 
 #[cfg_attr(define_lang_items, lang = "lcrust_catch_unwind_landing_pad_symbol")]
-pub unsafe fn catch_unwind_landing_pad(_: *mut dyn FnOnce()->*mut !, p: *mut ForeignExceptionType) -> Result<*mut !,Box<dyn Any>>{
+pub unsafe fn catch_unwind_landing_pad(_: *mut dyn FnOnce(), p: *mut c_void) -> Result<(),Box<dyn Any>>{
     Err(__catch_unwind_landing_pad(p))
 }
-
-
 
 
 

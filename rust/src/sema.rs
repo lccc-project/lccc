@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::convert::TryInto;
 
 use ast::Mutability;
 use ast::Safety;
@@ -1386,6 +1385,7 @@ impl Definitions {
             ty::Type::Tuple(inner) => inner.iter().all(|ty| self.is_copy(ty)),
             ty::Type::UserType(_, _) => false, // for now
             ty::Type::IncompleteAlias(_) => panic!("incomplete alias held too late"),
+            ty::Type::UnresolvedLangItem(_, _) => panic!("Unresolved lang item"),
             ty::Type::Array(ty, _) => self.is_copy(ty),
             ty::Type::InferableInt(_) | ty::Type::Inferable(_) => {
                 panic!("Cannot determine copyability of an uninfered type")
@@ -1398,6 +1398,18 @@ impl Definitions {
 
     pub fn get_lang_item(&self, lang: LangItem) -> Option<DefId> {
         self.lang_items.get(&lang).copied()
+    }
+
+    pub fn require_lang_item(&self, lang: LangItem) -> Result<DefId> {
+        self.get_lang_item(lang).ok_or_else(|| Error {
+            span: Span::synthetic(),
+            text: format!("Lang item {} required but not defined", lang.name()),
+            category: ErrorCategory::CannotFindName,
+            containing_item: self.curcrate,
+            at_item: self.curcrate,
+            relevant_item: DefId::ROOT,
+            hints: vec![],
+        })
     }
 
     pub fn type_defid(&self, ty: &ty::Type) -> DefId {
@@ -1493,7 +1505,7 @@ impl Definitions {
                 Type::Bool => ty::TypeLayout {
                     size: Some(1),
                     align: Some(1),
-                    enum_discriminant: None,
+                    enum_layout: None,
                     wide_ptr_metadata: None,
                     field_offsets: HashMap::new(),
                     mutable_fields: HashSet::new(),
@@ -1521,37 +1533,28 @@ impl Definitions {
                         size: Some(size),
                         align: Some(align),
                         wide_ptr_metadata: None,
-                        enum_discriminant: None,
+                        enum_layout: None,
                         field_offsets: HashMap::new(),
                         mutable_fields: HashSet::new(),
                         niches: None,
                     }
                 }
-                Type::Float(width) => {
-                    let (size, align) = match width {
-                        ty::FloatWidth::Bits(bits) => {
-                            let max_align = self.properties.primitives.max_align;
-                            let width = bits.get();
-                            let size = width >> 8;
+                Type::Float(fty) => {
+                    let (size, align) = {
+                        let max_align = self.properties.primitives.max_align;
+                        let width = fty.width.get();
+                        let size = width >> 8;
 
-                            let align = size.min(max_align);
+                        let align = size.next_power_of_two().min(max_align);
 
-                            (size as u64, align as u64)
-                        }
-                        ty::FloatWidth::Long => {
-                            let align = self.properties.primitives.ldbl_align;
-                            let size = self.properties.primitives.ldbl_format.size();
-
-                            let real_size = (size + (align - 1)) & !(align - 1);
-                            (real_size as u64, align as u64)
-                        }
+                        (size as u64, align as u64)
                     };
 
                     ty::TypeLayout {
                         size: Some(size),
                         align: Some(align),
                         wide_ptr_metadata: None,
-                        enum_discriminant: None,
+                        enum_layout: None,
                         field_offsets: HashMap::new(),
                         mutable_fields: HashSet::new(),
                         niches: None,
@@ -1560,7 +1563,7 @@ impl Definitions {
                 Type::Char => ty::TypeLayout {
                     size: Some(4),
                     align: Some(self.properties.primitives.max_align.min(4) as u64),
-                    enum_discriminant: None,
+                    enum_layout: None,
                     wide_ptr_metadata: None,
                     field_offsets: HashMap::new(),
                     mutable_fields: HashSet::new(),
@@ -1573,7 +1576,7 @@ impl Definitions {
                     size: None,
                     align: Some(1),
                     wide_ptr_metadata: Some(ty::Type::Int(ty::IntType::usize)),
-                    enum_discriminant: None,
+                    enum_layout: None,
                     field_offsets: HashMap::new(),
                     mutable_fields: HashSet::new(),
                     niches: None,
@@ -1581,7 +1584,7 @@ impl Definitions {
                 Type::Never => ty::TypeLayout {
                     size: Some(0),
                     align: Some(1),
-                    enum_discriminant: None,
+                    enum_layout: None,
                     wide_ptr_metadata: None,
                     field_offsets: HashMap::new(),
                     mutable_fields: HashSet::new(),
@@ -1640,7 +1643,7 @@ impl Definitions {
                     ty::TypeLayout {
                         size: Some(size),
                         align: Some(align),
-                        enum_discriminant: None,
+                        enum_layout: None,
                         wide_ptr_metadata: metadata,
                         field_offsets,
                         mutable_fields: HashSet::new(),
@@ -1658,7 +1661,7 @@ impl Definitions {
                     ty::TypeLayout {
                         size: Some(size as u64),
                         align: Some(align as u64),
-                        enum_discriminant: None,
+                        enum_layout: None,
                         wide_ptr_metadata: None,
                         field_offsets: HashMap::new(),
                         mutable_fields: HashSet::new(),
@@ -1668,7 +1671,7 @@ impl Definitions {
                 Type::FnItem(_, _, _) => ty::TypeLayout {
                     size: Some(0),
                     align: Some(1),
-                    enum_discriminant: None,
+                    enum_layout: None,
                     wide_ptr_metadata: None,
                     field_offsets: HashMap::new(),
                     mutable_fields: HashSet::new(),
@@ -1787,7 +1790,7 @@ impl Definitions {
                             ty::TypeLayout {
                                 size,
                                 align,
-                                enum_discriminant: None,
+                                enum_layout: None,
                                 wide_ptr_metadata,
                                 field_offsets,
                                 mutable_fields: HashSet::new(),
@@ -1798,6 +1801,7 @@ impl Definitions {
                     }
                 }
                 Type::IncompleteAlias(_) => todo!("incomplete alias held too late"),
+                Type::UnresolvedLangItem(_, _) => panic!("Unresolved lang item not resolved"),
                 Type::Pointer(_, pte) => {
                     let layout = self.layout_of(pte, at_item, containing_item);
 
@@ -1843,7 +1847,7 @@ impl Definitions {
                         ty::TypeLayout {
                             size: Some(size),
                             align: Some(align),
-                            enum_discriminant: None,
+                            enum_layout: None,
                             wide_ptr_metadata: None,
                             field_offsets: fields,
                             mutable_fields: HashSet::new(),
@@ -1856,7 +1860,7 @@ impl Definitions {
                         ty::TypeLayout {
                             size: Some(size),
                             align: Some(align),
-                            enum_discriminant: None,
+                            enum_layout: None,
                             wide_ptr_metadata: None,
                             field_offsets: HashMap::new(),
                             mutable_fields: HashSet::new(),
@@ -1879,7 +1883,7 @@ impl Definitions {
                     ty::TypeLayout {
                         size: Some(array_size),
                         align: Some(align),
-                        enum_discriminant: None,
+                        enum_layout: None,
                         wide_ptr_metadata: None,
                         field_offsets: HashMap::new(),
                         mutable_fields: HashSet::new(),
@@ -1941,7 +1945,7 @@ impl Definitions {
                         ty::TypeLayout {
                             size: Some(size),
                             align: Some(align),
-                            enum_discriminant: None,
+                            enum_layout: None,
                             wide_ptr_metadata: None,
                             field_offsets: fields,
                             mutable_fields: HashSet::new(),
@@ -1954,7 +1958,7 @@ impl Definitions {
                         ty::TypeLayout {
                             size: Some(size),
                             align: Some(align),
-                            enum_discriminant: None,
+                            enum_layout: None,
                             wide_ptr_metadata: None,
                             field_offsets: HashMap::new(),
                             mutable_fields: HashSet::new(),
@@ -2023,7 +2027,8 @@ impl Definitions {
                 | Type::Reference(_, _, _)
                 | Type::Pointer(_, _)
                 | Type::Array(_, _)
-                | Type::TraitSelf(_) => Vec::new(),
+                | Type::TraitSelf(_)
+                | Type::UnresolvedLangItem(_, _) => Vec::new(),
                 Type::Tuple(elems) => {
                     let mut fields = Vec::new();
 
@@ -2833,9 +2838,10 @@ fn collect_function(
     let actual_tag = itemfn
         .abi
         .map(|tag| {
-            Ok(Spanned {
-                body: ty::convert_tag(tag, curmod, item)?,
-                span: tag.span,
+            tag.try_map_span(|tag| {
+                tag.tag.map_or(Ok(ty::AbiTag::C { unwind: false }), |tag| {
+                    ty::convert_tag(tag, curmod, item)
+                })
             })
         })
         .transpose()?;
@@ -2880,12 +2886,12 @@ fn collect_function(
 
     let constness = itemfn.constness.unwrap_or(Spanned {
         body: Mutability::Mut,
-        span: Span::empty(),
+        span: Span::synthetic(),
     });
     let asyncness = itemfn.is_async.map_or(
         Spanned {
             body: ty::AsyncType::Normal,
-            span: Span::empty(),
+            span: Span::synthetic(),
         },
         |isasync| Spanned {
             body: ty::AsyncType::Async,
@@ -3867,7 +3873,7 @@ pub fn convert_crate(
         } else {
             mir::mir! {
                 @0: { []
-                    call _0 = #<main>: <fnty>() next @1 []
+                    call _0 = #<main>: <fnty>() next fallthrough @1 []
                 }
                 @1: { [_0: <retty>]
                     store dead _0;

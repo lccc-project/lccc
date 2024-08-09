@@ -2,13 +2,14 @@ use ty::Spanned;
 use xlang::abi::pair::Pair;
 
 use crate::{
+    ast::CharType,
     interning::Symbol,
     lex::StringType,
     sema::{
         cx, generics,
         hir::BinaryOp,
         intrin::IntrinsicDef,
-        mir::{self, SsaVarId, UnaryOp},
+        mir::{self, BasicBlockId, SsaVarId, UnaryOp},
         ty, Attr, Constructor, DefId, DefinitionInner, Definitions, FunctionBody, UserTypeKind,
     },
 };
@@ -345,19 +346,24 @@ pub fn visit_call<V: CallVisitor>(mut visitor: V, info: &mir::MirCallInfo, defs:
     if visitor.is_none() {
         return;
     }
-    visitor.visit_retplace(info.retplace.body);
-    visit_fnty(visitor.visit_fnty(), &info.fnty, defs);
+
     if let mir::MirExpr::Intrinsic(intrin, generics) = &info.targ.body {
-        visitor.visit_intrinsic(*intrin, generics)
+        visitor.visit_intrinsic(*intrin, generics);
     } else {
         visit_expr(visitor.visit_target(), &info.targ, defs);
     }
+
+    visitor.visit_retplace(info.retplace.body);
+    visit_fnty(visitor.visit_fnty(), &info.fnty, defs);
 
     for expr in &info.params {
         visit_expr(visitor.visit_param(), expr, defs);
     }
 
     visit_jump(visitor.visit_next(), &info.next);
+    if let Some(uw) = &info.unwind {
+        visit_jump(visitor.visit_unwind(), &uw);
+    }
 }
 
 #[allow(unused_variables, unused_mut)]
@@ -372,7 +378,7 @@ pub fn visit_tailcall<V: CallVisitor>(
     visit_fnty(visitor.visit_fnty(), &info.fnty, defs);
 
     if let mir::MirExpr::Intrinsic(intrin, generics) = &info.targ.body {
-        visitor.visit_intrinsic(*intrin, generics)
+        visitor.visit_intrinsic(*intrin, generics);
     } else {
         visit_expr(visitor.visit_target(), &info.targ, defs);
     }
@@ -381,7 +387,10 @@ pub fn visit_tailcall<V: CallVisitor>(
         visit_expr(visitor.visit_param(), expr, defs);
     }
 
-    visitor.visit_tailcall()
+    visitor.visit_tailcall();
+    if let Some(uw) = &info.unwind {
+        visit_jump(visitor.visit_unwind(), &uw);
+    }
 }
 
 pub fn visit_branch<V: BranchVisitor>(
@@ -393,12 +402,8 @@ pub fn visit_branch<V: BranchVisitor>(
         return;
     }
 
-    for cond in &info.conds {
-        let mut branch_arm_visitor = visitor.visit_branch_arm();
-        visit_expr(branch_arm_visitor.visit_cond(), &cond.0, defs);
-        visit_jump(branch_arm_visitor.visit_jump(), &cond.1);
-    }
-
+    visit_expr(visitor.visit_cond(), &info.cond, defs);
+    visit_jump(visitor.visit_if_arm(), &info.if_block);
     visit_jump(visitor.visit_else(), &info.else_block);
 }
 
@@ -409,6 +414,9 @@ pub fn visit_jump<V: JumpVisitor>(mut visitor: V, info: &mir::MirJumpInfo) {
     visitor.visit_target_bb(info.targbb);
     for remap in &info.remaps {
         visitor.visit_remap(remap.0, remap.1);
+    }
+    if info.fallthrough {
+        visitor.visit_fallthrough();
     }
 }
 
@@ -563,6 +571,16 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         mir::MirExpr::GetSymbol(_) => todo!("get symbol"),
         mir::MirExpr::UnaryExpr(op, lhs) => {
             visit_unary_expr(visitor.visit_unary_expr(), op, lhs, defs)
+        }
+        mir::MirExpr::ConstChar(ty, val) => {
+            let mut visitor = visitor.visit_const_char();
+
+            if visitor.is_none() {
+                return;
+            }
+            visitor.visit_charty(*ty);
+
+            visitor.visit_value(*val);
         }
     }
 }
@@ -726,6 +744,7 @@ def_visitors! {
     pub trait ExprVisitor {
         fn visit_unreachable(&mut self);
         fn visit_const_int(&mut self) -> Option<Box<dyn ConstIntVisitor +'_>>;
+        fn visit_const_char(&mut self) -> Option<Box<dyn ConstCharVisitor + '_>>;
         fn visit_const(&mut self, defid: DefId);
         fn visit_cast(&mut self) -> Option<Box<dyn CastVisitor + '_>>;
         fn visit_const_string(&mut self) -> Option<Box<dyn ConstStringVisitor + '_>>;
@@ -745,6 +764,11 @@ def_visitors! {
     pub trait ConstIntVisitor {
         fn visit_intty(&mut self) -> Option<Box<dyn IntTyVisitor + '_>>;
         fn visit_value(&mut self, val: u128);
+    }
+
+    pub trait ConstCharVisitor {
+        fn visit_charty(&mut self, ty: CharType);
+        fn visit_value(&mut self, val: u32);
     }
 
     pub trait CastVisitor {
@@ -803,33 +827,21 @@ def_visitors! {
         fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>>;
         fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
         fn visit_next(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
-        fn visit_intrinsic(&mut self, intrin: IntrinsicDef, generics: &generics::GenericArgs);
+        fn visit_intrinsic(&mut self, intrin: IntrinsicDef, generics: &generics::GenericArgs) -> Option<Box<dyn BasicBlockVisitor + '_>>;
         fn visit_tailcall(&mut self);
-
-        // TODO: visit unwind
-    }
-
-    pub trait TailcallVisitor {
-        fn visit_target(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
-        fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>>;
-        fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
-        fn visit_intrinsic(&mut self, intrin: IntrinsicDef);
-        // TODO: visit unwind
+        fn visit_unwind(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
     }
 
     pub trait BranchVisitor {
-        fn visit_branch_arm(&mut self) -> Option<Box<dyn BranchArmVisitor + '_>>;
-        fn visit_else(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
-    }
-
-    pub trait BranchArmVisitor {
         fn visit_cond(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
-        fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
+        fn visit_if_arm(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
+        fn visit_else(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
     }
 
     pub trait JumpVisitor {
         fn visit_target_bb(&mut self, targbb: mir::BasicBlockId);
         fn visit_remap(&mut self, src: mir::SsaVarId, targ: mir::SsaVarId);
+        fn visit_fallthrough(&mut self);
     }
 
     pub trait TerminatorVisitor {

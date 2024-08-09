@@ -265,7 +265,10 @@ unsafe impl Allocator for Global {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         if layout.size() == 0 {
             Ok(unsafe {
-                NonNull::new_unchecked(core::ptr::slice_from_raw_parts_mut(1usize as *mut u8, 0))
+                NonNull::new_unchecked(core::ptr::slice_from_raw_parts_mut(
+                    layout.align() as *mut u8,
+                    0,
+                ))
             })
         } else {
             let ptr = unsafe { self::alloc(layout) };

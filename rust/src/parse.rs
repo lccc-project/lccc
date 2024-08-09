@@ -4,20 +4,20 @@ use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
     ast::{
-        AssociatedTypeBound, AsyncBlock, Attr, AttrInput, Auto, BinaryOp, BindingPattern, Block,
-        CaptureSpec, Closure, ClosureParam, CompoundBlock, CondBlock, ConstParam, Constructor,
-        ConstructorExpr, EnumVariant, Expr, ExternBlock, FieldInit, Function, GenericArg,
-        GenericArgs, GenericBound, GenericParam, GenericParams, IfBlock, ImplBlock, Item, ItemBody,
-        ItemValue, Label, LetStatement, Lifetime, LifetimeParam, Literal, LiteralKind, MatchArm,
-        MatchArmValue, MatchBlock, Mod, Param, Path, PathSegment, Pattern, Safety, SelfParam,
-        SimplePath, SimplePathSegment, Spanned, Statement, StructCtor, StructField, StructKind,
-        TraitDef, TupleCtor, TupleField, Type, TypeParam, UnaryOp, UserType, UserTypeBody,
-        Visibility, WhereClause,
+        AssociatedTypeBound, Async, AsyncBlock, Attr, AttrInput, Auto, BinaryOp, BindingPattern,
+        Block, CaptureSpec, Closure, ClosureParam, CompoundBlock, CondBlock, ConstParam,
+        Constructor, ConstructorExpr, EnumVariant, Expr, Extern, ExternBlock, FieldInit, Function,
+        GenericArg, GenericArgs, GenericBound, GenericParam, GenericParams, IfBlock, ImplBlock,
+        Item, ItemBody, ItemValue, Label, LetStatement, Lifetime, LifetimeParam, Literal,
+        LiteralKind, MatchArm, MatchArmValue, MatchBlock, Mod, Param, Path, PathSegment, Pattern,
+        Safety, SelfParam, SimplePath, SimplePathSegment, Spanned, Statement, StructCtor,
+        StructField, StructKind, TraitDef, TupleCtor, TupleField, Type, TypeParam, UnaryOp,
+        UserType, UserTypeBody, Visibility, WhereClause,
     },
     interning::Symbol,
     lex::{
-        AstFrag, AstFragClass, Group, GroupType, IsEof, Keyword, Lexeme, LexemeBody, LexemeClass,
-        Punctuation, StringType, Token, TokenType,
+        AstFrag, AstFragClass, CharType, Group, GroupType, IsEof, Keyword, Lexeme, LexemeBody,
+        LexemeClass, Punctuation, StringType, Token, TokenType,
     },
     sema::ty::Mutability,
     span::{Pos, Span},
@@ -800,6 +800,7 @@ pub fn do_user_type_enum(
 
         let (startspan, var_id) = do_lexeme_token(&mut inner_tree, LexemeClass::Identifier)?;
 
+        // FIXME: What is this used for?
         let var_name = Spanned {
             body: var_id.body,
             span: startspan,
@@ -1169,7 +1170,7 @@ pub fn do_statement(
 pub fn do_literal(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Literal>> {
-    // Only handling int and string lits for now
+    // Only handling int, string, and char lits for now
     match do_lexeme_class(tree, LexemeClass::Number) {
         Ok(x) => {
             let span = x.span;
@@ -1195,7 +1196,19 @@ pub fn do_literal(
                     span,
                 })
             }
-            Err(b) => Err(a | b)?, // TODO: Literally every other kind of useful literal
+            Err(b) => match do_char(tree) {
+                Ok((ch, ty)) => {
+                    let span = ch.span;
+                    Ok(Spanned {
+                        body: Literal {
+                            val: ch,
+                            lit_kind: LiteralKind::Char(ty),
+                        },
+                        span,
+                    })
+                }
+                Err(c) => Err(a | b | c)?, // TODO: Literally every other kind of useful literal
+            },
         },
     }
 }
@@ -2639,7 +2652,7 @@ pub fn do_pattern_binding(
     };
 
     let binding = match do_lexeme_classes(&mut tree, &[punct!(@), punct!(::)]) {
-        Ok((lex, punct!(@))) => Some(Box::new(do_pattern_param(&mut tree)?)),
+        Ok((_, punct!(@))) => Some(Box::new(do_pattern_param(&mut tree)?)),
         Ok((lex, punct!(::))) => {
             return Err(Error {
                 expected: vec![punct!(@)],
@@ -2980,6 +2993,43 @@ pub fn do_item_fn(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<ItemBody>> {
     let mut tree = tree.into_rewinder();
+
+    let constness = match do_lexeme_token(&mut tree, keyword!(const)) {
+        Ok((span, _)) => Some(Spanned {
+            body: Mutability::Const,
+            span,
+        }),
+        Err(_) => None,
+    };
+
+    let is_async = match do_lexeme_token(&mut tree, keyword!(async)) {
+        Ok((span, _)) => Some(Spanned { body: Async, span }),
+        Err(_) => None,
+    };
+
+    let safety = match do_lexeme_token(&mut tree, keyword!(unsafe)) {
+        Ok((span, _)) => Some(Spanned {
+            body: Safety::Unsafe,
+            span,
+        }),
+        Err(_) => None,
+    };
+
+    let abi = match do_lexeme_token(&mut tree, keyword!(extern)) {
+        Ok((span, _)) => {
+            let (span, tag) = match do_string(&mut tree) {
+                Ok((tok, _)) => (Span::between(span, tok.span), Some(tok)),
+                Err(_) => (span, None),
+            };
+
+            Some(Spanned {
+                body: Extern { tag },
+                span,
+            })
+        }
+        Err(_) => None,
+    };
+
     let Lexeme {
         span: span_start, ..
     } = do_lexeme_class(&mut tree, keyword!(fn))?;
@@ -3025,10 +3075,10 @@ pub fn do_item_fn(
     Ok(Spanned {
         body: ItemBody::Function(Spanned {
             body: Function {
-                safety: None,
-                abi: None,
-                constness: None,
-                is_async: None,
+                safety,
+                abi,
+                constness,
+                is_async,
                 name,
                 generics,
                 receiver: None, // TODO: parse receiver
@@ -3214,6 +3264,51 @@ pub fn do_string(
             span: full_str.span,
         },
         str_ty,
+    ))
+}
+
+pub fn do_char(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<(Spanned<Symbol>, CharType)> {
+    let full_str = do_lexeme_class(tree, LexemeClass::Character)?;
+    let chr_ty = *if let Lexeme {
+        body:
+            LexemeBody::Token(Token {
+                ty: TokenType::Character(chr_ty),
+                ..
+            }),
+        ..
+    } = &full_str
+    {
+        chr_ty
+    } else {
+        unreachable!()
+    };
+    let str = full_str.text().unwrap();
+    let str = match chr_ty {
+        CharType::Default => &str[1..str.len() - 1], // Skip    ' and '
+        CharType::Byte => &str[2..str.len() - 1],    // Skip   b' and '
+    };
+    let mut parsed = String::new();
+    let mut str_iter = str.chars();
+    while let Some(c) = str_iter.next() {
+        match c {
+            '\\' => match str_iter.next() {
+                Some('0') => parsed.push('\0'),
+                Some('n') => parsed.push('\n'),
+                None => todo!("throw an error"),
+                Some(x) => todo!("\\{}", x),
+            },
+            x => parsed.push(x),
+        }
+    }
+    dbg!(&full_str);
+    Ok((
+        Spanned {
+            body: parsed.into(),
+            span: full_str.span,
+        },
+        chr_ty,
     ))
 }
 

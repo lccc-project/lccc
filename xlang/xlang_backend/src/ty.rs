@@ -1,15 +1,15 @@
-use std::convert::TryInto;
-
 use xlang::{
     ir::{
         AggregateDefinition, AggregateKind, AnnotationItem, Path, PointerAliasingRule, PointerKind,
-        ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type, ValidRangeType, Value,
+        ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type, Value,
     },
-    prelude::v1::{format, Box, HashMap, Pair, Some as XLangSome},
+    prelude::v1::{HashMap, Some as XLangSome},
     targets::properties::TargetProperties,
 };
 
 use crate::expr::{LValue, NoOpaque, VStackValue};
+
+use core::cell::RefCell;
 
 pub(crate) fn scalar_align(size: u64, max_align: u16) -> u64 {
     if size <= (max_align as u64) {
@@ -40,10 +40,11 @@ pub struct AggregateLayout {
 
 ///
 /// A map of information about the types on the system
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct TypeInformation {
     aggregates: HashMap<Path, Option<AggregateDefinition>>,
     aliases: HashMap<Path, Type>,
+    aggregate_layout_cache: RefCell<HashMap<Type, Box<AggregateLayout>>>,
     properties: &'static TargetProperties<'static>,
 }
 
@@ -54,6 +55,7 @@ impl TypeInformation {
             properties,
             aliases: HashMap::new(),
             aggregates: HashMap::new(),
+            aggregate_layout_cache: RefCell::new(HashMap::new()),
         }
     }
 
@@ -136,19 +138,7 @@ impl TypeInformation {
             Type::Void => None,
             Type::FnType(_) => None,
             Type::Pointer(pty) => {
-                if pty.alias.contains(PointerAliasingRule::NONNULL)
-                    || pty.alias.contains(PointerAliasingRule::INVALID)
-                {
-                    Some(VStackValue::Constant(Value::Invalid(Type::Pointer(
-                        pty.clone(),
-                    ))))
-                } else if let Pair(
-                    ValidRangeType::Dereference
-                    | ValidRangeType::DereferenceWrite
-                    | ValidRangeType::WriteOnly,
-                    _,
-                ) = pty.valid_range
-                {
+                if pty.alias.contains(PointerAliasingRule::NONNULL) || pty.valid_range.1 > 0 {
                     Some(VStackValue::Constant(Value::Invalid(Type::Pointer(
                         pty.clone(),
                     ))))
@@ -190,7 +180,7 @@ impl TypeInformation {
     }
 
     /// Computes the layout of an aggregate type from it's definition
-    pub fn aggregate_layout_from_defn(&self, defn: &AggregateDefinition) -> AggregateLayout {
+    fn aggregate_layout_from_defn(&self, defn: &AggregateDefinition) -> AggregateLayout {
         let mut align = 1u64;
         let mut size = 0u64;
         let mut fields = HashMap::new();
@@ -262,44 +252,58 @@ impl TypeInformation {
     }
 
     /// Determines the total aggregate layout of a type
-    pub fn aggregate_layout(&self, ty: &Type) -> Option<AggregateLayout> {
-        match ty {
-            Type::TaggedType(_, ty) => self.aggregate_layout(ty),
-            Type::Aligned(_, ty) => self.aggregate_layout(ty),
-            Type::Product(elems) => {
-                let mut elems = elems.clone();
-                elems.sort_by_key(|ty| self.type_align(ty).unwrap());
+    pub fn aggregate_layout(&self, ty: &Type) -> Option<&AggregateLayout> {
+        let cache = self.aggregate_layout_cache.borrow();
+        if let Some(layout) = cache.get(ty) {
+            unsafe { Some(&*((&**layout) as *const AggregateLayout)) }
+        } else {
+            drop(cache);
+            let layout = match ty {
+                Type::TaggedType(_, ty) => return self.aggregate_layout(ty),
+                Type::Aligned(_, ty) => return self.aggregate_layout(ty),
+                Type::Product(elems) => {
+                    let mut elems = elems.clone();
+                    elems.sort_by_key(|ty| self.type_align(ty).unwrap());
 
-                let mut align = 1u64;
-                let mut size = 0u64;
-                let mut fields = HashMap::new();
+                    let mut align = 1u64;
+                    let mut size = 0u64;
+                    let mut fields = HashMap::new();
 
-                for (i, field) in elems.into_iter().enumerate() {
-                    align = self.type_align(&field)?.max(align);
-                    let offset = size;
-                    size += self.type_size(&field)?;
-                    fields.insert(i.to_string(), (offset, field));
+                    for (i, field) in elems.into_iter().enumerate() {
+                        align = self.type_align(&field)?.max(align);
+                        let offset = size;
+                        size += self.type_size(&field)?;
+                        fields.insert(i.to_string(), (offset, field));
+                    }
+
+                    Some(AggregateLayout {
+                        total_size: size,
+                        total_align: align,
+                        fields,
+                        transparent_over: None,
+                        first_niche: None,
+                    })
                 }
-
-                Some(AggregateLayout {
-                    total_size: size,
-                    total_align: align,
-                    fields,
-                    transparent_over: None,
-                    first_niche: None,
-                })
-            }
-            Type::Aggregate(defn) => Some(self.aggregate_layout_from_defn(defn)),
-            Type::Named(p) => {
-                if let Some(ty) = self.aliases.get(p) {
-                    self.aggregate_layout(ty)
-                } else if let Some(Some(defn)) = self.aggregates.get(p) {
-                    Some(self.aggregate_layout_from_defn(defn))
-                } else {
-                    None
+                Type::Aggregate(defn) => Some(self.aggregate_layout_from_defn(defn)),
+                Type::Named(p) => {
+                    if let Some(ty) = self.aliases.get(p) {
+                        return self.aggregate_layout(ty);
+                    } else if let Some(Some(defn)) = self.aggregates.get(p) {
+                        Some(self.aggregate_layout_from_defn(defn))
+                    } else {
+                        None
+                    }
                 }
+                _ => None,
+            };
+
+            if let Some(layout) = layout {
+                let mut cache = self.aggregate_layout_cache.borrow_mut();
+                cache.insert(ty.clone(), Box::new(layout));
+                unsafe { Some(&*((&*cache[ty]) as *const AggregateLayout)) }
+            } else {
+                None
             }
-            _ => None,
         }
     }
 
@@ -403,7 +407,7 @@ impl TypeInformation {
     /// Gets the type of the field of `ty` with a given name
     pub fn get_field_type(&self, ty: &Type, name: &str) -> Option<Type> {
         self.aggregate_layout(ty)
-            .map(|layout| layout.fields)
+            .map(|layout| &layout.fields)
             .map(|fields| fields.get(name).cloned().map(|(_, ty)| ty))
             .and_then(Into::into)
     }

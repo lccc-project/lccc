@@ -142,6 +142,13 @@ fn main() {
             true
         ),
         ArgSpec::new(
+            "printxir",
+            xlang::vec!["print-xir"],
+            Vec::new(),
+            TakesArg::Never,
+            true
+        ),
+        ArgSpec::new(
             "shared",
             xlang::vec!["shared"],
             Vec::new(),
@@ -216,6 +223,7 @@ fn main() {
             "output" => output = arg.value.clone(),
             "compile" => mode = Mode::CompileOnly,
             "typeck" => mode = Mode::TypeCheck,
+            "printxir" => mode = Mode::Xir,
             "pluginpath" => {
                 let arg = arg.value.as_ref().unwrap();
                 let (name, path) = arg.split_once('=').unwrap();
@@ -456,9 +464,15 @@ fn main() {
     );
 
     let mut codegen_handles = Vec::new();
-    for codegen_path in &codegen_paths {
-        codegen_handles.push(Handle::open(codegen_path).expect("couldn't load frontend library"));
+
+    if mode > Mode::Xir {
+        for codegen_path in &codegen_paths {
+            println!("Opening codegen plugin: {}", codegen_path.display());
+            codegen_handles
+                .push(Handle::open(codegen_path).expect("couldn't load frontend library"));
+        }
     }
+
     let mut codegens = Vec::new();
     for codegen_handle in &codegen_handles {
         let initializer: lccc::CodegenInit =
@@ -477,12 +491,6 @@ fn main() {
             break;
         }
     }
-
-    let codegen = if let Some(cg) = codegen {
-        cg
-    } else {
-        panic!("couldn't find a backend for target {}", xtarget)
-    };
 
     for file in &files {
         let mut file_path = Path::new(file).canonicalize().unwrap();
@@ -585,6 +593,11 @@ fn main() {
             }
 
             if mode >= Mode::Asm {
+                let codegen = if let Some(cg) = &mut codegen {
+                    cg
+                } else {
+                    panic!("couldn't find a backend for target {}", xtarget)
+                };
                 codegen.set_target(properties);
                 codegen.set_features(Span::new(&features));
                 codegen.accept_ir(&mut file).unwrap();
@@ -600,7 +613,6 @@ fn main() {
                     .unwrap();
                 // TODO: Handle `-S` and write assembly instead of an object
             } else if mode == Mode::Xir {
-                todo!()
             }
         } else {
             file_pairs.push((file.clone(), file.clone()));

@@ -50,8 +50,7 @@ pub struct Config {
 }
 
 fn main() -> std::io::Result<()> {
-    println!("cargo:rerun-if-changed=config.toml");
-
+    println!("cargo:rerun-if-changed=build.rs");
     let file = {
         let mut file = PathBuf::from(std::env!("CARGO_MANIFEST_DIR"));
         file.push("config.toml");
@@ -59,6 +58,7 @@ fn main() -> std::io::Result<()> {
     };
 
     let mut cfg: Config = if let Ok(mut file) = std::fs::File::open(file) {
+        println!("cargo:rerun-if-changed=config.toml");
         let mut content = String::new();
         file.read_to_string(&mut content)?;
         toml::from_str(&content).unwrap()

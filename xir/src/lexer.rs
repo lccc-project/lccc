@@ -1,144 +1,190 @@
-use std::iter::Peekable;
+#![allow(dead_code)]
 
-use xlang::abi::{string::String, vec::Vec};
+use std::convert::Infallible;
 
-use unicode_xid::UnicodeXID;
+use xlang::abi::string::String;
+use xlang_frontend::lexer;
+use xlang_frontend::span::{NoHygiene, Speekable};
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum Token {
-    Ident(String),
-    StringLiteral(String),
-    IntLiteral(u128),
-    Sigil(char),
-    Group(Group),
+pub use xlang_frontend::lexer::{
+    is_ident_part_unicode, is_ident_start_unicode, parse_escape, DefaultTy, Error, HexEscape,
+    Lexer, Result, UnicodeEscapeRust,
+};
+
+pub type Lexeme = lexer::Lexeme<XirLexer>;
+pub type Group = lexer::Group<XirLexer, NoHygiene, GroupType>;
+pub type Token = lexer::LToken<XirLexer>;
+pub type TokenType = lexer::LToken<XirLexer>;
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum GroupType {
+    Paren,
+    Bracket,
+    Brace,
+    Angle,
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum Group {
-    Parenthesis(Vec<Token>),
-    Bracket(Vec<Token>),
-    Braces(Vec<Token>),
-}
+pub struct XirLexer;
 
-fn lex_group<I: Iterator<Item = char>>(stream: &mut Peekable<I>, term_char: char) -> Vec<Token> {
-    stream.next();
-    let mut ret = Vec::new();
-    loop {
-        let v = stream.peek().unwrap();
-        match v {
-            ']' | ')' | '}' if *v == term_char => {
-                stream.next();
-                break;
+impl Lexer for XirLexer {
+    type Hygiene = NoHygiene;
+
+    type IdentTy = DefaultTy;
+
+    type StrTy = DefaultTy;
+
+    type CharTy = DefaultTy;
+
+    type OtherTy = Infallible;
+
+    type GroupType = GroupType;
+
+    type OtherLex = Infallible;
+
+    fn is_ident_start(&self, c: char) -> bool {
+        is_ident_start_unicode(c) || c == '_' || c == '$'
+    }
+
+    fn is_ident_part(&self, c: char) -> bool {
+        is_ident_part_unicode(c) || c == '_' || c == '$' || c == '.'
+    }
+
+    fn ident_type(&self, _: &str) -> Self::IdentTy {
+        DefaultTy
+    }
+
+    fn is_num_sep(&self, _: char) -> bool {
+        false
+    }
+
+    fn is_num_prefix_frag(&self, c: &str) -> bool {
+        c == "0"
+    }
+
+    fn is_num_prefix(&self, c: &str) -> Option<u32> {
+        match c {
+            "0x" => Some(16),
+            _ => None,
+        }
+    }
+
+    fn check_valid_num<I: Iterator<Item = char>>(
+        &self,
+        c: &str,
+        it: &mut xlang_frontend::iter::PeekMoreIterator<Speekable<I>>,
+    ) -> Result<()> {
+        if c == "0x" {
+            match it.next() {
+                Some((pos, c)) => Err(Error::UnrecognizedChar(c, pos)),
+                None => Err(Error::UnexpectedEof(it.last_pos())),
             }
-            ']' | ')' | '}' => panic!("Unmatched group end token {}", v),
-            _ => match lex_one(stream) {
-                Some(tok) => ret.push(tok),
-                None => {
-                    if let Some('}' | ')' | ']') = stream.peek() {
-                        stream.next();
-                        break;
-                    }
-                }
+        } else {
+            Ok(())
+        }
+    }
+
+    fn is_float_in_radix(&self, _: u32) -> bool {
+        false
+    }
+
+    fn is_float_exp_char(&self, _: char, _: u32) -> bool {
+        false
+    }
+
+    fn is_group_start(&self, c: char) -> Option<(Self::GroupType, char)> {
+        match c {
+            '{' => Some((GroupType::Brace, '}')),
+            '[' => Some((GroupType::Bracket, ']')),
+            '<' => Some((GroupType::Angle, '>')),
+            '(' => Some((GroupType::Paren, ')')),
+            _ => None,
+        }
+    }
+
+    fn next_token_start<I: Iterator<Item = char>>(
+        &self,
+        it: &mut xlang_frontend::iter::PeekMoreIterator<Speekable<I>>,
+    ) -> Result<Option<(char, xlang_frontend::span::Pos)>> {
+        let (pos, c) = loop {
+            match it.next() {
+                Some((pos, c)) => match c {
+                    c if c.is_ascii_whitespace() => continue,
+                    '/' => match it.peek() {
+                        Some((_, '/')) => {
+                            it.next();
+                            while let Some((_, c)) = it.next() {
+                                if c == '\n' {
+                                    break;
+                                }
+                            }
+                        }
+                        Some((_, '*')) => {
+                            it.next();
+                            loop {
+                                match it.next() {
+                                    Some((_, c)) if c == '*' => match it.next() {
+                                        Some((_, c)) if c == '/' => break,
+                                        Some(_) => {}
+                                        None => return Err(Error::UnexpectedEof(it.last_pos())),
+                                    },
+                                    Some(_) => {}
+                                    None => return Err(Error::UnexpectedEof(it.last_pos())),
+                                }
+                            }
+                        }
+                        _ => break (pos, '/'),
+                    },
+                    c => break (pos, c),
+                },
+                None => return Ok(None),
+            }
+        };
+
+        Ok(Some((c, pos)))
+    }
+
+    fn punct_list(&self) -> &[&str] {
+        &["->", "::", ":", "#", "@", "*", ";"]
+    }
+
+    fn check_valid_punct<I: Iterator<Item = char>>(
+        &self,
+        c: &str,
+        it: &mut xlang_frontend::iter::PeekMoreIterator<Speekable<I>>,
+    ) -> Result<()> {
+        match c {
+            "->" | "::" | ":" | "#" | "@" | "*" | ";" => Ok(()),
+            _ => match it.next() {
+                Some((pos, c)) => Err(Error::UnrecognizedChar(c, pos)),
+                None => Err(Error::UnexpectedEof(it.last_pos())),
             },
         }
     }
 
-    ret
-}
+    fn default_str_type(&self) -> Self::StrTy {
+        DefaultTy
+    }
 
-fn lex_one<I: Iterator<Item = char>>(stream: &mut Peekable<I>) -> Option<Token> {
-    match stream.peek()? {
-        '(' => Some(Token::Group(Group::Parenthesis(lex_group(stream, ')')))),
-        '{' => Some(Token::Group(Group::Braces(lex_group(stream, '}')))),
-        '[' => Some(Token::Group(Group::Bracket(lex_group(stream, ']')))),
-        c if (*c == '$' || *c == '_' || c.is_xid_start()) => {
-            let mut id = String::new();
-            id.push(stream.next().unwrap());
+    fn default_char_type(&self) -> Self::CharTy {
+        DefaultTy
+    }
 
-            while stream
-                .peek()
-                .map_or(false, |c| (*c == '$' || *c == '_' || c.is_xid_continue()))
-            {
-                id.push(stream.next().unwrap());
-            }
-            Some(Token::Ident(id))
-        }
-        '!' | '@' | '#' | '%' | '^' | '&' | '*' | '<' | '>' | '=' | '+' | '-' | ';' | ':' | ','
-        | '.' => Some(Token::Sigil(stream.next().unwrap())),
-
-        '0' => {
-            // We can toss away the zero, just remember that it exists
-            stream.next();
-            match stream.peek() {
-                Some('x') => {
-                    stream.next();
-                    let mut lit = 0u128;
-                    while let Some('0'..='9' | 'A'..='F' | 'a'..='f') = stream.peek() {
-                        lit <<= 4;
-                        let c = stream.next().unwrap();
-                        match c {
-                            '0'..='9' => lit |= u128::from(c as u32) - 0x30,
-                            'A'..='F' => lit |= u128::from(c as u32) - 0x31,
-                            'a'..='f' => lit |= u128::from(c as u32) - 0x51,
-                            _ => unreachable!(),
-                        }
-                    }
-                    Some(Token::IntLiteral(lit))
-                }
-                Some('0'..='9') => {
-                    let mut lit = 0u128;
-                    while let Some('0'..='9' | 'A'..='F' | 'a'..='f') = stream.peek() {
-                        lit *= 10;
-                        let c = stream.next().unwrap();
-                        lit += u128::from(c as u32) - 0x30;
-                    }
-                    Some(Token::IntLiteral(lit))
-                }
-                _ => Some(Token::IntLiteral(0)),
-            }
-        }
-        '1'..='9' => {
-            let mut lit = 0u128;
-            while let Some('0'..='9' | 'A'..='F' | 'a'..='f') = stream.peek() {
-                lit *= 10;
-                let c = stream.next().unwrap();
-                lit += u128::from(c as u32) - 0x30;
-            }
-            Some(Token::IntLiteral(lit))
-        }
-        '"' => {
-            let mut string = String::new();
-            stream.next();
-            loop {
-                match stream.peek().unwrap() {
-                    '\\' => {
-                        string.push(stream.next().unwrap());
-                        string.push(stream.next().unwrap());
-                    }
-                    '\"' => {
-                        stream.next().unwrap();
-                        break Some(Token::StringLiteral(string));
-                    }
-                    _ => string.push(stream.next().unwrap()),
-                }
-            }
-        }
-        c if c.is_whitespace() => {
-            while stream.peek().copied().map_or(false, char::is_whitespace) {
-                stream.next();
-            }
-            lex_one(stream)
-        }
-        ')' | ']' | '}' => None,
-        c => panic!("unknown character {}", c),
+    fn check_escape<I: Iterator<Item = char>>(
+        &self,
+        it: &mut xlang_frontend::iter::PeekMoreIterator<Speekable<I>>,
+    ) -> Result<String> {
+        parse_escape(
+            it,
+            (
+                'n',
+                't',
+                '0',
+                'r',
+                HexEscape('x', 2),
+                UnicodeEscapeRust('u', 1..=6),
+            ),
+        )
     }
 }
 
-pub fn lex<'a, I: Iterator<Item = char> + 'a>(stream: I) -> impl Iterator<Item = Token> + 'a {
-    let mut stream = stream.peekable();
-    if stream.peek() == Some(&'\u{FFFE}') {
-        // If there's a BOM, eat it
-        stream.next();
-    }
-    core::iter::from_fn(move || lex_one(&mut stream))
-}
+pub use xlang_frontend::lexer::lex_file;
