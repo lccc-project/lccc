@@ -360,12 +360,7 @@ impl Deref for StringView<'_> {
     type Target = str;
 
     fn deref(&self) -> &str {
-        unsafe {
-            core::str::from_utf8_unchecked(core::slice::from_raw_parts(
-                self.begin.as_ptr(),
-                self.end.offset_from(self.begin) as usize, // This is really annoying that have to do this
-            ))
-        }
+        self.as_str()
     }
 }
 
@@ -470,27 +465,38 @@ impl<'a> StringView<'a> {
         }
     }
 
+    /// Obtains a raw pointer to the beginning of the string.
+    /// 
+    /// ## Safety
+    /// 
+    /// The returned `*const u8` is valid for the length of the string view up to the lifetime `'a`. 
+    /// When using the pointer you must not write through it
+    #[must_use]
+    pub const fn as_ptr(&self) -> *const u8{
+        self.begin.as_ptr()
+    }
+
     /// Determines the length of the string view
     #[must_use]
     #[allow(clippy::cast_sign_loss)] // offset_from can never be negative
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         unsafe { self.end.as_ptr().offset_from(self.begin.as_ptr()) as usize }
     }
 
     /// Checks if this string view is empty
     #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.begin == self.end
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     ///
     /// Converts an owned [`StringView`] into  &[`str`] with the same lifetime
     #[must_use]
-    pub fn into_str(self) -> &'a str {
+    pub const fn into_str(self) -> &'a str {
         unsafe {
             core::str::from_utf8_unchecked(core::slice::from_raw_parts(
-                self.begin.as_ptr(),
-                (self.end.as_ptr() as usize) - (self.begin.as_ptr() as usize), // This is really annoying that have to do this
+                self.as_ptr(),
+                self.len(), // This is really annoying that have to do this
             ))
         }
     }
@@ -499,18 +505,24 @@ impl<'a> StringView<'a> {
     /// Obtains a [`Span`] over the UTF-8 bytes of this [`StringView`] for the same lifetime
     #[must_use]
     #[allow(clippy::cast_sign_loss)] // allocation size is `[0,isize::MAX)` so this can never possibly overflow
-    pub fn as_byte_span(self) -> Span<'a, u8> {
+    pub const fn into_byte_span(self) -> Span<'a, u8> {
         unsafe {
             Span::from_raw_parts(
-                self.begin.as_ptr(),
-                self.end.as_ptr().offset_from(self.begin.as_ptr()) as usize,
+                self.as_ptr(),
+                self.len(),
             )
         }
     }
 
+    /// Borrows the string view as a [`Span`] over the UTF-8 Bytes of the [`StringView`].
+    #[must_use]
+    pub const fn as_byte_span(&self) -> Span<u8>{
+        self.into_byte_span()
+    }
+
     /// Obtains a reference to the string slice contained
-    pub fn as_str(&self) -> &str {
-        &**self
+    pub const fn as_str(&self) -> &str {
+        self.into_str()
     }
 }
 
