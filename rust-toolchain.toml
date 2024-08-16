@@ -1,4 +1,4 @@
 [toolchain]
-channel="1.74"
-components=["rustfmt", "rustc-dev", "rust-src"]
+channel="1.75"
+components=["rustfmt", "rust-src"]
 profile="minimal"
