@@ -816,8 +816,11 @@ impl<'a> ArrayTyVisitor for XirArrayTyVisitor<'a> {
             ty,
             val: match expr {
                 cx::ConstExpr::HirVal(_) => todo!(),
+                cx::ConstExpr::MirVal(_) => todo!("Evaluate Complex Consts"),
+                cx::ConstExpr::Param(_) => panic!("Unexpanded generics"),
                 cx::ConstExpr::IntConst(_, val) => *val,
-                cx::ConstExpr::Const(_) => todo!("const item"),
+                cx::ConstExpr::Const(_, _) => todo!("const item"),
+                cx::ConstExpr::Constructor(_) => todo!("constructor"),
             },
         };
     }
@@ -1266,6 +1269,9 @@ impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
             self.var_stack,
         )))
     }
+    fn visit_unreachable(&mut self) {
+        self.block.term = ir::Terminator::Unreachable;
+    }
 }
 
 pub struct XirJumpVisitor<'a> {
@@ -1474,6 +1480,117 @@ impl<'a> BranchVisitor for XirBranchVisitor<'a> {
     }
 }
 
+pub struct XirIntrinsicBodyVisitor<'a> {
+    defs: &'a Definitions,
+    names: &'a NameMap,
+    properties: &'a TargetProperties<'a>,
+    deftys: &'a HashMap<DefId, ir::Type>,
+    cur_fnty: &'a mut ir::FnType,
+    block: &'a mut ir::Block,
+    locals: &'a mut Vec<ir::Type>,
+    ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+    stack_height: &'a mut u32,
+    var_heights: HashMap<SsaVarId, u32>,
+    var_stack: Vec<SsaVarId>,
+}
+
+impl<'a> XirIntrinsicBodyVisitor<'a> {
+    pub fn new(
+        defs: &'a Definitions,
+        names: &'a NameMap,
+        properties: &'a TargetProperties<'a>,
+        deftys: &'a HashMap<DefId, ir::Type>,
+        cur_fnty: &'a mut ir::FnType,
+        block: &'a mut ir::Block,
+        locals: &'a mut Vec<ir::Type>,
+        ssa_tys: &'a mut HashMap<SsaVarId, ir::Type>,
+        stack_height: &'a mut u32,
+    ) -> Self {
+        Self {
+            defs,
+            names,
+            properties,
+            deftys,
+            cur_fnty,
+            block,
+            locals,
+            ssa_tys,
+            stack_height,
+            var_heights: HashMap::new(),
+            var_stack: Vec::new(),
+        }
+    }
+
+    pub fn set_param_count(&mut self, params: u32) {
+        let first_param = *self.stack_height - params;
+
+        for (var, height) in (0..params).zip(first_param..) {
+            let varid = SsaVarId::__new_unchecked(var);
+            self.var_heights.insert(varid, height);
+            self.var_stack.push(varid);
+        }
+    }
+}
+
+impl<'a> BasicBlockVisitor for XirIntrinsicBodyVisitor<'a> {
+    fn visit_id(&mut self, _: mir::BasicBlockId) {}
+    fn visit_incoming_var(&mut self, _: SsaVarId) -> Option<Box<dyn TypeVisitor + '_>> {
+        None
+    }
+    fn visit_stmt(&mut self) -> Option<Box<dyn StatementVisitor + '_>> {
+        Some(Box::new(XirStatementVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.cur_fnty,
+            &mut self.block.expr,
+            self.locals,
+            self.ssa_tys,
+            self.stack_height,
+            &mut self.var_heights,
+            &mut self.var_stack,
+        )))
+    }
+
+    fn visit_term(&mut self) -> Option<Box<dyn TerminatorVisitor + '_>> {
+        Some(Box::new(self))
+    }
+}
+
+impl<'a> TerminatorVisitor for XirIntrinsicBodyVisitor<'a> {
+    fn visit_return(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+        Some(Box::new(XirExprVisitor::new(
+            self.defs,
+            self.names,
+            self.properties,
+            self.deftys,
+            self.cur_fnty,
+            &mut self.block.expr,
+            self.locals,
+            self.ssa_tys,
+            self.stack_height,
+            &mut self.var_heights,
+            &mut self.var_stack,
+        )))
+    }
+
+    fn visit_branch(&mut self) -> Option<Box<dyn BranchVisitor + '_>> {
+        None
+    }
+
+    fn visit_call(&mut self) -> Option<Box<dyn CallVisitor + '_>> {
+        None
+    }
+
+    fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
+        None
+    }
+    fn visit_unreachable(&mut self) {
+        self.block.term = ir::Terminator::Unreachable;
+    }
+}
+
 pub struct XirCallVisitor<'a> {
     defs: &'a Definitions,
     names: &'a NameMap,
@@ -1572,29 +1689,59 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
     }
 
     fn visit_next(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
-        self.block.term = ir::Terminator::Call(
-            ir::CallFlags::empty(),
-            XLangBox::new(core::mem::take(&mut self.fnty)),
-            ir::JumpTarget::default(),
-        );
-        match &mut self.block.term {
-            ir::Terminator::Call(_, _, targ) => Some(Box::new(XirJumpVisitor::new(
-                self.defs,
-                self.names,
-                self.properties,
-                self.deftys,
-                self.cur_fnty,
-                &mut self.block.expr,
-                targ,
-                self.locals,
-                self.ssa_tys,
-                self.stack_height,
-                self.var_heights,
-                self.var_stack,
-                self.param_count + 1,
-                false,
-            ))),
-            _ => unreachable!(),
+        if self.late_bound_intrinsic.is_some() {
+            if let ir::Terminator::Empty = self.block.term {
+                let param_count = self.param_count;
+                self.block.expr.push(ir::Expr::Pivot(1, param_count));
+                self.block.expr.push(ir::Expr::Pop(param_count));
+                self.block.term = ir::Terminator::Jump(ir::JumpTarget::default());
+                match &mut self.block.term {
+                    ir::Terminator::Jump(targ) => Some(Box::new(XirJumpVisitor::new(
+                        self.defs,
+                        self.names,
+                        self.properties,
+                        self.deftys,
+                        self.cur_fnty,
+                        &mut self.block.expr,
+                        targ,
+                        self.locals,
+                        self.ssa_tys,
+                        self.stack_height,
+                        self.var_heights,
+                        self.var_stack,
+                        self.param_count + 1,
+                        false,
+                    ))),
+                    _ => unreachable!(),
+                }
+            } else {
+                None // Another terminator was set by the intrinsic body, we're not interested in jumping to the next block
+            }
+        } else {
+            self.block.term = ir::Terminator::Call(
+                ir::CallFlags::empty(),
+                XLangBox::new(core::mem::take(&mut self.fnty)),
+                ir::JumpTarget::default(),
+            );
+            match &mut self.block.term {
+                ir::Terminator::Call(_, _, targ) => Some(Box::new(XirJumpVisitor::new(
+                    self.defs,
+                    self.names,
+                    self.properties,
+                    self.deftys,
+                    self.cur_fnty,
+                    &mut self.block.expr,
+                    targ,
+                    self.locals,
+                    self.ssa_tys,
+                    self.stack_height,
+                    self.var_heights,
+                    self.var_stack,
+                    self.param_count + 1,
+                    false,
+                ))),
+                _ => unreachable!(),
+            }
         }
     }
 
@@ -1602,15 +1749,100 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
         &mut self,
         intrin: IntrinsicDef,
         generics: &generics::GenericArgs,
-    ) -> Option<Box<dyn BasicBlockVisitor + 'a>> {
-        todo!("{} {}", intrin.name(), generics)
+    ) -> Option<Box<dyn BasicBlockVisitor + '_>> {
+        use IntrinsicDef::*;
+        match intrin {
+            __builtin_assume
+            | __builtin_abort
+            | transmute
+            | black_box
+            | construct_in_place
+            | __builtin_likely
+            | __builtin_unlikely
+            | __atomic_read_in_transaction
+            | __atomic_write_in_transaction
+            | __atomic_commit_transaction
+            | __builtin_va_arg
+            | __builtin_va_copy
+            | __builtin_va_end
+            | __builtin_max
+            | __builtin_min => {
+                let ty = ir::Type::FnType(XLangBox::new(self.fnty.clone()));
+                let path = match intrin {
+                    __builtin_assume => {
+                        ir::simple_path!(__lccc::xlang::assume)
+                    }
+                    __builtin_abort => ir::simple_path!(__lccc::xlang::abort),
+                    transmute => todo!(),
+                    black_box => ir::simple_path!(__lccc::xlang::black_box),
+                    construct_in_place => todo!(),
+                    __builtin_likely => ir::simple_path!(__lccc::xlang::likely),
+                    __builtin_unlikely => ir::simple_path!(__lccc::xlang::unlikely),
+                    __atomic_read_in_transaction => todo!(),
+                    __atomic_write_in_transaction => todo!(),
+                    __atomic_commit_transaction => todo!(),
+                    __builtin_va_arg => todo!(),
+                    __builtin_va_copy => todo!(),
+                    __builtin_va_end => todo!(),
+                    __builtin_max => todo!(),
+                    __builtin_min => todo!(),
+                    _ => todo!("Eager bound intrinsic {intrin}"),
+                };
+
+                None
+            }
+
+            intrin => {
+                self.late_bound_intrinsic = Some(intrin);
+                match intrin {
+                    __atomic_load => todo!(),
+                    __atomic_store => todo!(),
+                    __atomic_compare_exchange_strong => todo!(),
+                    __atomic_compare_exchange_weak => todo!(),
+                    __atomic_swap => todo!(),
+                    __atomic_fetch_add => todo!(),
+                    __atomic_fetch_sub => todo!(),
+                    __builtin_read => todo!(),
+                    __builtin_read_freeze => todo!(),
+                    __builtin_read_volatile => todo!(),
+                    __builtin_write => todo!(),
+                    __builtin_write_volatile => todo!(),
+                    __builtin_cmp => todo!(),
+                    __builtin_fadd_fast => todo!(),
+                    __builtin_fsub_fast => todo!(),
+                    __builtin_fmul_fast => todo!(),
+                    __builtin_fdiv_fast => todo!(),
+                    __builtin_frem_fast => todo!(),
+                    __builtin_ffma_fast => todo!(),
+                    __builtin_fneg_fast => todo!(),
+
+                    _ => Some(Box::new(XirIntrinsicBodyVisitor::new(
+                        self.defs,
+                        self.names,
+                        self.properties,
+                        self.deftys,
+                        self.cur_fnty,
+                        self.block,
+                        self.locals,
+                        self.ssa_tys,
+                        self.stack_height,
+                    ))),
+                }
+            }
+        }
     }
 
     fn visit_tailcall(&mut self) {
-        self.block.term = ir::Terminator::Tailcall(
-            ir::CallFlags::empty(),
-            XLangBox::new(core::mem::take(&mut self.fnty)),
-        );
+        if self.late_bound_intrinsic.is_some() {
+            if let ir::Terminator::Empty = self.block.term {
+                self.block.term = ir::Terminator::Exit(1)
+            }
+        } else {
+            self.block.term = ir::Terminator::Tailcall(
+                ir::CallFlags::empty(),
+                XLangBox::new(core::mem::take(&mut self.fnty)),
+            );
+        }
     }
 
     fn visit_unwind(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {

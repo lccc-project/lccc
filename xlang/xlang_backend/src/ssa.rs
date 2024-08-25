@@ -839,6 +839,7 @@ impl<M: Machine<SsaInstruction>> BasicBlockBuilder<M> {
     ///  or if the basic block terminator has already been written.
     pub fn write_terminator(&mut self, term: &ir::Terminator) {
         match term {
+            ir::Terminator::Empty => panic!("Invalid (empty) Terminator"),
             ir::Terminator::Jump(targ) => {
                 self.write_jump(targ, core::iter::empty());
             }

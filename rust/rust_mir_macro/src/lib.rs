@@ -4,6 +4,7 @@ use xlang_frontend::iter::{PeekMoreIterator, Peekmore};
 
 // mod ast;
 mod parse;
+mod tt;
 
 fn write_global_path<'a, I: IntoIterator<Item = &'a str>>(
     tt: &mut TokenStream,

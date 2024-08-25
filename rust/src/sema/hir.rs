@@ -974,7 +974,7 @@ impl<'a> HirLowerer<'a> {
                 ast::ItemBody::Use(_) => todo!(),
                 ast::ItemBody::UserType(_) => {}
                 ast::ItemBody::Function(itemfn) => {
-                    let defid = self.defs.allocate_defid();
+                    let defid = self.defs.allocate_defid(itemfn.name.body);
                     let (mut fnbody, generics) = super::collect_function(
                         self.defs,
                         self.curmod,

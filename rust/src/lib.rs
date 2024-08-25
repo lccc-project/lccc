@@ -16,6 +16,7 @@ mod serialize;
 mod session;
 mod span;
 
+use interning::Symbol;
 use lex::lex;
 
 use peekmore::PeekMore;
@@ -91,7 +92,7 @@ impl XLangFrontend for RustFrontend {
         let parsed = do_mod(&mut lexed.into_iter().peekmore()).unwrap();
         println!("{:?}", parsed);
         let mut defs = Definitions::new(props);
-        convert_crate(&mut defs, &parsed, CrateType::Bin).unwrap();
+        convert_crate(&mut defs, &parsed, CrateType::Bin, Symbol::intern(crate_name)).unwrap();
 
         eprintln!("{}", defs);
         defs.set_current_crate_name(crate_name);

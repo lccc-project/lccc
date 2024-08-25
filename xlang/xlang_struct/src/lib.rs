@@ -2474,11 +2474,12 @@ pub enum Terminator {
     Asm(AsmExpr),
     Switch(Switch),
     Unreachable,
+    Empty,
 }
 
 impl Default for Terminator {
     fn default() -> Self {
-        Self::Unreachable
+        Self::Empty
     }
 }
 

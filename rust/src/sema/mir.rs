@@ -12,6 +12,7 @@ use crate::{
 };
 
 use super::{
+    cx,
     generics::GenericArgs,
     hir::HirVarId,
     intrin::IntrinsicDef,
@@ -30,7 +31,266 @@ pub use mir_macro::{mir, mir_basic_block, mir_expr, mir_fnty, mir_stmt, mir_type
 
 pub use crate::sema::hir::{BinaryOp, UnaryOp};
 
-include!("mir_defs.rs");
+#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+pub struct RegionId(pub(crate) u32);
+
+#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+pub struct BasicBlockId(pub(crate) u32);
+
+#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+pub struct SsaVarId(pub(crate) u32);
+
+impl core::fmt::Display for RegionId {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_fmt(format_args!("'{}", self.0))
+    }
+}
+
+impl core::fmt::Debug for RegionId {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_fmt(format_args!("'{}", self.0))
+    }
+}
+
+impl core::fmt::Display for BasicBlockId {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_fmt(format_args!("@{}", self.0))
+    }
+}
+
+impl core::fmt::Debug for BasicBlockId {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_fmt(format_args!("@{}", self.0))
+    }
+}
+
+impl core::fmt::Display for SsaVarId {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_fmt(format_args!("_{}", self.0))
+    }
+}
+
+impl core::fmt::Debug for SsaVarId {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_fmt(format_args!("_{}", self.0))
+    }
+}
+
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
+pub enum RefKind {
+    Raw,
+    Ref,
+}
+
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
+pub enum DropFlagState {
+    Init,
+    Uninit,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub enum MirExpr {
+    Unreachable,
+    Uninit(Type),
+    Var(SsaVarId),
+    Read(Box<Spanned<MirExpr>>),
+    Alloca(Mutability, Type, Box<Spanned<MirExpr>>),
+    AllocaDrop(Type, DropFlagState),
+    ConstInt(IntType, u128),
+    ConstString(StringType, Symbol),
+    ConstChar(CharType, u32),
+    Const(DefId, GenericArgs),
+    // Also used for const generic params
+    InlineConst(cx::ConstExpr),
+    Retag(RefKind, Mutability, Box<Spanned<MirExpr>>),
+    Cast(Box<Spanned<MirExpr>>, Type),
+    Tuple(Vec<Spanned<MirExpr>>),
+    Intrinsic(IntrinsicDef, GenericArgs),
+    FieldProject(Box<Spanned<MirExpr>>, FieldName),
+    GetSubobject(Box<Spanned<MirExpr>>, FieldName),
+    Ctor(MirConstructor),
+    BinaryExpr(
+        Spanned<BinaryOp>,
+        Box<Spanned<MirExpr>>,
+        Box<Spanned<MirExpr>>,
+    ),
+    UnaryExpr(Spanned<UnaryOp>, Box<Spanned<MirExpr>>),
+    GetSymbol(DefId),
+}
+
+impl MirExpr {
+    pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
+        match self {
+            MirExpr::Unreachable
+            | MirExpr::Var(_)
+            | MirExpr::GetSymbol(_)
+            | MirExpr::ConstInt(_, _)
+            | MirExpr::ConstString(_, _)
+            | MirExpr::ConstChar(_, _) => self.clone(),
+            MirExpr::Read(expr) => MirExpr::Read(Box::new(
+                expr.copy_span(|expr| expr.substitute_generics(args)),
+            )),
+            MirExpr::FieldProject(base, field) => MirExpr::FieldProject(
+                Box::new(base.copy_span(|expr| expr.substitute_generics(args))),
+                *field,
+            ),
+            MirExpr::GetSubobject(base, field) => MirExpr::GetSubobject(
+                Box::new(base.copy_span(|expr| expr.substitute_generics(args))),
+                *field,
+            ),
+            MirExpr::Uninit(ty) => MirExpr::Uninit(ty.substitute_generics(args)),
+            MirExpr::Alloca(mt, ty, init) => MirExpr::Alloca(
+                *mt,
+                ty.substitute_generics(args),
+                Box::new(init.copy_span(|expr| expr.substitute_generics(args))),
+            ),
+            MirExpr::AllocaDrop(ty, st) => MirExpr::AllocaDrop(ty.substitute_generics(args), *st),
+            MirExpr::Const(def, generics) => {
+                MirExpr::Const(*def, generics.substitute_generics(args))
+            }
+            MirExpr::InlineConst(cx) => MirExpr::InlineConst(cx.substitute_generics(args)),
+            MirExpr::Retag(_, _, _) => todo!(),
+            MirExpr::Cast(_, _) => todo!(),
+            MirExpr::Tuple(_) => todo!(),
+            MirExpr::Intrinsic(_, _) => todo!(),
+            MirExpr::Ctor(_) => todo!(),
+            MirExpr::BinaryExpr(_, _, _) => todo!(),
+            MirExpr::UnaryExpr(_, _) => todo!(),
+        }
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct MirConstructor {
+    pub ctor_def: DefId,
+    pub fields: Vec<(FieldName, Spanned<MirExpr>)>,
+    pub rest_init: Option<Box<Spanned<MirExpr>>>,
+}
+
+impl MirConstructor {
+    pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
+        todo!()
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub enum MirStatement {
+    Write(Spanned<MirExpr>, Spanned<MirExpr>),
+    Declare {
+        var: Spanned<SsaVarId>,
+        ty: Spanned<Type>,
+        init: Spanned<MirExpr>,
+    },
+    StoreDead(SsaVarId),
+    EndRegion(RegionId),
+    Discard(Spanned<MirExpr>),
+    Dealloca(MirExpr),
+    MarkAll(MirExpr, DropFlagState),
+    MarkDropState(MirExpr, FieldName, DropFlagState),
+    CaptureException(SsaVarId),
+}
+
+impl MirStatement {
+    pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
+        todo!()
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub enum MirTerminator {
+    Call(MirCallInfo),
+    Tailcall(MirTailcallInfo),
+    Return(Spanned<MirExpr>),
+    Jump(MirJumpInfo),
+    Unreachable,
+    Resume,
+    DropInPlace(MirDropInfo),
+    Branch(MirBranchInfo),
+    SwitchInt(MirSwitchIntInfo),
+}
+
+impl MirTerminator {
+    pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
+        todo!()
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct MirSwitchIntInfo {
+    pub expr: Spanned<MirExpr>,
+    pub ty: IntType,
+    pub cases: Vec<(u128, MirJumpInfo)>,
+    pub default: Option<MirJumpInfo>,
+}
+
+impl MirSwitchIntInfo {
+    pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
+        todo!()
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct MirBranchInfo {
+    pub cond: Box<Spanned<MirExpr>>,
+    pub if_block: MirJumpInfo,
+    pub else_block: MirJumpInfo,
+}
+
+impl MirBranchInfo {
+    pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
+        todo!()
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug, Default)]
+pub struct MirJumpInfo {
+    pub targbb: BasicBlockId,
+    pub remaps: Vec<(SsaVarId, SsaVarId)>,
+    pub fallthrough: bool,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct MirDropInfo {
+    /// The target of the drop-in-place. Must be a pointer or reference type, and must dereference to a mutable place
+    pub target: MirExpr,
+    /// The drop flags point. If present, be a pointer to the `Type::DropFlags(ty)` type where `ty` is the type of `*target`
+    /// If absent, the drop target is presumed to be statically known to be live, and thus dropped unconditionally.
+    pub flags: Option<MirExpr>,
+    /// The Next basic Block when the drop call returns successfully
+    pub next: MirJumpInfo,
+    /// The basic block to unwind to if any destructor unwinds.
+    pub unwind: Option<MirJumpInfo>,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct MirCallInfo {
+    pub retplace: Spanned<SsaVarId>, // id of the return place, which is made live in the next basic block
+    pub targ: Spanned<MirExpr>,
+    pub fnty: Box<FnType>,
+    pub params: Vec<Spanned<MirExpr>>,
+    pub next: MirJumpInfo,
+    pub unwind: Option<MirJumpInfo>,
+}
+
+impl MirCallInfo {
+    pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
+        todo!()
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct MirTailcallInfo {
+    pub targ: Spanned<MirExpr>,
+    pub fnty: Box<FnType>,
+    pub params: Vec<Spanned<MirExpr>>,
+    pub unwind: Option<MirJumpInfo>,
+}
+
+impl MirTailcallInfo {
+    pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
+        todo!()
+    }
+}
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub enum BorrowckErrorCategory {
@@ -148,6 +408,7 @@ impl core::fmt::Display for MirExpr {
                 f.write_str("'")
             }
             MirExpr::Const(defid, generics) => f.write_fmt(format_args!("{}{}", defid, generics)),
+            MirExpr::InlineConst(expr) => expr.fmt(f),
             MirExpr::Retag(rk, mt, inner) => {
                 f.write_str("&")?;
                 if *rk == RefKind::Raw {
@@ -300,6 +561,12 @@ pub struct MirBasicBlock {
     pub term: Spanned<MirTerminator>,
 }
 
+impl MirBasicBlock {
+    pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
+        todo!()
+    }
+}
+
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct MirFunctionBody {
     pub bbs: Vec<MirBasicBlock>,
@@ -308,6 +575,10 @@ pub struct MirFunctionBody {
 }
 
 impl MirFunctionBody {
+    pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
+        todo!()
+    }
+
     pub fn display_body(
         &self,
         defs: &Definitions,

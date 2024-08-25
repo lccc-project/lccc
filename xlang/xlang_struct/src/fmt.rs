@@ -94,6 +94,7 @@ impl<'b, 'a> IrFormatter<'b, 'a> {
                 self.write_fmt(format_args!("{}end switch", tabs))
             }
             Terminator::Unreachable => self.write_str("unreachable"),
+            Terminator::Empty => Ok(()),
         }
     }
 

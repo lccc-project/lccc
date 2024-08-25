@@ -337,6 +337,7 @@ pub fn visit_terminator<V: TerminatorVisitor>(
         mir::MirTerminator::Jump(info) => visit_jump(visitor.visit_jump(), info),
         mir::MirTerminator::Tailcall(info) => visit_tailcall(visitor.visit_call(), info, defs),
         mir::MirTerminator::Return(expr) => visit_expr(visitor.visit_return(), expr, defs),
+        mir::MirTerminator::Unreachable => visitor.visit_unreachable(),
         x => todo!("{:?}", x),
     }
 }
@@ -348,7 +349,24 @@ pub fn visit_call<V: CallVisitor>(mut visitor: V, info: &mir::MirCallInfo, defs:
     }
 
     if let mir::MirExpr::Intrinsic(intrin, generics) = &info.targ.body {
-        visitor.visit_intrinsic(*intrin, generics);
+        let body_visitor = visitor.visit_intrinsic(*intrin, generics);
+
+        if !body_visitor.is_none() {
+            if let Some(body) = intrin.default_body(
+                defs,
+                BasicBlockId::UNUSED,
+                info.next.targbb,
+                info.unwind
+                    .as_ref()
+                    .map(|jmp| jmp.targbb)
+                    .unwrap_or(BasicBlockId::UNUSED),
+                generics,
+            ) {
+                visit_basic_block(body_visitor, &body, defs);
+            } else {
+                panic!("`visit_intrinsic` expects a default body but {intrin} does not have one");
+            }
+        }
     } else {
         visit_expr(visitor.visit_target(), &info.targ, defs);
     }
@@ -378,7 +396,24 @@ pub fn visit_tailcall<V: CallVisitor>(
     visit_fnty(visitor.visit_fnty(), &info.fnty, defs);
 
     if let mir::MirExpr::Intrinsic(intrin, generics) = &info.targ.body {
-        visitor.visit_intrinsic(*intrin, generics);
+        let body_visitor = visitor.visit_intrinsic(*intrin, generics);
+
+        if !body_visitor.is_none() {
+            if let Some(body) = intrin.default_body(
+                defs,
+                BasicBlockId::UNUSED,
+                BasicBlockId::UNUSED,
+                info.unwind
+                    .as_ref()
+                    .map(|jmp| jmp.targbb)
+                    .unwrap_or(BasicBlockId::UNUSED),
+                generics,
+            ) {
+                visit_basic_block(body_visitor, &body, defs);
+            } else {
+                panic!("`visit_intrinsic` expects a default body but {intrin} does not have one");
+            }
+        }
     } else {
         visit_expr(visitor.visit_target(), &info.targ, defs);
     }
@@ -582,6 +617,7 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
 
             visitor.visit_value(*val);
         }
+        mir::MirExpr::InlineConst(_) => todo!("inline const"),
     }
 }
 
@@ -849,6 +885,7 @@ def_visitors! {
         fn visit_call(&mut self) -> Option<Box<dyn CallVisitor + '_>>;
         fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
         fn visit_return(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_unreachable(&mut self);
     }
 
     pub trait FunctionTyVisitor {

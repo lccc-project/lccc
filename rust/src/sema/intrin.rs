@@ -1,8 +1,9 @@
-use crate::ast::{Mutability, Safety};
+use crate::ast::{Mutability, Safety, StringType};
+use crate::interning::Symbol;
 
 use super::ty::{self, AbiTag, Type};
 
-use super::{DefId, DefinitionInner, Definitions};
+use super::{generics::GenericArg, mir, DefId, DefinitionInner, Definitions};
 
 use crate::span::{Span, Spanned};
 
@@ -93,7 +94,7 @@ macro_rules! parse_type_inner {
         parse_type!($inner)
     };
     (|$defs:ident| Var$(::)?<$id:literal>) => {
-        (super::ty::Type::Param($id))
+        (super::ty::Type::Param(super::generics::ParamId::__new_unchecked($id)))
     };
     (|$defs:ident| Lang$(::)?<$id:ident>) => {
         (super::ty::Type::UnresolvedLangItem($crate::lang::LangItem::$id, super::generics::GenericArgs::default()))
@@ -198,16 +199,27 @@ macro_rules! parse_attribute {
 
 macro_rules! def_intrinsics {
     {
-        default |$this_block:ident, $next_block:ident, $unwind_block:ident|;
+        default $defs:ident |$this_block:ident, $next_block:ident, $unwind_block:ident| <$generics:ident>;
         $($(#[$meta:ident])* $(unsafe $(@$_vol:tt)?)? intrin $name:ident $(<$($gen_param:ident),* $(,)?>)?($($param_name:ident: $param:ty),* $(,)?) -> $retty:ty $($([$($lang_name:ident = $lang_item:expr),*])? {$($inner_tt:tt)*})? $(; $(@$_vol2:tt)?)?)*
     } => {
-        #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+        #[derive(Copy, Clone, Hash, PartialEq, Eq)]
         #[allow(non_camel_case_types)]
         pub enum IntrinsicDef {
             $($name),*
         }
 
         impl IntrinsicDef {
+
+            // pub const fn param_count(&self) -> u32{
+            //     match self{
+            //         $(Self:: $name => {
+            //             const __ARR: &[&str] = &[$(::core::stringify!($param_name)),*];
+
+            //             __ARR.len() as u32
+            //         })*
+            //     }
+            // }
+
             pub fn from_name(s: &str) -> Option<IntrinsicDef> {
                 match s{
                     $(::core::stringify!($name) => Some(Self::$name),)*
@@ -235,15 +247,11 @@ macro_rules! def_intrinsics {
             }
 
             #[allow(dead_code, unused_variables)]
-            pub fn default_body(&self, defs: &$crate::sema::Definitions, $this_block: $crate::sema::mir::BasicBlockId, $next_block: $crate::sema::mir::BasicBlockId, $unwind_block: $crate::sema::mir::BasicBlockId, param_vars: &[$crate::sema::mir::SsaVarId]) -> Option<$crate::sema::mir::MirBasicBlock>{
+            pub fn default_body(&self, $defs: &$crate::sema::Definitions, $this_block: $crate::sema::mir::BasicBlockId, $next_block: $crate::sema::mir::BasicBlockId, $unwind_block: $crate::sema::mir::BasicBlockId, $generics: &$crate::sema::generics::GenericArgs) -> Option<$crate::sema::mir::MirBasicBlock>{
                 match self{
                     $(Self::$name => {
-                        $($($(let $lang_name = defs.get_lang_item($lang_item)?;)*)?)?
-                        match param_vars{
-                            [$($param_name),*] => parse_default_body!($({$($inner_tt)*})? $(; $(@$_vol2)?)?),
-                            params => panic!("Bad call to intrinsic {}. ", ::core::stringify!($name))
-                        }
-
+                        $($($(let $lang_name = $defs.get_lang_item($lang_item)?;)*)?)?
+                        parse_default_body!($({$($inner_tt)*})? $(; $(@$_vol2)?)?)
                     }),*
                 }
             }
@@ -259,7 +267,7 @@ macro_rules! def_intrinsics {
 }
 
 def_intrinsics! {
-    default |this,next,unwind|;
+    default defs |this,next,unwind|<generics>;
     #[unobservable]
     unsafe intrin __builtin_unreachable() -> !{
         @0: { []
@@ -270,16 +278,44 @@ def_intrinsics! {
     unsafe intrin __builtin_assume(val: bool) -> ();
     intrin __builtin_abort() -> !;
     #[unobservable]
-    intrin impl_id() -> &str;
-    unsafe intrin __builtin_allocate<type>(layout: Var<0>) -> *mut u8;
+    intrin impl_id() -> &str{
+        @<this>: { []
+            return <{
+                const IMPL_ID: &str = core::concat!("lccc v", core::env!("CARGO_PKG_VERSION"));
+
+                mir::MirExpr::ConstString(StringType::Default, Symbol::intern(IMPL_ID))
+            }>
+        }
+    }
+    unsafe intrin __builtin_allocate<type>(layout: Var<0>) -> *mut u8 [alloc_sym = LangItem::AllocSym] {
+        @<this>: {[_0: %0]
+            tailcall get_symbol(#<alloc_sym>): fn(%0)->*mut u8 (_0) unwind @<unwind> []
+        }
+    }
     unsafe intrin __builtin_deallocate<type>(layout: Var<0>, ptr: *mut u8) -> ();
     #[unobservable]
     intrin type_id<type>() -> (*const u8, usize);
     #[unobservable]
-    intrin type_name<type>() -> &str;
-    intrin destroy_at<type>(ptr: *mut Var<0>) -> ();
+    intrin type_name<type>() -> &str{
+        @<this>: { []
+            return <{
+                let param_ty = match generics.params.get(0){
+                    Some(GenericArg::Type(ty)) => ty,
+                    _ => panic!("Expected a generic type for argument 0 of `type_name`")
+                };
+                let name = defs.type_name(param_ty);
+
+                mir::MirExpr::ConstString(StringType::Default, name)
+            }>
+        }
+    }
+    intrin destroy_at<type>(ptr: *mut Var<0>) -> (){
+        @<this>: { [_0: *const %0]
+            drop _0 next @<next> [] unwind @<unwind> []
+        }
+    }
     #[unobservable]
-    intrin discriminant<type, type>(val: &Var<0>) -> Var<1>;
+    intrin discriminant<type, type>(val: *const Var<0>) -> Var<1>;
     #[unobservable]
     unsafe intrin transmute<type, type>(val: Var<0>) -> Var<1>;
     intrin black_box<type>(val: Var<0>) -> Var<1>;
@@ -300,14 +336,72 @@ def_intrinsics! {
     unsafe intrin __builtin_write_volatile<type>(ptr: *mut Var<0>, val: Var<0>) -> ();
 
     #[unobservable]
-    intrin __builtin_size_of<type>() -> usize;
+    intrin __builtin_size_of<type>() -> usize{
+        @<this>: { []
+            return <{
+                let param_ty = match generics.params.get(0){
+                    Some(GenericArg::Type(ty)) => ty,
+                    _ => panic!("Expected a generic type for argument 0 of `__builtin_size_of`")
+                };
+
+                let size = defs.size_of(param_ty).expect("Expected a `Sized` type for type argument `0` of `__builtin_size_of`");
+
+                mir::MirExpr::ConstInt(ty::IntType::usize, size as u128)
+            }>
+        }
+    }
     #[unobservable]
-    intrin __builtin_align_of<type>() -> usize;
+    intrin __builtin_align_of<type>() -> usize{
+        @<this>: { []
+            return <{
+                let param_ty = match generics.params.get(0){
+                    Some(GenericArg::Type(ty)) => ty,
+                    _ => panic!("Expected a generic type for argument 0 of `__builtin_size_of`")
+                };
+
+                let align = defs.align_of(param_ty).expect("Expected a `Sized` type for type argument `0` of `__builtin_size_of`");
+
+                mir::MirExpr::ConstInt(ty::IntType::usize, align as u128)
+            }>
+        }
+    }
 
     #[unobservable]
-    intrin __builtin_size_of_val<type>(val: *const Var<0>) -> usize;
+    intrin __builtin_size_of_val<type>(val: *const Var<0>) -> usize{
+        @<this>: { [_0: *const %0]
+            return <{
+                match &generics.params[0]{
+                    GenericArg::Type(ty) => {
+                        let layout = defs.layout_of(ty, DefId::ROOT, DefId::ROOT);
+                        if let Some(size) = layout.size{
+                            mir::MirExpr::ConstInt(ty::IntType::usize, size as u128)
+                        }else{
+                            todo!("Unsized types")
+                        }
+                    }
+                    _ => panic!("Expected a generic type for argument 0 of `__builtin_size_of_val`")
+                }
+            }>
+        }
+    }
     #[unobservable]
-    intrin __builtin_align_of_val<type>(val: *const Var<0>) -> usize;
+    intrin __builtin_align_of_val<type>(val: *const Var<0>) -> usize{
+        @<this>: { [_0: *const %0]
+            return <{
+                match &generics.params[0]{
+                    GenericArg::Type(ty) => {
+                        let layout = defs.layout_of(ty, DefId::ROOT, DefId::ROOT);
+                        if let Some(align) = layout.align{
+                            mir::MirExpr::ConstInt(ty::IntType::usize, align as u128)
+                        }else{
+                            todo!("Trait objects")
+                        }
+                    }
+                    _ => panic!("Expected a generic type for argument 0 of `__builtin_size_of_val`")
+                }
+            }>
+        }
+    }
 
     #[unobservable]
     intrin __builtin_likely(val: bool) -> bool;
@@ -365,4 +459,16 @@ def_intrinsics! {
     unsafe intrin __builtin_va_arg<type>(va_list: *mut Lang<VaList>) -> Var<0>;
     unsafe intrin __builtin_va_copy(va_list: *mut Lang<VaList>, out:*mut Lang<VaList>)->();
     unsafe intrin __builtin_va_end(va_list: *mut Lang<VaList>) -> ();
+}
+
+impl core::fmt::Display for IntrinsicDef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+impl core::fmt::Debug for IntrinsicDef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
 }
