@@ -466,13 +466,13 @@ impl<'a> StringView<'a> {
     }
 
     /// Obtains a raw pointer to the beginning of the string.
-    /// 
+    ///
     /// ## Safety
-    /// 
-    /// The returned `*const u8` is valid for the length of the string view up to the lifetime `'a`. 
+    ///
+    /// The returned `*const u8` is valid for the length of the string view up to the lifetime `'a`.
     /// When using the pointer you must not write through it
     #[must_use]
-    pub const fn as_ptr(&self) -> *const u8{
+    pub const fn as_ptr(&self) -> *const u8 {
         self.begin.as_ptr()
     }
 
@@ -506,17 +506,12 @@ impl<'a> StringView<'a> {
     #[must_use]
     #[allow(clippy::cast_sign_loss)] // allocation size is `[0,isize::MAX)` so this can never possibly overflow
     pub const fn into_byte_span(self) -> Span<'a, u8> {
-        unsafe {
-            Span::from_raw_parts(
-                self.as_ptr(),
-                self.len(),
-            )
-        }
+        unsafe { Span::from_raw_parts(self.as_ptr(), self.len()) }
     }
 
     /// Borrows the string view as a [`Span`] over the UTF-8 Bytes of the [`StringView`].
     #[must_use]
-    pub const fn as_byte_span(&self) -> Span<u8>{
+    pub const fn as_byte_span(&self) -> Span<u8> {
         self.into_byte_span()
     }
 

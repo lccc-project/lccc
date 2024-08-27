@@ -584,11 +584,26 @@ impl FnType {
                 .all(|(a, b)| a.matches_ignore_bounds(b))
     }
 
-    pub fn substitute_generics(&self, args: &GenericArgs) -> Self{
-        let retty = Box::new(self.retty.copy_span(|retty| retty.substitute_generics(args)));
-        let paramtys = self.paramtys.iter().map(|paramty| paramty.copy_span(|paramty| paramty.substitute_generics(args))).collect();
+    pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
+        let retty = Box::new(
+            self.retty
+                .copy_span(|retty| retty.substitute_generics(args)),
+        );
+        let paramtys = self
+            .paramtys
+            .iter()
+            .map(|paramty| paramty.copy_span(|paramty| paramty.substitute_generics(args)))
+            .collect();
 
-        Self{safety: self.safety, constness: self.constness, asyncness: self.asyncness, tag: self.tag, iscvarargs: self.iscvarargs, retty, paramtys}
+        Self {
+            safety: self.safety,
+            constness: self.constness,
+            asyncness: self.asyncness,
+            tag: self.tag,
+            iscvarargs: self.iscvarargs,
+            retty,
+            paramtys,
+        }
     }
 }
 
@@ -625,19 +640,18 @@ impl core::fmt::Display for FnType {
     }
 }
 
-impl SemaLifetime{
-
-    pub fn erase(&self) -> Self{
-        match self{
+impl SemaLifetime {
+    pub fn erase(&self) -> Self {
+        match self {
             Self::Region(reg) => Self::ErasedRegion,
             this => *this,
         }
     }
 
-    pub fn substitute_generics(&self, args: &GenericArgs) -> Self{
+    pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
         match self {
             Self::Bound(id) => {
-                match args.get(*id){
+                match args.get(*id) {
                     Some(GenericArg::Lifetime(life)) => *life,
                     Some(_) => panic!("Expected a lifetime for {id}"),
                     None => Self::Bound(*id), // This is a locally bound lifetime from a `for<'a>` (which isn't carried into sema types)
@@ -793,7 +807,7 @@ impl Type {
             Type::Pointer(mt, ty) => Type::Pointer(*mt, Box::new(ty.copy_span(|ty| ty.substitute_generics(args)))),
             Type::Array(ty, cx) => Type::Array(Box::new(ty.copy_span(|ty| ty.substitute_generics(args))), cx.copy_span(|cx| cx.substitute_generics(args))),
             Type::Reference(life, mt, ty) => Type::Reference(life.as_ref().map(|life| Box::new(life.copy_span(|life| life.substitute_generics(args)))), *mt, Box::new(ty.copy_span(|ty| ty.substitute_generics(args)))),
-            Type::DropFlags(ty) => Type::DropFlags(Box::new(ty.substitute_generics(args))), 
+            Type::DropFlags(ty) => Type::DropFlags(Box::new(ty.substitute_generics(args))),
             Type::UnresolvedLangItem(_, _) |
             Type::IncompleteAlias(_) |
             Type::Inferable(_) |
