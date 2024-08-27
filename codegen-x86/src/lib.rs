@@ -454,6 +454,51 @@ impl MceWriter for X86Machine {
     ) -> core::fmt::Result {
         todo!("x86 assembly output")
     }
+
+    fn optimize_mce_context(&self, insns: &mut [MceInstruction<Self::Instruction>]) {
+        let mut analysis_enabled = true;
+
+        for insn in insns {
+            match insn {
+                MceInstruction::EnableAnalyze => {
+                    analysis_enabled = true;
+                }
+                MceInstruction::DisableAnalyze => {
+                    analysis_enabled = false;
+                }
+                MceInstruction::Empty
+                | MceInstruction::PrivateLabel(_)
+                | MceInstruction::RawBytes(_) => {}
+                MceInstruction::Split(insns) => {
+                    if analysis_enabled {
+                        self.optimize_mce_context(insns)
+                    }
+                }
+                MceInstruction::BaseInsn(insn) => {
+                    if analysis_enabled {
+                        match (insn.prefix(), insn.opcode(), insn.operands()) {
+                            (
+                                None,
+                                X86CodegenOpcode::Mov,
+                                [X86Operand::Register(reg), X86Operand::Immediate(0)],
+                            ) => {
+                                if reg.gpr().is_some() {
+                                    *insn = X86Instruction::new(
+                                        X86CodegenOpcode::Xor,
+                                        std_vec![
+                                            X86Operand::Register(*reg),
+                                            X86Operand::Register(*reg),
+                                        ],
+                                    );
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl Machine<SsaInstruction> for X86Machine {
