@@ -74,11 +74,11 @@ impl<'a> XirModVisitor<'a> {
 impl<'a> ModVisitor for XirModVisitor<'a> {
     fn visit_defid(&mut self, _: DefId) {}
 
-    fn visit_submodule(&mut self) -> Option<Box<dyn ModVisitor + '_>> {
-        Some(Box::new(self))
+    fn visit_submodule(&mut self) -> Option<impl ModVisitor + '_> {
+        Some(self)
     }
 
-    fn visit_type(&mut self) -> Option<Box<dyn TypeDefVisitor + '_>> {
+    fn visit_type(&mut self) -> Option<impl TypeDefVisitor + '_> {
         Some(Box::new(XirTypeDefVisitor::new(
             self.defs,
             self.names,
@@ -88,7 +88,7 @@ impl<'a> ModVisitor for XirModVisitor<'a> {
         )))
     }
 
-    fn visit_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>> {
+    fn visit_value(&mut self) -> Option<impl ValueDefVisitor + '_> {
         Some(Box::new(XirValueDefVisitor::new(
             self.defs,
             self.names,
@@ -125,20 +125,15 @@ impl<'a> XirModTypeGatherer<'a> {
 impl<'a> ModVisitor for XirModTypeGatherer<'a> {
     fn visit_defid(&mut self, _: DefId) {}
 
-    fn visit_submodule(&mut self) -> Option<Box<dyn ModVisitor + '_>> {
-        Some(Box::new(XirModTypeGatherer::new(
-            self.defs,
-            self.names,
-            self.deftys,
-            self.properties,
-        )))
+    fn visit_submodule(&mut self) -> Option<impl ModVisitor + '_> {
+        Some(self)
     }
 
-    fn visit_type(&mut self) -> Option<Box<dyn TypeDefVisitor + '_>> {
-        None
+    fn visit_type(&mut self) -> Option<impl TypeDefVisitor + '_> {
+        None::<()>
     }
 
-    fn visit_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>> {
+    fn visit_value(&mut self) -> Option<impl ValueDefVisitor + '_> {
         Some(Box::new(XirValueDefTypeGatherer::new(
             self.defs,
             self.names,
@@ -182,11 +177,11 @@ impl<'a> ValueDefVisitor for XirValueDefTypeGatherer<'a> {
         // don't care
     }
 
-    fn visit_attr(&mut self) -> Option<Box<dyn AttrVisitor + '_>> {
-        None
+    fn visit_attr(&mut self) -> Option<impl AttrVisitor + '_> {
+        None::<()>
     }
 
-    fn visit_function(&mut self) -> Option<Box<dyn FunctionDefVisitor + '_>> {
+    fn visit_function(&mut self) -> Option<impl FunctionDefVisitor + '_> {
         let defid = self.defid.expect("Must have already visited the defid");
 
         let ty = self.deftys.get_or_insert_mut(
@@ -245,12 +240,12 @@ impl<'a> ValueDefVisitor for XirValueDefVisitor<'a> {
         // already covered by pre-mangling
     }
 
-    fn visit_attr(&mut self) -> Option<Box<dyn AttrVisitor + '_>> {
+    fn visit_attr(&mut self) -> Option<impl AttrVisitor + '_> {
         // don't care yet
-        None
+        None::<()>
     }
 
-    fn visit_function(&mut self) -> Option<Box<dyn FunctionDefVisitor + '_>> {
+    fn visit_function(&mut self) -> Option<impl FunctionDefVisitor + '_> {
         self.scope_member = Some(ir::ScopeMember {
             annotations: ir::AnnotatedElement::default(),
             vis: ir::Visibility::Public,
@@ -313,7 +308,7 @@ impl<'a> XirFunctionTypeGatherer<'a> {
 }
 
 impl<'a> FunctionDefVisitor for XirFunctionTypeGatherer<'a> {
-    fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>> {
+    fn visit_fnty(&mut self) -> Option<impl FunctionTyVisitor + '_> {
         Some(Box::new(XirFunctionTyVisitor::new(
             self.defs,
             self.names,
@@ -322,8 +317,8 @@ impl<'a> FunctionDefVisitor for XirFunctionTypeGatherer<'a> {
         )))
     }
 
-    fn visit_fnbody(&mut self) -> Option<Box<dyn FunctionBodyVisitor + '_>> {
-        None
+    fn visit_fnbody(&mut self) -> Option<impl FunctionBodyVisitor + '_> {
+        None::<()>
     }
 }
 
@@ -364,11 +359,11 @@ impl<'a> TypeDefVisitor for XirTypeDefVisitor<'a> {
 
     fn visit_name(&mut self, name: &[Symbol]) {}
 
-    fn visit_attr(&mut self) -> Option<Box<dyn AttrVisitor + '_>> {
-        None
+    fn visit_attr(&mut self) -> Option<impl AttrVisitor + '_> {
+        None::<()>
     }
 
-    fn visit_struct(&mut self) -> Option<Box<dyn ConstructorDefVisitor + '_>> {
+    fn visit_struct(&mut self) -> Option<impl ConstructorDefVisitor + '_> {
         let def = self.scopedef.members.get_or_insert_mut(
             into_path(self.names[&self.defid]),
             ir::ScopeMember {
@@ -467,7 +462,7 @@ impl<'a> Drop for XirStructDefVisitor<'a> {
 }
 
 impl<'a> ConstructorDefVisitor for XirStructDefVisitor<'a> {
-    fn visit_field(&mut self) -> Option<Box<dyn FieldVisitor + '_>> {
+    fn visit_field(&mut self) -> Option<impl FieldVisitor + '_> {
         let (name, ty) = self.fields.push_mut((None, ir::Type::Null));
         Some(Box::new(XirConstructorDefFieldVisitor::new(
             self.defs,
@@ -514,7 +509,7 @@ impl<'a> FieldVisitor for XirConstructorDefFieldVisitor<'a> {
         *self.name = Some(*name);
     }
 
-    fn visit_ty(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+    fn visit_ty(&mut self) -> Option<impl TypeVisitor + '_> {
         Some(Box::new(XirTypeVisitor::new(
             self.defs,
             self.names,
@@ -554,7 +549,7 @@ impl<'a> XirFunctionDefVisitor<'a> {
 }
 
 impl<'a> FunctionDefVisitor for XirFunctionDefVisitor<'a> {
-    fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>> {
+    fn visit_fnty(&mut self) -> Option<impl FunctionTyVisitor + '_> {
         Some(Box::new(XirFunctionTyVisitor::new(
             self.defs,
             self.names,
@@ -563,7 +558,7 @@ impl<'a> FunctionDefVisitor for XirFunctionDefVisitor<'a> {
         )))
     }
 
-    fn visit_fnbody(&mut self) -> Option<Box<dyn FunctionBodyVisitor + '_>> {
+    fn visit_fnbody(&mut self) -> Option<impl FunctionBodyVisitor + '_> {
         Some(Box::new(XirFunctionBodyVisitor::new(
             self.defs,
             self.names,
@@ -603,7 +598,7 @@ impl<'a> FunctionTyVisitor for XirFunctionTyVisitor<'a> {
         self.fnty.tag = self.properties.default_tag_name.into(); // TODO: fastcall
     }
 
-    fn visit_return(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+    fn visit_return(&mut self) -> Option<impl TypeVisitor + '_> {
         Some(Box::new(XirTypeVisitor::new(
             self.defs,
             self.names,
@@ -612,7 +607,7 @@ impl<'a> FunctionTyVisitor for XirFunctionTyVisitor<'a> {
         )))
     }
 
-    fn visit_param(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+    fn visit_param(&mut self) -> Option<impl TypeVisitor + '_> {
         Some(Box::new(XirTypeVisitor::new(
             self.defs,
             self.names,
@@ -687,7 +682,7 @@ impl<'a> XirTypeVisitor<'a> {
 }
 
 impl<'a> TypeVisitor for XirTypeVisitor<'a> {
-    fn visit_array(&mut self) -> Option<Box<dyn ArrayTyVisitor + '_>> {
+    fn visit_array(&mut self) -> Option<impl ArrayTyVisitor + '_> {
         *self.ty = ir::Type::Array(abi::boxed::Box::new(ir::ArrayType {
             ty: ir::Type::default(),
             len: ir::Value::Invalid(ir::Type::default()),
@@ -704,7 +699,7 @@ impl<'a> TypeVisitor for XirTypeVisitor<'a> {
         }
     }
 
-    fn visit_int(&mut self) -> Option<Box<dyn IntTyVisitor + '_>> {
+    fn visit_int(&mut self) -> Option<impl IntTyVisitor + '_> {
         *self.ty = ir::Type::Scalar(ir::ScalarType::default());
 
         if let ir::Type::Scalar(sty) = self.ty {
@@ -714,7 +709,7 @@ impl<'a> TypeVisitor for XirTypeVisitor<'a> {
         }
     }
 
-    fn visit_pointer(&mut self) -> Option<Box<dyn PointerTyVisitor + '_>> {
+    fn visit_pointer(&mut self) -> Option<impl PointerTyVisitor + '_> {
         *self.ty = ir::Type::Pointer(ir::PointerType::default());
         if let ir::Type::Pointer(pty) = self.ty {
             Some(Box::new(XirPointerTyVisitor::new(
@@ -728,7 +723,7 @@ impl<'a> TypeVisitor for XirTypeVisitor<'a> {
         }
     }
 
-    fn visit_reference(&mut self) -> Option<Box<dyn ReferenceTyVisitor + '_>> {
+    fn visit_reference(&mut self) -> Option<impl ReferenceTyVisitor + '_> {
         *self.ty = ir::Type::Pointer(ir::PointerType::default());
         if let ir::Type::Pointer(pty) = self.ty {
             Some(Box::new(XirReferenceTyVisitor::new(
@@ -742,7 +737,7 @@ impl<'a> TypeVisitor for XirTypeVisitor<'a> {
         }
     }
 
-    fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>> {
+    fn visit_tuple(&mut self) -> Option<impl TupleTyVisitor + '_> {
         *self.ty = ir::Type::Product(Vec::new());
         // TODO: is there a less-ugly way to do this?
         if let ir::Type::Product(tuple) = self.ty {
@@ -790,7 +785,7 @@ impl<'a> XirArrayTyVisitor<'a> {
 }
 
 impl<'a> ArrayTyVisitor for XirArrayTyVisitor<'a> {
-    fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+    fn visit_type(&mut self) -> Option<impl TypeVisitor + '_> {
         Some(Box::new(XirTypeVisitor::new(
             self.defs,
             self.names,
@@ -882,7 +877,7 @@ impl<'a> PointerTyVisitor for XirPointerTyVisitor<'a> {
         }
     }
 
-    fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+    fn visit_type(&mut self) -> Option<impl TypeVisitor + '_> {
         Some(Box::new(XirTypeVisitor::new(
             self.defs,
             self.names,
@@ -927,7 +922,7 @@ impl<'a> ReferenceTyVisitor for XirReferenceTyVisitor<'a> {
         }
     }
 
-    fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+    fn visit_type(&mut self) -> Option<impl TypeVisitor + '_> {
         Some(Box::new(XirTypeVisitor::new(
             self.defs,
             self.names,
@@ -961,7 +956,7 @@ impl<'a> XirTupleTyVisitor<'a> {
 }
 
 impl<'a> TupleTyVisitor for XirTupleTyVisitor<'a> {
-    fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+    fn visit_type(&mut self) -> Option<impl TypeVisitor + '_> {
         let index = self.tuple.len();
         self.tuple.push(ir::Type::default());
         Some(Box::new(XirTypeVisitor::new(
@@ -1005,11 +1000,11 @@ impl<'a> XirFunctionBodyVisitor<'a> {
 }
 
 impl<'a> FunctionBodyVisitor for XirFunctionBodyVisitor<'a> {
-    fn visit_inner_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>> {
-        todo!()
+    fn visit_inner_value(&mut self) -> Option<impl ValueDefVisitor + '_> {
+        None::<()>
     }
 
-    fn visit_basic_block(&mut self) -> Option<Box<dyn BasicBlockVisitor + '_>> {
+    fn visit_basic_block(&mut self) -> Option<impl BasicBlockVisitor + '_> {
         Some(Box::new(XirBasicBlockVisitor::new(
             self.defs,
             self.names,
@@ -1069,7 +1064,7 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
         self.block.target = id.id();
     }
 
-    fn visit_incoming_var(&mut self, incoming: SsaVarId) -> Option<Box<dyn TypeVisitor + '_>> {
+    fn visit_incoming_var(&mut self, incoming: SsaVarId) -> Option<impl TypeVisitor + '_> {
         let height = self.stack_height;
         self.stack_height += 1;
         self.var_heights.insert(incoming, height);
@@ -1091,7 +1086,7 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
         )))
     }
 
-    fn visit_stmt(&mut self) -> Option<Box<dyn StatementVisitor + '_>> {
+    fn visit_stmt(&mut self) -> Option<impl StatementVisitor + '_> {
         Some(Box::new(XirStatementVisitor::new(
             self.defs,
             self.names,
@@ -1107,7 +1102,7 @@ impl<'a> BasicBlockVisitor for XirBasicBlockVisitor<'a> {
         )))
     }
 
-    fn visit_term(&mut self) -> Option<Box<dyn TerminatorVisitor + '_>> {
+    fn visit_term(&mut self) -> Option<impl TerminatorVisitor + '_> {
         Some(Box::new(XirTerminatorVisitor::new(
             self.defs,
             self.names,
@@ -1169,7 +1164,7 @@ impl<'a> XirTerminatorVisitor<'a> {
 }
 
 impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
-    fn visit_branch(&mut self) -> Option<Box<dyn BranchVisitor + '_>> {
+    fn visit_branch(&mut self) -> Option<impl BranchVisitor + '_> {
         let (iftarg, elsetarg) = {
             self.block.term = ir::Terminator::Branch(
                 ir::BranchCondition::NotEqual,
@@ -1206,7 +1201,7 @@ impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
         )))
     }
 
-    fn visit_call(&mut self) -> Option<Box<dyn CallVisitor + '_>> {
+    fn visit_call(&mut self) -> Option<impl CallVisitor + '_> {
         Some(Box::new(XirCallVisitor::new(
             self.defs,
             self.names,
@@ -1222,7 +1217,7 @@ impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
         )))
     }
 
-    fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
+    fn visit_jump(&mut self) -> Option<impl JumpVisitor + '_> {
         let targ = {
             self.block.term = ir::Terminator::Jump(ir::JumpTarget {
                 target: !0,
@@ -1253,7 +1248,7 @@ impl<'a> TerminatorVisitor for XirTerminatorVisitor<'a> {
         )))
     }
 
-    fn visit_return(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+    fn visit_return(&mut self) -> Option<impl ExprVisitor + '_> {
         self.block.term = ir::Terminator::Exit(1);
         Some(Box::new(XirExprVisitor::new(
             self.defs,
@@ -1427,7 +1422,7 @@ impl<'a> XirBranchVisitor<'a> {
 }
 
 impl<'a> BranchVisitor for XirBranchVisitor<'a> {
-    fn visit_cond(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+    fn visit_cond(&mut self) -> Option<impl ExprVisitor + '_> {
         Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
@@ -1442,7 +1437,7 @@ impl<'a> BranchVisitor for XirBranchVisitor<'a> {
             self.var_stack,
         )))
     }
-    fn visit_if_arm(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
+    fn visit_if_arm(&mut self) -> Option<impl JumpVisitor + '_> {
         Some(Box::new(XirJumpVisitor::new(
             self.defs,
             self.names,
@@ -1460,7 +1455,7 @@ impl<'a> BranchVisitor for XirBranchVisitor<'a> {
             false,
         )))
     }
-    fn visit_else(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
+    fn visit_else(&mut self) -> Option<impl JumpVisitor + '_> {
         Some(Box::new(XirJumpVisitor::new(
             self.defs,
             self.names,
@@ -1534,10 +1529,10 @@ impl<'a> XirIntrinsicBodyVisitor<'a> {
 
 impl<'a> BasicBlockVisitor for XirIntrinsicBodyVisitor<'a> {
     fn visit_id(&mut self, _: mir::BasicBlockId) {}
-    fn visit_incoming_var(&mut self, _: SsaVarId) -> Option<Box<dyn TypeVisitor + '_>> {
-        None
+    fn visit_incoming_var(&mut self, _: SsaVarId) -> Option<impl TypeVisitor + '_> {
+        None::<()>
     }
-    fn visit_stmt(&mut self) -> Option<Box<dyn StatementVisitor + '_>> {
+    fn visit_stmt(&mut self) -> Option<impl StatementVisitor + '_> {
         Some(Box::new(XirStatementVisitor::new(
             self.defs,
             self.names,
@@ -1553,13 +1548,13 @@ impl<'a> BasicBlockVisitor for XirIntrinsicBodyVisitor<'a> {
         )))
     }
 
-    fn visit_term(&mut self) -> Option<Box<dyn TerminatorVisitor + '_>> {
+    fn visit_term(&mut self) -> Option<impl TerminatorVisitor + '_> {
         Some(Box::new(self))
     }
 }
 
 impl<'a> TerminatorVisitor for XirIntrinsicBodyVisitor<'a> {
-    fn visit_return(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+    fn visit_return(&mut self) -> Option<impl ExprVisitor + '_> {
         Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
@@ -1575,16 +1570,16 @@ impl<'a> TerminatorVisitor for XirIntrinsicBodyVisitor<'a> {
         )))
     }
 
-    fn visit_branch(&mut self) -> Option<Box<dyn BranchVisitor + '_>> {
-        None
+    fn visit_branch(&mut self) -> Option<impl BranchVisitor + '_> {
+        None::<()>
     }
 
-    fn visit_call(&mut self) -> Option<Box<dyn CallVisitor + '_>> {
-        None
+    fn visit_call(&mut self) -> Option<impl CallVisitor + '_> {
+        None::<()>
     }
 
-    fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
-        None
+    fn visit_jump(&mut self) -> Option<impl JumpVisitor + '_> {
+        None::<()>
     }
     fn visit_unreachable(&mut self) {
         self.block.term = ir::Terminator::Unreachable;
@@ -1646,7 +1641,7 @@ impl<'a> XirCallVisitor<'a> {
 impl<'a> CallVisitor for XirCallVisitor<'a> {
     fn visit_retplace(&mut self, _: mir::SsaVarId) {}
 
-    fn visit_target(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+    fn visit_target(&mut self) -> Option<impl ExprVisitor + '_> {
         Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
@@ -1662,7 +1657,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
         )))
     }
 
-    fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>> {
+    fn visit_fnty(&mut self) -> Option<impl FunctionTyVisitor + '_> {
         Some(Box::new(XirFunctionTyVisitor::new(
             self.defs,
             self.names,
@@ -1671,7 +1666,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
         )))
     }
 
-    fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+    fn visit_param(&mut self) -> Option<impl ExprVisitor + '_> {
         self.param_count += 1;
         Some(Box::new(XirExprVisitor::new(
             self.defs,
@@ -1688,7 +1683,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
         )))
     }
 
-    fn visit_next(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
+    fn visit_next(&mut self) -> Option<impl JumpVisitor + '_> {
         if self.late_bound_intrinsic.is_some() {
             if let ir::Terminator::Empty = self.block.term {
                 let param_count = self.param_count;
@@ -1749,7 +1744,7 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
         &mut self,
         intrin: IntrinsicDef,
         generics: &generics::GenericArgs,
-    ) -> Option<Box<dyn BasicBlockVisitor + '_>> {
+    ) -> Option<impl BasicBlockVisitor + '_> {
         use IntrinsicDef::*;
         match intrin {
             __builtin_assume
@@ -1845,8 +1840,8 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
         }
     }
 
-    fn visit_unwind(&mut self) -> Option<Box<dyn JumpVisitor + '_>> {
-        None
+    fn visit_unwind(&mut self) -> Option<impl JumpVisitor + '_> {
+        None::<()>
     }
 }
 
@@ -1895,7 +1890,7 @@ impl<'a> XirStatementVisitor<'a> {
 }
 
 impl<'a> StatementVisitor for XirStatementVisitor<'a> {
-    fn visit_let(&mut self) -> Option<Box<dyn LetStatementVisitor + '_>> {
+    fn visit_let(&mut self) -> Option<impl LetStatementVisitor + '_> {
         Some(Box::new(XirLetStatementVisitor::new(
             self.defs,
             self.names,
@@ -1913,8 +1908,8 @@ impl<'a> StatementVisitor for XirStatementVisitor<'a> {
 
     fn visit_store_dead(&mut self, _: mir::SsaVarId) {}
 
-    fn visit_discard(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        None
+    fn visit_discard(&mut self) -> Option<impl ExprVisitor + '_> {
+        None::<()>
     }
 }
 
@@ -1971,7 +1966,7 @@ impl<'a> LetStatementVisitor for XirLetStatementVisitor<'a> {
         self.var_stack.push(var);
     }
 
-    fn visit_var_ty(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+    fn visit_var_ty(&mut self) -> Option<impl TypeVisitor + '_> {
         Some(Box::new(XirTypeVisitor::new(
             self.defs,
             self.names,
@@ -1980,7 +1975,7 @@ impl<'a> LetStatementVisitor for XirLetStatementVisitor<'a> {
         )))
     }
 
-    fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+    fn visit_init(&mut self) -> Option<impl ExprVisitor + '_> {
         Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
@@ -2046,7 +2041,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
         todo!()
     }
 
-    fn visit_const_int(&mut self) -> Option<Box<dyn ConstIntVisitor + '_>> {
+    fn visit_const_int(&mut self) -> Option<impl ConstIntVisitor + '_> {
         let (intty, val) = match self.exprs.push_mut(ir::Expr::Const(ir::Value::Integer {
             ty: ir::ScalarType::default(),
             val: 0,
@@ -2061,7 +2056,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
         )))
     }
 
-    fn visit_const_char(&mut self) -> Option<Box<dyn ConstCharVisitor + '_>> {
+    fn visit_const_char(&mut self) -> Option<impl ConstCharVisitor + '_> {
         let (intty, val) = match self.exprs.push_mut(ir::Expr::Const(ir::Value::Integer {
             ty: ir::ScalarType::default(),
             val: 0,
@@ -2089,7 +2084,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
             .push(ir::Expr::Const(ir::Value::GlobalAddress { ty, item: path }));
     }
 
-    fn visit_cast(&mut self) -> Option<Box<dyn CastVisitor + '_>> {
+    fn visit_cast(&mut self) -> Option<impl CastVisitor + '_> {
         Some(Box::new(XirCastVisitor::new(
             self.defs,
             self.names,
@@ -2105,7 +2100,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
         )))
     }
 
-    fn visit_const_string(&mut self) -> Option<Box<dyn ConstStringVisitor + '_>> {
+    fn visit_const_string(&mut self) -> Option<impl ConstStringVisitor + '_> {
         let (ty, val) = match self.exprs.push_mut(ir::Expr::Const(ir::Value::String {
             encoding: ir::StringEncoding::Utf8,
             ty: ir::Type::default(),
@@ -2135,7 +2130,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
         }
     }
 
-    fn visit_tuple(&mut self) -> Option<Box<dyn TupleExprVisitor + '_>> {
+    fn visit_tuple(&mut self) -> Option<impl TupleExprVisitor + '_> {
         Some(Box::new(XirTupleVisitor::new(
             self.defs,
             self.names,
@@ -2151,7 +2146,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
         )))
     }
 
-    fn visit_ctor(&mut self) -> Option<Box<dyn ConstructorVisitor + '_>> {
+    fn visit_ctor(&mut self) -> Option<impl ConstructorVisitor + '_> {
         Some(Box::new(XirConstructorVisitor::new(
             self.defs,
             self.names,
@@ -2167,7 +2162,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
         )))
     }
 
-    fn visit_field_subobject(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
+    fn visit_field_subobject(&mut self) -> Option<impl FieldAccessVisitor + '_> {
         Some(Box::new(XirFieldSubobjectVisitor::new(
             self.defs,
             self.names,
@@ -2183,11 +2178,11 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
         )))
     }
 
-    fn visit_field_project(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>> {
-        todo!()
+    fn visit_field_project(&mut self) -> Option<impl FieldAccessVisitor + '_> {
+        None::<()>
     }
 
-    fn visit_binary_expr(&mut self) -> Option<Box<dyn BinaryExprVisitor + '_>> {
+    fn visit_binary_expr(&mut self) -> Option<impl BinaryExprVisitor + '_> {
         Some(Box::new(XirBinaryExprVisitor::new(
             self.defs,
             self.names,
@@ -2203,7 +2198,7 @@ impl<'a> ExprVisitor for XirExprVisitor<'a> {
         )))
     }
 
-    fn visit_unary_expr(&mut self) -> Option<Box<dyn UnaryExprVisitor + '_>> {
+    fn visit_unary_expr(&mut self) -> Option<impl UnaryExprVisitor + '_> {
         Some(Box::new(XirUnaryExprVisitor::new(
             self.defs,
             self.names,
@@ -2271,7 +2266,7 @@ impl<'a> XirFieldSubobjectVisitor<'a> {
 }
 
 impl<'a> FieldAccessVisitor for XirFieldSubobjectVisitor<'a> {
-    fn visit_base(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+    fn visit_base(&mut self) -> Option<impl ExprVisitor + '_> {
         Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
@@ -2343,7 +2338,7 @@ impl<'a> XirTupleVisitor<'a> {
 }
 
 impl<'a> TupleExprVisitor for XirTupleVisitor<'a> {
-    fn visit_elem(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+    fn visit_elem(&mut self) -> Option<impl ExprVisitor + '_> {
         Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
@@ -2435,7 +2430,7 @@ impl<'a> ConstructorVisitor for XirConstructorVisitor<'a> {
         }));
     }
 
-    fn visit_field(&mut self) -> Option<Box<dyn FieldInitVisitor + '_>> {
+    fn visit_field(&mut self) -> Option<impl FieldInitVisitor + '_> {
         Some(Box::new(XirFieldInitVisitor::new(
             self.defs,
             self.names,
@@ -2452,8 +2447,8 @@ impl<'a> ConstructorVisitor for XirConstructorVisitor<'a> {
         )))
     }
 
-    fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
-        todo!("..default() and similar aren't currently handled by irgen")
+    fn visit_init(&mut self) -> Option<impl ExprVisitor + '_> {
+        None::<()>
     }
 }
 
@@ -2527,7 +2522,7 @@ impl<'a> FieldInitVisitor for XirFieldInitVisitor<'a> {
         });
     }
 
-    fn visit_value(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+    fn visit_value(&mut self) -> Option<impl ExprVisitor + '_> {
         Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
@@ -2608,7 +2603,7 @@ impl<'a> BinaryExprVisitor for XirBinaryExprVisitor<'a> {
         });
     }
 
-    fn visit_lhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+    fn visit_lhs(&mut self) -> Option<impl ExprVisitor + '_> {
         Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
@@ -2624,7 +2619,7 @@ impl<'a> BinaryExprVisitor for XirBinaryExprVisitor<'a> {
         )))
     }
 
-    fn visit_rhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+    fn visit_rhs(&mut self) -> Option<impl ExprVisitor + '_> {
         Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
@@ -2702,7 +2697,7 @@ impl<'a> UnaryExprVisitor for XirUnaryExprVisitor<'a> {
         });
     }
 
-    fn visit_lhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+    fn visit_lhs(&mut self) -> Option<impl ExprVisitor + '_> {
         Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
@@ -2777,7 +2772,7 @@ impl<'a> XirCastVisitor<'a> {
 }
 
 impl<'a> CastVisitor for XirCastVisitor<'a> {
-    fn visit_inner(&mut self) -> Option<Box<dyn ExprVisitor + '_>> {
+    fn visit_inner(&mut self) -> Option<impl ExprVisitor + '_> {
         Some(Box::new(XirExprVisitor::new(
             self.defs,
             self.names,
@@ -2793,7 +2788,7 @@ impl<'a> CastVisitor for XirCastVisitor<'a> {
         )))
     }
 
-    fn visit_cast_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+    fn visit_cast_type(&mut self) -> Option<impl TypeVisitor + '_> {
         Some(Box::new(XirTypeVisitor::new(
             self.defs,
             self.names,
@@ -2882,7 +2877,7 @@ impl<'a> XirConstIntVisitor<'a> {
 }
 
 impl<'a> ConstIntVisitor for XirConstIntVisitor<'a> {
-    fn visit_intty(&mut self) -> Option<Box<dyn IntTyVisitor + '_>> {
+    fn visit_intty(&mut self) -> Option<impl IntTyVisitor + '_> {
         Some(Box::new(XirIntTyVisitor::new(self.intty, self.properties)))
     }
 

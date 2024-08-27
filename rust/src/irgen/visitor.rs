@@ -14,6 +14,18 @@ use crate::{
     },
 };
 
+macro_rules! visitor_todo{
+    ($($tt:tt)*) => {
+        {
+            #![allow(unreachable_code)]
+            todo!($($tt)*);
+            None::<()>
+        }
+    }
+}
+
+pub(crate) use visitor_todo;
+
 macro_rules! def_visitors {
     (
         $(
@@ -21,10 +33,23 @@ macro_rules! def_visitors {
                 $(
                     fn $visitor_fn:ident(&mut self $(,$($pname:ident : $ty:ty ),* $(,)?)?) $(-> $ret_ty:ty)?;
                 )*
+
             }
         )*
     ) => {
         $(
+            impl $trait for (){
+                $(
+                    #[inline(always)]
+                    fn $visitor_fn(&mut self, $($(_: $ty),*)?) $(-> $ret_ty)?{
+                        ().into()
+                    }
+                )*
+
+                fn is_none(&self) -> bool{
+                    true
+                }
+            }
             impl<V: $trait + ?Sized> $trait for &mut V {
                 $(
                     #[inline]
@@ -57,13 +82,16 @@ macro_rules! def_visitors {
                     fn $visitor_fn(&mut self, $($($pname: $ty),*)?) $(-> $ret_ty)? {
                         match self {
                             Some(this) => <V as $trait>::$visitor_fn(this, $($($pname),*)?),
-                            None => core::default::Default::default()
+                            None => ::core::default::Default::default(),
                         }
                     }
                 )*
 
                 fn is_none(&self) -> bool {
-                    Option::is_none(self)
+                    match self{
+                        Some(x) => x.is_none(),
+                        None => true,
+                    }
                 }
             }
 
@@ -727,26 +755,26 @@ pub fn visit_tuple_expr<V: TupleExprVisitor>(
 def_visitors! {
     pub trait ModVisitor {
         fn visit_defid(&mut self, defid: DefId);
-        fn visit_submodule(&mut self) -> Option<Box<dyn ModVisitor + '_>>;
-        fn visit_type(&mut self) -> Option<Box<dyn TypeDefVisitor + '_>>;
-        fn visit_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>>;
+        fn visit_submodule(&mut self) -> Option<impl ModVisitor + '_>;
+        fn visit_type(&mut self) -> Option<impl TypeDefVisitor + '_>;
+        fn visit_value(&mut self) -> Option<impl ValueDefVisitor + '_>;
     }
 
     pub trait TypeDefVisitor {
         fn visit_defid(&mut self, defid: DefId);
         fn visit_name(&mut self, name: &[Symbol]);
-        fn visit_attr(&mut self) -> Option<Box<dyn AttrVisitor + '_>>;
+        fn visit_attr(&mut self) -> Option<impl AttrVisitor + '_>;
         fn visit_kind(&mut self, kind: UserTypeKind);
-        fn visit_struct(&mut self) -> Option<Box<dyn ConstructorDefVisitor + '_>>;
+        fn visit_struct(&mut self) -> Option<impl ConstructorDefVisitor + '_>;
     }
 
     pub trait ConstructorDefVisitor {
-        fn visit_field(&mut self) -> Option<Box<dyn FieldVisitor + '_>>;
+        fn visit_field(&mut self) -> Option<impl FieldVisitor + '_>;
     }
 
     pub trait FieldVisitor {
         fn visit_name(&mut self, name: &ty::FieldName);
-        fn visit_ty(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
+        fn visit_ty(&mut self) -> Option<impl TypeVisitor + '_>;
     }
 
     pub trait AttrVisitor {
@@ -756,49 +784,49 @@ def_visitors! {
     pub trait ValueDefVisitor {
         fn visit_defid(&mut self, defid: DefId);
         fn visit_name(&mut self, name: &[Symbol]);
-        fn visit_attr(&mut self) -> Option<Box<dyn AttrVisitor + '_>>;
-        fn visit_function(&mut self) -> Option<Box<dyn FunctionDefVisitor + '_>>;
+        fn visit_attr(&mut self) -> Option<impl AttrVisitor + '_>;
+        fn visit_function(&mut self) -> Option<impl FunctionDefVisitor + '_>;
     }
 
     pub trait FunctionDefVisitor {
-        fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>>;
-        fn visit_fnbody(&mut self) -> Option<Box<dyn FunctionBodyVisitor + '_>>;
+        fn visit_fnty(&mut self) -> Option<impl FunctionTyVisitor + '_>;
+        fn visit_fnbody(&mut self) -> Option<impl FunctionBodyVisitor + '_>;
     }
 
     pub trait FunctionBodyVisitor {
-        fn visit_inner_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>>;
-        fn visit_basic_block(&mut self) -> Option<Box<dyn BasicBlockVisitor + '_>>;
+        fn visit_inner_value(&mut self) -> Option<impl ValueDefVisitor + '_>;
+        fn visit_basic_block(&mut self) -> Option<impl BasicBlockVisitor + '_>;
     }
 
     pub trait BasicBlockVisitor {
         fn visit_id(&mut self, id: mir::BasicBlockId);
-        fn visit_incoming_var(&mut self, incomin: SsaVarId) -> Option<Box<dyn TypeVisitor + '_>>;
-        fn visit_stmt(&mut self) -> Option<Box<dyn StatementVisitor + '_>>;
-        fn visit_term(&mut self) -> Option<Box<dyn TerminatorVisitor + '_>>;
+        fn visit_incoming_var(&mut self, incomin: SsaVarId) -> Option<impl TypeVisitor + '_>;
+        fn visit_stmt(&mut self) -> Option<impl StatementVisitor + '_>;
+        fn visit_term(&mut self) -> Option<impl TerminatorVisitor + '_>;
     }
 
     pub trait ExprVisitor {
         fn visit_unreachable(&mut self);
-        fn visit_const_int(&mut self) -> Option<Box<dyn ConstIntVisitor +'_>>;
-        fn visit_const_char(&mut self) -> Option<Box<dyn ConstCharVisitor + '_>>;
+        fn visit_const_int(&mut self) -> Option<impl ConstIntVisitor + '_>;
+        fn visit_const_char(&mut self) -> Option<impl ConstCharVisitor + '_>;
         fn visit_const(&mut self, defid: DefId);
-        fn visit_cast(&mut self) -> Option<Box<dyn CastVisitor + '_>>;
-        fn visit_const_string(&mut self) -> Option<Box<dyn ConstStringVisitor + '_>>;
+        fn visit_cast(&mut self) -> Option<impl CastVisitor + '_>;
+        fn visit_const_string(&mut self) -> Option<impl ConstStringVisitor + '_>;
         fn visit_var(&mut self, var: mir::SsaVarId);
-        fn visit_tuple(&mut self) -> Option<Box<dyn TupleExprVisitor + '_>>;
-        fn visit_ctor(&mut self) -> Option<Box<dyn ConstructorVisitor + '_>>;
-        fn visit_field_subobject(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>>;
-        fn visit_field_project(&mut self) -> Option<Box<dyn FieldAccessVisitor + '_>>;
-        fn visit_binary_expr(&mut self) -> Option<Box<dyn BinaryExprVisitor + '_>>;
-        fn visit_unary_expr(&mut self) -> Option<Box<dyn UnaryExprVisitor + '_>>;
+        fn visit_tuple(&mut self) -> Option<impl TupleExprVisitor + '_>;
+        fn visit_ctor(&mut self) -> Option<impl ConstructorVisitor + '_>;
+        fn visit_field_subobject(&mut self) -> Option<impl FieldAccessVisitor + '_>;
+        fn visit_field_project(&mut self) -> Option<impl FieldAccessVisitor + '_>;
+        fn visit_binary_expr(&mut self) -> Option<impl BinaryExprVisitor + '_>;
+        fn visit_unary_expr(&mut self) -> Option<impl UnaryExprVisitor + '_>;
     }
 
     pub trait TupleExprVisitor {
-        fn visit_elem(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_elem(&mut self) -> Option<impl ExprVisitor + '_>;
     }
 
     pub trait ConstIntVisitor {
-        fn visit_intty(&mut self) -> Option<Box<dyn IntTyVisitor + '_>>;
+        fn visit_intty(&mut self) -> Option<impl IntTyVisitor + '_>;
         fn visit_value(&mut self, val: u128);
     }
 
@@ -808,8 +836,8 @@ def_visitors! {
     }
 
     pub trait CastVisitor {
-        fn visit_inner(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
-        fn visit_cast_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
+        fn visit_inner(&mut self) -> Option<impl ExprVisitor + '_>;
+        fn visit_cast_type(&mut self) -> Option<impl TypeVisitor + '_>;
     }
 
     pub trait ConstStringVisitor {
@@ -818,60 +846,60 @@ def_visitors! {
     }
 
     pub trait FieldAccessVisitor {
-        fn visit_base(&mut self) -> Option<Box<dyn ExprVisitor +'_>>;
+        fn visit_base(&mut self) -> Option<impl ExprVisitor + '_>;
         fn visit_field(&mut self, field_name: &ty::FieldName);
     }
 
     pub trait BinaryExprVisitor {
         fn visit_op(&mut self, op: BinaryOp);
-        fn visit_lhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
-        fn visit_rhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_lhs(&mut self) -> Option<impl ExprVisitor + '_>;
+        fn visit_rhs(&mut self) -> Option<impl ExprVisitor + '_>;
     }
 
     pub trait UnaryExprVisitor {
         fn visit_op(&mut self, op: UnaryOp);
-        fn visit_lhs(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_lhs(&mut self) -> Option<impl ExprVisitor + '_>;
     }
 
     pub trait ConstructorVisitor {
         fn visit_ctor_def(&mut self, defid: DefId);
-        fn visit_field(&mut self) -> Option<Box<dyn FieldInitVisitor + '_>>;
-        fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_field(&mut self) -> Option<impl FieldInitVisitor + '_>;
+        fn visit_init(&mut self) -> Option<impl ExprVisitor + '_>;
     }
 
     pub trait FieldInitVisitor {
         fn visit_field(&mut self, field_name: &ty::FieldName);
-        fn visit_value(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_value(&mut self) -> Option<impl ExprVisitor + '_>;
     }
 
     pub trait StatementVisitor {
-        fn visit_let(&mut self) -> Option<Box<dyn LetStatementVisitor + '_>>;
+        fn visit_let(&mut self) -> Option<impl LetStatementVisitor + '_>;
         fn visit_store_dead(&mut self, var: mir::SsaVarId);
-        fn visit_discard(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_discard(&mut self) -> Option<impl ExprVisitor + '_>;
     }
 
     pub trait LetStatementVisitor{
         fn visit_var(&mut self, var: mir::SsaVarId);
-        fn visit_var_ty(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
-        fn visit_init(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_var_ty(&mut self) -> Option<impl TypeVisitor + '_>;
+        fn visit_init(&mut self) -> Option<impl ExprVisitor + '_>;
     }
 
 
     pub trait CallVisitor {
         fn visit_retplace(&mut self, retplace: mir::SsaVarId);
-        fn visit_target(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
-        fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>>;
-        fn visit_param(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
-        fn visit_next(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
-        fn visit_intrinsic(&mut self, intrin: IntrinsicDef, generics: &generics::GenericArgs) -> Option<Box<dyn BasicBlockVisitor + '_>>;
+        fn visit_target(&mut self) -> Option<impl ExprVisitor + '_>;
+        fn visit_fnty(&mut self) -> Option<impl FunctionTyVisitor + '_>;
+        fn visit_param(&mut self) -> Option<impl ExprVisitor + '_>;
+        fn visit_next(&mut self) -> Option<impl JumpVisitor + '_>;
+        fn visit_intrinsic(&mut self, intrin: IntrinsicDef, generics: &generics::GenericArgs) -> Option<impl BasicBlockVisitor + '_>;
         fn visit_tailcall(&mut self);
-        fn visit_unwind(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
+        fn visit_unwind(&mut self) -> Option<impl JumpVisitor + '_>;
     }
 
     pub trait BranchVisitor {
-        fn visit_cond(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
-        fn visit_if_arm(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
-        fn visit_else(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
+        fn visit_cond(&mut self) -> Option<impl ExprVisitor + '_>;
+        fn visit_if_arm(&mut self) -> Option<impl JumpVisitor + '_>;
+        fn visit_else(&mut self) -> Option<impl JumpVisitor + '_>;
     }
 
     pub trait JumpVisitor {
@@ -881,22 +909,22 @@ def_visitors! {
     }
 
     pub trait TerminatorVisitor {
-        fn visit_branch(&mut self) -> Option<Box<dyn BranchVisitor + '_>>;
-        fn visit_call(&mut self) -> Option<Box<dyn CallVisitor + '_>>;
-        fn visit_jump(&mut self) -> Option<Box<dyn JumpVisitor + '_>>;
-        fn visit_return(&mut self) -> Option<Box<dyn ExprVisitor + '_>>;
+        fn visit_branch(&mut self) -> Option<impl BranchVisitor + '_>;
+        fn visit_call(&mut self) -> Option<impl CallVisitor + '_>;
+        fn visit_jump(&mut self) -> Option<impl JumpVisitor + '_>;
+        fn visit_return(&mut self) -> Option<impl ExprVisitor + '_>;
         fn visit_unreachable(&mut self);
     }
 
     pub trait FunctionTyVisitor {
         fn visit_tag(&mut self, abi: ty::AbiTag);
-        fn visit_return(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
-        fn visit_param(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
+        fn visit_return(&mut self) -> Option<impl TypeVisitor + '_>;
+        fn visit_param(&mut self) -> Option<impl TypeVisitor + '_>;
         fn visit_cvarargs(&mut self);
     }
 
     pub trait ArrayTyVisitor {
-        fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
+        fn visit_type(&mut self) -> Option<impl TypeVisitor + '_>;
         fn visit_len(&mut self, expr: &cx::ConstExpr);
     }
 
@@ -906,25 +934,25 @@ def_visitors! {
 
     pub trait PointerTyVisitor {
         fn visit_mutability(&mut self, mutability: ty::Mutability);
-        fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
+        fn visit_type(&mut self) -> Option<impl TypeVisitor + '_>;
     }
 
     pub trait ReferenceTyVisitor {
         fn visit_lifetime(&mut self, lifetime: &ty::SemaLifetime);
         fn visit_mutability(&mut self, mutability: ty::Mutability);
-        fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
+        fn visit_type(&mut self) -> Option<impl TypeVisitor + '_>;
     }
 
     pub trait TupleTyVisitor {
-        fn visit_type(&mut self) -> Option<Box<dyn TypeVisitor + '_>>;
+        fn visit_type(&mut self) -> Option<impl TypeVisitor + '_>;
     }
 
     pub trait TypeVisitor {
-        fn visit_array(&mut self) -> Option<Box<dyn ArrayTyVisitor + '_>>;
-        fn visit_int(&mut self) -> Option<Box<dyn IntTyVisitor + '_>>;
-        fn visit_pointer(&mut self) -> Option<Box<dyn PointerTyVisitor + '_>>;
-        fn visit_reference(&mut self) -> Option<Box<dyn ReferenceTyVisitor + '_>>;
-        fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>>;
+        fn visit_array(&mut self) -> Option<impl ArrayTyVisitor + '_>;
+        fn visit_int(&mut self) -> Option<impl IntTyVisitor + '_>;
+        fn visit_pointer(&mut self) -> Option<impl PointerTyVisitor + '_>;
+        fn visit_reference(&mut self) -> Option<impl ReferenceTyVisitor + '_>;
+        fn visit_tuple(&mut self) -> Option<impl TupleTyVisitor + '_>;
         fn visit_never(&mut self);
         fn visit_user_type(&mut self, defid: DefId);
     }

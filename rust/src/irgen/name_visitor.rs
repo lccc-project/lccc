@@ -7,9 +7,9 @@ use self::mangler::MangleEngine;
 use super::visitor::ConstructorDefVisitor;
 use super::{
     visitor::{
-        ArrayTyVisitor, AttrVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor,
-        IntTyVisitor, ModVisitor, PointerTyVisitor, ReferenceTyVisitor, TupleTyVisitor,
-        TypeDefVisitor, TypeVisitor, ValueDefVisitor,
+        visitor_todo, ArrayTyVisitor, AttrVisitor, FunctionBodyVisitor, FunctionDefVisitor,
+        FunctionTyVisitor, IntTyVisitor, ModVisitor, PointerTyVisitor, ReferenceTyVisitor,
+        TupleTyVisitor, TypeDefVisitor, TypeVisitor, ValueDefVisitor,
     },
     NameMap,
 };
@@ -34,18 +34,18 @@ impl<'a> NameModVisitor<'a> {
 impl<'a> ModVisitor for NameModVisitor<'a> {
     fn visit_defid(&mut self, _defid: DefId) {}
 
-    fn visit_submodule(&mut self) -> Option<Box<dyn ModVisitor + '_>> {
-        Some(Box::new(NameModVisitor::new(self.names, self.int_mangler)))
+    fn visit_submodule(&mut self) -> Option<impl ModVisitor + '_> {
+        Some(self)
     }
 
-    fn visit_type(&mut self) -> Option<Box<dyn TypeDefVisitor + '_>> {
+    fn visit_type(&mut self) -> Option<impl TypeDefVisitor + '_> {
         Some(Box::new(NameTypeDefVisitor::new(
             self.names,
             self.int_mangler,
         )))
     }
 
-    fn visit_value(&mut self) -> Option<Box<dyn ValueDefVisitor + '_>> {
+    fn visit_value(&mut self) -> Option<impl ValueDefVisitor + '_> {
         Some(Box::new(NameValueDefVisitor::new(
             self.names,
             self.int_mangler,
@@ -79,12 +79,12 @@ impl<'a> TypeDefVisitor for NameTypeDefVisitor<'a> {
         self.name.extend_from_slice(name)
     }
 
-    fn visit_attr(&mut self) -> Option<Box<dyn AttrVisitor + '_>> {
-        None
+    fn visit_attr(&mut self) -> Option<impl AttrVisitor + '_> {
+        None::<()>
     }
 
-    fn visit_struct(&mut self) -> Option<Box<dyn ConstructorDefVisitor + '_>> {
-        None
+    fn visit_struct(&mut self) -> Option<impl ConstructorDefVisitor + '_> {
+        None::<()>
     }
 
     fn visit_kind(&mut self, kind: UserTypeKind) {}
@@ -131,11 +131,11 @@ impl<'a> ValueDefVisitor for NameValueDefVisitor<'a> {
         self.name = Some(name.iter().copied().collect());
     }
 
-    fn visit_attr(&mut self) -> Option<Box<dyn AttrVisitor + '_>> {
+    fn visit_attr(&mut self) -> Option<impl AttrVisitor + '_> {
         Some(Box::new(NameAttrVisitor::new(&mut self.no_mangle)))
     }
 
-    fn visit_function(&mut self) -> Option<Box<dyn FunctionDefVisitor + '_>> {
+    fn visit_function(&mut self) -> Option<impl FunctionDefVisitor + '_> {
         Some(Box::new(NameFunctionDefVisitor::new(
             self.names,
             self.int_mangler,
@@ -189,7 +189,7 @@ impl<'a> NameFunctionDefVisitor<'a> {
 }
 
 impl<'a> FunctionDefVisitor for NameFunctionDefVisitor<'a> {
-    fn visit_fnty(&mut self) -> Option<Box<dyn FunctionTyVisitor + '_>> {
+    fn visit_fnty(&mut self) -> Option<impl FunctionTyVisitor + '_> {
         Some(Box::new(NameFunctionTyVisitor::new(
             self.names,
             self.int_mangler,
@@ -199,8 +199,8 @@ impl<'a> FunctionDefVisitor for NameFunctionDefVisitor<'a> {
         )))
     }
 
-    fn visit_fnbody(&mut self) -> Option<Box<dyn FunctionBodyVisitor + '_>> {
-        None
+    fn visit_fnbody(&mut self) -> Option<impl FunctionBodyVisitor + '_> {
+        None::<()>
     }
 }
 
@@ -235,11 +235,11 @@ impl<'a> NameFunctionTyVisitor<'a> {
 impl<'a> FunctionTyVisitor for NameFunctionTyVisitor<'a> {
     fn visit_tag(&mut self, _: AbiTag) {}
 
-    fn visit_return(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
-        None
+    fn visit_return(&mut self) -> Option<impl TypeVisitor + '_> {
+        None::<()>
     }
 
-    fn visit_param(&mut self) -> Option<Box<dyn TypeVisitor + '_>> {
+    fn visit_param(&mut self) -> Option<impl TypeVisitor + '_> {
         if self.no_mangle {
             None
         } else {
@@ -300,27 +300,27 @@ impl<'a, 'b> NameTypeVisitor<'a, 'b> {
 }
 
 impl<'a, 'b> TypeVisitor for NameTypeVisitor<'a, 'b> {
-    fn visit_array(&mut self) -> Option<Box<dyn ArrayTyVisitor + '_>> {
-        todo!("visit_array")
+    fn visit_array(&mut self) -> Option<impl ArrayTyVisitor + '_> {
+        visitor_todo!("visit_array")
     }
 
-    fn visit_int(&mut self) -> Option<Box<dyn IntTyVisitor + '_>> {
+    fn visit_int(&mut self) -> Option<impl IntTyVisitor + '_> {
         Some(Box::new(NameIntTyVisitor::new(
             self.int_mangler,
             self.name_out,
         )))
     }
 
-    fn visit_tuple(&mut self) -> Option<Box<dyn TupleTyVisitor + '_>> {
-        todo!("visit_tuple")
+    fn visit_tuple(&mut self) -> Option<impl TupleTyVisitor + '_> {
+        visitor_todo!("visit_tuple")
     }
 
-    fn visit_pointer(&mut self) -> Option<Box<dyn PointerTyVisitor + '_>> {
-        todo!("visit_pointer")
+    fn visit_pointer(&mut self) -> Option<impl PointerTyVisitor + '_> {
+        visitor_todo!("visit_pointer")
     }
 
-    fn visit_reference(&mut self) -> Option<Box<dyn ReferenceTyVisitor + '_>> {
-        todo!("visit_reference")
+    fn visit_reference(&mut self) -> Option<impl ReferenceTyVisitor + '_> {
+        visitor_todo!("visit_reference")
     }
 
     fn visit_never(&mut self) {
