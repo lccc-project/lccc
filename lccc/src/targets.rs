@@ -5,6 +5,7 @@ mod builtin {
     pub mod clever;
     pub mod elf;
     pub mod holeybytes;
+    pub mod lilium;
     pub mod linux;
     pub mod w65;
     pub mod x86;
@@ -34,6 +35,8 @@ pub fn get_properties(targ: StringView) -> Option<&'static TargetProperties<'sta
             w65-*-snes-elf => Some(&builtin::elf::W65_ELF),
             i86-*-near => Some(&builtin::elf::I86_NEAR_ELF),
             holeybytes-*-elf => Some(&builtin::elf::HOLEYBYTES_ELF),
+            x86_64-*-lilium-std => Some(&builtin::lilium::X86_64_LILIUM),
+            clever-*-lilium-std => Some(&builtin::lilium::CLEVER_LILIUM),
             * => None
         }
     }

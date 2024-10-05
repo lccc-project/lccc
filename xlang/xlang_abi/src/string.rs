@@ -459,8 +459,8 @@ impl<'a> StringView<'a> {
     #[must_use]
     pub const unsafe fn from_raw_parts(begin: *const u8, end: *const u8) -> Self {
         Self {
-            begin: NonNull::new_unchecked(begin as *mut u8),
-            end: NonNull::new_unchecked(end as *mut u8),
+            begin: unsafe { NonNull::new_unchecked(begin as *mut u8) },
+            end: unsafe { NonNull::new_unchecked(end as *mut u8) },
             phantom: PhantomData,
         }
     }

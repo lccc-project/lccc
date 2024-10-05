@@ -329,4 +329,10 @@ pub struct TargetProperties<'a> {
 
     /// Default call abi for system apis. Usually not different from `default_tag_name`
     pub system_tag_name: StringView<'a>,
+
+    /// Additional (namespaced) properties about the target.
+    /// The first string is a key, which shall be a string in the form `<namespace>:<path>` where `<namespace>` and each `/` separated segment of `<path>`, shall match `[-A-Za-z._][-A-Za-z._]*`.
+    /// The second string is the value, which may be any arbitrary UTF-8 text.
+    /// Keys may be duplicated - the meaning of duplicate entries is defined by the property
+    pub custom_properties: Span<'a, Pair<StringView<'a>, StringView<'a>>>,
 }

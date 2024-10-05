@@ -570,11 +570,18 @@ impl<'a> FunctionDefVisitor for XirFunctionDefVisitor<'a> {
     }
 }
 
+pub enum XirParamAdjustment {
+    Normal,
+    RustSimd,
+    RustCallDetuple { requires_simd_adjustment: bool },
+}
+
 pub struct XirFunctionTyVisitor<'a> {
     defs: &'a Definitions,
     names: &'a NameMap,
     fnty: &'a mut ir::FnType,
     properties: &'a TargetProperties<'a>,
+    param_adjustment: XirParamAdjustment,
 }
 
 impl<'a> XirFunctionTyVisitor<'a> {
@@ -589,13 +596,103 @@ impl<'a> XirFunctionTyVisitor<'a> {
             names,
             fnty,
             properties,
+            param_adjustment: XirParamAdjustment::Normal,
         }
     }
 }
 
 impl<'a> FunctionTyVisitor for XirFunctionTyVisitor<'a> {
-    fn visit_tag(&mut self, _: AbiTag) {
-        self.fnty.tag = self.properties.default_tag_name.into(); // TODO: fastcall
+    fn visit_tag(&mut self, tag: AbiTag) {
+        match tag {
+            AbiTag::Rust | AbiTag::RustIntrinsic | AbiTag::LCRust(_) => {
+                if self
+                    .properties
+                    .custom_properties
+                    .iter()
+                    .map(|&Pair(a, b)| (a, b))
+                    .find_map(|(key, value)| {
+                        if key == "lcrust:abi-v0/simd-adjustment-required" {
+                            value.parse::<bool>().ok()
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(true)
+                {
+                    self.param_adjustment = XirParamAdjustment::RustSimd
+                };
+                if let Some(tag) = self
+                    .properties
+                    .custom_properties
+                    .iter()
+                    .map(|&Pair(a, b)| (a, b))
+                    .find_map(|(key, value)| {
+                        if key == "lcrust:abi-v0/rustcall-tag" {
+                            return Some(value);
+                        } else {
+                            None
+                        }
+                    })
+                {
+                    self.fnty.tag = tag.into();
+                } else {
+                    self.fnty.tag = self.properties.default_tag_name.into();
+                }
+            }
+            AbiTag::RustCall => {
+                self.param_adjustment = XirParamAdjustment::RustCallDetuple {
+                    requires_simd_adjustment: self
+                        .properties
+                        .custom_properties
+                        .iter()
+                        .map(|&Pair(a, b)| (a, b))
+                        .find_map(|(key, value)| {
+                            if key == "lcrust:abi-v0/simd-adjustment-required" {
+                                value.parse::<bool>().ok()
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(true),
+                };
+
+                if let Some(tag) = self
+                    .properties
+                    .custom_properties
+                    .iter()
+                    .map(|&Pair(a, b)| (a, b))
+                    .find_map(|(key, value)| {
+                        if key == "lcrust:abi-v0/rustcall-tag" {
+                            return Some(value);
+                        } else {
+                            None
+                        }
+                    })
+                {
+                    self.fnty.tag = tag.into();
+                } else {
+                    self.fnty.tag = self.properties.default_tag_name.into();
+                }
+            }
+
+            AbiTag::C { .. } => {
+                self.fnty.tag = self.properties.default_tag_name.into();
+            }
+            AbiTag::System { .. } => {
+                self.fnty.tag = self.properties.system_tag_name.into();
+            }
+            AbiTag::Cdecl { .. } => self.fnty.tag = "cdecl".into(),
+            AbiTag::Stdcall { .. } => self.fnty.tag = "stdcall".into(),
+            AbiTag::Fastcall { .. } => self.fnty.tag = "fastcall".into(),
+            AbiTag::Thiscall { .. } => self.fnty.tag = "thiscall".into(),
+            AbiTag::Vectorcall { .. } => self.fnty.tag = "vectorcall".into(),
+            AbiTag::Win64 { .. } => self.fnty.tag = "Win64".into(),
+            AbiTag::SysV64 { .. } => self.fnty.tag = "SysV64".into(),
+            AbiTag::Aapcs { .. } => self.fnty.tag = "aapcs".into(),
+            AbiTag::Efiabi { .. } => self.fnty.tag = "efiabi".into(),
+            AbiTag::X86Interrupt => self.fnty.tag = "x86-interrupt".into(),
+            AbiTag::W65Interrupt => self.fnty.tag = "w65-interrupt".into(),
+        }
     }
 
     fn visit_return(&mut self) -> Option<impl TypeVisitor + '_> {
@@ -617,7 +714,7 @@ impl<'a> FunctionTyVisitor for XirFunctionTyVisitor<'a> {
     }
 
     fn visit_cvarargs(&mut self) {
-        todo!()
+        self.fnty.variadic = true;
     }
 }
 

@@ -129,6 +129,7 @@ pub static X86_64_LINUX_GNU: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("SysV64"),
     system_tag_name: const_sv!("SysV64"),
+    custom_properties: span![],
 };
 
 pub static X86_64_V2_LINUX_GNU: TargetProperties = TargetProperties {
@@ -140,6 +141,7 @@ pub static X86_64_V2_LINUX_GNU: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("SysV64"),
     system_tag_name: const_sv!("SysV64"),
+    custom_properties: span![],
 };
 
 pub static X86_64_V3_LINUX_GNU: TargetProperties = TargetProperties {
@@ -151,6 +153,7 @@ pub static X86_64_V3_LINUX_GNU: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("SysV64"),
     system_tag_name: const_sv!("SysV64"),
+    custom_properties: span![],
 };
 
 pub static X86_64_V4_LINUX_GNU: TargetProperties = TargetProperties {
@@ -162,6 +165,7 @@ pub static X86_64_V4_LINUX_GNU: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("SysV64"),
     system_tag_name: const_sv!("SysV64"),
+    custom_properties: span![],
 };
 
 pub static X32_LINUX_GNU: TargetProperties = TargetProperties {
@@ -173,6 +177,7 @@ pub static X32_LINUX_GNU: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("SysV64"),
     system_tag_name: const_sv!("SysV64"),
+    custom_properties: span![],
 };
 
 pub static I686_LINUX_GNU: TargetProperties = TargetProperties {
@@ -184,6 +189,7 @@ pub static I686_LINUX_GNU: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("cdecl"),
     system_tag_name: const_sv!("cdecl"),
+    custom_properties: span![],
 };
 
 pub static I586_LINUX_GNU: TargetProperties = TargetProperties {
@@ -195,6 +201,7 @@ pub static I586_LINUX_GNU: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("cdecl"),
     system_tag_name: const_sv!("cdecl"),
+    custom_properties: span![],
 };
 pub static I486_LINUX_GNU: TargetProperties = TargetProperties {
     primitives: &X86_32_PRIMITIVES,
@@ -205,6 +212,7 @@ pub static I486_LINUX_GNU: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("cdecl"),
     system_tag_name: const_sv!("cdecl"),
+    custom_properties: span![],
 };
 pub static I386_LINUX_GNU: TargetProperties = TargetProperties {
     primitives: &X86_32_PRIMITIVES,
@@ -215,6 +223,7 @@ pub static I386_LINUX_GNU: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("cdecl"),
     system_tag_name: const_sv!("cdecl"),
+    custom_properties: span![],
 };
 
 pub static X86_64_LINUX_MUSL: TargetProperties = TargetProperties {
@@ -226,4 +235,5 @@ pub static X86_64_LINUX_MUSL: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("SysV64"),
     system_tag_name: const_sv!("SysV64"),
+    custom_properties: span![],
 };

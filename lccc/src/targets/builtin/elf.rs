@@ -196,6 +196,7 @@ pub static X86_64_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     system_tag_name: const_sv!("SysV64"),
     default_tag_name: const_sv!("SysV64"),
+    custom_properties: span![],
 };
 
 pub static X32_ELF: TargetProperties = TargetProperties {
@@ -207,6 +208,7 @@ pub static X32_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     system_tag_name: const_sv!("SysV64"),
     default_tag_name: const_sv!("SysV64"),
+    custom_properties: span![],
 };
 
 pub static I386_ELF: TargetProperties = TargetProperties {
@@ -218,6 +220,7 @@ pub static I386_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     system_tag_name: const_sv!("cdecl"),
     default_tag_name: const_sv!("cdecl"),
+    custom_properties: span![],
 };
 
 pub static I486_ELF: TargetProperties = TargetProperties {
@@ -229,6 +232,7 @@ pub static I486_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     system_tag_name: const_sv!("cdecl"),
     default_tag_name: const_sv!("cdecl"),
+    custom_properties: span![],
 };
 pub static I586_ELF: TargetProperties = TargetProperties {
     primitives: &X86_32_PRIMITIVES,
@@ -239,6 +243,7 @@ pub static I586_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     system_tag_name: const_sv!("cdecl"),
     default_tag_name: const_sv!("cdecl"),
+    custom_properties: span![],
 };
 pub static I686_ELF: TargetProperties = TargetProperties {
     primitives: &X86_32_PRIMITIVES,
@@ -249,6 +254,7 @@ pub static I686_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     system_tag_name: const_sv!("cdecl"),
     default_tag_name: const_sv!("cdecl"),
+    custom_properties: span![],
 };
 
 pub static I86_NEAR_ELF: TargetProperties = TargetProperties {
@@ -260,6 +266,7 @@ pub static I86_NEAR_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     system_tag_name: const_sv!("cdecl"),
     default_tag_name: const_sv!("cdecl"),
+    custom_properties: span![],
 };
 
 pub static I86_FAR_ELF: TargetProperties = TargetProperties {
@@ -271,6 +278,7 @@ pub static I86_FAR_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     system_tag_name: const_sv!("cdecl"),
     default_tag_name: const_sv!("cdecl"),
+    custom_properties: span![],
 };
 
 pub static I86_NEAR_DATA_FAR_FN_ELF: TargetProperties = TargetProperties {
@@ -282,6 +290,7 @@ pub static I86_NEAR_DATA_FAR_FN_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     system_tag_name: const_sv!("cdecl"),
     default_tag_name: const_sv!("cdecl"),
+    custom_properties: span![],
 };
 
 pub static I86_FAR_DATA_NEAR_FN_ELF: TargetProperties = TargetProperties {
@@ -293,6 +302,7 @@ pub static I86_FAR_DATA_NEAR_FN_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     system_tag_name: const_sv!("cdecl"),
     default_tag_name: const_sv!("cdecl"),
+    custom_properties: span![],
 };
 
 pub static CLEVER_ELF_LINK: LinkProperties = LinkProperties {
@@ -337,6 +347,10 @@ pub static CLEVER_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("C"),
     system_tag_name: const_sv!("C"),
+    custom_properties: span![Pair(
+        const_sv!("lcrust:abi-v0/simd-adjustment-required"),
+        const_sv!("false")
+    )],
 };
 
 pub static CLEVERILP32_ELF: TargetProperties = TargetProperties {
@@ -348,6 +362,10 @@ pub static CLEVERILP32_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("C"),
     system_tag_name: const_sv!("C"),
+    custom_properties: span![Pair(
+        const_sv!("lcrust:abi-v0/simd-adjustment-required"),
+        const_sv!("false")
+    )],
 };
 
 pub static W65_ELF_LINK: LinkProperties = LinkProperties {
@@ -373,6 +391,10 @@ pub static W65_ELF: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("C"),
     system_tag_name: const_sv!("C"),
+    custom_properties: span![Pair(
+        const_sv!("lcrust:abi-v0/simd-adjustment-required"),
+        const_sv!("false")
+    )],
 };
 
 pub static HOLEYBYTES_ELF_LINK: LinkProperties = LinkProperties {
@@ -398,4 +420,5 @@ pub static HOLEYBYTES_ELF: TargetProperties = TargetProperties {
     abis: span![],
     default_tag_name: const_sv!("C"),
     system_tag_name: const_sv!("C"),
+    custom_properties: span![],
 };
