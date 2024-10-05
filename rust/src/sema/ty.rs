@@ -1075,7 +1075,7 @@ pub enum NicheValue {
     NullPointer,
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
 pub struct TypeLayout {
     pub size: Option<u64>,
     pub align: Option<u64>,
@@ -1084,6 +1084,7 @@ pub struct TypeLayout {
     pub field_offsets: HashMap<FieldName, u64>,
     pub mutable_fields: HashSet<FieldName>,
     pub niches: Option<Niches>,
+    pub simd_abi: bool,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

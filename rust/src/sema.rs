@@ -2,6 +2,7 @@ use std::cell::RefCell;
 
 use ast::Mutability;
 use ast::Safety;
+use attr::ReprBase;
 use cx::ConstExprConstructor;
 use ty::AbiTag;
 use xlang::abi::collection::HashMap;
@@ -1508,14 +1509,11 @@ impl Definitions {
                 Type::Bool => ty::TypeLayout {
                     size: Some(1),
                     align: Some(1),
-                    enum_layout: None,
-                    wide_ptr_metadata: None,
-                    field_offsets: HashMap::new(),
-                    mutable_fields: HashSet::new(),
                     niches: Some(ty::Niches::Scalar(ty::ScalarNiches {
                         is_nonzero: false,
                         max_value: 1,
                     })),
+                    ..Default::default()
                 },
                 Type::Int(ity) => {
                     let width = match ity.width {
@@ -1535,11 +1533,7 @@ impl Definitions {
                     ty::TypeLayout {
                         size: Some(size),
                         align: Some(align),
-                        wide_ptr_metadata: None,
-                        enum_layout: None,
-                        field_offsets: HashMap::new(),
-                        mutable_fields: HashSet::new(),
-                        niches: None,
+                        ..Default::default()
                     }
                 }
                 Type::Float(fty) => {
@@ -1556,56 +1550,47 @@ impl Definitions {
                     ty::TypeLayout {
                         size: Some(size),
                         align: Some(align),
-                        wide_ptr_metadata: None,
-                        enum_layout: None,
-                        field_offsets: HashMap::new(),
-                        mutable_fields: HashSet::new(),
-                        niches: None,
+                        ..Default::default()
                     }
                 }
                 Type::Char => ty::TypeLayout {
                     size: Some(4),
                     align: Some(self.properties.primitives.max_align.min(4) as u64),
-                    enum_layout: None,
-                    wide_ptr_metadata: None,
-                    field_offsets: HashMap::new(),
-                    mutable_fields: HashSet::new(),
                     niches: Some(ty::Niches::Scalar(ty::ScalarNiches {
                         is_nonzero: false,
                         max_value: 0x10FFFF,
                     })),
+                    ..Default::default()
                 },
                 Type::Str => ty::TypeLayout {
                     size: None,
                     align: Some(1),
                     wide_ptr_metadata: Some(ty::WidePtrMetadata::SliceLen),
-                    enum_layout: None,
-                    field_offsets: HashMap::new(),
-                    mutable_fields: HashSet::new(),
-                    niches: None,
+                    ..Default::default()
                 },
                 Type::Never => ty::TypeLayout {
                     size: Some(0),
                     align: Some(1),
-                    enum_layout: None,
-                    wide_ptr_metadata: None,
-                    field_offsets: HashMap::new(),
-                    mutable_fields: HashSet::new(),
                     niches: Some(ty::Niches::Uninhabited),
+                    ..Default::default()
                 },
                 Type::Tuple(fields) => {
                     let mut ordered_fields = Vec::new();
 
                     let mut metadata = None;
 
+                    let mut simd_abi = false;
+
                     if let Some((back, rest)) = fields.split_last() {
                         ordered_fields.extend(
                             rest.iter()
-                                .map(|ty| self.layout_of(ty, at_item, containing_item)),
+                                .map(|ty| self.layout_of(ty, at_item, containing_item))
+                                .inspect(|l| simd_abi |= l.simd_abi),
                         );
 
                         ordered_fields.sort_by_key(|layout| layout.align);
                         let back_layout = self.layout_of(back, at_item, containing_item);
+                        simd_abi = back_layout.simd_abi;
                         ordered_fields.push(back_layout);
 
                         metadata = back_layout.wide_ptr_metadata.clone();
@@ -1655,6 +1640,7 @@ impl Definitions {
                         } else {
                             None
                         },
+                        simd_abi,
                     }
                 }
                 Type::FnPtr(_) => {
@@ -1664,21 +1650,14 @@ impl Definitions {
                     ty::TypeLayout {
                         size: Some(size as u64),
                         align: Some(align as u64),
-                        enum_layout: None,
-                        wide_ptr_metadata: None,
-                        field_offsets: HashMap::new(),
-                        mutable_fields: HashSet::new(),
                         niches: Some(ty::Niches::NonNullPointer),
+                        ..Default::default()
                     }
                 }
                 Type::FnItem(_, _, _) => ty::TypeLayout {
                     size: Some(0),
                     align: Some(1),
-                    enum_layout: None,
-                    wide_ptr_metadata: None,
-                    field_offsets: HashMap::new(),
-                    mutable_fields: HashSet::new(),
-                    niches: None,
+                    ..Default::default()
                 },
                 Type::UserType(def, generics) => {
                     let def = self.definition(*def);
@@ -1691,10 +1670,18 @@ impl Definitions {
                             _ => None,
                         })
                         .unwrap_or(attr::Repr::RUST);
-
+                    let attrs = &def.attrs;
                     match &def.inner.body {
                         DefinitionInner::UserType(UserType::Struct(_, def)) => {
                             let mut field_layouts = Vec::new();
+                            let mut simd_abi = attrs
+                                .iter()
+                                .find_map(|attr| match &attr.body {
+                                    Attr::Repr(repr) => Some(repr),
+                                    _ => None,
+                                })
+                                .map(|repr| repr.base == ReprBase::Simd)
+                                .unwrap_or(false);
 
                             match &def.ctor.body {
                                 Constructor::Unit => {}
@@ -1705,6 +1692,7 @@ impl Definitions {
                                         let layout =
                                             self.layout_of(&field.ty, at_item, containing_item);
                                         field_layouts.push((name, layout));
+                                        simd_abi |= layout.simd_abi;
                                     }
                                 }
                                 Constructor::Struct(fields) => {
@@ -1713,6 +1701,7 @@ impl Definitions {
                                         let layout =
                                             self.layout_of(&field.ty, at_item, containing_item);
                                         field_layouts.push((name, layout));
+                                        simd_abi |= layout.simd_abi;
                                     }
                                 }
                             }
@@ -1798,6 +1787,7 @@ impl Definitions {
                                 field_offsets,
                                 mutable_fields: HashSet::new(),
                                 niches,
+                                simd_abi,
                             }
                         }
                         _ => panic!("Bad type ref"),
@@ -1851,11 +1841,8 @@ impl Definitions {
                         ty::TypeLayout {
                             size: Some(size),
                             align: Some(align),
-                            enum_layout: None,
-                            wide_ptr_metadata: None,
                             field_offsets: fields,
-                            mutable_fields: HashSet::new(),
-                            niches: None,
+                            ..Default::default()
                         }
                     } else {
                         let size = (self.properties.primitives.ptrbits >> 3) as u64;
@@ -1864,11 +1851,7 @@ impl Definitions {
                         ty::TypeLayout {
                             size: Some(size),
                             align: Some(align),
-                            enum_layout: None,
-                            wide_ptr_metadata: None,
-                            field_offsets: HashMap::new(),
-                            mutable_fields: HashSet::new(),
-                            niches: None,
+                            ..Default::default()
                         }
                     }
                 }
@@ -1887,11 +1870,9 @@ impl Definitions {
                     ty::TypeLayout {
                         size: Some(array_size),
                         align: Some(align),
-                        enum_layout: None,
-                        wide_ptr_metadata: None,
-                        field_offsets: HashMap::new(),
-                        mutable_fields: HashSet::new(),
                         niches: None, // TODO: we need
+                        simd_abi: inner_layout.simd_abi,
+                        ..Default::default()
                     }
                 }
                 Type::Inferable(_) | Type::InferableInt(_) => {
@@ -1950,11 +1931,9 @@ impl Definitions {
                         ty::TypeLayout {
                             size: Some(size),
                             align: Some(align),
-                            enum_layout: None,
-                            wide_ptr_metadata: None,
                             field_offsets: fields,
-                            mutable_fields: HashSet::new(),
                             niches: Some(ty::Niches::Aggregate(field_niches)),
+                            ..Default::default()
                         }
                     } else {
                         let size = (self.properties.primitives.ptrbits >> 3) as u64;
@@ -1963,11 +1942,8 @@ impl Definitions {
                         ty::TypeLayout {
                             size: Some(size),
                             align: Some(align),
-                            enum_layout: None,
-                            wide_ptr_metadata: None,
-                            field_offsets: HashMap::new(),
-                            mutable_fields: HashSet::new(),
                             niches: Some(ty::Niches::NonNullPointer),
+                            ..Default::default()
                         }
                     }
                 }

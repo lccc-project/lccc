@@ -122,6 +122,15 @@ pub struct Spanned<T> {
     pub span: Span,
 }
 
+impl<T> PartialEq<T> for Spanned<T>
+where
+    T: PartialEq,
+{
+    fn eq(&self, other: &T) -> bool {
+        self.body == *other
+    }
+}
+
 impl<T: Debug> Debug for Spanned<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({:?}) ", self.span)?;

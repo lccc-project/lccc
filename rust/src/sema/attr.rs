@@ -50,6 +50,7 @@ pub enum ReprBase {
     C,
     LCRust(Option<u16>),
     Precise(IntType),
+    Simd,
 }
 
 impl core::fmt::Display for ReprBase {
@@ -61,6 +62,7 @@ impl core::fmt::Display for ReprBase {
             ReprBase::LCRust(None) => f.write_str("lcrust"),
             ReprBase::LCRust(Some(ver)) => f.write_fmt(format_args!("lcrust_v{}", ver)),
             ReprBase::Precise(ity) => ity.fmt(f),
+            ReprBase::Simd => f.write_str("simd"),
         }
     }
 }
@@ -384,6 +386,13 @@ pub fn convert_repr(
                         has_base?;
                         base = Some(Spanned {
                             body: ReprBase::Transparent,
+                            span: id.span,
+                        });
+                    }
+                    id if matches_simple_path!(id, simd) => {
+                        has_base?;
+                        base = Some(Spanned {
+                            body: ReprBase::Simd,
                             span: id.span,
                         });
                     }
