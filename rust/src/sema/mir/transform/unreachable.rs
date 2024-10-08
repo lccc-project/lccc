@@ -10,7 +10,7 @@ impl PropagateUnreachable {
             MirExpr::Unreachable => true,
             MirExpr::Uninit(_) => false,
             MirExpr::Var(_) => false,
-            MirExpr::Read(val) => Self::expr_contains_unreachable(val),
+            MirExpr::Read(val) | MirExpr::ReadFreeze(val) => Self::expr_contains_unreachable(val),
             MirExpr::Alloca(_, _, expr) => Self::expr_contains_unreachable(expr),
             MirExpr::AllocaDrop(_, _) => false,
             MirExpr::ConstInt(_, _) => false,

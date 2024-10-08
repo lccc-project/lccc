@@ -1846,7 +1846,6 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
         match intrin {
             __builtin_assume
             | __builtin_abort
-            | transmute
             | black_box
             | construct_in_place
             | __builtin_likely
@@ -1865,7 +1864,6 @@ impl<'a> CallVisitor for XirCallVisitor<'a> {
                         ir::simple_path!(__lccc::xlang::assume)
                     }
                     __builtin_abort => ir::simple_path!(__lccc::xlang::abort),
-                    transmute => todo!(),
                     black_box => ir::simple_path!(__lccc::xlang::black_box),
                     construct_in_place => todo!(),
                     __builtin_likely => ir::simple_path!(__lccc::xlang::likely),

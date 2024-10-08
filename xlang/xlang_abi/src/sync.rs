@@ -184,7 +184,7 @@ impl<T> OnceCell<T> {
     pub fn get_or_try_insert_with<'a, R: Try<Output = T>, F: FnOnce() -> R>(
         &'a self,
         ctor: F,
-    ) -> ChangeOutputType<R, &T>
+    ) -> ChangeOutputType<R, &'a T>
     where
         R::Residual: Residual<&'a T>,
     {

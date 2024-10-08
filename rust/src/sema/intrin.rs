@@ -183,8 +183,19 @@ pub enum IntrinsicAttribute {
     /// This allows lifting to [`InvokeIntrinsic`][crate::sema::mir::MirExpr::InvokeIntrinsic].
     ///
     /// Note that the intrinsic may perform (non-volatile) writes but cannot, for example, abort or panic.
+    ///
+    /// ## Notes
+    /// In general, the intrinsic must have a default body which satisfies the following conditions:
+    /// * It does not contain any statements other than `let` statements or `write` statements
+    /// * The terminator is one of the following:
+    ///     * `unreachable`
+    ///     * `return`
+    ///     * `tailcall`, with no unwind block and the target must be another intrinsic annotated with `#[unobservable]`
+    ///
+    /// If the intrinsic does not have a default body, the intrinsic requires special xlang support to lower. Do not apply this intrinsic this without approval from #lcrust-irgen channel.
     Unobservable,
-    /// Set for intrinsics that can be inlined as an expression
+    /// Set for intrinsics that can be inlined as an expression, This is a strict subset of the rules for `#[unobservable]`.
+    /// The intrinsic must have a default body which only contains one of the allowed terminators
     InlineAsExpr,
 }
 
@@ -200,12 +211,13 @@ macro_rules! parse_attribute {
 macro_rules! def_intrinsics {
     {
         default $defs:ident |$this_block:ident, $next_block:ident, $unwind_block:ident| <$generics:ident>;
-        $($(#[$meta:ident])* $(unsafe $(@$_vol:tt)?)? intrin $name:ident $(<$($gen_param:ident),* $(,)?>)?($($param_name:ident: $param:ty),* $(,)?) -> $retty:ty $($([$($lang_name:ident = $lang_item:expr),*])? {$($inner_tt:tt)*})? $(; $(@$_vol2:tt)?)?)*
+
+        $(#[doc = $($doc_tt:tt)*] $(#[$meta:ident])* $(unsafe $(@$_vol:tt)?)? intrin $name:ident $(<$($gen_param:ident),* $(,)?>)?($($param_name:ident: $param:ty),* $(,)?) -> $retty:ty $($([$($lang_name:ident = $lang_item:expr),*])? {$($inner_tt:tt)*} $(const |$interp_block:ident| $cx_block:block)?)?  $(; $(@$_vol2:tt)? $(const |$interp_semi:ident| $cx_semi:block)?)?)*
     } => {
         #[derive(Copy, Clone, Hash, PartialEq, Eq)]
         #[allow(non_camel_case_types)]
         pub enum IntrinsicDef {
-            $($name),*
+            $(#[doc = $($doc_tt)*] $name),*
         }
 
         impl IntrinsicDef {
@@ -256,6 +268,23 @@ macro_rules! def_intrinsics {
                 }
             }
 
+            #[allow(dead_code, unused_variables)]
+            pub fn eval_const(&self, $defs: &$crate::sema::Definitions, $generics: &$crate::sema::generics::GenericArgs, interp: &mut $crate::sema::cx::eval::MirEvaluator, params: Vec<$crate::sema::cx::eval::CxEvalValue>) -> $crate::sema::cx::Result<$crate::sema::cx::eval::CxEvalValue>{
+                match self{
+                    $(Self::$name => {
+                        $($({
+                            let $interp_block = &mut *interp;
+                            return core::result::Result::Ok($cx_block)
+                        })?)?
+                        $($({
+                            let $interp_semi = &mut *interp;
+                            return core::result::Result::Ok($cx_semi)
+                        })?)?
+                        core::result::Result::Err($crate::sema::cx::ConstEvalError::UnsupportedIntrinsic(Self::$name))
+                    })*
+                }
+            }
+
             #[allow(dead_code)]
             pub fn attributes(&self) -> &'static [$crate::sema::intrin::IntrinsicAttribute]{
                 match self{
@@ -268,15 +297,19 @@ macro_rules! def_intrinsics {
 
 def_intrinsics! {
     default defs |this,next,unwind|<generics>;
+    ///
     #[unobservable]
     unsafe intrin __builtin_unreachable() -> !{
         @0: { []
             unreachable
         }
     }
-    #[unobservable]
+    ///
+    #[unobservable] // compiled as no-op in expression position
     unsafe intrin __builtin_assume(val: bool) -> ();
+    ///
     intrin __builtin_abort() -> !;
+    ///
     #[unobservable]
     intrin impl_id() -> &str{
         @<this>: { []
@@ -287,14 +320,22 @@ def_intrinsics! {
             }>
         }
     }
+    ///
     unsafe intrin __builtin_allocate<type>(layout: Var<0>) -> *mut u8 [alloc_sym = LangItem::AllocSym] {
         @<this>: {[_0: %0]
             tailcall get_symbol(#<alloc_sym>): fn(%0)->*mut u8 (_0) unwind @<unwind> []
         }
     }
-    unsafe intrin __builtin_deallocate<type>(layout: Var<0>, ptr: *mut u8) -> ();
-    #[unobservable]
+    ///
+    unsafe intrin __builtin_deallocate<type>(layout: Var<0>, ptr: *mut u8) -> () [dealloc_sym = LangItem::DeallocSym] {
+        @<this>: { [_0: %0, _1: *mut u8]
+            tailcall get_symbol(#<dealloc_sym>): fn(%0, *mut u8)->() (_0, _1) unwind @<unwind> []
+        }
+    }
+    ///
+    #[unobservable] // FIXME: Add body
     intrin type_id<type>() -> (*const u8, usize);
+    ///
     #[unobservable]
     intrin type_name<type>() -> &str{
         @<this>: { []
@@ -309,32 +350,48 @@ def_intrinsics! {
             }>
         }
     }
+    ///
     intrin destroy_at<type>(ptr: *mut Var<0>) -> (){
         @<this>: { [_0: *const %0]
             drop _0 next @<next> [] unwind @<unwind> []
         }
     }
-    #[unobservable]
+    ///
+    #[unobservable] // FIXME: Add body
     intrin discriminant<type, type>(val: *const Var<0>) -> Var<1>;
-    #[unobservable]
-    unsafe intrin transmute<type, type>(val: Var<0>) -> Var<1>;
+    ///
     intrin black_box<type>(val: Var<0>) -> Var<1>;
 
+    ///
     unsafe intrin construct_in_place<type, type, type>(dest: *mut Var<0>, f: Var<1>, params: Var<2>) -> ();
 
+    ///
     #[unobservable]
     unsafe intrin __builtin_read<type>(ptr: *const Var<0>) -> Var<0>{
         @<this>: { [_0: *const %0]
             return read(*_0)
         }
     }
+
+    ///
     #[unobservable]
-    unsafe intrin __builtin_read_freeze<type>(ptr: *const Var<0>) -> Var<0>;
+    unsafe intrin __builtin_read_freeze<type>(ptr: *const Var<0>) -> Var<0>{
+        @<this>: { [_0: *const %0]
+            return read freeze(*_0)
+        }
+    }
+
+    ///
     unsafe intrin __builtin_read_volatile<type>(ptr: *const Var<0>) -> Var<0>;
-    #[unobservable]
+
+    ///
+    #[unobservable] // FIXME: add body
     unsafe intrin __builtin_write<type>(ptr: *mut Var<0>,val: Var<0>) -> ();
+
+    ///
     unsafe intrin __builtin_write_volatile<type>(ptr: *mut Var<0>, val: Var<0>) -> ();
 
+    ///
     #[unobservable]
     intrin __builtin_size_of<type>() -> usize{
         @<this>: { []
@@ -350,6 +407,8 @@ def_intrinsics! {
             }>
         }
     }
+
+    ///
     #[unobservable]
     intrin __builtin_align_of<type>() -> usize{
         @<this>: { []
@@ -366,6 +425,7 @@ def_intrinsics! {
         }
     }
 
+    ///
     #[unobservable]
     intrin __builtin_size_of_val<type>(val: *const Var<0>) -> usize{
         @<this>: { [_0: *const %0]
@@ -384,6 +444,8 @@ def_intrinsics! {
             }>
         }
     }
+
+    ///
     #[unobservable]
     intrin __builtin_align_of_val<type>(val: *const Var<0>) -> usize{
         @<this>: { [_0: *const %0]
@@ -403,61 +465,122 @@ def_intrinsics! {
         }
     }
 
+    ///
     #[unobservable]
-    intrin __builtin_likely(val: bool) -> bool;
-    #[unobservable]
-    intrin __builtin_unlikely(val: bool) -> bool;
+    intrin __builtin_likely(val: bool) -> bool{
+        @<this>: { [_0: bool]
+            return _0
+        }
+    }
 
+    ///
     #[unobservable]
+    intrin __builtin_unlikely(val: bool) -> bool{
+        @<this>: { [_0: bool]
+            return _0
+        }
+    }
+
+    ///
+    #[unobservable] // unobservable because lowers to xlang cmp instruction
     intrin __builtin_cmp<type, type>(a: Var<0>, b: Var<0>) -> Var<1>;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because lowers to xlang cmpgt + select
     intrin __builtin_max<type>(a: Var<0>, b: Var<0>) -> Var<0>;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because lowers to xlang cmplt + select
     intrin __builtin_min<type>(a: Var<0>, b: Var<0>) -> Var<0>;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because lowers to xlang select
     intrin __builtin_clamp<type>(val: Var<0>, min: Var<0>, max: Var<0>) -> Var<0>;
 
-    #[unobservable]
+    ///
+    #[unobservable] // unobservable because can be lowered to xlang add
     intrin __builtin_fadd_fast<type>(a: Var<0>, b: Var<0>) -> Var<0>;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because can be lowered to xlang sub
     intrin __builtin_fsub_fast<type>(a: Var<0>, b: Var<0>) -> Var<0>;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because can be lowered to xlang mul
     intrin __builtin_fmul_fast<type>(a: Var<0>, b: Var<0>) -> Var<0>;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because can be lowered to xlang div
     intrin __builtin_fdiv_fast<type>(a: Var<0>, b: Var<0>) -> Var<0>;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because can be lowered to xlang mod
     intrin __builtin_frem_fast<type>(a: Var<0>, b: Var<0>) -> Var<0>;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because can be lowered to xlang ffma
     intrin __builtin_ffma_fast<type>(a: Var<0>, b: Var<0>, c: Var<0>) -> Var<0>;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because can be lowered to xlang neg
     intrin __builtin_fneg_fast<type>(a: Var<0>) -> Var<0>;
 
-    #[unobservable]
+    ///
+    #[unobservable] // unobservable because lowers to load
     unsafe intrin __atomic_load<type, const>(ptr: *mut Var<0>) -> Var<0>;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because lowers to assign
     unsafe intrin __atomic_store<type, const>(dest: *mut Var<0>, val: Var<0>) -> ();
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because lowers to cmpxchg
     unsafe intrin __atomic_compare_exchange_strong<type, const, const>(dest: *mut Var<0>, expected: *mut Var<0>, new: Var<0>) -> bool;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because lowers to wcmpxchg
     unsafe intrin __atomic_compare_exchange_weak<type, const, const>(dest: *mut Var<0>, expected: *mut Var<0>, new: Var<0>) -> bool;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because lowers to xchg
     unsafe intrin __atomic_swap<type, const>(dest: *mut Var<0>, new: Var<0>) -> Var<0>;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because lowers to fetch_assign add
     unsafe intrin __atomic_fetch_add<type, const>(dest: *mut Var<0>, val: Var<0>) -> Var<0>;
-    #[unobservable]
+
+    ///
+    #[unobservable] // unobservable because lowers to fetch_assign sub
     unsafe intrin __atomic_fetch_sub<type, const>(dest: *mut Var<0>, val: Var<0>) -> Var<0>;
 
+    ///
+    #[unobservable] // unobservable because lowers to fetch_assign and
+    unsafe intrin __atomic_fetch_and<type, const>(dest: *mut Var<0>, val: Var<0>) -> Var<0>;
 
-    #[unobservable]
+    ///
+    #[unobservable] // unobservable because lowers to fetch_assign or
+    unsafe intrin __atomic_fetch_or<type, const>(dest: *mut Var<0>, val: Var<0>) -> Var<0>;
+
+    ///
+    #[unobservable] // unobservable because lowers to fetch_assign xor
+    unsafe intrin __atomic_fetch_xor<type, const>(dest: *mut Var<0>, val: Var<0>) -> Var<0>;
+
+    ///
     unsafe intrin __atomic_read_in_transaction<type, const>(ptr: *mut Var<0>) -> Var<0>;
-    #[unobservable]
+
+    ///
     unsafe intrin __atomic_write_in_transaction<type, const>(ptr: *mut Var<0>, val: Var<0>) -> ();
-    #[unobservable]
+
+    ///
     unsafe intrin __atomic_commit_transaction<type>(ptr: *mut Var<0>) -> i32;
 
-
+    ///
     unsafe intrin __builtin_va_arg<type>(va_list: *mut Lang<VaList>) -> Var<0>;
+
+    ///
     unsafe intrin __builtin_va_copy(va_list: *mut Lang<VaList>, out:*mut Lang<VaList>)->();
+
+    ///
     unsafe intrin __builtin_va_end(va_list: *mut Lang<VaList>) -> ();
 }
 

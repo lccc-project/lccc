@@ -347,9 +347,9 @@ checksum = "9163e1259760e83d528d1b3171e5100c1767f10c52e1c4d6afad26e63d47d758"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.66"
+version = "1.0.87"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18fb31db3f9bddb2ea821cde30a9f70117e3f119938b5ee630b7403aa6e2ead9"
+checksum = "b3e4daa0dcf6feba26f985457cdf104d4b4256fc5a09547140f3631bb076b19a"
 dependencies = [
  "unicode-ident",
 ]
@@ -387,6 +387,7 @@ dependencies = [
 name = "rust_mir_macro"
 version = "0.1.0"
 dependencies = [
+ "proc-macro2",
  "xlang_frontend",
 ]
 

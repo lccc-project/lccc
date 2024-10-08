@@ -3,6 +3,7 @@ use xlang::{abi::pair::Pair, prelude::v1::HashMap};
 use super::{
     generics::{GenericArg, GenericArgs, ParamId},
     hir::HirExpr,
+    intrin::IntrinsicDef,
     mir::MirFunctionBody,
     ty::{FieldName, IntType},
     DefId, Spanned,
@@ -94,5 +95,8 @@ impl core::fmt::Display for ConstExprConstructor {
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ConstEvalError {
+    UnsupportedIntrinsic(IntrinsicDef),
     EvaluatorError,
 }
+
+pub type Result<T> = core::result::Result<T, ConstEvalError>;

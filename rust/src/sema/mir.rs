@@ -94,6 +94,7 @@ pub enum MirExpr {
     Uninit(Type),
     Var(SsaVarId),
     Read(Box<Spanned<MirExpr>>),
+    ReadFreeze(Box<Spanned<MirExpr>>),
     Alloca(Mutability, Type, Box<Spanned<MirExpr>>),
     AllocaDrop(Type, DropFlagState),
     ConstInt(IntType, u128),
@@ -128,6 +129,9 @@ impl MirExpr {
             | MirExpr::ConstString(_, _)
             | MirExpr::ConstChar(_, _) => self.clone(),
             MirExpr::Read(expr) => MirExpr::Read(Box::new(
+                expr.copy_span(|expr| expr.substitute_generics(args)),
+            )),
+            MirExpr::ReadFreeze(expr) => MirExpr::ReadFreeze(Box::new(
                 expr.copy_span(|expr| expr.substitute_generics(args)),
             )),
             MirExpr::FieldProject(base, field) => MirExpr::FieldProject(
@@ -382,6 +386,7 @@ impl core::fmt::Display for MirExpr {
             MirExpr::Unreachable => f.write_str("unreachable"),
             MirExpr::Var(var) => var.fmt(f),
             MirExpr::Read(expr) => f.write_fmt(format_args!("read(*{})", expr.body)),
+            MirExpr::ReadFreeze(expr) => f.write_fmt(format_args!("read freeze(*{})", expr.body)),
             MirExpr::Alloca(mt, ty, val) => {
                 f.write_fmt(format_args!("alloca {} {} ({})", mt, ty, val.body))
             }

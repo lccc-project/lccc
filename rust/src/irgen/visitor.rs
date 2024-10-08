@@ -616,6 +616,7 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         mir::MirExpr::Var(var) => visitor.visit_var(*var),
         mir::MirExpr::Tuple(vals) => visit_tuple_expr(visitor.visit_tuple(), vals, defs),
         mir::MirExpr::Read(_) => todo!(),
+        mir::MirExpr::ReadFreeze(_) => todo!(),
         mir::MirExpr::Alloca(_, _, _) => todo!(),
         mir::MirExpr::Retag(_, _, _) => todo!(),
         mir::MirExpr::Intrinsic(_, _) => panic!("Cannot use an intrinsic, except to call it"),

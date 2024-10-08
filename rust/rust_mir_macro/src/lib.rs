@@ -1,4 +1,4 @@
-use parse::Error;
+use parse::{Error, ExpectedTokenType};
 use proc_macro::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
 use xlang_frontend::iter::{PeekMoreIterator, Peekmore};
 
@@ -52,12 +52,12 @@ fn write_crate_path<'a, I: IntoIterator<Item = &'a str>>(
 
 fn write_error(e: Error) -> TokenStream {
     let mut ts = TokenStream::new();
-    write_global_path(&mut ts, e.span, ["core", "compile_error"]);
+    write_global_path(&mut ts, e.span.unwrap(), ["core", "compile_error"]);
     let mut bang = Punct::new('!', Spacing::Alone);
-    bang.set_span(e.span);
+    bang.set_span(e.span.unwrap());
     let mut inner = TokenStream::new();
-    let mut st = Literal::string(&e.text);
-    st.set_span(e.span);
+    let mut st = Literal::string(&e.to_string());
+    st.set_span(e.span.unwrap());
     inner.extend([TokenTree::Literal(st)]);
 
     ts.extend([
@@ -87,8 +87,9 @@ fn eval_mir<I: Iterator<Item = TokenTree>>(
         Ok(ts) => {
             if let Some(tok) = tree.peek_next() {
                 write_error(Error {
-                    text: format!("Unexpected garbage after input `{}`", tok),
-                    span: tok.span(),
+                    expected: vec![parse::ExpectedTokenType::Eof],
+                    got: tok.to_string(),
+                    span: tok.span().into(),
                 })
             } else {
                 ts

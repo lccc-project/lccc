@@ -1,28 +1,138 @@
+use std::cmp::Ordering;
+
 use proc_macro::{
     token_stream, Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree,
 };
 
+use proc_macro2::Span as Span2;
+
 use xlang_frontend::{
     iter::{with_rewinder_accept_on_continue, IntoRewinder, PeekMoreIterator, Peekmore},
-    parse::{do_alternation, take_left, take_right},
+    parse::{do_alternation, take_left},
 };
 
 use crate::{tt::*, write_crate_path, write_global_path};
 
+#[derive(Debug, Clone, Copy)]
+pub enum LiteralKind {
+    String,
+    Char,
+    Int,
+}
+
+impl core::fmt::Display for LiteralKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::String => f.write_str("string literal"),
+            Self::Char => f.write_str("char literal"),
+            Self::Int => f.write_str("int literal"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ExpectedTokenType {
+    Eof,
+    Group(Option<Delimiter>),
+    Punct(&'static str),
+    Ident,
+    Keyword(&'static str),
+    Literal(Option<LiteralKind>),
+    CustomDsc(&'static str),
+}
+
+impl core::fmt::Display for ExpectedTokenType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExpectedTokenType::Eof => f.write_str("EOF"),
+            ExpectedTokenType::Group(Some(delimiter)) => match delimiter {
+                Delimiter::Parenthesis => f.write_str("("),
+                Delimiter::Bracket => f.write_str("["),
+                Delimiter::Brace => f.write_str("{"),
+                Delimiter::None => f.write_str("<macro rules nonterminal>"),
+            },
+            ExpectedTokenType::Group(None) => f.write_str("a delimited group"),
+            ExpectedTokenType::Punct(tok)
+            | ExpectedTokenType::Keyword(tok)
+            | ExpectedTokenType::CustomDsc(tok) => f.write_str(tok),
+            ExpectedTokenType::Ident => f.write_str("an identifier"),
+            ExpectedTokenType::Literal(Some(tok)) => tok.fmt(f),
+            ExpectedTokenType::Literal(None) => f.write_str("a literal"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Error {
-    pub text: String,
-    pub span: Span,
+    pub expected: Vec<ExpectedTokenType>,
+    pub got: String,
+    pub span: Span2,
+}
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Expected ")?;
+
+        match &*self.expected {
+            [] => f.write_str("<internal error>")?,
+            [a] => f.write_fmt(format_args!("`{}`", a))?,
+            [a, b] => f.write_fmt(format_args!("`{}` or `{}", a, b))?,
+            [rest @ .., last] => {
+                f.write_str("one of: ")?;
+                for tok in rest {
+                    f.write_str("`")?;
+                    tok.fmt(f)?;
+                    f.write_str("`, ")?;
+                }
+
+                f.write_str("or `")?;
+                last.fmt(f)?;
+                f.write_str("`")?;
+            }
+        }
+
+        f.write_fmt(format_args!(" got `{}`.", self.got))
+    }
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
+
+pub fn alternation_combiner(
+    l: Result<core::convert::Infallible>,
+    r: Result<core::convert::Infallible>,
+) -> Result<core::convert::Infallible> {
+    match (l, r) {
+        (Ok(v), _) | (_, Ok(v)) => match v {},
+        (Err(mut l), Err(r)) => {
+            let l_range = l.span.byte_range();
+            let r_range = r.span.byte_range();
+            match Ord::cmp(&(l_range.start, l_range.end), &(r_range.start, r_range.end)) {
+                Ordering::Equal => {
+                    if l_range.is_empty() {
+                        if l.got == r.got {
+                            l.expected.extend(r.expected);
+                        }
+                        Err(l)
+                    } else {
+                        l.expected.extend(r.expected);
+
+                        Err(l)
+                    }
+                }
+                Ordering::Less => Err(r),
+                Ordering::Greater => Err(l),
+            }
+        }
+    }
+}
 
 pub fn do_eof<I: Iterator<Item = TokenTree>>(tokens: &mut PeekMoreIterator<I>) -> Result<()> {
     with_rewinder_accept_on_continue(tokens, |tree| {
         if let Some(tok) = tree.peek_next() {
             Err(Error {
-                text: format!("Expected EOF, got `{}`", tok),
-                span: tok.span(),
+                expected: vec![ExpectedTokenType::Eof],
+                got: tok.to_string(),
+                span: tok.span().into(),
             })
         } else {
             Ok(())
@@ -32,7 +142,7 @@ pub fn do_eof<I: Iterator<Item = TokenTree>>(tokens: &mut PeekMoreIterator<I>) -
 
 pub fn do_punct<I: Iterator<Item = TokenTree>>(
     tokens: &mut PeekMoreIterator<I>,
-    punct: &str,
+    punct: &'static str,
 ) -> Result<Span> {
     with_rewinder_accept_on_continue(tokens, |tree| {
         let mut tok = String::new();
@@ -49,8 +159,9 @@ pub fn do_punct<I: Iterator<Item = TokenTree>>(
         }
 
         return Err(Error {
-            text: format!("Expected {}, got `{}`", punct, tok),
-            span: span.unwrap_or_else(Span::call_site),
+            expected: vec![ExpectedTokenType::Punct(punct)],
+            got: tok,
+            span: span.unwrap_or_else(Span::call_site).into(),
         });
     })
 }
@@ -61,12 +172,14 @@ pub fn do_literal<I: Iterator<Item = TokenTree>>(
     with_rewinder_accept_on_continue(tree, |tree| match tree.peek_next() {
         Some(TokenTree::Literal(lit)) => Ok(lit.clone()),
         Some(tt) => Err(Error {
-            text: format!("Expected a literal, got {}", tt),
-            span: tt.span(),
+            expected: vec![ExpectedTokenType::Literal(None)],
+            got: tt.to_string(),
+            span: tt.span().into(),
         }),
         None => Err(Error {
-            text: format!("Expected a literal, but got EOF"),
-            span: Span::call_site(),
+            expected: vec![ExpectedTokenType::Literal(None)],
+            got: "EOF".to_string(),
+            span: Span2::call_site(),
         }),
     })
 }
@@ -80,8 +193,9 @@ pub fn do_unsuffixed_u32_literal<I: Iterator<Item = TokenTree>>(
             let lit = lit.to_string();
 
             let val = lit.parse::<u32>().map_err(|_| Error {
-                text: format!("Expected an integer literal, got {}", lit),
-                span,
+                expected: vec![ExpectedTokenType::Literal(Some(LiteralKind::Int))],
+                got: lit,
+                span: span.into(),
             })?;
 
             let mut lit = Literal::u32_suffixed(val);
@@ -89,12 +203,14 @@ pub fn do_unsuffixed_u32_literal<I: Iterator<Item = TokenTree>>(
             Ok(lit)
         }
         Some(tt) => Err(Error {
-            text: format!("Expected a literal, got {}", tt),
-            span: tt.span(),
+            expected: vec![ExpectedTokenType::Literal(Some(LiteralKind::Int))],
+            got: tt.to_string(),
+            span: tt.span().into(),
         }),
         None => Err(Error {
-            text: format!("Expected a literal, but got EOF"),
-            span: Span::call_site(),
+            expected: vec![ExpectedTokenType::Literal(Some(LiteralKind::Int))],
+            got: "EOF".to_string(),
+            span: Span2::call_site(),
         }),
     })
 }
@@ -103,42 +219,52 @@ pub fn do_ident<I: Iterator<Item = TokenTree>>(tree: &mut PeekMoreIterator<I>) -
     with_rewinder_accept_on_continue(tree, |tree| match tree.peek_next() {
         Some(TokenTree::Ident(id)) => Ok(id.clone()),
         Some(tt) => Err(Error {
-            text: format!("Expected identifier, got {}", tt),
-            span: tt.span(),
+            expected: vec![ExpectedTokenType::Ident],
+            got: tt.to_string(),
+            span: tt.span().into(),
         }),
         None => Err(Error {
-            text: format!("Expected an identifier, but got EOF"),
-            span: Span::call_site(),
+            expected: vec![ExpectedTokenType::Ident],
+            got: "EOF".to_string(),
+            span: Span2::call_site(),
         }),
     })
 }
 
 pub fn do_keyword<I: Iterator<Item = TokenTree>>(
     tree: &mut PeekMoreIterator<I>,
-    kw: &str,
+    kw: &'static str,
 ) -> Result<Span> {
     with_rewinder_accept_on_continue(tree, |tree| match tree.peek_next() {
         Some(TokenTree::Ident(id)) if id.to_string() == kw => Ok(id.span()),
         Some(tt) => Err(Error {
-            text: format!("Expected `{}`, got {}", kw, tt),
-            span: tt.span(),
+            expected: vec![ExpectedTokenType::Keyword(kw)],
+            got: tt.to_string(),
+            span: tt.span().into(),
         }),
         None => Err(Error {
-            text: format!("Expected an `{}`, but got EOF", kw),
-            span: Span::call_site(),
+            expected: vec![ExpectedTokenType::Keyword(kw)],
+            got: "EOF".to_string(),
+            span: Span2::call_site(),
         }),
     })
 }
 
-pub fn do_keywords<'a, I: Iterator<Item = TokenTree>, K: IntoIterator<Item = &'a str>>(
+pub fn do_keywords<I: Iterator<Item = TokenTree>, K: IntoIterator<Item = &'static str>>(
     tree: &mut PeekMoreIterator<I>,
     kws: K,
-) -> Result<(&'a str, Span)> {
+) -> Result<(&'static str, Span)> {
     let mut err = None;
     for kw in kws {
         match do_keyword(tree, kw) {
             Ok(span) => return Ok((kw, span)),
-            Err(e) => err = Some(e),
+            Err(e) => match err {
+                Some(er) => match alternation_combiner(Err(er), Err(e)) {
+                    Err(e) => err = Some(e),
+                    Ok(v) => match v {},
+                },
+                None => err = Some(e),
+            },
         }
     }
 
@@ -154,12 +280,14 @@ pub fn do_group<I: Iterator<Item = TokenTree>>(
             Ok(g.clone())
         }
         Some(tt) => Err(Error {
-            text: format!("Expected a group, got {}", tt),
-            span: tt.span(),
+            expected: vec![ExpectedTokenType::Group(gtype)],
+            got: tt.to_string(),
+            span: tt.span().into(),
         }),
         None => Err(Error {
-            text: format!("Expected an a group, but got EOF"),
-            span: Span::call_site(),
+            expected: vec![ExpectedTokenType::Group(gtype)],
+            got: "EOF".to_string(),
+            span: Span2::call_site(),
         }),
     })
 }
@@ -180,8 +308,9 @@ pub fn do_type<I: Iterator<Item = TokenTree>>(
             do_type_fnptr,
             do_type_pointer,
             do_type_var,
+            do_type_tuple_paren,
         ],
-        take_right,
+        alternation_combiner,
         dollar_crate,
     )
 }
@@ -406,8 +535,9 @@ pub fn do_int_type<I: Iterator<Item = TokenTree>>(
         let id = id.trim_start_matches("r#");
         if !(id.starts_with("i") || id.starts_with("u")) {
             return Err(Error {
-                text: format!("Expected an integer type, got {}", id),
-                span,
+                expected: vec![ExpectedTokenType::CustomDsc("integer type")],
+                got: id.to_string(),
+                span: span.into(),
             });
         }
         let mut token_stream = TokenStream::new();
@@ -442,8 +572,9 @@ pub fn do_float_type<I: Iterator<Item = TokenTree>>(
         let id = id.trim_start_matches("r#");
         if !id.starts_with("f") {
             return Err(Error {
-                text: format!("Expected an integer type, got {}", id),
-                span,
+                expected: vec![ExpectedTokenType::CustomDsc("float type")],
+                got: id.to_string(),
+                span: span.into(),
             });
         }
         let mut token_stream = TokenStream::new();
@@ -472,19 +603,12 @@ pub fn do_primitive_type<I: Iterator<Item = TokenTree>>(
     dollar_crate: &TokenStream,
 ) -> Result<TokenStream> {
     with_rewinder_accept_on_continue(tokens, |tokens| {
-        let id = do_ident(tokens)?;
-        let span = id.span();
-        let id = id.to_string();
-        let last = match &*id {
+        let (kw, span) = do_keywords(tokens, ["bool", "str", "char"])?;
+        let last = match &*kw {
             "bool" => "Bool",
             "str" => "Str",
             "char" => "Char",
-            x => {
-                return Err(Error {
-                    text: format!("Expected a type, got {}", x),
-                    span,
-                })
-            }
+            x => unreachable!(),
         };
 
         let mut token_stream = TokenStream::new();
@@ -541,7 +665,7 @@ pub fn do_fnty<I: Iterator<Item = TokenTree>>(
     do_alternation(
         tokens,
         [do_fnty_no_interp, do_fnty_interpolation],
-        take_right,
+        alternation_combiner,
         dollar_crate,
     )
 }
@@ -863,6 +987,61 @@ pub fn do_type_var<I: Iterator<Item = TokenTree>>(
     })
 }
 
+pub fn do_type_tuple_paren<I: Iterator<Item = TokenTree>>(
+    tokens: &mut PeekMoreIterator<I>,
+    dollar_crate: &TokenStream,
+) -> Result<TokenStream> {
+    let g = do_group(tokens, Some(Delimiter::Parenthesis))?;
+
+    let span = g.span();
+
+    let mut iter = g.stream().into_iter().peekmore();
+
+    let mut types = TokenStream::new();
+
+    let mut is_possibly_paren_type = true;
+
+    loop {
+        let ty = match do_type(&mut iter, dollar_crate) {
+            Ok(v) => v,
+            Err(_) => match do_eof(&mut iter) {
+                Ok(()) => break,
+                Err(e) => return Err(e),
+            },
+        };
+
+        match do_punct(&mut iter, ",") {
+            Ok(_) => {
+                is_possibly_paren_type = false;
+                types.extend(ty);
+                types.extend(punct(","));
+            }
+            Err(e) => match do_eof(&mut iter) {
+                Ok(()) => {
+                    if is_possibly_paren_type {
+                        return Ok(ty);
+                    } else {
+                        break;
+                    }
+                }
+                Err(_) => return Err(e),
+            },
+        }
+    }
+
+    let mut vec = TokenStream::new();
+    write_global_path(&mut vec, span, ["std", "vec"]);
+    vec.extend(punct("!"));
+    vec.extend(group(types, Delimiter::Bracket));
+
+    let mut ty = TokenStream::new();
+
+    write_crate_path(&mut ty, span, dollar_crate, ["sema", "ty", "Type", "Tuple"]);
+    ty.extend(group(vec, Delimiter::Parenthesis));
+
+    Ok(ty)
+}
+
 pub fn do_expr<I: Iterator<Item = TokenTree>>(
     tokens: &mut PeekMoreIterator<I>,
     dollar_crate: &TokenStream,
@@ -882,7 +1061,7 @@ pub fn do_expr<I: Iterator<Item = TokenTree>>(
             do_expr_get_subobject,
             do_expr_project_field,
         ],
-        take_right,
+        alternation_combiner,
         dollar_crate,
     )
 }
@@ -899,7 +1078,7 @@ pub fn do_field_name<I: Iterator<Item = TokenTree>>(
             do_field_name_nested,
             do_field_name_token,
         ],
-        take_right,
+        alternation_combiner,
         dollar_crate,
     )
 }
@@ -1040,8 +1219,9 @@ pub fn do_field_name_token_as_symbol<I: Iterator<Item = TokenTree>>(
 
                 if st.contains(|c: char| c.is_ascii_digit()) {
                     Err(Error {
-                        text: format!("Expected an integer literal, got {st}"),
-                        span: lit.span(),
+                        expected: vec![ExpectedTokenType::Literal(Some(LiteralKind::Int))],
+                        got: st,
+                        span: lit.span().into(),
                     })
                 } else {
                     Ok((write_intern(&st, lit.span(), dollar_crate), lit.span()))
@@ -1227,8 +1407,9 @@ pub fn do_expr_const_lit<I: Iterator<Item = TokenTree>>(
 
         if lit.starts_with(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']) {
             let pos = lit.rfind(['u', 'i']).ok_or_else(|| Error {
-                text: format!("Expected an integer literal (with a suffix), got `{}`", lit),
-                span,
+                expected: vec![ExpectedTokenType::Literal(Some(LiteralKind::Int))],
+                got: lit.clone(),
+                span: span.into(),
             })?;
 
             let (lit, suffix) = lit.split_at(pos);
@@ -1300,8 +1481,9 @@ pub fn do_ssa_var<I: Iterator<Item = TokenTree>>(
         let id = id.to_string();
         if let Some(rest) = id.strip_prefix('_') {
             let val = rest.parse::<u32>().map_err(|_| Error {
-                text: format!("Expected a Ssa var, got `{}`", id),
-                span,
+                expected: vec![ExpectedTokenType::CustomDsc("an ssa var")],
+                got: id.clone(),
+                span: span.into(),
             })?;
 
             let tok = Literal::u32_suffixed(val);
@@ -1323,8 +1505,9 @@ pub fn do_ssa_var<I: Iterator<Item = TokenTree>>(
             Ok(ssa_var)
         } else {
             Err(Error {
-                text: format!("Expected a Ssa var, got `{}`", id),
-                span,
+                expected: vec![ExpectedTokenType::CustomDsc("an ssa var")],
+                got: id,
+                span: span.into(),
             })
         }
     })
@@ -1336,6 +1519,12 @@ pub fn do_expr_read<I: Iterator<Item = TokenTree>>(
 ) -> Result<TokenStream> {
     with_rewinder_accept_on_continue(tokens, |tree| {
         let base_span = do_keyword(tree, "read")?;
+
+        let last = match do_keyword(tree, "freeze") {
+            Ok(_) => "ReadFreeze",
+            Err(_) => "Read",
+        };
+
         let group = do_group(tree, Some(Delimiter::Parenthesis))?;
 
         let mut inner_tree = group.stream().into_iter().peekmore();
@@ -1349,7 +1538,7 @@ pub fn do_expr_read<I: Iterator<Item = TokenTree>>(
             &mut ts,
             base_span,
             dollar_crate,
-            ["sema", "mir", "MirExpr", "Read"],
+            ["sema", "mir", "MirExpr", last],
         );
         let inner_stream = write_spanned(inner_expr, inner_base_span, true, dollar_crate);
         ts.extend([TokenTree::Group(Group::new(
@@ -1449,7 +1638,7 @@ pub fn do_terminator<I: Iterator<Item = TokenTree>>(
             do_term_tailcall,
             do_term_drop,
         ],
-        take_right,
+        alternation_combiner,
         dollar_crate,
     )
 }
@@ -1461,7 +1650,7 @@ pub fn do_statement<I: Iterator<Item = TokenTree>>(
     do_alternation(
         tokens,
         [do_stmt_store_dead, do_stmt_write, do_stmt_let],
-        take_right,
+        alternation_combiner,
         dollar_crate,
     )
 }
@@ -1587,7 +1776,7 @@ pub fn do_basic_block_id<I: Iterator<Item = TokenTree>>(
     do_alternation(
         tokens,
         [do_basic_block_id_interp, do_basic_block_id_no_interp],
-        take_right,
+        alternation_combiner,
         dollar_crate,
     )
 }
@@ -1890,7 +2079,7 @@ pub fn do_jump_target<I: Iterator<Item = TokenTree>>(
 
         let fallthrough = match fallthrough {
             Ok(span) => TokenStream::from(TokenTree::Ident(Ident::new("true", span))),
-            Err(x) => TokenStream::from(TokenTree::Ident(Ident::new("false", x.span))),
+            Err(x) => TokenStream::from(TokenTree::Ident(Ident::new("false", x.span.unwrap()))),
         };
 
         let target = do_basic_block_id(tree, dollar_crate)?;

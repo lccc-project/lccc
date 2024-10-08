@@ -64,6 +64,8 @@ pub mod span;
 /// Implementation of `std::string::String` that uses [`alloc::Allocator`], and is ABI safe.
 /// Also defines an ABI safe equivalent for `&str` (but not `&mut str`)
 pub mod string;
+/// Utility functions
+pub mod util;
 /// Implementation of `std::string::String` that uses [`alloc::Allocator`], and is ABI safe.
 pub mod vec;
 
