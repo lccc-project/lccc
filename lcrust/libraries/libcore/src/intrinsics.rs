@@ -19,29 +19,48 @@
 
 #![unstable(feature = "core_intrinsics", issue = "none")]
 
+#[stable]
+pub use core::mem::transmute;
+
+#[unstable(feature = "lccc_mir_macro", issue = "none")]
+#[lcrust::builtin_macro]
+pub macro mir($($tt:tt)*) {}
+
 extern "rust-intrinsics" {
-    pub unsafe fn transmute<T, U>(x: T) -> U;
+
+    pub fn __builtin_size_of<T>() -> usize;
+    pub fn __builtin_align_of<T>() -> usize;
+    pub fn __builtin_known_align_of<T>() -> usize;
+
     pub unsafe fn construct_in_place<T, F: FnOnce<Args> + FnPointer, Args: Tuple>(
         dest: *mut T,
         func: F,
         args: Args,
     );
-    pub fn __builtin_cmp<T: core::marker::Copy + core::cmp::PartialOrd, U>(a: T, b: T) -> U;
+
+    /// Compares two primitive values three way. `U` must be an integer type
+    pub const fn __builtin_cmp<
+        T: core::marker::Copy + core::cmp::PartialOrd,
+        U: core::marker::Copy,
+    >(
+        a: T,
+        b: T,
+    ) -> U;
 
     /// Same as [`Ord::max`][core::cmp::Ord::max] but only on primitives, and generally more efficient.
     /// Also functions on `f32` and `f64`, see the corresponding function on those types for behaviour surrounding NaNs.
     /// This may avoid a branch that may be present on the default function
-    pub fn __builtin_max_val<T: core::marker::Copy + core::cmp::PartialOrd>(a: T, b: T) -> T;
+    pub const fn __builtin_max_val<T: core::marker::Copy + core::cmp::PartialOrd>(a: T, b: T) -> T;
     /// Same as [`Ord::min`][core::cmp::Ord::min] but only on primitives, and generally more efficient.
     /// Also functions on `f32` and `f64`, see the corresponding function on those types for behaviour surrounding NaNs.
     /// This may avoid a branch that may be present on the default function
-    pub fn __builtin_min_val<T: core::marker::Copy + core::cmp::PartialOrd>(a: T, b: T) -> T;
+    pub const fn __builtin_min_val<T: core::marker::Copy + core::cmp::PartialOrd>(a: T, b: T) -> T;
     /// Same as [`Ord::clamp`][core::cmp::Ord::clamp] but only on primitives, and generally more efficient.
     /// Also functions on `f32` and `f64`, see the corresponding function on those types for behaviour surrounding NaNs.
     /// This may avoid a branch that may be present on the default function.
-    /// 
+    ///
     /// Note: This function may have unpredictable results, but does not have undefined behaviour, if `lower` > `upper`.
-    pub fn __builtin_clamp_val<T: core::marker::Copy + core::cmp::PartialOrd>(
+    pub const fn __builtin_clamp_val<T: core::marker::Copy + core::cmp::PartialOrd>(
         val: T,
         lower: T,
         upper: T,

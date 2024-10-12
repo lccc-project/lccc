@@ -87,9 +87,8 @@ pub fn slice_from_raw_parts_mut(ptr: *mut T, len: usize) -> *mut [T] {
 }
 
 #[repr(transparent)]
-#[__lccc::transparent_as_unreified_field] // Fields with the type just become the transparent field type.
 pub struct NonNull<T: ?Sized> {
-    #[__lccc::xlang_pointer_attributes(nonnull)]
+    #[lcrust::nonnull_pointer]
     ptr: *const T,
 }
 
@@ -103,16 +102,7 @@ impl<T: ?Sized> Copy for NonNull<T> {}
 
 impl<T> NonNull<T> {
     pub const fn dangling() -> Self {
-        // If std is built with debug-assertions=1 (--debug & -Z build-std), or the randomize-dangling feature
-        // Then mess with code that relies on the unspecified implementation of NonNull::<T>::dangling()
-        let ptr = if cfg!(debug_assertions) || cfg!(feature = "randomize-dangling") {
-            (::__lccc::__random_bytes!() & !(::__lccc::builtins::Rust::align_of::<T>() - 1))
-                as *const T
-        } else {
-            ::__lccc::builtins::Rust::align_of::<T>() as *const T
-        };
-
-        NonNull { ptr }
+        core::alloc::Layout::of::<T>().dangling().cast()
     }
 }
 
@@ -162,7 +152,6 @@ impl<T: ?Sized> From<&mut T> for NonNull<T> {
 
 #[repr(transparent)]
 #[unstable(feature = "lccc_unique_ptr")]
-#[__lccc::transparent_as_unreified_field]
 pub struct Unique<T: ?Sized> {
     #[__lccc::xlang_pointer_attributes(aligned)]
     ptr: NonNull<T>,

@@ -171,3 +171,43 @@ pub const fn align_of<T>() -> usize {
 pub const fn size_of_val<T: ?Sized>(x: &T) -> usize {
     intrinsics::__builtin_size_of_val(x)
 }
+
+pub const fn align_of_val<T: ?Sized>(x: &T) -> usize {
+    intrinsics::__builtin_align_of_val(x)
+}
+
+pub const unsafe fn transmute_copy<T: ?Sized, U>(x: &T) -> U {
+    if const { core::intrinsics::__builtin_known_align_of::<T>() < core::mem::align_of::<U>() } {
+        (x as *const T).cast::<U>().read_unaligned()
+    } else {
+        (x as *const T).cast::<U>().read()
+    }
+}
+
+pub const unsafe fn transmute<T, U>(x: T) -> U {
+    const {
+        assert_eq!(
+            core::mem::size_of::<T>(),
+            core::mem::size_of::<U>(),
+            "Cannot transmute between differently sized types"
+        );
+    }
+
+    transmute_unchecked(x)
+}
+
+#[unstable(feature = "transmute_unchecked")]
+#[inline(always)]
+pub const unsafe fn transmute_unchecked<T, U>(x: T) -> U {
+    union Transmuter<T, U> {
+        val: ManuallyDrop<T>,
+        result: ManuallyDrop<U>,
+    }
+
+    ManuallyDrop::into_inner(
+        Transmuter {
+            val: ManuallyDrop::new(x),
+        }
+        .result,
+    )
+}

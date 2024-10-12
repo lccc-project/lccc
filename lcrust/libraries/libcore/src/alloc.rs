@@ -119,7 +119,7 @@ impl Layout {
     pub fn dangling(&self) -> NonNull<u8> {
         // SAFETY:
         // _align is a power of two, and thus, the resulting pointer is non-null.
-        unsafe { NonNull::new_unchecked(self._align as *mut u8) }
+        unsafe { NonNull::new_unchecked(core::ptr::without_provenance(isize::MIN as usize)) }
     }
 }
 
