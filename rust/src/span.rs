@@ -153,6 +153,13 @@ impl<T> DerefMut for Spanned<T> {
 }
 
 impl<T> Spanned<T> {
+    pub fn as_ref(&self) -> Spanned<&T> {
+        Spanned {
+            body: &self.body,
+            span: self.span,
+        }
+    }
+
     pub fn copy_span<U, F: FnOnce(&T) -> U>(&self, f: F) -> Spanned<U> {
         Spanned {
             body: f(&self.body),

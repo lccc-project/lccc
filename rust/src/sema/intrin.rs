@@ -415,15 +415,32 @@ def_intrinsics! {
             return <{
                 let param_ty = match generics.params.get(0){
                     Some(GenericArg::Type(ty)) => ty,
-                    _ => panic!("Expected a generic type for argument 0 of `__builtin_size_of`")
+                    _ => panic!("Expected a generic type for argument 0 of `__builtin_align_of`")
                 };
 
-                let align = defs.align_of(param_ty).expect("Expected a `Sized` type for type argument `0` of `__builtin_size_of`");
+                let align = defs.align_of(param_ty).expect("Expected a `Sized` type for type argument `0` of `__builtin_align_of`");
 
                 mir::MirExpr::ConstInt(ty::IntType::usize, align as u128)
             }>
         }
     }
+
+     ///
+     #[unobservable]
+     intrin __builtin_known_align_of<type>() -> usize{
+         @<this>: { []
+             return <{
+                 let param_ty = match generics.params.get(0){
+                     Some(GenericArg::Type(ty)) => ty,
+                     _ => panic!("Expected a generic type for argument 0 of `__builtin_known_align_of`")
+                 };
+
+                 let align = defs.align_of(param_ty).unwrap_or(1);
+
+                 mir::MirExpr::ConstInt(ty::IntType::usize, align as u128)
+             }>
+         }
+     }
 
     ///
     #[unobservable]

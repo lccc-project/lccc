@@ -1857,7 +1857,7 @@ impl Definitions {
                 }
                 Type::Array(ty, elems) => {
                     let elems = self
-                        .evaluate_as_u64(elems, at_item, containing_item)
+                        .evaluate_as_u64(elems.as_ref(), at_item, containing_item)
                         .expect("Left over generic parameter or wrong type");
 
                     let inner_layout = self.layout_of(ty, at_item, containing_item);
@@ -2206,15 +2206,16 @@ impl Definitions {
 impl Definitions {
     pub fn evaluate_const_expr(
         &self,
-        cx: &Spanned<cx::ConstExpr>,
+        cx: Spanned<&cx::ConstExpr>,
         at_item: DefId,
         containing_item: DefId,
     ) -> Result<cx::ConstExpr> {
-        match &cx.body {
+        match cx.body {
             cx::ConstExpr::MirVal(_) => todo!("evaluate mir"),
             cx::ConstExpr::HirVal(_) => panic!("Hir must be expanded before evaluation"),
             cx::ConstExpr::Param(_) => panic!("Substitute Generics before evaluation"),
             cx::ConstExpr::IntConst(ity, val) => Ok(cx::ConstExpr::IntConst(*ity, *val)),
+            cx::ConstExpr::BoolConst(val) => Ok(cx::ConstExpr::BoolConst(*val)),
             cx::ConstExpr::Const(defid, generics) => {
                 Ok(cx::ConstExpr::Const(*defid, generics.clone()))
             }
@@ -2228,7 +2229,7 @@ impl Definitions {
                         Ok((
                             field.clone(),
                             val.try_copy_span(|_| {
-                                self.evaluate_const_expr(val, at_item, containing_item)
+                                self.evaluate_const_expr(val.as_ref(), at_item, containing_item)
                             })?,
                         ))
                     })
@@ -2245,7 +2246,7 @@ impl Definitions {
 
     pub fn evaluate_as_u64(
         &self,
-        cx: &Spanned<cx::ConstExpr>,
+        cx: Spanned<&cx::ConstExpr>,
         at_item: DefId,
         containing_item: DefId,
     ) -> Result<u64> {
@@ -2262,6 +2263,7 @@ impl Definitions {
                 relevant_item: at_item,
                 hints: vec![],
             }),
+            cx::ConstExpr::BoolConst(val) => panic!("{val} is not a u64"),
             cx::ConstExpr::Const(defid, _) => panic!("{defid} is not a u64"),
             cx::ConstExpr::Constructor(ctor) => panic!("{ctor} is not a u64"),
         }
@@ -2269,7 +2271,7 @@ impl Definitions {
 
     pub fn evaluate_as_constructor(
         &self,
-        cx: &Spanned<cx::ConstExpr>,
+        cx: Spanned<&cx::ConstExpr>,
         at_item: DefId,
         containing_item: DefId,
     ) -> Result<DefId> {
@@ -2283,13 +2285,16 @@ impl Definitions {
             cx::ConstExpr::Const(defid, _) => {
                 panic!("{defid} is not a struct, union, or enum type")
             }
+            cx::ConstExpr::BoolConst(val) => {
+                panic!("{val} is not a struct, union, or enum type")
+            }
             cx::ConstExpr::Constructor(ctor) => Ok(ctor.ctor_id),
         }
     }
 
     pub fn evaluate_as_discriminant(
         &self,
-        cx: &Spanned<cx::ConstExpr>,
+        cx: Spanned<&cx::ConstExpr>,
         at_item: DefId,
         containing_item: DefId,
     ) -> Result<u128> {

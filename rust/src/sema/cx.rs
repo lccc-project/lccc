@@ -20,6 +20,7 @@ pub enum ConstExpr {
     Const(DefId, GenericArgs),
     Param(ParamId),
     Constructor(ConstExprConstructor),
+    BoolConst(bool),
 }
 
 impl core::fmt::Display for ConstExpr {
@@ -31,6 +32,7 @@ impl core::fmt::Display for ConstExpr {
             ConstExpr::Const(def, generics) => f.write_fmt(format_args!("")),
             ConstExpr::Param(par) => par.fmt(f),
             ConstExpr::Constructor(ctor) => ctor.fmt(f),
+            ConstExpr::BoolConst(v) => v.fmt(f),
         }
     }
 }
@@ -41,6 +43,7 @@ impl ConstExpr {
             Self::HirVal(val) => panic!("Expand HIR Vals before substituting"),
             Self::MirVal(body) => Self::MirVal(Box::new(body.substitute_generics(args))),
             Self::IntConst(ity, val) => Self::IntConst(*ity, *val),
+            Self::BoolConst(v) => Self::BoolConst(*v),
             Self::Const(defid, generics) => Self::Const(*defid, generics.substitute_generics(args)),
             Self::Param(id) => match args.get(*id) {
                 Some(GenericArg::Const(cx)) => cx.clone(),
@@ -94,8 +97,15 @@ impl core::fmt::Display for ConstExprConstructor {
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum UbType {
+    OutOfBoundsAccess,
+    ValidityCheckFailed,
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ConstEvalError {
     UnsupportedIntrinsic(IntrinsicDef),
+    UbError(UbType),
     EvaluatorError,
 }
 

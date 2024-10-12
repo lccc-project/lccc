@@ -15,11 +15,13 @@ use xlang::{
     ir::PathComponent,
 };
 
+use crate::ast::Spanned;
 use crate::lex::CharType;
 use crate::sema::mir;
 use crate::sema::{cx, hir::BinaryOp, mir::SsaVarId};
 use crate::sema::{generics, ty, UserTypeKind};
 use crate::sema::{mir::UnaryOp, ty::Mutability};
+use crate::span::Span;
 use crate::{
     interning::Symbol,
     lang::LangItem,
@@ -906,14 +908,17 @@ impl<'a> ArrayTyVisitor for XirArrayTyVisitor<'a> {
         };
         self.aty.len = ir::Value::Integer {
             ty,
-            val: match expr {
-                cx::ConstExpr::HirVal(_) => todo!(),
-                cx::ConstExpr::MirVal(_) => todo!("Evaluate Complex Consts"),
-                cx::ConstExpr::Param(_) => panic!("Unexpanded generics"),
-                cx::ConstExpr::IntConst(_, val) => *val,
-                cx::ConstExpr::Const(_, _) => todo!("const item"),
-                cx::ConstExpr::Constructor(_) => todo!("constructor"),
-            },
+            val: self
+                .defs
+                .evaluate_as_u64(
+                    Spanned {
+                        body: expr,
+                        span: Span::synthetic(),
+                    },
+                    DefId::ROOT,
+                    DefId::ROOT,
+                )
+                .unwrap() as u128,
         };
     }
 }
