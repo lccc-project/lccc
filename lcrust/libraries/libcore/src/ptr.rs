@@ -136,6 +136,12 @@ impl<T: ?Sized> NonNull<T> {
     }
 }
 
+impl<T> NonNull<[T]> {
+    pub const fn len(self) -> usize {
+        self.ptr.len()
+    }
+}
+
 impl<T: ?Sized> From<&T> for NonNull<T> {
     fn from(t: &T) -> Self {
         NonNull { ptr: t }

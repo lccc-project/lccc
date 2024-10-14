@@ -80,11 +80,11 @@ impl<T> [T] {
         unsafe { transmute::<_, RawSlice<T>>(self).len == 0 }
     }
 
-    pub fn first(&self) -> Option<&T> {
+    pub const fn first(&self) -> Option<&T> {
         if self.is_empty() {
             None
         } else {
-            Some(unsafe { &self.get_unchecked() })
+            Some(unsafe { &self.get_unchecked(0) })
         }
     }
 
@@ -92,7 +92,7 @@ impl<T> [T] {
         if self.is_empty() {
             None
         } else {
-            Some(unsafe { &mut self.get_unchecked_mut() })
+            Some(unsafe { &mut self.get_unchecked_mut(0) })
         }
     }
 
@@ -102,6 +102,20 @@ impl<T> [T] {
 
     pub fn as_mut_ptr(&self) -> *mut T {
         unsafe { transmute::<_, RawSlice<T>>(self).ptr }
+    }
+
+    pub fn iter(&self) -> Iter<T> {
+        Iter(
+            unsafe { RawSliceIter::new(NonNull::from(self)) },
+            PhantomData,
+        )
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        IterMut(
+            unsafe { RawSliceIter::new(NonNull::from(self)) },
+            PhantomData,
+        )
     }
 }
 
@@ -185,9 +199,41 @@ impl<T> SliceIndex<[T]> for usize {
     }
 }
 
-pub(crate) struct RawSliceIter<T> {
+#[unstable(feature = "lccc_raw_slice_iter")]
+pub struct RawSliceIter<T> {
     base: core::ptr::NonNull<T>,
     end_or_len: *const T,
+}
+
+impl<T> RawSliceIter<T> {
+    pub unsafe fn new(ptr: core::ptr::NonNull<[T]>) -> Self {
+        if const { core::mem::size_of::<T>() == 0 } {
+            Self {
+                base: ptr.cast(),
+                end_or_len: core::ptr::without_provenance(ptr.len()),
+            }
+        } else {
+            let begin = ptr.cast();
+            let end = unsafe { begin.add(ptr.len()) };
+
+            Self {
+                base: begin,
+                end_or_len: end.as_ptr(),
+            }
+        }
+    }
+
+    pub fn current(&self) -> core::ptr::NonNull<T> {
+        self.base
+    }
+
+    pub fn current_back(&self) -> core::ptr::NonNull<T> {
+        if const { core::mem::size_of::<T>() == 0 } {
+            self.base
+        } else {
+            unsafe { core::ptr::NonNull::new_unchecked(self.end_or_len) }
+        }
+    }
 }
 
 impl<T> core::iter::Iterator for RawSliceIter<T> {
@@ -241,6 +287,7 @@ impl<T> core::iter::Iterator for RawSliceIter<T> {
 }
 
 impl<T> FusedIterator for RawSliceIter<T> {}
+unsafe impl<T> TrustedLen for RawSliceIter<T> {}
 
 impl<T> ExactSizeIterator for RawSliceIter<T> {
     fn len(&self) -> usize {
@@ -252,4 +299,124 @@ impl<T> ExactSizeIterator for RawSliceIter<T> {
     }
 }
 
-unsafe impl<T> TrustedLen for RawSliceIter<T> {}
+impl<T> DoubleEndedIterator for RawSliceIter<T> {
+    fn next_back(&mut self) -> Option<core::ptr::NonNull<T>> {
+        if const { core::mem::size_of::<T>() == 0 } {
+            if self.end_or_len.addr() == 0 {
+                None
+            } else {
+                self.end_or_len = self.end_or_len.wrapping_sub(1);
+                Some(self.base)
+            }
+        } else {
+            if self.base == self.end_or_len {
+                None
+            } else {
+                let val = self.end_or_len;
+                self.end_or_len = unsafe { val.sub(1) };
+                Some(unsafe { core::ptr::NonNull::new_unchecked(val) })
+            }
+        }
+    }
+
+    fn advance_back_by(&mut self, n: usize) -> Result<(), core::num::NonZero<usize>> {
+        if const { core::mem::size_of::<T>() == 0 } {
+            if self.end_or_len.addr() < n {
+                Err(unsafe { NonZero::new_unchecked(n - self.end_or_len.addr()) })
+            } else {
+                self.end_or_len = self.end_or_len.wrapping_sub(n);
+                Ok(())
+            }
+        } else {
+            let cur_len = unsafe { self.end_or_len.offset_from(self.base.as_ptr()) };
+            if cur_len < n {
+                Err(unsafe { NonZero::new_unchecked(n - cur_len) })
+            } else {
+                self.end_or_len = unsafe { self.end_or_len.sub(n) };
+                Ok(())
+            }
+        }
+    }
+}
+
+pub struct Iter<'a, T>(RawSliceIter<T>, PhantomData<&'a [T]>);
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<&'a T> {
+        self.0.next().map(unsafe { |nn| nn.as_ref() })
+    }
+
+    fn advance_by(&mut self, n: usize) -> Result<(), core::num::NonZero<usize>> {
+        self.0.advance_by(n)
+    }
+
+    fn count(self) -> usize {
+        self.0.count()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
+    fn next_back(&mut self) -> Option<&'a T> {
+        self.0.next_back().map(unsafe { |nn| nn.as_ref() })
+    }
+
+    fn advance_by(&mut self, n: usize) -> Result<(), core::num::NonZero<usize>> {
+        self.0.advance_back_by(n)
+    }
+}
+
+impl<'a, T> FusedIterator for Iter<'a, T> {}
+unsafe impl<'a, T> TrustedLen for Iter<'a, T> {}
+
+impl<'a, T> ExactSizeIterator for Iter<'a, T> {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+pub struct IterMut<'a, T>(RawSliceIter<T>, PhantomData<&'a mut [T]>);
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<&'a mut T> {
+        self.0.next().map(unsafe { |mut nn| nn.as_mut_ref() })
+    }
+
+    fn advance_by(&mut self, n: usize) -> Result<(), core::num::NonZero<usize>> {
+        self.0.advance_by(n)
+    }
+
+    fn count(self) -> usize {
+        self.0.count()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
+    fn next_back(&mut self) -> Option<&'a T> {
+        self.0.next_back().map(unsafe { |mut nn| nn.as_mut_ref() })
+    }
+
+    fn advance_by(&mut self, n: usize) -> Result<(), core::num::NonZero<usize>> {
+        self.0.advance_back_by(n)
+    }
+}
+
+impl<'a, T> FusedIterator for IterMut<'a, T> {}
+unsafe impl<'a, T> TrustedLen for IterMut<'a, T> {}
+
+impl<'a, T> ExactSizeIterator for IterMut<'a, T> {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
