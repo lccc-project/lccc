@@ -26,7 +26,6 @@ use crate::ptr::NonNull;
 // lcrust implementation detail. Might open an RFC to make this part of rust
 #[doc(hidden)]
 #[unstable(feature = "lccc_slice_layout")]
-#[lang = "slice_ptr_layout"]
 pub struct RawSlice<T> {
     ptr: *mut T,
     len: usize,
@@ -34,10 +33,7 @@ pub struct RawSlice<T> {
 
 #[inline(always)]
 pub unsafe fn from_raw_parts<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
-    transmute(RawSlice {
-        ptr: ::__lccc::builtins::rust::limit(ptr, len) as *mut T,
-        len,
-    })
+    transmute(RawSlice { ptr, len })
 }
 
 #[inline(always)]
@@ -62,17 +58,14 @@ pub fn from_ref<T>(obj: &T) -> &'_ [T] {
 
 #[inline(always)]
 pub unsafe fn from_raw_parts_mut<'a, T>(ptr: *mut T, len: usize) -> &'a mut [T] {
-    transmute(RawSlice {
-        ptr: ::__lccc::builtins::rust::limit(ptr, len),
-        len,
-    })
+    transmute(RawSlice { ptr, len })
 }
 
 #[lang = "slice"]
 #[__lccc::mangle_as("std::slice::slice")]
 impl<T> [T] {
     #[inline(always)]
-    pub const fn size(&self) -> usize {
+    pub const fn len(&self) -> usize {
         unsafe { transmute::<_, RawSlice<T>>(self).len }
     }
     #[inline(always)]
@@ -97,11 +90,11 @@ impl<T> [T] {
     }
 
     pub const fn as_ptr(&self) -> *const T {
-        unsafe { transmute::<_, RawSlice<T>>(self).ptr as *const T }
+        self as *const [T] as *const T
     }
 
     pub fn as_mut_ptr(&self) -> *mut T {
-        unsafe { transmute::<_, RawSlice<T>>(self).ptr }
+        self as *mut [T] as *mut T
     }
 
     pub fn iter(&self) -> Iter<T> {

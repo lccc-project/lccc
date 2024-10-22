@@ -25,16 +25,16 @@ use crate::{Copy, Option, Sized};
 
 #[lang = "drop_in_place"]
 #[inline(always)]
+#[track_caller]
 pub unsafe fn drop_in_place<T: ?Sized>(x: *mut T) {
-    ::__lccc::__maybe_adl__::__evaluate_destructor_at(x)
+    core::intrinsics::drop_in_place(x)
 }
 
 #[lang = "const_ptr"]
 #[__lccc::mangle_as("std::ptr::const_ptr")]
 impl<T: ?Sized> *const T {
     pub const fn is_null(self) -> bool {
-        (::__lccc::xir!("convert reinterpret *uint(8)":[self: *const T]:[yield: *const u8]))
-            == unsafe { crate::mem::zeroed() }
+        self.cast::<u8>() == unsafe { crate::mem::zeroed() }
     }
 }
 
@@ -42,8 +42,7 @@ impl<T: ?Sized> *const T {
 #[__lccc::mangle_as("std::ptr::mut_ptr")]
 impl<T: ?Sized> *mut T {
     pub const fn is_null(self) -> bool {
-        (::__lccc::xir!("convert reinterpret *uint(8)":[self: *const T]:[yield: *const u8]))
-            == unsafe { crate::mem::zeroed() }
+        self.cast::<u8>() == unsafe { crate::mem::zeroed() }
     }
 }
 
@@ -56,8 +55,7 @@ impl<T> *mut [T] {
 
     #[unstable(feature = "slice_ptr_get", issue = "74265")]
     pub fn as_mut_ptr(self) -> *mut T {
-        let raw: crate::slice::RawSlice<T> = crate::mem::transmute(self);
-        raw.ptr as *mut T
+        self as *mut T
     }
 }
 
