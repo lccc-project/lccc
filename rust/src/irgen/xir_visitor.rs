@@ -34,10 +34,10 @@ use super::visitor::{
     ArrayTyVisitor, AttrVisitor, BasicBlockVisitor, BinaryExprVisitor, BranchVisitor, CallVisitor,
     CastVisitor, ConstCharVisitor, ConstIntVisitor, ConstStringVisitor, ConstructorDefVisitor,
     ConstructorVisitor, ExprVisitor, FieldAccessVisitor, FieldInitVisitor, FieldVisitor,
-    FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, IntTyVisitor, JumpVisitor,
-    LetStatementVisitor, ModVisitor, PointerTyVisitor, ReferenceTyVisitor, StatementVisitor,
-    TerminatorVisitor, TupleExprVisitor, TupleTyVisitor, TypeDefVisitor, TypeVisitor,
-    UnaryExprVisitor, ValueDefVisitor,
+    FloatTyVisitor, FunctionBodyVisitor, FunctionDefVisitor, FunctionTyVisitor, IntTyVisitor,
+    JumpVisitor, LetStatementVisitor, ModVisitor, PointerTyVisitor, ReferenceTyVisitor,
+    StatementVisitor, TerminatorVisitor, TupleExprVisitor, TupleTyVisitor, TypeDefVisitor,
+    TypeVisitor, UnaryExprVisitor, ValueDefVisitor,
 };
 use super::NameMap;
 
@@ -857,6 +857,55 @@ impl<'a> TypeVisitor for XirTypeVisitor<'a> {
 
     fn visit_user_type(&mut self, defid: DefId) {
         *self.ty = ir::Type::Named(into_path(self.names[&defid]));
+    }
+
+    fn visit_float(&mut self) -> Option<impl FloatTyVisitor + '_> {
+        *self.ty = ir::Type::Scalar(ir::ScalarType::default());
+
+        if let ir::Type::Scalar(sty) = self.ty {
+            Some(XirFloatTyVisitor::new(sty, self.properties))
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+pub struct XirFloatTyVisitor<'a> {
+    sty: &'a mut ir::ScalarType,
+    properties: &'a TargetProperties<'a>,
+}
+
+impl<'a> XirFloatTyVisitor<'a> {
+    pub fn new(sty: &'a mut ir::ScalarType, properties: &'a TargetProperties<'a>) -> Self {
+        Self { sty, properties }
+    }
+}
+
+impl<'a> FloatTyVisitor for XirFloatTyVisitor<'a> {
+    fn visit_type(&mut self, fty: &ty::FloatType) {
+        self.sty.header.bitsize = fty.width.get();
+
+        if self
+            .properties
+            .extended_property("lccc:frontend-cfg/float-pass-as-int")
+            .expect("Expected a bool")
+            .unwrap_or(false)
+        {
+            let format = match &fty.format {
+                ty::FloatFormat::IeeeBinary => ir::FloatFormat::IeeeBinary,
+                ty::FloatFormat::IeeeExtRange => ir::FloatFormat::IeeeExtRange,
+                ty::FloatFormat::IeeeExtPrecision => ir::FloatFormat::IeeeExtPrecision,
+                ty::FloatFormat::Dfloat => ir::FloatFormat::IbmDfloat,
+            };
+
+            self.sty.kind = ir::ScalarTypeKind::Float { format };
+        } else {
+            self.sty.kind = ir::ScalarTypeKind::Integer {
+                signed: false,
+                min: XLangNone,
+                max: XLangNone,
+            };
+        }
     }
 }
 

@@ -933,6 +933,10 @@ def_visitors! {
         fn visit_type(&mut self, int_type: &ty::IntType);
     }
 
+    pub trait FloatTyVisitor {
+        fn visit_type(&mut self, float_typ: &ty::FloatType);
+    }
+
     pub trait PointerTyVisitor {
         fn visit_mutability(&mut self, mutability: ty::Mutability);
         fn visit_type(&mut self) -> Option<impl TypeVisitor + '_>;
@@ -956,5 +960,6 @@ def_visitors! {
         fn visit_tuple(&mut self) -> Option<impl TupleTyVisitor + '_>;
         fn visit_never(&mut self);
         fn visit_user_type(&mut self, defid: DefId);
+        fn visit_float(&mut self) -> Option<impl FloatTyVisitor + '_>;
     }
 }

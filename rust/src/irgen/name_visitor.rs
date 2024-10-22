@@ -4,7 +4,7 @@ use crate::{interning::Symbol, sema::ty::IntType};
 
 use self::mangler::MangleEngine;
 
-use super::visitor::ConstructorDefVisitor;
+use super::visitor::{ConstructorDefVisitor, FloatTyVisitor};
 use super::{
     visitor::{
         visitor_todo, ArrayTyVisitor, AttrVisitor, FunctionBodyVisitor, FunctionDefVisitor,
@@ -329,6 +329,10 @@ impl<'a, 'b> TypeVisitor for NameTypeVisitor<'a, 'b> {
 
     fn visit_user_type(&mut self, defid: DefId) {
         todo!("visit_defid")
+    }
+
+    fn visit_float(&mut self) -> Option<impl FloatTyVisitor + '_> {
+        visitor_todo!("visit_float")
     }
 }
 

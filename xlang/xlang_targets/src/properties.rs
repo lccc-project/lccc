@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use xlang_abi::{pair::Pair, span::Span, string::StringView};
 
 use self::builtins::BuiltinSignature;
@@ -335,4 +337,24 @@ pub struct TargetProperties<'a> {
     /// The second string is the value, which may be any arbitrary UTF-8 text.
     /// Keys may be duplicated - the meaning of duplicate entries is defined by the property
     pub custom_properties: Span<'a, Pair<StringView<'a>, StringView<'a>>>,
+}
+
+impl<'a> TargetProperties<'a> {
+    /// Convience Function for querying individual extended properties by name.
+    /// Note that this performs no caching as the `custom_properties` list is intended to be short, and thus this performs a linear search on all accesses.
+    pub fn extended_property<T: FromStr>(&self, property: &str) -> Result<Option<T>, T::Err> {
+        self.custom_properties
+            .iter()
+            .find_map(
+                |Pair(key, val)| {
+                    if key == property {
+                        Some(val)
+                    } else {
+                        None
+                    }
+                },
+            )
+            .map(|v| v.parse::<T>())
+            .transpose()
+    }
 }
