@@ -9,7 +9,7 @@ extern "lcrust-v0" {
 
     #[lcrust::mangled_import]
     #[lcrust::weak_import]
-    pub static PANIC_ABORT_OVERRIDE: usize;
+    pub static __abort_on_unwind: ();
 }
 
 struct PrintOrDefault<'a, T>(Option<T>, &'a str);

@@ -31,6 +31,8 @@ pub mod prelude;
 #[prelude_import]
 pub use std::prelude::v1::*;
 
+pub mod hash;
+
 pub mod os;
 
 pub mod process;

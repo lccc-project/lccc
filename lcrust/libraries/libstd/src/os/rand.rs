@@ -1,17 +1,14 @@
-
-
-crate::sys::generate_sys_crate!{
+crate::sys::generate_sys_crate! {
     mod random{
         getrandom;
         winrand;
-        phantomos;
+        lilium;
         devfile;
         hardware;
         generic;
     }
 }
 
-
-pub fn get_random_seed() -> u64{
-    sys::get_random_seed()
+pub fn seed_rand_buffer(x: &mut [u8]) -> std::io::Result<()> {
+    sys::seed_rand_buffer(x)
 }

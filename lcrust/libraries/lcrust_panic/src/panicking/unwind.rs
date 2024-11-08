@@ -134,8 +134,14 @@ pub fn begin_panic(info: &core::panic::PanicInfo) -> !{
     }else{
         panic_call_hook(info);
 
-        if count > 0 || ALWAYS_ABORT.get(Ordering::Relaxed) != 0{
+        
+
+        if count > 0 {
             unsafe{abort(info.location(), Some("Double-panic: Aborting process"))}
+        }
+
+        if (&raw const crate::panicking::lcrust::__abort_on_unwind).is_null() || ALWAYS_ABORT.get(Ordering::Relaxed) != 0 {
+            
         }
 
         // Per lcrust abi v0: `PanicInfo` constructed by the implementation shall have a location valid for the duration of the program
@@ -157,7 +163,7 @@ pub fn begin_panic(info: &core::panic::PanicInfo) -> !{
         
         unsafe{unwind_info.write(info)};
         let except = unsafe{unwind_info.offset(1).align_to(layout.align()).cast::<u8>};
-        // The payload may not be `Copy`, but `begin`
+        // The payload may not be `Copy`, but `begin_unwind` doesn't return anyways.
         unsafe{core::ptr::copy_nonoverlapping(info.payload() as *const dyn Any as *const u8, except, info.size())};
         
         begin_unwind(unwind_info)
