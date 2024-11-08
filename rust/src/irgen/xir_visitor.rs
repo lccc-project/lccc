@@ -1,8 +1,7 @@
 use core::fmt::Write;
 
 use xlang::ir::{
-    self, AggregateCtor, AggregateField, AggregateFieldSpecifier, AnnotatedElement, ScalarTypeKind,
-    ScalarValidity,
+    self, AggregateCtor, AggregateField, AggregateFieldSpecifier, ScalarTypeKind, ScalarValidity,
 };
 use xlang::prelude::v1::{HashMap, Pair};
 use xlang::targets::properties::TargetProperties;
@@ -249,7 +248,7 @@ impl<'a> ValueDefVisitor for XirValueDefVisitor<'a> {
 
     fn visit_function(&mut self) -> Option<impl FunctionDefVisitor + '_> {
         self.scope_member = Some(ir::ScopeMember {
-            annotations: ir::AnnotatedElement::default(),
+            metadata: ir::meta::MetadataList::new(),
             vis: ir::Visibility::Public,
             member_decl: ir::MemberDeclaration::Function(ir::FunctionDeclaration::default()),
         });
@@ -449,7 +448,7 @@ impl<'a> Drop for XirStructDefVisitor<'a> {
             let pos = offsets.insert_sorted(layout.field_offsets[&field]);
             fields.insert(
                 AggregateField {
-                    annotations: ir::AnnotatedElement::default(),
+                    annotations: ir::meta::MetadataList::new(),
                     specifiers: AggregateFieldSpecifier::empty(),
                     name,
                     ty,

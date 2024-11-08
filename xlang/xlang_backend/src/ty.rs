@@ -1,7 +1,7 @@
 use xlang::{
     ir::{
-        AggregateDefinition, AggregateKind, AnnotationItem, Path, PointerAliasingRule, PointerKind,
-        ScalarType, ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type, Value,
+        AggregateDefinition, AggregateKind, Path, PointerAliasingRule, PointerKind, ScalarType,
+        ScalarTypeHeader, ScalarTypeKind, ScalarValidity, Type, Value,
     },
     prelude::v1::{HashMap, Some as XLangSome},
     targets::properties::TargetProperties,
@@ -119,7 +119,6 @@ impl TypeInformation {
             Type::TaggedType(_, _) => todo!(),
             Type::Product(_) => todo!(),
             Type::Aligned(_, _) => todo!(),
-            Type::Aggregate(_) => todo!(),
             Type::Named(_) => todo!(),
         }
     }
@@ -164,7 +163,6 @@ impl TypeInformation {
                 ))
             }
             Type::Aligned(_, _) => todo!(),
-            Type::Aggregate(_) => todo!(),
             Type::Named(_) => todo!(),
         }
     }
@@ -185,38 +183,10 @@ impl TypeInformation {
         let mut size = 0u64;
         let mut fields = HashMap::new();
         let mut transparent_over = None;
+        #[allow(unused_mut)]
         let mut is_transparent = false;
 
-        let mut sort_align = false;
-
-        for attr in &defn.annotations.annotations {
-            match &attr.inner {
-                AnnotationItem::Meta(m, an) => {
-                    if *m == xlang::ir::simple_path!(sort_layout) {
-                        match &an[..] {
-                            [AnnotationItem::Identifier(id)]
-                                if *id == xlang::ir::simple_path!(alignment) =>
-                            {
-                                sort_align = true;
-                            }
-                            val @ [..] => panic!("Cannot sort by {:?}", val),
-                        }
-                    }
-                }
-                AnnotationItem::Identifier(id) if *id == xlang::ir::simple_path!(transparent) => {
-                    is_transparent = true;
-                }
-                _ => {}
-            }
-        }
-
-        let mut base_fields = defn.fields.clone();
-
-        if sort_align && defn.kind != AggregateKind::Union {
-            base_fields.sort_by_key(|field| self.type_align(&field.ty).unwrap());
-        }
-
-        for field in base_fields {
+        for field in &defn.fields {
             let name = field.name.to_string();
             let falign = self.type_align(&field.ty).unwrap();
             align = falign.max(align);
@@ -233,11 +203,11 @@ impl TypeInformation {
                     size = align_size(size, falign);
                     let offset = size;
                     size += fsize;
-                    fields.insert(name, (offset, field.ty));
+                    fields.insert(name, (offset, field.ty.clone()));
                 }
                 AggregateKind::Union => {
                     size = fsize.max(size);
-                    fields.insert(name, (0, field.ty));
+                    fields.insert(name, (0, field.ty.clone()));
                 }
             }
         }
@@ -284,7 +254,6 @@ impl TypeInformation {
                         first_niche: None,
                     })
                 }
-                Type::Aggregate(defn) => Some(self.aggregate_layout_from_defn(defn)),
                 Type::Named(p) => {
                     if let Some(ty) = self.aliases.get(p) {
                         return self.aggregate_layout(ty);

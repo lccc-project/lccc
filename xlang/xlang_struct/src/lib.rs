@@ -21,10 +21,13 @@
 
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
+use meta::MetadataList;
 use xlang_abi::prelude::v1::*;
 
 #[doc(hidden)]
 pub mod macros;
+
+pub mod meta;
 
 pub mod fmt;
 
@@ -141,7 +144,7 @@ impl core::fmt::Display for Path {
 /// generic-arg := <type> / "{" <value> "}"
 /// ```
 #[repr(u16)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum GenericParameter {
     /// A generic parameter type, such as `int(32)`
     Type(Type),
@@ -159,112 +162,6 @@ impl core::fmt::Display for GenericParameter {
                 f.write_str("}")
             }
         }
-    }
-}
-
-/// the content of an annotation
-///
-/// An Annotation Item matches the following BNF:
-///
-/// ```abnf
-/// annotation-id := <path>
-///
-/// annotation-key-value := <annotation-id> "=" <annotation-value>
-///
-/// annotation-value := <annotation-id> / <string-literal> / <int-literal> / <value>
-///
-/// annotation-group-content := <annotation-value> / <annotation-key-value> / <annotation-group>
-///
-/// annotation-group := <annotation-id> "(" [<annotation-group-content> [*("," <annotation-group-content>)] ")"
-///
-/// annotation-item := <annotation-id> / <annotation-key-value> / <annotation-group>
-///
-///
-/// ```
-///
-#[repr(u8)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum AnnotationItem {
-    /// A bare path in an annotation, such as `alignment` or `lccc::map`
-    ///
-    /// Matches the BNF:
-    /// ```abnf
-    /// annotation-id := <path>
-    /// ```
-    Identifier(Path),
-    /// A key-value pair in an annotation, such as `debug_info_name = "foo"`
-    ///
-    /// Matches the BNF:
-    /// ```abnf
-    /// annotation-id := <path>
-    /// ```
-    Value(Path, Value),
-    /// A named group in an annotation, such as `sort_fields(alignment)`
-    ///
-    /// Matches the BNF:
-    /// ```anbf
-    /// annotation-group := <annotation-id> "(" [<annotation-item> [*("," <annotation-item>)] ")"
-    /// ``
-    Meta(Path, Vec<Self>),
-}
-
-impl core::fmt::Display for AnnotationItem {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Self::Identifier(id) => id.fmt(f),
-            Self::Value(id, val) => f.write_fmt(format_args!("{} = {}", id, val)),
-            Self::Meta(id, rest) => {
-                id.fmt(f)?;
-                f.write_str("(")?;
-                let mut sep = "";
-                for a in rest {
-                    f.write_str(sep)?;
-                    a.fmt(f)?;
-                    sep = ", ";
-                }
-                f.write_str(")")
-            }
-        }
-    }
-}
-
-/// An annotation, like `#[unwind_personality_routine(foo.__UW_personality)]`
-///
-/// Matches the following BNF:
-/// ```abnf
-/// annotation := "#" "[" <anotation-item> "]"
-/// ```
-///
-#[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Annotation {
-    /// The content of the annotation
-    pub inner: AnnotationItem,
-}
-
-impl core::fmt::Display for Annotation {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        f.write_str("#[")?;
-        self.inner.fmt(f)?;
-        f.write_str("]")
-    }
-}
-
-/// Annotations stored by an annoted element, such as a struct body or declaration.
-#[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
-pub struct AnnotatedElement {
-    /// Annotations attached to the item
-    pub annotations: Vec<Annotation>,
-}
-
-impl core::fmt::Display for AnnotatedElement {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for anno in &self.annotations {
-            anno.fmt(f)?;
-            f.write_str(" ")?;
-        }
-        Ok(())
     }
 }
 
@@ -323,7 +220,7 @@ pub struct ScopeMember {
     /// The annotations attached to the scope member.
     ///
     /// Matches `[*<annotation>]`
-    pub annotations: AnnotatedElement,
+    pub metadata: MetadataList<ScopeMember>,
     /// The Optional visibility of the scope member
     ///
     /// Matches `[<visibility>]`
@@ -346,7 +243,7 @@ pub struct Scope {
     /// The annotations atteched to the scope, included in "{" and "}"
     ///
     /// Matches `[*<annotation>]`
-    pub annotations: AnnotatedElement,
+    pub annotations: MetadataList<Scope>,
     /// The members of the scope, mapped by their name
     ///
     /// Matches `[*<scope-member>]`
@@ -554,6 +451,8 @@ pub struct StaticDefinition {
     ///
     /// Matches `<static-specifier>`
     pub specifiers: StaticSpecifier,
+    /// The metadata for the `static`
+    pub meta: MetadataList<StaticDefinition>,
 }
 
 impl Default for MemberDeclaration {
@@ -948,7 +847,7 @@ impl TryFrom<Type> for ScalarType {
 /// * `T` and `U` are both array types, either both have the same bound or at least one has an unknown bound, and the element types are compatible,
 /// * `T` is an `enum` type and `U` is its underlying type.
 #[repr(u16)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Type {
     /// An empty/invalid type.
     /// Does not match any syntax
@@ -1028,20 +927,6 @@ pub enum Type {
     /// ````
     ///
     Aligned(Box<Value>, Box<Self>),
-    /// An inline aggregate type.
-    ///
-    /// Inline aggregates allow for aggregate types to be declared immediately at any place the aggregate type is used.
-    /// Each equal aggregate type is the same, regardless of its declaration location. Inline aggregates cannot have base classes (but inline enum types can have an underlying type)
-    ///
-    /// Inline aggregate types are always complete value types.
-    ///
-    /// Matches the ABNF syntax
-    /// ```abnf
-    /// type /= <aggregate-type> <aggregate-body>
-    /// type /= "enum" [":" <scalar-type>] <enum-body>
-    /// ```
-    ///
-    Aggregate(AggregateDefinition),
     /// A named type that refers to either an aggregate definition, opaque aggregate, or a type alias.
     /// If a named type refers to a type alias, then it is the same type as the aliased type.
     ///
@@ -1093,7 +978,6 @@ impl core::fmt::Display for Type {
                 f.write_str("]")
             }
             Self::Named(name) => f.write_fmt(format_args!("({})", name)),
-            Self::Aggregate(defn) => defn.fmt(f),
             Self::Aligned(alignment, base) => {
                 f.write_fmt(format_args!("aligned({}) {}", alignment, base))
             }
@@ -1165,11 +1049,11 @@ impl core::fmt::Display for AggregateFieldSpecifier {
 /// aggregate-field := <annotated-element> [*<field-specifier>] <ident> ":" <type> [":" <value>]
 /// ```
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct AggregateField {
     /// The annotations on the field
     /// Matches `<annotated-element>`
-    pub annotations: AnnotatedElement,
+    pub annotations: MetadataList<AggregateField>,
     /// The flags of a field.
     /// Matches `<field-specifier>`
     pub specifiers: AggregateFieldSpecifier,
@@ -1206,10 +1090,10 @@ impl core::fmt::Display for AggregateField {
 /// aggregate-definition := <annotated-element> "{" [<aggregate-field> [*("," <aggregate-field>)] "}"
 /// ```
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct AggregateDefinition {
     /// The annotations of the aggregate body. Matches the `<annotated-element>` portion of the aggregate-definition non-terminal
-    pub annotations: AnnotatedElement,
+    pub annotations: MetadataList<AggregateDefinition>,
     /// The kind of the aggregate. Not part of the syntax
     pub kind: AggregateKind,
     /// The fields of the aggregate.
@@ -1224,12 +1108,9 @@ impl core::fmt::Display for AggregateDefinition {
             AggregateKind::Union => f.write_str("union")?,
         }
 
-        for a in &self.annotations.annotations {
-            f.write_str(" ")?;
-            a.fmt(f)?;
-        }
+        self.annotations.fmt(f)?;
 
-        f.write_str("{")?;
+        f.write_str(" {")?;
         let mut sep = " ";
         for field in &self.fields {
             f.write_str(sep)?;
@@ -2457,7 +2338,7 @@ impl core::fmt::Display for CallFlags {
 ///
 /// Matchs the `terminator` production
 #[repr(u32)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum Terminator {
     /// Jump to another basic block, uncondtionally
     /// Matches the syntax
@@ -2562,7 +2443,7 @@ impl core::fmt::Display for AsmOutput {
 }
 
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct AsmExpr {
     pub opts: AsmOptions,
     pub syntax: String,
@@ -2572,6 +2453,7 @@ pub struct AsmExpr {
     pub targets: Vec<JumpTarget>,
     pub inputs: Vec<AsmConstraint>,
     pub outputs: Vec<AsmOutput>,
+    pub meta: MetadataList<AsmExpr>,
     pub next: Option<JumpTarget>,
 }
 
@@ -2624,7 +2506,8 @@ impl core::fmt::Display for AsmExpr {
             sep = ", ";
             output.fmt(f)?;
         }
-        f.write_str("]")
+        f.write_str("]")?;
+        self.meta.fmt(f)
     }
 }
 
@@ -2747,26 +2630,28 @@ impl BitAndAssign for AccessClass {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 #[repr(u32)]
 pub enum Switch {
     Hash(HashSwitch),
     Linear(LinearSwitch),
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct HashSwitch {
     pub cases: Vec<Pair<Value, JumpTarget>>,
     pub default: JumpTarget,
+    pub meta: MetadataList<HashSwitch>,
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct LinearSwitch {
     pub ty: Type,
     pub min: u128,
     pub scale: u32,
     pub default: JumpTarget,
     pub cases: Vec<JumpTarget>,
+    pub meta: MetadataList<HashSwitch>,
 }
 
 #[repr(u8)]
@@ -2794,27 +2679,30 @@ impl core::fmt::Display for StackItem {
 }
 
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Block {
     pub target: u32,
     pub incoming_stack: Vec<StackItem>,
     pub expr: Vec<Expr>,
     pub term: Terminator,
+    pub meta: MetadataList<Block>,
 }
 
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct FunctionBody {
     pub locals: Vec<Type>,
     pub blocks: Vec<Block>,
+    pub meta: MetadataList<FunctionBody>,
 }
 
 #[repr(C)]
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct FunctionDeclaration {
     pub ty: FnType,
     pub linkage: Linkage,
     pub body: Option<FunctionBody>,
+    pub meta: MetadataList<FunctionDeclaration>,
 }
 
 #[repr(C)]
@@ -2822,6 +2710,7 @@ pub struct FunctionDeclaration {
 pub struct File {
     pub target: String,
     pub root: Scope,
+    pub metadata: MetadataList<File>,
 }
 
 impl core::fmt::Display for File {

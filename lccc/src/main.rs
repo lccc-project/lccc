@@ -553,6 +553,7 @@ fn main() {
             let mut file = xlang::ir::File {
                 target: xtarget.into(),
                 root: xlang::ir::Scope::default(),
+                metadata: xlang::ir::meta::MetadataList::new(),
             };
 
             frontend.accept_ir(&mut file).unwrap();

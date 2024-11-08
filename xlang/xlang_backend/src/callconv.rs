@@ -249,7 +249,6 @@ pub fn classify_type<I: CallConvInfo>(
             }
         }
         Type::Aligned(_, _) => todo!(),
-        Type::Aggregate(_) => todo!(),
         Type::Named(_) => todo!(),
     }
 

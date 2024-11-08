@@ -107,7 +107,7 @@ impl<'b, 'a> IrFormatter<'b, 'a> {
     ) -> core::fmt::Result {
         tabs.fmt(self)?;
 
-        mem.annotations.fmt(self)?;
+        mem.metadata.fmt(self)?;
         self.write_str("\n")?;
         tabs.fmt(self)?;
         mem.vis.fmt(self)?;
