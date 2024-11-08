@@ -37,6 +37,7 @@ pub fn get_properties(targ: StringView) -> Option<&'static TargetProperties<'sta
             holeybytes-*-elf => Some(&builtin::elf::HOLEYBYTES_ELF),
             x86_64-*-lilium-std => Some(&builtin::lilium::X86_64_LILIUM),
             clever-*-lilium-std => Some(&builtin::lilium::CLEVER_LILIUM),
+            i686-*-lilium-std => Some(&builtin::lilium::I686_LILIUM),
             * => None
         }
     }

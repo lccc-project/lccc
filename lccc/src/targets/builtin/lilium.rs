@@ -18,6 +18,20 @@ pub static CLEVER_LILIUM_LINK: LinkProperties = LinkProperties {
     uwtable_method: UnwindStyle::Itanium,
 };
 
+pub static X86_32_LILIUM_LINK: LinkProperties = LinkProperties {
+    libdirs: span![const_sv!("lib")],
+    default_libs: span![const_sv!("usi")],
+    startfiles: span![const_sv!("libusi-init.a")],
+    endfiles: span![],
+    available_formats: span![],
+    interp: const_sv!("ld-lilium-x86.so"),
+    obj_binfmt: const_sv!("elf32-i386"),
+    lib_binfmt: const_sv!("elf32-i386"),
+    exec_binfmt: const_sv!("elf32-i386"),
+    stack_attribute_control: StackAttributeControlStyle::NoExec,
+    uwtable_method: UnwindStyle::Itanium,
+};
+
 pub static X86_64_LILIUM_LINK: LinkProperties = LinkProperties {
     libdirs: span![const_sv!("lib")],
     default_libs: span![const_sv!("usi")],
@@ -60,6 +74,21 @@ pub static X86_64_LILIUM: TargetProperties = TargetProperties {
     custom_properties: span![],
 };
 
+pub static I686_LILIUM: TargetProperties = TargetProperties {
+    primitives: &X86_32_PRIMITIVES,
+    os: &LILIUM,
+    arch: &I686,
+    link: &X86_32_LILIUM_LINK,
+    abis: span![],
+    enabled_features: span![],
+    default_tag_name: const_sv!("cdecl"),
+    system_tag_name: const_sv!("fastcall"),
+    custom_properties: span![Pair(
+        const_sv!("lcrust:abi-v0/rustcall-tag"),
+        const_sv!("fastcall")
+    )],
+};
+
 pub static CLEVER_LILIUM: TargetProperties = TargetProperties {
     primitives: &CLEVER_PRIMITIVES,
     os: &LILIUM,
@@ -69,5 +98,8 @@ pub static CLEVER_LILIUM: TargetProperties = TargetProperties {
     enabled_features: span![],
     default_tag_name: const_sv!("C"),
     system_tag_name: const_sv!("C"),
-    custom_properties: span![],
+    custom_properties: span![Pair(
+        const_sv!("lcrust:abi-v0/simd-adjustment-required"),
+        const_sv!("false")
+    )],
 };
