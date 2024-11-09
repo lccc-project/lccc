@@ -11,8 +11,13 @@ use xlang_abi::result::Result::{self, Ok};
 pub mod block;
 
 #[repr(C)]
+#[cfg_attr(target_pointer_width = "32", repr(align(32)))]
+#[cfg_attr(target_pointer_width = "64", repr(align(64)))]
+pub struct Payload([MaybeUninit<usize>; 8]);
+
+#[repr(C)]
 pub struct Metadata<T> {
-    _phantom: PhantomData<T>,
+    data: Payload,
     ty: StringView<'static>,
     drop: Option<rustcall!(unsafe extern "rustcall" fn(SpanMut<MaybeUninit<usize>>))>,
     clone: rustcall!(
@@ -26,7 +31,7 @@ pub struct Metadata<T> {
             bool,
         ) -> Result<(), ()>
     ),
-    data: [MaybeUninit<usize>; 8],
+    _phantom: PhantomData<T>,
 }
 
 rustcall! {
@@ -42,7 +47,7 @@ impl<T> core::fmt::Debug for Metadata<T> {
         f.write_str(&self.ty)?;
         try_!(unsafe {
             (self.fmt)(
-                Span::new(&self.data),
+                Span::new(&self.data.0),
                 f as *mut _ as *mut (),
                 fmtter_write_str,
                 false,
@@ -59,7 +64,7 @@ impl<T> core::fmt::Display for Metadata<T> {
         f.write_str(&self.ty)?;
         try_!(unsafe {
             (self.fmt)(
-                Span::new(&self.data),
+                Span::new(&self.data.0),
                 f as *mut _ as *mut (),
                 fmtter_write_str,
                 false,
@@ -106,7 +111,7 @@ impl<T> Metadata<T> {
             clone: clone_copy,
             _phantom: PhantomData,
             fmt: fmt_empty_body,
-            data: [MaybeUninit::uninit(); 8],
+            data: Payload([MaybeUninit::uninit(); 8]),
         }
     }
 
@@ -207,15 +212,23 @@ impl<T> Clone for Metadata<T> {
         let bomb = AbortBomb;
         if self.ty == source.ty {
             unsafe {
-                (self.clone)(SpanMut::new(&mut self.data), Span::new(&source.data), true);
+                (self.clone)(
+                    SpanMut::new(&mut self.data.0),
+                    Span::new(&source.data.0),
+                    true,
+                );
             }
         } else {
             if let Some(drop) = self.drop {
-                unsafe { drop(SpanMut::new(&mut self.data)) }
+                unsafe { drop(SpanMut::new(&mut self.data.0)) }
             }
 
             unsafe {
-                (self.clone)(SpanMut::new(&mut self.data), Span::new(&source.data), false);
+                (self.clone)(
+                    SpanMut::new(&mut self.data.0),
+                    Span::new(&source.data.0),
+                    false,
+                );
             }
         }
         core::mem::forget(bomb);
