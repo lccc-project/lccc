@@ -10,7 +10,6 @@ members = [
     "xlang/xlang_backend",
     "xlang/xlang_opt",
     "xlang/xlang_frontend",
-    "xlangtransparent",
     "lccc",
     "frontend/rust/lcrustc",
     "frontend/c",
