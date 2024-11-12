@@ -1,0 +1,20 @@
+[package]
+name = "codegen-w65"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+arch-ops = { workspace = true, features = ["w65"] }
+binfmt = { workspace = true, features = ["all-formats", "w65"] }
+xlang.workspace = true
+xlang_backend.workspace = true
+target-tuples.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[package.metadata.'install-targets'.codegen_w65]
+type = "shared"
+install-dir = "<libdir>/lccc/xlang/plugins"

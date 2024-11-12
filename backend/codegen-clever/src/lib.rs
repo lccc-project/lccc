@@ -1,4 +1,4 @@
-use arch_ops::w65::W65Instruction;
+use arch_ops::clever::CleverInstruction;
 use target_tuples::{Architecture, Target};
 use xlang::{
     abi::string::StringView, plugin::XLangCodegen, prelude::v1::*,
@@ -14,14 +14,23 @@ use xlang_backend::{
     SsaCodegenPlugin,
 };
 
-pub struct W65Assignments {}
+pub struct CleverAssignments {}
 
-pub struct W65Clobbers {}
+pub struct CleverClobbers {}
 
-pub struct W65Machine {}
+pub struct CleverMachine {}
 
-impl MceWriter for W65Machine {
-    type Instruction = W65Instruction;
+impl MceWriter for CleverMachine {
+    type Instruction = CleverInstruction;
+
+    fn write_assembly<W: core::fmt::Write>(
+        &self,
+        insn: &[MceInstruction<Self::Instruction>],
+        writer: &mut W,
+    ) -> core::fmt::Result {
+        todo!()
+    }
+
     fn write_machine_code<W: arch_ops::traits::InsnWrite, F: FnMut(u128, std::string::String)>(
         &self,
         insn: &[MceInstruction<Self::Instruction>],
@@ -30,28 +39,21 @@ impl MceWriter for W65Machine {
     ) -> std::io::Result<()> {
         todo!()
     }
-    fn write_assembly<W: core::fmt::Write>(
-        &self,
-        insn: &[MceInstruction<Self::Instruction>],
-        writer: &mut W,
-    ) -> core::fmt::Result {
-        todo!()
-    }
 }
 
-impl Machine<SsaInstruction> for W65Machine {
+impl Machine<SsaInstruction> for CleverMachine {
     fn matches_target(&self, targ: StringView) -> bool {
-        Target::parse(&targ).arch() == Architecture::Wc65c816
+        Target::parse(&targ).arch() == Architecture::Clever
     }
 
     fn init_from_target(&mut self, _: &TargetProperties) {}
 
-    type Assignments = W65Assignments;
+    type Assignments = CleverAssignments;
 
-    type BlockClobbers = W65Clobbers;
+    type BlockClobbers = CleverClobbers;
 
     fn new_assignments(&self) -> Self::Assignments {
-        W65Assignments {}
+        todo!()
     }
 
     fn assign_locations(
@@ -69,7 +71,7 @@ impl Machine<SsaInstruction> for W65Machine {
     fn codegen_prologue(
         &self,
         assignments: &Self::Assignments,
-    ) -> Vec<MceInstruction<W65Instruction>> {
+    ) -> Vec<MceInstruction<CleverInstruction>> {
         todo!()
     }
 
@@ -81,7 +83,7 @@ impl Machine<SsaInstruction> for W65Machine {
         label_sym: F,
         which: u32,
         tys: &TypeInformation,
-    ) -> Vec<MceInstruction<W65Instruction>> {
+    ) -> Vec<MceInstruction<CleverInstruction>> {
         todo!()
     }
 
@@ -89,7 +91,7 @@ impl Machine<SsaInstruction> for W65Machine {
         &self,
         assignments: &mut Self::Assignments,
         incoming: &[OpaqueLocation],
-        fnty: &xlang_struct::FnType,
+        fnty: &xlang::ir::FnType,
         tys: &TypeInformation,
         which: u32,
     ) {
@@ -101,7 +103,7 @@ xlang::host::rustcall! {
 #[no_mangle]
 #[allow(improper_ctypes_definitions)]
 pub extern "rustcall" fn xlang_backend_main() -> DynBox<dyn XLangCodegen> {
-    DynBox::unsize_box(xlang::abi::boxed::Box::new(SsaCodegenPlugin::new(W65Machine{})))
+    DynBox::unsize_box(xlang::abi::boxed::Box::new(SsaCodegenPlugin::new(CleverMachine{})))
 }}
 
 xlang::plugin_abi_version!("0.1");

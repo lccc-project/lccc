@@ -11,6 +11,7 @@ use core::cell::Cell;
 use std::{hash::Hash, vec as std_vec};
 use std::{io::Write, rc::Rc};
 use target_tuples::{Architecture, Target};
+use xlang::ir::BranchCondition;
 use xlang::{
     abi::{pair::Pair, string::StringView},
     ir,
@@ -30,7 +31,6 @@ use xlang_backend::{
     ty::TypeInformation,
     SsaCodegenPlugin,
 };
-use xlang_struct::BranchCondition;
 
 mod callconv;
 

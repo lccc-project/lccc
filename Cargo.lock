@@ -100,7 +100,6 @@ dependencies = [
  "target-tuples",
  "xlang",
  "xlang_backend",
- "xlang_struct",
 ]
 
 [[package]]
@@ -112,7 +111,6 @@ dependencies = [
  "target-tuples",
  "xlang",
  "xlang_backend",
- "xlang_struct",
 ]
 
 [[package]]
@@ -124,7 +122,6 @@ dependencies = [
  "target-tuples",
  "xlang",
  "xlang_backend",
- "xlang_struct",
 ]
 
 [[package]]
@@ -196,6 +193,7 @@ checksum = "185b4cd26aff3789b8662aa73732b585d46b9756cd3c6b302be72f68302c5eba"
 name = "frontend-c"
 version = "0.1.0"
 dependencies = [
+ "unicode-xid",
  "xlang",
  "xlang_frontend",
 ]
@@ -211,6 +209,7 @@ dependencies = [
  "rust_mir_macro",
  "unicode-xid",
  "xlang",
+ "xlang_frontend",
 ]
 
 [[package]]
@@ -220,7 +219,6 @@ dependencies = [
  "unicode-xid",
  "xlang",
  "xlang_frontend",
- "xlang_struct",
 ]
 
 [[package]]

@@ -7,8 +7,9 @@ license = "BSD-2-Clause-Patent"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-xlang = {path="../xlang"}
-xlang_frontend = {path="../xlang/xlang_frontend"}
+xlang.workspace = true
+unicode-xid.workspace = true
+xlang_frontend.workspace = true
 
 [lib]
 crate-type = ["cdylib"]

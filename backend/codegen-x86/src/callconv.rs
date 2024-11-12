@@ -221,7 +221,7 @@ impl CallConvInfo for X86CallConvInfo {
         X86TypeClass::NoClass
     }
 
-    fn classify_scalar(&self, sty: xlang_struct::ScalarType) -> Vec<Self::TypeClass> {
+    fn classify_scalar(&self, sty: xlang::ir::ScalarType) -> Vec<Self::TypeClass> {
         let width = self.mode.width();
         let scalar_regs = ((sty.header.bitsize + (width - 1)) as usize) >> (width.trailing_zeros());
 
@@ -242,13 +242,13 @@ impl CallConvInfo for X86CallConvInfo {
                 vec![X86TypeClass::NoClass]
             } else {
                 match sty.kind {
-                    xlang_struct::ScalarTypeKind::Empty => vec![X86TypeClass::NoClass; scalar_regs],
-                    xlang_struct::ScalarTypeKind::Integer { .. }
-                    | xlang_struct::ScalarTypeKind::Fixed { .. }
-                    | xlang_struct::ScalarTypeKind::Char { .. } => {
+                    xlang::ir::ScalarTypeKind::Empty => vec![X86TypeClass::NoClass; scalar_regs],
+                    xlang::ir::ScalarTypeKind::Integer { .. }
+                    | xlang::ir::ScalarTypeKind::Fixed { .. }
+                    | xlang::ir::ScalarTypeKind::Char { .. } => {
                         vec![X86TypeClass::Integer; scalar_regs]
                     }
-                    xlang_struct::ScalarTypeKind::Float {
+                    xlang::ir::ScalarTypeKind::Float {
                         format: xlang::ir::FloatFormat::IeeeExtPrecision,
                     } if sty.header.bitsize < 80 => {
                         let mut regs = Vec::with_capacity(scalar_regs);
@@ -258,10 +258,10 @@ impl CallConvInfo for X86CallConvInfo {
                         }
                         regs
                     }
-                    xlang_struct::ScalarTypeKind::Float { .. } => {
+                    xlang::ir::ScalarTypeKind::Float { .. } => {
                         vec![X86TypeClass::Float; scalar_regs]
                     }
-                    xlang_struct::ScalarTypeKind::Posit => vec![X86TypeClass::Float; scalar_regs],
+                    xlang::ir::ScalarTypeKind::Posit => vec![X86TypeClass::Float; scalar_regs],
                 }
             }
         }

@@ -7,12 +7,11 @@ license = "BSD-2-Clause-Patent"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-arch-ops = {path="../lc-binutils/arch-ops", version="0.1.0", features=["x86"]}
-binfmt = {path="../lc-binutils/binfmt", version="0.1.0", features=["all-formats", "x86"]}
-xlang = {path="../xlang"}
-xlang_struct = {path="../xlang/xlang_struct"}
-xlang_backend = {path="../xlang/xlang_backend"}
-target-tuples = "0.5.5"
+arch-ops = { workspace = true, features = ["x86"] }
+binfmt = { workspace = true, features = ["all-formats", "x86"] }
+xlang.workspace = true
+xlang_backend.workspace = true
+target-tuples.workspace = true
 
 [lib]
 crate-type = ["cdylib"]

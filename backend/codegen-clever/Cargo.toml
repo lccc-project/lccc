@@ -1,0 +1,22 @@
+[package]
+name = "codegen-clever"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-2-Clause-Patent"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[dependencies]
+arch-ops = { workspace = true, features = ["clever"] }
+binfmt = { workspace = true, features = ["all-formats", "clever"] }
+xlang.workspace = true
+xlang_backend.workspace = true
+target-tuples.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[package.metadata.'install-targets'.codegen_clever]
+type = "shared"
+install-dir = "<libdir>/lccc/xlang/plugins"
