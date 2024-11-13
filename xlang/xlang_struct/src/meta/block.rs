@@ -3,9 +3,17 @@ use crate::Block;
 
 use xlang_abi::prelude::v1::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ReachableFrom {
     pub reachable: Vec<u32>,
+}
+
+impl ReachableFrom {
+    pub const fn new() -> Self {
+        Self {
+            reachable: Vec::new(),
+        }
+    }
 }
 
 impl core::fmt::Display for ReachableFrom {

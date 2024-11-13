@@ -414,6 +414,7 @@ bitflags::bitflags! {
     /// static-specifier := "immut"
     /// ```
     #[repr(transparent)]
+    #[derive(Default, Copy, Clone, Debug, Hash, PartialEq, Eq)]
     pub struct StaticSpecifier : u16{
         const IMMUTABLE = 0x001;
     }
@@ -478,7 +479,7 @@ bitflags::bitflags! {
     /// `uninit` is considered invalid for any scalar type that has any validity constraint - loading/storing such a value yields `invalid`.
     ///
     #[repr(transparent)]
-    #[derive(Default)]
+    #[derive(Default, Copy, Clone, Debug, Hash, PartialEq, Eq)]
     pub struct ScalarValidity : u8{
         /// The `scalar-validity` specifier `"nonzero"`.
         /// Indicates that a zero value is not permitted.
@@ -522,6 +523,7 @@ bitflags::bitflags! {
     /// char-specifier := ["unicode"]
     /// ```
     #[repr(transparent)]
+    #[derive(Default, Copy, Clone, Debug, Hash, PartialEq, Eq)]
     pub struct CharFlags: u8{
         /// Whether or not the type is considered to be signed or unsigned
         ///
@@ -1027,6 +1029,7 @@ bitflags::bitflags! {
     /// field-specifier := "mutable"
     /// ```
     #[repr(transparent)]
+    #[derive(Default, Copy, Clone, Debug, Hash, PartialEq, Eq)]
     pub struct AggregateFieldSpecifier : u32{
         /// Indicates that the field is writable, regardless of `readonly`, `readshallow`, or top level `immutable binding`
         const MUTABLE = 0x0001;
@@ -1160,7 +1163,7 @@ bitflags::bitflags! {
     /// pointer-aliasing = "unique" / "readonly" / "nonnull"
     /// ```
     #[repr(transparent)]
-    #[derive(Default)]
+    #[derive(Default, Copy, Clone, Debug, Hash, PartialEq, Eq)]
     pub struct PointerAliasingRule : u32{
         /// Indicates that no other pointers access any of the same bytes while this pointer is active.
         ///
@@ -1215,7 +1218,7 @@ bitflags::bitflags! {
     /// ```
     ///
     #[repr(transparent)]
-    #[derive(Default)]
+    #[derive(Default, Copy, Clone, Debug, Hash, PartialEq, Eq)]
     pub struct ValidRangeType : u16{
         /// Indicates that the valid range of the pointer
         const INBOUNDS = 1;
@@ -1225,7 +1228,7 @@ bitflags::bitflags! {
 }
 bitflags::bitflags! {
     #[repr(transparent)]
-    #[derive(Default)]
+    #[derive(Default, Copy, Clone, Debug, Hash, PartialEq, Eq)]
     pub struct PointerDeclarationType : u16{
         const REF = 1;
         const CONST = 2;
@@ -2267,7 +2270,7 @@ bitflags::bitflags! {
     /// jump-target-flag := "fallthrough" / "cold" / "continue"
     /// ```
     #[repr(transparent)]
-    #[derive(Default)]
+    #[derive(Default, Copy, Clone, Debug, Hash, PartialEq, Eq)]
     pub struct JumpTargetFlags : u32{
         /// The "fallthrough" flag.
         /// Indicates that the jump does not perform a branch but instead continues on to the next basic block
@@ -2319,6 +2322,7 @@ impl core::fmt::Display for JumpTarget {
 bitflags::bitflags! {
     /// Flags for the call instruction
     #[repr(transparent)]
+    #[derive(Default, Copy, Clone, Debug, Hash, PartialEq, Eq)]
     pub struct CallFlags: u32{
         /// Indicates the the call or tailcall will definitely return in finite time
         const WILLRETURN = 1;
@@ -2384,6 +2388,7 @@ impl core::fmt::Display for AsmConstraint {
 
 bitflags::bitflags! {
     #[repr(transparent)]
+    #[derive(Default, Copy, Clone, Debug, Hash, PartialEq, Eq)]
       // more like clippy::readable_literal
     pub struct AsmOptions : u32{
         #[allow(clippy::unreadable_literal)]

@@ -9,6 +9,8 @@ use xlang_abi::prelude::v1::*;
 use xlang_abi::result::Result::{self, Ok};
 
 pub mod block;
+pub mod body;
+pub mod file;
 
 #[repr(C)]
 #[cfg_attr(target_pointer_width = "32", repr(align(32)))]
@@ -169,7 +171,7 @@ impl<T> Metadata<T> {
         }
     }
 
-    pub fn get<M: MetadataFor<T>>(&self) -> Option<&T> {
+    pub fn get<M: MetadataFor<T>>(&self) -> Option<&M> {
         if self.ty == M::TAG {
             Some(unsafe { transmute_unchecked(&self.data) })
         } else {
@@ -177,7 +179,7 @@ impl<T> Metadata<T> {
         }
     }
 
-    pub fn get_mut<M: MetadataFor<T>>(&mut self) -> Option<&mut T> {
+    pub fn get_mut<M: MetadataFor<T>>(&mut self) -> Option<&mut M> {
         if self.ty == M::TAG {
             Some(unsafe { transmute_unchecked(&mut self.data) })
         } else {
@@ -275,6 +277,14 @@ impl<T> MetadataList<T> {
 
     pub fn push<M: Into<Metadata<T>>>(&mut self, m: M) {
         self.0.push(m.into())
+    }
+
+    pub fn get<M: MetadataFor<T>>(&self) -> Option<&M> {
+        self.0.iter().find_map(Metadata::get)
+    }
+
+    pub fn get_mut<M: MetadataFor<T>>(&mut self) -> Option<&mut M> {
+        self.0.iter_mut().find_map(Metadata::get_mut)
     }
 }
 
