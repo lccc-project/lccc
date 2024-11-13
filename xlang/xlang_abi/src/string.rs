@@ -577,6 +577,20 @@ pub union CowStr<'a, A: Allocator = XLangAlloc> {
     borrowed: CowStrView<'a>,
 }
 
+impl<'a, A: Allocator + Clone> Clone for CowStr<'a, A> {
+    fn clone(&self) -> Self {
+        if unsafe { self.borrowed.cap_sentinel } == usize::MAX {
+            Self {
+                borrowed: unsafe { self.borrowed },
+            }
+        } else {
+            Self {
+                owned: unsafe { self.owned.clone() },
+            }
+        }
+    }
+}
+
 impl<'a, A: Allocator> Default for CowStr<'a, A> {
     fn default() -> Self {
         Self::borrowed(StringView::new(""))
