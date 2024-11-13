@@ -6,17 +6,17 @@ use crate::meta::MetadataFor;
 
 #[repr(C)]
 #[derive(Clone, Debug)]
-pub struct RequiredMetadata {
+pub struct Requires {
     pub meta: Vec<RequiresEntry>,
 }
 
-impl super::sealed::Sealed for RequiredMetadata {}
+impl super::sealed::Sealed for Requires {}
 
-impl MetadataFor<File> for RequiredMetadata {
+impl MetadataFor<File> for Requires {
     const TAG: StringView<'static> = StringView::new("requires");
 }
 
-impl core::fmt::Display for RequiredMetadata {
+impl core::fmt::Display for Requires {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut sep = "";
 
@@ -32,7 +32,7 @@ impl core::fmt::Display for RequiredMetadata {
 bitflags::bitflags! {
     #[repr(transparent)]
     #[derive(Default, Copy, Clone, Debug, Hash, PartialEq, Eq)]
-    pub struct RequiredMetadataContext : u32{
+    pub struct RequiresContext : u32{
         /// Any plugin that views the incoming IR *must* not process a file that sets the metadata type it doesn't recognize
         /// (Metadata is mandatory for interpreting the file at all)
         const PROCESSOR   = 0x00000001;
@@ -49,7 +49,7 @@ bitflags::bitflags! {
 bitflags::bitflags! {
     #[repr(transparent)]
     #[derive(Default, Copy, Clone, Debug, Hash, PartialEq, Eq)]
-    pub struct RequiredMetadataPosition : u128{
+    pub struct RequiresPosition : u128{
         const FILE = 0x0001;
     }
 }
@@ -58,8 +58,8 @@ bitflags::bitflags! {
 #[derive(Clone, Debug)]
 pub struct RequiresEntry {
     pub key: CowStr<'static>,
-    pub ctx: RequiredMetadataContext,
-    pub positions: RequiredMetadataPosition,
+    pub ctx: RequiresContext,
+    pub positions: RequiresPosition,
 }
 
 impl core::fmt::Display for RequiresEntry {

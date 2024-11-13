@@ -68,4 +68,10 @@ pub trait Machine<R>: MceWriter {
     fn mangle(&self, path: &[xlang::ir::PathComponent]) -> String {
         mangle_itanium(path)
     }
+
+    /// Checks if the [`Machine`] impl supports `meta`.
+    /// Metadata supported by [`SsaCodegenPlugin`][crate::SsaCodegenPlugin] directly is not passed in, nor is metadata not required for a codegen
+    fn supports_metadata(&self, _meta: &xlang::ir::meta::file::RequiresEntry) -> bool {
+        false
+    }
 }

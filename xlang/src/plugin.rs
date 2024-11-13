@@ -13,7 +13,7 @@ pub mod v1 {
         prelude::v1::*,
         result::Result,
         span::Span,
-        string::StringView,
+        string::{CowStr, StringView},
     };
     use xlang_struct::File;
     use xlang_targets::{properties::MachineProperties, properties::TargetProperties};
@@ -49,6 +49,7 @@ pub mod v1 {
     pub enum Error {
         Diagnostic(String),
         InternalError(String),
+        UnexpectedRequires(CowStr<'static>),
     }
 
     #[allow(clippy::module_name_repetitions)]

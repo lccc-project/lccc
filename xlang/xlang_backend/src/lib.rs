@@ -12,8 +12,12 @@ use ssa::{FunctionBuilder, SsaInstruction};
 use str::StringMap;
 use ty::TypeInformation;
 use xlang::{
-    abi::{io::WriteAdapter, option::Some as XLangSome, pair::Pair, try_},
-    ir::{self, Linkage},
+    abi::{io::WriteAdapter, option::Some as XLangSome, pair::Pair, span, span::Span, try_},
+    ir::{
+        self,
+        meta::file::{Requires, RequiresContext},
+        Linkage,
+    },
     plugin::{XLangCodegen, XLangPlugin},
     targets::properties::{StackAttributeControlStyle, TargetProperties},
 };
@@ -86,6 +90,8 @@ pub struct FunctionDef<M> {
     body: Option<FunctionBuilder<M>>,
 }
 
+const SUPPORTED_REQUIRED_METADATA: Span<&str> = span![];
+
 /// an [`XLangCodegen`] implementation parameterized on a [`Machine`] that uses [`ssa::FunctionBuilder`] to generate machine code or assembly
 pub struct SsaCodegenPlugin<M> {
     mach: Rc<M>,
@@ -111,6 +117,24 @@ impl<M: Machine<SsaInstruction>> XLangPlugin for SsaCodegenPlugin<M> {
         &mut self,
         ir: &mut ir::File,
     ) -> xlang::abi::result::Result<(), xlang::plugin::Error> {
+        if let Some(requires) = ir.metadata.get::<Requires>() {
+            for entry in &requires.meta {
+                if !entry
+                    .ctx
+                    .intersection(RequiresContext::PROCESSOR | RequiresContext::OUTPUT)
+                    .is_empty()
+                {
+                    if !(SUPPORTED_REQUIRED_METADATA.contains(&entry.key.as_str())
+                        || self.mach.supports_metadata(entry))
+                    {
+                        return xlang::abi::result::Err(xlang::plugin::Error::UnexpectedRequires(
+                            entry.key.clone(),
+                        ));
+                    }
+                }
+            }
+        }
+
         let targ = self.targ.expect("set_target must be called first");
         let mut tys = TypeInformation::from_properties(targ);
         for Pair(path, field) in &ir.root.members {

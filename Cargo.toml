@@ -34,6 +34,8 @@ binfmt = { path = "lc-binutils/binfmt", version = "0.1.0" }
 xlang = { path = "xlang" }
 xlang_backend = { path = "xlang/xlang_backend" }
 xlang_frontend = { path = "xlang/xlang_frontend" }
+xlang_opt = { path = "xlang/xlang_opt" }
 target-tuples = "0.5.5"
 unicode-xid = "0.2.2"
 lccc = { path = "lccc" }
+bitflags = "2.6.0"
