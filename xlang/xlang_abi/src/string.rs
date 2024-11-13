@@ -9,6 +9,7 @@ use std::{
     hash::{Hash, Hasher},
     iter::FromIterator,
     marker::PhantomData,
+    mem::ManuallyDrop,
     ops::{Add, AddAssign},
     path::Path,
     ptr::NonNull,
@@ -112,8 +113,13 @@ impl<A: Allocator> AsRef<Path> for String<A> {
 impl String<XLangAlloc> {
     /// Returns a new (empty) string
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self(crate::vec::Vec::new())
+    }
+
+    /// Returns a new (empty) string that has space for `n` bytes
+    pub fn with_capacity(n: usize) -> Self {
+        Self::with_capacity_in(n, XLangAlloc::new())
     }
 }
 
@@ -125,8 +131,13 @@ impl Default for String<XLangAlloc> {
 
 impl<A: Allocator> String<A> {
     /// Returns a new (empty) string using `alloc`
-    pub fn new_in(alloc: A) -> Self {
+    pub const fn new_in(alloc: A) -> Self {
         Self(crate::vec::Vec::new_in(alloc))
+    }
+
+    /// Returns a new (empty) string using `alloc` that has space for at least `n` bytes
+    pub fn with_capacity_in(n: usize, alloc: A) -> Self {
+        Self(crate::vec::Vec::with_capacity_in(n, alloc))
     }
 
     /// Appends the contents of `st` to self.
@@ -191,6 +202,11 @@ impl<A: Allocator> String<A> {
         // SAFETY:
         // We are valid UTF-8 because of the safety-invariant of `String`
         unsafe { core::str::from_utf8_unchecked_mut(self.0.leak()) }
+    }
+
+    /// Obtains a str slice over the [`String`]
+    pub const fn as_str(&self) -> &str {
+        unsafe { core::str::from_utf8_unchecked(self.0.as_slice()) }
     }
 }
 
@@ -516,7 +532,7 @@ impl<'a> StringView<'a> {
     }
 
     /// Obtains a reference to the string slice contained
-    pub const fn as_str(&self) -> &str {
+    pub const fn as_str(&self) -> &'a str {
         self.into_str()
     }
 }
@@ -545,6 +561,133 @@ macro_rules! const_sv {
     ($str:expr) => {{
         $crate::string::StringView::new($str)
     }};
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct CowStrView<'a> {
+    view: StringView<'a>,
+    cap_sentinel: usize,
+}
+
+/// An optimized and ABI safe [`Cow<str>`][std::borrow::Cow]
+#[repr(C)]
+pub union CowStr<'a, A: Allocator = XLangAlloc> {
+    owned: ManuallyDrop<String<A>>,
+    borrowed: CowStrView<'a>,
+}
+
+impl<'a, A: Allocator> Default for CowStr<'a, A> {
+    fn default() -> Self {
+        Self::borrowed(StringView::new(""))
+    }
+}
+
+impl<'a, A: Allocator> AsRef<str> for CowStr<'a, A> {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl<'a, A: Allocator> Borrow<str> for CowStr<'a, A> {
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl<'a, A: Allocator> PartialEq<CowStr<'a, A>> for CowStr<'a, A> {
+    fn eq(&self, other: &CowStr<'a, A>) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl<'a, A: Allocator> PartialEq<str> for CowStr<'a, A> {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl<'a, A: Allocator> PartialEq<CowStr<'a, A>> for str {
+    fn eq(&self, other: &CowStr<'a, A>) -> bool {
+        self == other.as_str()
+    }
+}
+
+impl<'a, A: Allocator> Eq for CowStr<'a, A> {}
+
+impl<'a, A: Allocator> Hash for CowStr<'a, A> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state)
+    }
+}
+
+impl<'a, A: Allocator> Drop for CowStr<'a, A> {
+    fn drop(&mut self) {
+        if unsafe { self.borrowed.cap_sentinel } != usize::MAX {
+            // We have an owned `String`, not a view
+            unsafe {
+                ManuallyDrop::drop(&mut self.owned);
+            }
+        }
+    }
+}
+
+impl<'a, A: Allocator> CowStr<'a, A> {
+    /// Constructs a new owned [`CowStr`]
+    pub const fn owned(st: String<A>) -> Self {
+        Self {
+            owned: ManuallyDrop::new(st),
+        }
+    }
+
+    /// Constructs a new borrowed [`CowStr`]
+    pub const fn borrowed(st: StringView<'a>) -> Self {
+        Self {
+            borrowed: CowStrView {
+                view: st,
+                cap_sentinel: usize::MAX,
+            },
+        }
+    }
+
+    /// Obtains the inner string as a `const fn`
+    pub const fn as_str(&self) -> &str {
+        if unsafe { self.borrowed.cap_sentinel } == usize::MAX {
+            // SAFETY:
+            // the sentinel `usize::MAX` indicates a view, since an owned `String` cannot possibly have this capacity
+            // Due to the maximum allocation size being `isize::MAX`, and `1 * usize::MAX` excess
+            unsafe { self.borrowed.view.as_str() }
+        } else {
+            let str: &String<A> = unsafe { core::mem::transmute(&self.owned) };
+            str.as_str()
+        }
+    }
+
+    /// Obtains a mutable [`String`] to the owned value, allocating from the borrowed data if necessary
+    pub fn make_mut(&mut self) -> &mut String<A>
+    where
+        A: Default,
+    {
+        if unsafe { self.borrowed.cap_sentinel } == usize::MAX {
+            let mut str = String::with_capacity_in(self.as_str().len(), A::default());
+            str.push_str(self.as_str());
+            self.owned = ManuallyDrop::new(str);
+        }
+
+        unsafe { &mut self.owned }
+    }
+}
+
+impl<'a, A: Allocator> core::fmt::Debug for CowStr<'a, A> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.as_str().fmt(f)
+    }
+}
+
+impl<'a, A: Allocator> core::fmt::Display for CowStr<'a, A> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.as_str().fmt(f)
+    }
 }
 
 #[cfg(test)]

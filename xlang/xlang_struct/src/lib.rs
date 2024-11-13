@@ -2637,6 +2637,44 @@ pub enum Switch {
     Linear(LinearSwitch),
 }
 
+impl Switch {
+    pub fn default(&self) -> &JumpTarget {
+        match self {
+            Self::Hash(switch) => &switch.default,
+            Self::Linear(switch) => &switch.default,
+        }
+    }
+
+    pub fn case_targets(&self) -> impl Iterator<Item = &'_ JumpTarget> + '_ {
+        enum Iter<'a> {
+            Hash(std::slice::Iter<'a, Pair<Value, JumpTarget>>),
+            Linear(std::slice::Iter<'a, JumpTarget>),
+        }
+
+        impl<'a> Iterator for Iter<'a> {
+            type Item = &'a JumpTarget;
+            fn next(&mut self) -> std::prelude::v1::Option<Self::Item> {
+                match self {
+                    Self::Hash(iter) => iter.next().map(|Pair(_, targ)| targ),
+                    Self::Linear(iter) => iter.next(),
+                }
+            }
+
+            fn size_hint(&self) -> (usize, std::prelude::v1::Option<usize>) {
+                match self {
+                    Self::Hash(iter) => iter.size_hint(),
+                    Self::Linear(iter) => iter.size_hint(),
+                }
+            }
+        }
+
+        match self {
+            Switch::Hash(hash) => Iter::Hash(hash.cases.iter()),
+            Switch::Linear(linear) => Iter::Linear(linear.cases.iter()),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct HashSwitch {
     pub cases: Vec<Pair<Value, JumpTarget>>,

@@ -59,6 +59,8 @@ pub mod prelude;
 pub mod ptr;
 /// Defines an ABI safe equivalent to [`std::result::Result`].
 pub mod result;
+/// Helper traits for slices
+pub mod slice;
 /// Defines ABI safe equivalents for `&[T]` and `&mut [T]`
 pub mod span;
 /// Implementation of `std::string::String` that uses [`alloc::Allocator`], and is ABI safe.

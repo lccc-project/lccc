@@ -1,4 +1,5 @@
 use std::{
+    borrow::{Borrow, BorrowMut},
     fmt::Debug,
     hash::Hash,
     io::Write,
@@ -49,7 +50,7 @@ impl<T> Vec<T, XLangAlloc> {
     /// * `len` must be less than `cap`
     /// * The range `[ptr,ptr.add(len))` must contain valid values of type `T`
     pub unsafe fn from_raw_parts(ptr: *mut T, cap: usize, len: usize) -> Self {
-        Self::from_raw_parts_in(ptr, cap, len, XLangAlloc::new())
+        unsafe { Self::from_raw_parts_in(ptr, cap, len, XLangAlloc::new()) }
     }
 }
 
@@ -132,11 +133,21 @@ impl<T, A: Allocator> Vec<T, A> {
     /// * The range `[ptr,ptr.add(len))` must contain valid values of type `T`
     pub unsafe fn from_raw_parts_in(ptr: *mut T, cap: usize, len: usize, alloc: A) -> Self {
         Self {
-            ptr: Unique::new_unchecked(ptr),
+            ptr: unsafe { Unique::new_unchecked(ptr) },
             cap,
             len,
             alloc,
         }
+    }
+
+    /// Obtains a immutable reference to the slice of the elements of the vec
+    pub const fn as_slice(&self) -> &[T] {
+        unsafe { core::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
+    }
+
+    /// Obtains a mutable reference to the slice of the elements of the vec
+    pub fn as_slice_mut(&mut self) -> &mut [T] {
+        unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
     }
 
     /// Returns a reference to the allocator used by self
@@ -696,15 +707,13 @@ impl<T, A: Allocator> Deref for Vec<T, A> {
     type Target = [T];
 
     fn deref(&self) -> &Self::Target {
-        let ptr = self.ptr.as_ptr();
-        unsafe { core::slice::from_raw_parts(ptr, self.len) }
+        self.as_slice()
     }
 }
 
 impl<T, A: Allocator> DerefMut for Vec<T, A> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        let ptr = self.ptr.as_ptr();
-        unsafe { core::slice::from_raw_parts_mut(ptr, self.len) }
+        self.as_slice_mut()
     }
 }
 
@@ -836,6 +845,30 @@ impl<T, A: Allocator + Default> From<std::vec::Vec<T>> for Vec<T, A> {
             drop(ManuallyDrop::into_inner(s));
             v
         }
+    }
+}
+
+impl<T, A: Allocator> AsRef<[T]> for Vec<T, A> {
+    fn as_ref(&self) -> &[T] {
+        self.as_slice()
+    }
+}
+
+impl<T, A: Allocator> Borrow<[T]> for Vec<T, A> {
+    fn borrow(&self) -> &[T] {
+        self.as_slice()
+    }
+}
+
+impl<T, A: Allocator> AsMut<[T]> for Vec<T, A> {
+    fn as_mut(&mut self) -> &mut [T] {
+        self.as_slice_mut()
+    }
+}
+
+impl<T, A: Allocator> BorrowMut<[T]> for Vec<T, A> {
+    fn borrow_mut(&mut self) -> &mut [T] {
+        self.as_slice_mut()
     }
 }
 
