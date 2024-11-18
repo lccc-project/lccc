@@ -8,6 +8,8 @@ use ty::AbiTag;
 use xlang::abi::collection::HashMap;
 use xlang::abi::collection::HashSet;
 use xlang::abi::pair::Pair;
+use xlang::prelude::v1::StringView;
+use xlang::targets::properties::MachineProperties;
 use xlang::targets::properties::TargetProperties;
 
 use crate::lang::LangItemTarget;
@@ -182,7 +184,7 @@ impl core::fmt::Display for GenericParams {
 
                     for bound in bounds {
                         f.write_str(sep)?;
-                        sep = ", ";
+                        sep = " + ";
                         bound.fmt(f)?;
                     }
                 }
@@ -192,7 +194,7 @@ impl core::fmt::Display for GenericParams {
 
                     for bound in bounds {
                         f.write_str(sep)?;
-                        sep = ", ";
+                        sep = " + ";
                         bound.fmt(f)?;
                     }
                 }
@@ -365,6 +367,8 @@ pub struct Definitions {
     fields_cache: RefCell<HashMap<ty::Type, *mut Vec<ty::TypeField>>>,
     inherent_impls_cache: RefCell<HashMap<ty::Type, *mut Vec<DefId>>>,
     properties: &'static TargetProperties<'static>,
+    mach: &'static MachineProperties<'static>,
+    global_feature_cache: RefCell<Option<HashSet<StringView<'static>>>>,
 }
 
 impl Drop for Definitions {
@@ -390,7 +394,10 @@ impl Drop for Definitions {
 }
 
 impl Definitions {
-    pub fn new(properties: &'static TargetProperties<'static>) -> Definitions {
+    pub fn new(
+        properties: &'static TargetProperties<'static>,
+        mach: &'static MachineProperties<'static>,
+    ) -> Definitions {
         Definitions {
             crates: HashMap::new(),
             curcrate: DefId::ROOT,
@@ -404,7 +411,35 @@ impl Definitions {
             layout_cache: RefCell::new(HashMap::new()),
             fields_cache: RefCell::new(HashMap::new()),
             properties,
+            mach,
             inherent_impls_cache: RefCell::new(HashMap::new()),
+            global_feature_cache: RefCell::new(None),
+        }
+    }
+
+    pub fn global_features(&self) -> &HashSet<StringView> {
+        let cache = self.global_feature_cache.borrow();
+        if let Some(x) = &*cache {
+            unsafe { &*(x as *const _) }
+        } else {
+            drop(cache);
+            let mut cache = self.global_feature_cache.borrow_mut();
+            let mut features = self
+                .mach
+                .default_features
+                .iter()
+                .copied()
+                .collect::<HashSet<_>>();
+
+            for &Pair(feature, enabled) in self.properties.enabled_features {
+                if enabled {
+                    let _ = features.insert(feature);
+                } else {
+                    features.remove(&feature);
+                }
+            }
+
+            unsafe { &*(cache.insert(features) as *const _) }
         }
     }
 
@@ -1670,6 +1705,7 @@ impl Definitions {
                             _ => None,
                         })
                         .unwrap_or(attr::Repr::RUST);
+
                     let attrs = &def.attrs;
                     match &def.inner.body {
                         DefinitionInner::UserType(UserType::Struct(_, def)) => {
@@ -2216,6 +2252,7 @@ impl Definitions {
             cx::ConstExpr::Param(_) => panic!("Substitute Generics before evaluation"),
             cx::ConstExpr::IntConst(ity, val) => Ok(cx::ConstExpr::IntConst(*ity, *val)),
             cx::ConstExpr::BoolConst(val) => Ok(cx::ConstExpr::BoolConst(*val)),
+            cx::ConstExpr::StringConst(val) => Ok(cx::ConstExpr::StringConst(*val)),
             cx::ConstExpr::Const(defid, generics) => {
                 Ok(cx::ConstExpr::Const(*defid, generics.clone()))
             }
@@ -2244,6 +2281,21 @@ impl Definitions {
         }
     }
 
+    pub fn evaluate_as_string(
+        &self,
+        cx: Spanned<&cx::ConstExpr>,
+        at_item: DefId,
+        containing_item: DefId,
+    ) -> Result<Symbol> {
+        match self.evaluate_const_expr(cx, at_item, containing_item)? {
+            cx::ConstExpr::HirVal(_) | cx::ConstExpr::MirVal(_) | cx::ConstExpr::Param(_) => {
+                unreachable!("Unexpanded Complex Expressions")
+            }
+            cx::ConstExpr::StringConst(val) => Ok(val),
+            val => panic!("{val} is not a u64"),
+        }
+    }
+
     pub fn evaluate_as_u64(
         &self,
         cx: Spanned<&cx::ConstExpr>,
@@ -2266,6 +2318,7 @@ impl Definitions {
             cx::ConstExpr::BoolConst(val) => panic!("{val} is not a u64"),
             cx::ConstExpr::Const(defid, _) => panic!("{defid} is not a u64"),
             cx::ConstExpr::Constructor(ctor) => panic!("{ctor} is not a u64"),
+            cx::ConstExpr::StringConst(val) => panic!("\"{}\" is not a u64", val.escape_default()),
         }
     }
 
@@ -2289,6 +2342,10 @@ impl Definitions {
                 panic!("{val} is not a struct, union, or enum type")
             }
             cx::ConstExpr::Constructor(ctor) => Ok(ctor.ctor_id),
+            cx::ConstExpr::StringConst(val) => panic!(
+                "\"{}\" is not a struct, union, or enum type",
+                val.escape_default()
+            ),
         }
     }
 

@@ -2,6 +2,7 @@ use peekmore::{PeekMore, PeekMoreIterator};
 
 use crate::{
     ast::{AttrInput, Literal, LiteralKind, SimplePath, SimplePathSegment},
+    interning::Symbol,
     lang::LangItem,
     lex::{self, punct, Lexeme, LexemeClass},
     parse::{self, do_lexeme_class, do_lexeme_group, do_literal, IntoRewinder},
@@ -25,6 +26,7 @@ pub enum Attr {
     NoCore,
     NoMain,
     NoMangle,
+    TargetFeature(Vec<Spanned<Symbol>>),
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -119,6 +121,19 @@ impl core::fmt::Display for Attr {
             Self::NoStd => f.write_str("#[no_std]"),
             Self::NoMain => f.write_str("#[no_main]"),
             Self::NoMangle => f.write_str("#[no_mangle]"),
+            Self::TargetFeature(features) => {
+                f.write_str("#[target_feature(")?;
+
+                let mut sep = "";
+
+                for feature in features {
+                    f.write_str(sep)?;
+                    sep = ", ";
+                    f.write_fmt(format_args!("enable = \"{}\"", feature.escape_default()))?;
+                }
+
+                f.write_str(")]")
+            }
         }
     }
 }
@@ -714,6 +729,44 @@ pub fn parse_meta(
 
             Ok(Spanned {
                 body: Attr::Inline(Some(inner)),
+                span,
+            })
+        }
+        MetaContent::MetaGroup(id, inner) if matches_simple_path!(id, target_feature) => {
+            let mut features = Vec::new();
+            for enable in &*inner {
+                match &**enable {
+                    MetaContent::MetaKeyValue(id, feature) if matches_simple_path!(id, enable) => {
+                        if matches!(feature.lit_kind, LiteralKind::String(_)) {
+                            features.push(feature.val);
+                        }else{
+                            return Err(Error {
+                                span: feature.span,
+                                text: format!("Invalid #[target_feature] attribute: expected a string literal, got {}", feature.body),
+                                category: ErrorCategory::InvalidAttr,
+                                at_item,
+                                containing_item,
+                                relevant_item: at_item,
+                                hints: vec![],
+                            })
+                        }
+                    }
+                    _ => {
+                        return Err(Error {
+                            span: enable.span,
+                            text: format!("Invalid #[target_feature] attribute: expected a list of `enable = \"feature_name\"`"),
+                            category: ErrorCategory::InvalidAttr,
+                            at_item,
+                            containing_item,
+                            relevant_item: at_item,
+                            hints: vec![],
+                        })
+                    }
+                }
+            }
+
+            Ok(Spanned {
+                body: Attr::TargetFeature(features),
                 span,
             })
         }

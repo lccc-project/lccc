@@ -224,7 +224,7 @@ pub fn visit_ctor_def<V: ConstructorDefVisitor>(
 }
 
 pub fn visit_value_def<V: ValueDefVisitor>(
-    def: DefId,
+    defid: DefId,
     defs: &Definitions,
     mut visit: V,
     names: &mut Vec<Symbol>,
@@ -233,8 +233,8 @@ pub fn visit_value_def<V: ValueDefVisitor>(
         return;
     }
 
-    visit.visit_defid(def);
-    let def = defs.definition(def);
+    visit.visit_defid(defid);
+    let def = defs.definition(defid);
     visit.visit_name(names);
 
     for attr in &def.attrs {
@@ -243,7 +243,7 @@ pub fn visit_value_def<V: ValueDefVisitor>(
     match &def.inner.body {
         DefinitionInner::Function(fnty, body @ (Some(FunctionBody::MirBody(_)) | None)) => {
             let visitor = visit.visit_function();
-            visit_fndef(visitor, fnty, body, defs);
+            visit_fndef(visitor, fnty, body, defs, defid);
         }
         x => panic!("Invalid definition: {:?}", x),
     }
@@ -262,6 +262,7 @@ pub fn visit_fndef<V: FunctionDefVisitor>(
     fnty: &ty::FnType,
     body: &Option<FunctionBody>,
     defs: &Definitions,
+    cur_body: DefId,
 ) {
     if visitor.is_none() {
         return;
@@ -270,7 +271,7 @@ pub fn visit_fndef<V: FunctionDefVisitor>(
     visit_fnty(fnty_visit, fnty, defs);
     match body {
         Some(FunctionBody::MirBody(body)) => {
-            visit_fnbody(visitor.visit_fnbody(), body, defs);
+            visit_fnbody(visitor.visit_fnbody(), body, defs, cur_body);
         }
         None => {}
         _ => unreachable!(),
@@ -281,13 +282,14 @@ pub fn visit_fnbody<V: FunctionBodyVisitor>(
     mut visitor: V,
     fnbody: &mir::MirFunctionBody,
     defs: &Definitions,
+    cur_body: DefId,
 ) {
     if visitor.is_none() {
         return;
     }
     for bb in &fnbody.bbs {
         let visitor = visitor.visit_basic_block();
-        visit_basic_block(visitor, bb, defs);
+        visit_basic_block(visitor, bb, defs, cur_body);
     }
 }
 
@@ -295,6 +297,7 @@ pub fn visit_basic_block<V: BasicBlockVisitor>(
     mut visitor: V,
     bb: &mir::MirBasicBlock,
     defs: &Definitions,
+    cur_body: DefId,
 ) {
     if visitor.is_none() {
         return;
@@ -308,7 +311,7 @@ pub fn visit_basic_block<V: BasicBlockVisitor>(
         visit_statement(visitor.visit_stmt(), stmt, defs);
     }
 
-    visit_terminator(visitor.visit_term(), &bb.term, defs);
+    visit_terminator(visitor.visit_term(), &bb.term, defs, cur_body);
 }
 
 #[allow(unused_variables, unused_mut)]
@@ -355,15 +358,18 @@ pub fn visit_terminator<V: TerminatorVisitor>(
     mut visitor: V,
     term: &mir::MirTerminator,
     defs: &Definitions,
+    cur_body: DefId,
 ) {
     if visitor.is_none() {
         return;
     }
     match term {
         mir::MirTerminator::Branch(info) => visit_branch(visitor.visit_branch(), info, defs),
-        mir::MirTerminator::Call(info) => visit_call(visitor.visit_call(), info, defs),
+        mir::MirTerminator::Call(info) => visit_call(visitor.visit_call(), info, defs, cur_body),
         mir::MirTerminator::Jump(info) => visit_jump(visitor.visit_jump(), info),
-        mir::MirTerminator::Tailcall(info) => visit_tailcall(visitor.visit_call(), info, defs),
+        mir::MirTerminator::Tailcall(info) => {
+            visit_tailcall(visitor.visit_call(), info, defs, cur_body)
+        }
         mir::MirTerminator::Return(expr) => visit_expr(visitor.visit_return(), expr, defs),
         mir::MirTerminator::Unreachable => visitor.visit_unreachable(),
         x => todo!("{:?}", x),
@@ -371,7 +377,12 @@ pub fn visit_terminator<V: TerminatorVisitor>(
 }
 
 #[allow(unused_variables, unused_mut)]
-pub fn visit_call<V: CallVisitor>(mut visitor: V, info: &mir::MirCallInfo, defs: &Definitions) {
+pub fn visit_call<V: CallVisitor>(
+    mut visitor: V,
+    info: &mir::MirCallInfo,
+    defs: &Definitions,
+    cur_body: DefId,
+) {
     if visitor.is_none() {
         return;
     }
@@ -389,8 +400,9 @@ pub fn visit_call<V: CallVisitor>(mut visitor: V, info: &mir::MirCallInfo, defs:
                     .map(|jmp| jmp.targbb)
                     .unwrap_or(BasicBlockId::UNUSED),
                 generics,
+                cur_body,
             ) {
-                visit_basic_block(body_visitor, &body, defs);
+                visit_basic_block(body_visitor, &body, defs, cur_body);
             } else {
                 panic!("`visit_intrinsic` expects a default body but {intrin} does not have one");
             }
@@ -417,6 +429,7 @@ pub fn visit_tailcall<V: CallVisitor>(
     mut visitor: V,
     info: &mir::MirTailcallInfo,
     defs: &Definitions,
+    cur_body: DefId,
 ) {
     if visitor.is_none() {
         return;
@@ -436,8 +449,9 @@ pub fn visit_tailcall<V: CallVisitor>(
                     .map(|jmp| jmp.targbb)
                     .unwrap_or(BasicBlockId::UNUSED),
                 generics,
+                cur_body,
             ) {
-                visit_basic_block(body_visitor, &body, defs);
+                visit_basic_block(body_visitor, &body, defs, cur_body);
             } else {
                 panic!("`visit_intrinsic` expects a default body but {intrin} does not have one");
             }
@@ -647,6 +661,7 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
             visitor.visit_value(*val);
         }
         mir::MirExpr::InlineConst(_) => todo!("inline const"),
+        mir::MirExpr::ConstBool(_) => todo!("bool"),
     }
 }
 

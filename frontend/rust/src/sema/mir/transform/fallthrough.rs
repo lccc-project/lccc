@@ -1,4 +1,4 @@
-use crate::sema::mir;
+use crate::sema::mir::{self, MirAsmInfo};
 
 use super::MirBasicBlockPass;
 
@@ -53,7 +53,14 @@ impl MirBasicBlockPass for InferFallthrough {
             crate::sema::mir::MirTerminator::Return(_)
             | crate::sema::mir::MirTerminator::Tailcall(_)
             | crate::sema::mir::MirTerminator::Unreachable
-            | crate::sema::mir::MirTerminator::Resume => Ok(()),
+            | crate::sema::mir::MirTerminator::Resume
+            | mir::MirTerminator::InlineAsm(MirAsmInfo { next: None, .. }) => Ok(()),
+            mir::MirTerminator::InlineAsm(MirAsmInfo {
+                next: Some(next), ..
+            }) => {
+                self.accept_jump(id, next);
+                Ok(())
+            }
         }
     }
 }

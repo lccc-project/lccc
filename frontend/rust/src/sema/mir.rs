@@ -16,7 +16,7 @@ use super::{
     generics::GenericArgs,
     hir::HirVarId,
     intrin::IntrinsicDef,
-    ty::{FieldName, FnType, IntType, Type},
+    ty::{AbiTag, FieldName, FnType, IntType, Type},
     tyck::{Movability, ThirBlock, ThirExpr, ThirExprInner, ThirStatement, ThirVarDef},
     DefId, Definitions, SemaHint, Spanned,
 };
@@ -101,6 +101,7 @@ pub enum MirExpr {
     ConstString(StringType, Symbol),
     ConstChar(CharType, u32),
     Const(DefId, GenericArgs),
+    ConstBool(bool),
     // Also used for const generic params
     InlineConst(cx::ConstExpr),
     Retag(RefKind, Mutability, Box<Spanned<MirExpr>>),
@@ -127,7 +128,8 @@ impl MirExpr {
             | MirExpr::GetSymbol(_)
             | MirExpr::ConstInt(_, _)
             | MirExpr::ConstString(_, _)
-            | MirExpr::ConstChar(_, _) => self.clone(),
+            | MirExpr::ConstChar(_, _)
+            | MirExpr::ConstBool(_) => self.clone(),
             MirExpr::Read(expr) => MirExpr::Read(Box::new(
                 expr.copy_span(|expr| expr.substitute_generics(args)),
             )),
@@ -196,7 +198,28 @@ pub enum MirStatement {
 
 impl MirStatement {
     pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
-        todo!()
+        match self {
+            Self::Declare { var, ty, init } => Self::Declare {
+                var: *var,
+                ty: ty.copy_span(|ty| ty.substitute_generics(args)),
+                init: init.copy_span(|init| init.substitute_generics(args)),
+            },
+            Self::Write(dest, val) => Self::Write(
+                dest.copy_span(|expr| expr.substitute_generics(args)),
+                val.copy_span(|expr| expr.substitute_generics(args)),
+            ),
+            Self::Dealloca(expr) => Self::Dealloca(expr.substitute_generics(args)),
+            Self::Discard(expr) => {
+                Self::Discard(expr.copy_span(|expr| expr.substitute_generics(args)))
+            }
+            Self::MarkAll(expr, state) => Self::MarkAll(expr.substitute_generics(args), *state),
+            Self::MarkDropState(expr, field, state) => {
+                Self::MarkDropState(expr.substitute_generics(args), field.clone(), *state)
+            }
+            Self::StoreDead(id) => Self::StoreDead(*id),
+            Self::EndRegion(id) => Self::EndRegion(*id),
+            Self::CaptureException(id) => Self::CaptureException(*id),
+        }
     }
 }
 
@@ -211,12 +234,56 @@ pub enum MirTerminator {
     DropInPlace(MirDropInfo),
     Branch(MirBranchInfo),
     SwitchInt(MirSwitchIntInfo),
+    InlineAsm(MirAsmInfo),
 }
 
 impl MirTerminator {
     pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
         todo!()
     }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct MirAsmInfo {
+    pub asm_str: Spanned<Symbol>,
+    pub operands: Vec<Spanned<AsmOperand>>,
+    pub abi_clobbers: Vec<Spanned<AbiTag>>,
+    pub options: Vec<Spanned<AsmOption>>,
+    pub next: Option<MirJumpInfo>,
+}
+
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
+pub enum AsmOption {
+    NoStack,
+    NoMem,
+    ReadOnly,
+    NoGlobals,
+    AttSyntax,
+    Pure,
+    PreservesFlags,
+    Raw,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct AsmOperand {
+    pub id: Option<Spanned<Symbol>>,
+    pub in_val: Option<Spanned<MirExpr>>,
+    pub out_reg: Option<Spanned<AsmOutputPos>>,
+    pub out_ty: Option<Type>,
+    pub late: bool,
+    pub regspec: Spanned<RegSpec>,
+}
+
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
+pub enum AsmOutputPos {
+    Id(SsaVarId),
+    Clobber,
+}
+
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
+pub enum RegSpec {
+    Explicit(Symbol),
+    Class(Symbol),
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
@@ -404,6 +471,7 @@ impl core::fmt::Display for MirExpr {
 
                 f.write_str("'")
             }
+            MirExpr::ConstBool(val) => val.fmt(f),
             MirExpr::ConstChar(CharType::Byte, val) => {
                 f.write_str("'")?;
                 match val {
@@ -568,7 +636,20 @@ pub struct MirBasicBlock {
 
 impl MirBasicBlock {
     pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
-        todo!()
+        Self {
+            incoming_vars: self
+                .incoming_vars
+                .iter()
+                .map(|(id, ty)| (*id, ty.substitute_generics(args)))
+                .collect(),
+            id: self.id,
+            stmts: self
+                .stmts
+                .iter()
+                .map(|stmt| stmt.copy_span(|stmt| stmt.substitute_generics(args)))
+                .collect(),
+            term: self.term.copy_span(|term| term.substitute_generics(args)),
+        }
     }
 }
 
@@ -581,7 +662,15 @@ pub struct MirFunctionBody {
 
 impl MirFunctionBody {
     pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
-        todo!()
+        Self {
+            bbs: self
+                .bbs
+                .iter()
+                .map(|bb| bb.substitute_generics(args))
+                .collect(),
+            vardbg_info: self.vardbg_info.clone(),
+            localitems: vec![],
+        }
     }
 
     pub fn display_body(
@@ -702,6 +791,7 @@ impl MirFunctionBody {
                 tabs.fmt(f)?;
                 f.write_str("}")
             }
+            MirTerminator::InlineAsm(_) => todo!("asm!()"),
         }
     }
 }

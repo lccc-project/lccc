@@ -1,9 +1,10 @@
 use crate::ast::{Mutability, Safety, StringType};
 use crate::interning::Symbol;
+use crate::mir_expr;
 
 use super::ty::{self, AbiTag, Type};
 
-use super::{generics::GenericArg, mir, DefId, DefinitionInner, Definitions};
+use super::{attr::Attr, generics::GenericArg, mir, DefId, DefinitionInner, Definitions};
 
 use crate::span::{Span, Spanned};
 
@@ -210,7 +211,7 @@ macro_rules! parse_attribute {
 
 macro_rules! def_intrinsics {
     {
-        default $defs:ident |$this_block:ident, $next_block:ident, $unwind_block:ident| <$generics:ident>;
+        default $defs:ident |$this_block:ident, $next_block:ident, $unwind_block:ident, $caller:ident| <$generics:ident>;
 
         $(#[doc = $($doc_tt:tt)*] $(#[$meta:ident])* $(unsafe $(@$_vol:tt)?)? intrin $name:ident $(<$($gen_param:ident),* $(,)?>)?($($param_name:ident: $param:ty),* $(,)?) -> $retty:ty $($([$($lang_name:ident = $lang_item:expr),*])? {$($inner_tt:tt)*} $(const |$interp_block:ident| $cx_block:block)?)?  $(; $(@$_vol2:tt)? $(const |$interp_semi:ident| $cx_semi:block)?)?)*
     } => {
@@ -259,7 +260,7 @@ macro_rules! def_intrinsics {
             }
 
             #[allow(dead_code, unused_variables)]
-            pub fn default_body(&self, $defs: &$crate::sema::Definitions, $this_block: $crate::sema::mir::BasicBlockId, $next_block: $crate::sema::mir::BasicBlockId, $unwind_block: $crate::sema::mir::BasicBlockId, $generics: &$crate::sema::generics::GenericArgs) -> Option<$crate::sema::mir::MirBasicBlock>{
+            pub fn default_body(&self, $defs: &$crate::sema::Definitions, $this_block: $crate::sema::mir::BasicBlockId, $next_block: $crate::sema::mir::BasicBlockId, $unwind_block: $crate::sema::mir::BasicBlockId, $generics: &$crate::sema::generics::GenericArgs, $caller: $crate::sema::DefId) -> Option<$crate::sema::mir::MirBasicBlock>{
                 match self{
                     $(Self::$name => {
                         $($($(let $lang_name = $defs.get_lang_item($lang_item)?;)*)?)?
@@ -269,7 +270,7 @@ macro_rules! def_intrinsics {
             }
 
             #[allow(dead_code, unused_variables)]
-            pub fn eval_const(&self, $defs: &$crate::sema::Definitions, $generics: &$crate::sema::generics::GenericArgs, interp: &mut $crate::sema::cx::eval::MirEvaluator, params: Vec<$crate::sema::cx::eval::CxEvalValue>) -> $crate::sema::cx::Result<$crate::sema::cx::eval::CxEvalValue>{
+            pub fn eval_const(&self, $defs: &$crate::sema::Definitions, $generics: &$crate::sema::generics::GenericArgs, interp: &mut $crate::sema::cx::eval::MirEvaluator, params: Vec<$crate::sema::cx::eval::CxEvalValue>, $caller: $crate::sema::DefId) -> $crate::sema::cx::Result<$crate::sema::cx::eval::CxEvalValue>{
                 match self{
                     $(Self::$name => {
                         $($({
@@ -296,7 +297,7 @@ macro_rules! def_intrinsics {
 }
 
 def_intrinsics! {
-    default defs |this,next,unwind|<generics>;
+    default defs |this,next,unwind, caller|<generics>;
     ///
     #[unobservable]
     unsafe intrin __builtin_unreachable() -> !{
@@ -599,6 +600,30 @@ def_intrinsics! {
 
     ///
     unsafe intrin __builtin_va_end(va_list: *mut Lang<VaList>) -> ();
+
+    ///
+    #[unobservable]
+    intrin __builtin_is_target_feature_enabled<const>() -> bool {
+        @<this>: { []
+            return <{
+                let feature = match &generics.params[0] {
+                    GenericArg::Const(const_expr) => defs.evaluate_as_string(Spanned{body: const_expr, span: Span::synthetic()}, caller, caller).expect("Expected parameter 0 to be of type &str"),
+                    _ => panic!("Expected parameter 0 to be a constant")
+                };
+
+                let val = if defs.global_features().contains(&*feature){
+                    true
+                }else{
+                    let caller = defs.definition(caller);
+                    caller.attrs.iter().filter_map(|attr| match &**attr{
+                        Attr::TargetFeature(features) => Some(features),
+                        _ => None
+                    }).flatten().any(|enabled| feature == enabled.body)
+                };
+                mir::MirExpr::ConstBool(val)
+            }>
+        }
+    }
 }
 
 impl core::fmt::Display for IntrinsicDef {

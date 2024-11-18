@@ -26,7 +26,7 @@ use xlang::abi::result::Result;
 use xlang::abi::string::StringView;
 use xlang::ir;
 use xlang::plugin::{Error, XLangFrontend, XLangPlugin};
-use xlang::targets::properties::TargetProperties;
+use xlang::targets::properties::{MachineProperties, TargetProperties};
 
 use crate::{
     irgen::irgen,
@@ -51,6 +51,7 @@ struct RustFrontend {
     filename: Option<String>,
     defs: Option<Definitions>,
     props: Option<&'static TargetProperties<'static>>,
+    mach: Option<&'static MachineProperties<'static>>,
 }
 
 impl RustFrontend {
@@ -60,6 +61,7 @@ impl RustFrontend {
             filename: None,
             defs: None,
             props: None,
+            mach: None,
         }
     }
 }
@@ -71,6 +73,13 @@ impl XLangFrontend for RustFrontend {
 
     fn set_file_path(&mut self, name: StringView) {
         self.filename = Some(String::from(&*name));
+    }
+
+    fn set_machine(
+        &mut self,
+        mach: &'static xlang::targets::properties::MachineProperties<'static>,
+    ) {
+        self.mach = Some(mach);
     }
 
     fn read_source(&mut self, file: DynMut<dyn Read>) -> io::Result<()> {
@@ -91,7 +100,7 @@ impl XLangFrontend for RustFrontend {
         println!("{:?}", lexed);
         let parsed = do_mod(&mut lexed.into_iter().peekmore()).unwrap();
         println!("{:?}", parsed);
-        let mut defs = Definitions::new(props);
+        let mut defs = Definitions::new(props, self.mach.unwrap_or(props.arch.default_machine));
         convert_crate(
             &mut defs,
             &parsed,

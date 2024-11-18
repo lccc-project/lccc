@@ -1060,6 +1060,7 @@ pub fn do_expr<I: Iterator<Item = TokenTree>>(
             do_expr_get_symbol,
             do_expr_get_subobject,
             do_expr_project_field,
+            do_expr_const_bool,
         ],
         alternation_combiner,
         dollar_crate,
@@ -1392,6 +1393,28 @@ pub fn do_expr_const_or_constructor<I: Iterator<Item = TokenTree>>(
         }
 
         Ok(token_stream)
+    })
+}
+
+pub fn do_expr_const_bool<I: Iterator<Item = TokenTree>>(
+    tokens: &mut PeekMoreIterator<I>,
+    dollar_crate: &TokenStream,
+) -> Result<TokenStream> {
+    with_rewinder_accept_on_continue(tokens, |tree| {
+        let mut tt = TokenStream::new();
+
+        let (kw, span) = do_keywords(tree, ["true", "false"])?;
+
+        let inner = ident(kw, span).collect::<TokenStream>();
+        write_crate_path(
+            &mut tt,
+            span,
+            dollar_crate,
+            ["sema", "mir", "MirExpr", "ConstBool"],
+        );
+
+        tt.extend(group(inner, Delimiter::Parenthesis));
+        Ok(tt)
     })
 }
 

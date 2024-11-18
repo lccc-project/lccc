@@ -4,6 +4,10 @@ use core::{
 };
 
 use core::ops::{Deref, DerefMut};
+use std::{
+    borrow::{Borrow, BorrowMut},
+    hash::Hash,
+};
 
 use crate::{
     helpers::FetchIncrement,
@@ -116,10 +120,19 @@ impl fmt::Debug for Span {
     }
 }
 
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone)]
 pub struct Spanned<T> {
     pub body: T,
     pub span: Span,
+}
+
+impl<T> PartialEq for Spanned<T>
+where
+    T: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.body == other.body
+    }
 }
 
 impl<T> PartialEq<T> for Spanned<T>
@@ -128,6 +141,29 @@ where
 {
     fn eq(&self, other: &T) -> bool {
         self.body == *other
+    }
+}
+
+impl<T> Eq for Spanned<T> where T: Eq {}
+
+impl<T> Hash for Spanned<T>
+where
+    T: Hash,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.body.hash(state);
+    }
+}
+
+impl<T> Borrow<T> for Spanned<T> {
+    fn borrow(&self) -> &T {
+        &self.body
+    }
+}
+
+impl<T> BorrowMut<T> for Spanned<T> {
+    fn borrow_mut(&mut self) -> &mut T {
+        &mut self.body
     }
 }
 

@@ -112,7 +112,7 @@ impl<'a> MirEvaluator<'a> {
             ty::Type::Float(float_type) => todo!(),
             ty::Type::Char => todo!(),
             ty::Type::Str => todo!(),
-            ty::Type::Never => todo!(),
+            ty::Type::Never => Err(ConstEvalError::UbError(super::UbType::ValidityCheckFailed)),
             ty::Type::Tuple(vec) => todo!(),
             ty::Type::FnPtr(fn_type) => todo!(),
             ty::Type::FnItem(fn_type, def_id, generic_args) => todo!(),

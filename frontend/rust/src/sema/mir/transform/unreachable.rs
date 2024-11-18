@@ -35,6 +35,7 @@ impl PropagateUnreachable {
             MirExpr::GetSymbol(_) => false,
             MirExpr::ConstChar(_, _) => false,
             MirExpr::InlineConst(_) => false, // ish
+            MirExpr::ConstBool(_) => false,
         }
     }
 }
