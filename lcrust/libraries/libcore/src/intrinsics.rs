@@ -30,7 +30,7 @@ extern "rust-intrinsics" {
 
     pub fn __builtin_size_of<T>() -> usize;
     pub fn __builtin_align_of<T>() -> usize;
-    pub fn __builtin_known_align_of<T>() -> usize;
+    pub fn __builtin_known_align_of<T: ?Sized>() -> usize;
 
     pub unsafe fn construct_in_place<T, F: FnOnce<Args> + FnPointer, Args: Tuple>(
         dest: *mut T,
@@ -75,7 +75,8 @@ extern "rust-intrinsics" {
     );
     pub unsafe fn __atomic_compare_exchange_strong<
         T: core::marker::Copy,
-        const Ord: core::sync::atomic::Ordering,
+        const SuccessOrd: core::sync::atomic::Ordering,
+        const FailOrd: core::sync::atomic::Ordering,
     >(
         dest: *mut T,
         expected: *mut T,
@@ -83,7 +84,8 @@ extern "rust-intrinsics" {
     ) -> bool;
     pub unsafe fn __atomic_compare_exchange_weak<
         T: core::marker::Copy,
-        const Ord: core::sync::atomic::Ordering,
+        const SuccessOrd: core::sync::atomic::Ordering,
+        const FailOrd: core::sync::atomic::Ordering,
     >(
         dest: *mut T,
         expected: *mut T,
@@ -115,6 +117,8 @@ extern "rust-intrinsics" {
         val: T,
     ) -> i32;
     pub unsafe fn __atomic_abort_transaction<T>(dest: *mut T);
+
+    pub fn __builtin_is_target_feature_enabled<const Feature: &str>() -> bool;
 }
 
 #[track_caller]
