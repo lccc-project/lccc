@@ -66,7 +66,7 @@ pub mod v1 {
         fn file_matches(&self, x: StringView) -> bool;
         fn set_file_path(&mut self, x: StringView);
         fn read_source(&mut self, x: DynMut<dyn Read>) -> io::Result<()>;
-        fn set_machine(&mut self, _mach: &MachineProperties) {}
+        fn set_machine(&mut self, _mach: &'static MachineProperties<'static>) {}
         fn required_plugins(&self) -> Vec<String> {
             Vec::new()
         }
@@ -189,8 +189,9 @@ pub mod v1 {
                     ) -> xlang_abi::io::Result<()>
                 ),
 
-                pub set_machine:
-                    xlang_host::rustcall!(unsafe extern "rustcall" fn(*mut (), &MachineProperties)),
+                pub set_machine: xlang_host::rustcall!(
+                    unsafe extern "rustcall" fn(*mut (), &'static MachineProperties<'static>)
+                ),
                 pub required_plugins:
                     xlang_host::rustcall!(unsafe extern "rustcall" fn(*const ()) -> Vec<String>),
                 pub set_callbacks: xlang_host::rustcall!(
@@ -296,7 +297,7 @@ pub mod v1 {
         }}
 
         xlang_host::rustcall! {
-            unsafe extern "rustcall" fn __set_machine<T: XLangFrontend>(ptr: *mut (), machine: &MachineProperties){
+            unsafe extern "rustcall" fn __set_machine<T: XLangFrontend>(ptr: *mut (), machine: &'static MachineProperties<'static>){
                 (&mut *(ptr.cast::<T>())).set_machine(machine);
             }
         }
@@ -395,7 +396,7 @@ pub mod v1 {
                 unsafe { (self.vtable().read_source)(self.as_raw_mut(), x) }
             }
 
-            fn set_machine(&mut self, machine: &MachineProperties) {
+            fn set_machine(&mut self, machine: &'static MachineProperties<'static>) {
                 unsafe { (self.vtable().set_machine)(self.as_raw_mut(), machine) }
             }
 
