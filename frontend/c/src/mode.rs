@@ -67,6 +67,16 @@ pub enum LangOption {
     BlockExprGnu,
     /// Whether or not GNU labels as values and computed goto is accepted
     LabelRefGoto,
+    /// Whether or not `char16_t` and `char32_t` are defined and are keywords
+    UnicodeCharCxx,
+    /// Whether or not `wchar_t` is a keyword
+    WideCharCxx,
+    /// Whether or not `char8_t` is defined and is a keyword
+    Utf8CharCxx,
+    /// Whether or not `nullptr` is a keyword
+    NullptrCxx,
+    /// Whether or not legacy 0 expressions (C/C++98) should be recognized as null pointer constants
+    NullZeroC,
 }
 
 #[derive(Clone, Debug, PartialEq)]
