@@ -85,13 +85,11 @@ pub macro env($name:lit) {}
 #[__lccc::builtin_macro]
 pub macro option_env($name:lit) {}
 
-#[unstable(feature = "asm", issue = "72016")]
 #[allow_internal_unstable(lccc_asm_keyword)]
 pub macro asm($($tt:tt)*){
     k#__asm($($tt)*)
 }
 
-#[unstable(feature = "global_asm", issue = "35119")]
 #[allow_internal_unstable(lccc_asm_keyword)]
 pub macro global_asm($($tt:tt)*){
     k#__asm($($tt)*)
