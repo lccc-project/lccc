@@ -1,5 +1,4 @@
-use std::str::FromStr;
-
+use custom::FromPropertyString;
 use xlang_abi::{pair::Pair, span::Span, string::StringView};
 
 use self::builtins::BuiltinSignature;
@@ -333,7 +332,7 @@ pub struct TargetProperties<'a> {
     pub system_tag_name: StringView<'a>,
 
     /// Additional (namespaced) properties about the target.
-    /// The first string is a key, which shall be a string in the form `<namespace>:<path>` where `<namespace>` and each `/` separated segment of `<path>`, shall match `[-A-Za-z._][-A-Za-z._]*`.
+    /// The first string is a key, which shall be a string in the form `<namespace>:<path>` where `<namespace>` and each `/` separated segment of `<path>`, shall match `[A-Za-z._][-A-Za-z._]*`.
     /// The second string is the value, which may be any arbitrary UTF-8 text.
     /// Keys may be duplicated - the meaning of duplicate entries is defined by the property
     pub custom_properties: Span<'a, Pair<StringView<'a>, StringView<'a>>>,
@@ -342,7 +341,10 @@ pub struct TargetProperties<'a> {
 impl<'a> TargetProperties<'a> {
     /// Convience Function for querying individual extended properties by name.
     /// Note that this performs no caching as the `custom_properties` list is intended to be short, and thus this performs a linear search on all accesses.
-    pub fn extended_property<T: FromStr>(&self, property: &str) -> Result<Option<T>, T::Err> {
+    pub fn extended_property<T: FromPropertyString<'a>>(
+        &self,
+        property: &str,
+    ) -> xlang_abi::result::Result<Option<T>, T::Err> {
         self.custom_properties
             .iter()
             .find_map(
@@ -354,7 +356,10 @@ impl<'a> TargetProperties<'a> {
                     }
                 },
             )
-            .map(|v| v.parse::<T>())
+            .map(|v| T::from_property(*v))
             .transpose()
+            .into()
     }
 }
+
+pub mod custom;
