@@ -608,32 +608,16 @@ impl<'a> FunctionTyVisitor for XirFunctionTyVisitor<'a> {
             AbiTag::Rust | AbiTag::RustIntrinsic | AbiTag::LCRust(_) => {
                 if self
                     .properties
-                    .custom_properties
-                    .iter()
-                    .map(|&Pair(a, b)| (a, b))
-                    .find_map(|(key, value)| {
-                        if key == "lcrust:abi-v0/simd-adjustment-required" {
-                            value.parse::<bool>().ok()
-                        } else {
-                            None
-                        }
-                    })
+                    .extended_property::<bool>("lcrust:abi-v0/simd-adjustment-required")
+                    .unwrap()
                     .unwrap_or(true)
                 {
                     self.param_adjustment = XirParamAdjustment::RustSimd
                 };
                 if let Some(tag) = self
                     .properties
-                    .custom_properties
-                    .iter()
-                    .map(|&Pair(a, b)| (a, b))
-                    .find_map(|(key, value)| {
-                        if key == "lcrust:abi-v0/rustcall-tag" {
-                            return Some(value);
-                        } else {
-                            None
-                        }
-                    })
+                    .extended_property::<&str>("lcrust:abi-v0/rustcall-tag")
+                    .into_ok()
                 {
                     self.fnty.tag = tag.into();
                 } else {
@@ -644,31 +628,15 @@ impl<'a> FunctionTyVisitor for XirFunctionTyVisitor<'a> {
                 self.param_adjustment = XirParamAdjustment::RustCallDetuple {
                     requires_simd_adjustment: self
                         .properties
-                        .custom_properties
-                        .iter()
-                        .map(|&Pair(a, b)| (a, b))
-                        .find_map(|(key, value)| {
-                            if key == "lcrust:abi-v0/simd-adjustment-required" {
-                                value.parse::<bool>().ok()
-                            } else {
-                                None
-                            }
-                        })
+                        .extended_property::<bool>("lcrust:abi-v0/simd-adjustment-required")
+                        .unwrap()
                         .unwrap_or(true),
                 };
 
                 if let Some(tag) = self
                     .properties
-                    .custom_properties
-                    .iter()
-                    .map(|&Pair(a, b)| (a, b))
-                    .find_map(|(key, value)| {
-                        if key == "lcrust:abi-v0/rustcall-tag" {
-                            return Some(value);
-                        } else {
-                            None
-                        }
-                    })
+                    .extended_property::<&str>("lcrust:abi-v0/rustcall-tag")
+                    .into_ok()
                 {
                     self.fnty.tag = tag.into();
                 } else {
