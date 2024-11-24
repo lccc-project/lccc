@@ -78,7 +78,7 @@ fn take<const N: usize>(
 
     for (ret, alloc_byte) in elems.iter_mut().zip(
         alloc
-            .get(..m)
+            .get(..n)
             .ok_or(ConstEvalError::UbError(super::UbType::OutOfBoundsAccess))?,
     ) {
         *ret = transform(alloc_byte);
@@ -111,8 +111,42 @@ impl<'a> MirEvaluator<'a> {
                 [CxEvalByte::Init(1, _)] => Ok(CxEvalValue::Const(ConstExpr::BoolConst(true))),
                 [b] => Err(ConstEvalError::UbError(super::UbType::ValidityCheckFailed)),
             },
-            ty::Type::Int(_) => {
+            ty::Type::Int(intty) => {
+                let size = size as usize;
                 let arr = take::<16>(alloc, transform, size)?;
+
+                let mut val = 0u128;
+                match self.defs.properties.arch.byte_order {
+                    xlang::targets::properties::ByteOrder::LittleEndian => {
+                        for b in arr.into_iter().take(size).rev() {
+                            val <<= 8;
+                            match b {
+                                CxEvalByte::Init(b, _) => val |= b as u128,
+                                CxEvalByte::Uninit => {
+                                    return Err(ConstEvalError::UbError(
+                                        super::UbType::ValidityCheckFailed,
+                                    ))
+                                }
+                            }
+                        }
+                    }
+                    xlang::targets::properties::ByteOrder::BigEndian => {
+                        for b in arr.into_iter().take(size) {
+                            val <<= 8;
+                            match b {
+                                CxEvalByte::Init(b, _) => val |= b as u128,
+                                CxEvalByte::Uninit => {
+                                    return Err(ConstEvalError::UbError(
+                                        super::UbType::ValidityCheckFailed,
+                                    ))
+                                }
+                            }
+                        }
+                    }
+                    _ => panic!("We can't handle this yet."),
+                }
+
+                Ok(CxEvalValue::Const(ConstExpr::IntConst(*intty, val)))
             }
             ty::Type::Float(float_type) => todo!(),
             ty::Type::Char => todo!(),
