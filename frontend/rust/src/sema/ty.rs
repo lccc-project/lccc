@@ -15,7 +15,7 @@ use super::{
     generics::{GenericArg, GenericArgs, ParamId},
     mir::RegionId,
     tyck::InferId,
-    Definitions,
+    Attr, Definitions,
 };
 
 use core::num::NonZeroU16;
@@ -89,13 +89,38 @@ impl WidePtrMetadata {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct FnParam {
+    pub ty: Spanned<Type>,
+    pub attrs: Vec<Spanned<Attr>>,
+}
+
+impl FnParam {
+    pub fn substitute_generics(&self, args: &GenericArgs) -> Self {
+        Self {
+            ty: self.ty.copy_span(|ty| ty.substitute_generics(args)),
+            attrs: self.attrs.clone(),
+        }
+    }
+}
+
+impl core::fmt::Display for FnParam {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for attr in &self.attrs {
+            attr.body.fmt(f)?;
+            f.write_str(" ")?;
+        }
+        self.ty.body.fmt(f)
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct FnType {
     pub safety: Spanned<Safety>,
     pub constness: Spanned<Mutability>,
     pub asyncness: Spanned<AsyncType>,
     pub tag: Spanned<AbiTag>,
     pub retty: Box<Spanned<Type>>,
-    pub paramtys: Vec<Spanned<Type>>,
+    pub params: Vec<Spanned<FnParam>>,
     pub iscvarargs: Spanned<bool>,
 }
 
@@ -578,9 +603,10 @@ impl FnType {
             && self.constness.body == other.constness.body
             && self.retty.matches_ignore_bounds(&other.retty)
             && self
-                .paramtys
+                .params
                 .iter()
-                .zip(&other.paramtys)
+                .zip(&other.params)
+                .map(|(p1, p2)| (&p1.ty, &p2.ty))
                 .all(|(a, b)| a.matches_ignore_bounds(b))
     }
 
@@ -589,8 +615,8 @@ impl FnType {
             self.retty
                 .copy_span(|retty| retty.substitute_generics(args)),
         );
-        let paramtys = self
-            .paramtys
+        let params = self
+            .params
             .iter()
             .map(|paramty| paramty.copy_span(|paramty| paramty.substitute_generics(args)))
             .collect();
@@ -602,7 +628,7 @@ impl FnType {
             tag: self.tag,
             iscvarargs: self.iscvarargs,
             retty,
-            paramtys,
+            params,
         }
     }
 }
@@ -624,7 +650,7 @@ impl core::fmt::Display for FnType {
         self.tag.body.fmt(f)?;
         f.write_str(" fn(")?;
         let mut sep = "";
-        for param in &self.paramtys {
+        for param in &self.params {
             f.write_str(sep)?;
             sep = ", ";
             param.body.fmt(f)?;

@@ -119,6 +119,7 @@ pub struct Function {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Param {
+    pub attrs: Vec<Spanned<Attr>>,
     pub pat: Option<Spanned<Pattern>>,
     pub ty: Spanned<Type>,
 }

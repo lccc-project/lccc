@@ -407,6 +407,22 @@ pub fn do_internal_attr(
     })
 }
 
+pub fn do_external_attrs(
+    tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
+) -> Result<Vec<Spanned<Attr>>> {
+    let mut tree = tree.into_rewinder();
+    let mut attrs = Vec::new();
+    loop {
+        if LexemeClass::Punctuation(Punctuation::Hash).matches(tree.peek()) {
+            attrs.push(do_external_attr(&mut tree)?);
+        } else {
+            break;
+        }
+    }
+    tree.accept();
+    Ok(attrs)
+}
+
 pub fn do_external_attr(
     tree: &mut PeekMoreIterator<impl Iterator<Item = Lexeme>>,
 ) -> Result<Spanned<Attr>> {
@@ -2760,13 +2776,18 @@ pub fn do_param(
 ) -> Result<Spanned<Param>> {
     // TODO: handle params without names - only in Rust 2015 though
     let mut tree = tree.into_rewinder();
+    let attrs = do_external_attrs(&mut tree)?;
     let pat = do_pattern_param(&mut tree)?;
     do_lexeme_class(&mut tree, punct!(:))?;
     let ty = do_type(&mut tree)?;
     tree.accept();
     let span = Span::between(pat.span, ty.span);
     Ok(Spanned {
-        body: Param { pat: Some(pat), ty },
+        body: Param {
+            attrs,
+            pat: Some(pat),
+            ty,
+        },
         span,
     })
 }

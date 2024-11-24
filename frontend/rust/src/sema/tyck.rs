@@ -14,7 +14,7 @@ use super::{
     cx::ConstExpr,
     generics::GenericArgs,
     hir::{HirPatternBinding, HirVarId},
-    ty::{FieldName, FnType, IntType, SemaLifetime},
+    ty::{FieldName, FnParam, FnType, IntType, SemaLifetime},
     DefId, DefinitionInner, Definitions, Error, ErrorCategory, Result, SemaHint, Spanned,
 };
 
@@ -571,13 +571,13 @@ impl<'a> ThirConverter<'a> {
             localitems,
         };
 
-        for (id, param) in fnty.paramtys.into_iter().enumerate() {
+        for (id, param) in fnty.params.into_iter().enumerate() {
             let id = HirVarId(id as u32);
             result.var_defs.insert(
                 id,
                 ThirVarDef {
                     mt: param.copy_span(|_| Mutability::Const),
-                    ty: param,
+                    ty: param.body.ty,
                     debug_name: result.dbgnames.get(&id).copied(),
                 },
             );
@@ -636,10 +636,17 @@ impl<'a> ThirConverter<'a> {
                     .collect::<super::Result<_>>()?,
             )),
             Type::FnPtr(mut fnty) => {
-                fnty.paramtys = fnty
-                    .paramtys
+                fnty.params = fnty
+                    .params
                     .into_iter()
-                    .map(|ty| self.convert_syntatic_type(ty))
+                    .map(|param| {
+                        param.try_map_span(|param| {
+                            Ok(FnParam {
+                                ty: self.convert_syntatic_type(param.ty)?,
+                                attrs: param.attrs,
+                            })
+                        })
+                    })
                     .collect::<super::Result<_>>()?;
                 *fnty.retty = self.convert_syntatic_type(*fnty.retty)?;
 
@@ -1614,8 +1621,9 @@ impl<'a> Inferer<'a> {
                 };
 
                 status &= fnty
-                    .paramtys
+                    .params
                     .iter_mut()
+                    .map(|param| &mut param.ty)
                     .zip(params)
                     .try_fold(status, |status, (ty, param)| {
                         Ok(status & self.unify_typed_expr(param, ty)?)
@@ -1806,8 +1814,8 @@ impl<'a> Inferer<'a> {
             Type::FnPtr(fnty) => {
                 let mut status = self.propagate_type(&mut fnty.retty)?;
 
-                for ty in &mut fnty.paramtys {
-                    status &= self.propagate_type(ty)?;
+                for param in &mut fnty.params {
+                    status &= self.propagate_type(&mut param.ty)?;
                 }
 
                 Ok(status)

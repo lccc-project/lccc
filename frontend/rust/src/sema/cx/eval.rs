@@ -8,7 +8,7 @@ use crate::{
     sema::{
         generics::GenericArgs,
         mir::{RefKind, SsaVarId},
-        ty::{self, FieldName},
+        ty::{self, FieldName, IntWidth},
         DefId, Definitions,
     },
 };
@@ -61,9 +61,10 @@ fn identity(val: &CxEvalByte) -> CxEvalByte {
 #[inline]
 fn freeze(val: &CxEvalByte) -> CxEvalByte {
     match val {
-        // Choose 0xFF here - we could use nondeterminisim to try to defeat stuff, but I don't wanna, and
-        // 0xFF bytes are most likely to hit most trivial validity invariants
-        CxEvalByte::Uninit => CxEvalByte::Init(0xFF, None),
+        // Choose 0xFE here - we could use nondeterminisim to try to defeat stuff, but I don't wanna, and
+        // 0xFE bytes are most likely to hit most trivial validity invariants
+        // 0xFE is chosen instead of 0xFF to break enums with a `-1` value specifically.
+        CxEvalByte::Uninit => CxEvalByte::Init(0xFE, None),
         b => *b,
     }
 }
@@ -71,12 +72,13 @@ fn freeze(val: &CxEvalByte) -> CxEvalByte {
 fn take<const N: usize>(
     alloc: &[CxEvalByte],
     transform: impl Fn(&CxEvalByte) -> CxEvalByte,
+    n: usize,
 ) -> Result<[CxEvalByte; N]> {
     let mut elems = [CxEvalByte::Uninit; N];
 
     for (ret, alloc_byte) in elems.iter_mut().zip(
         alloc
-            .get(..N)
+            .get(..m)
             .ok_or(ConstEvalError::UbError(super::UbType::OutOfBoundsAccess))?,
     ) {
         *ret = transform(alloc_byte);
@@ -102,13 +104,16 @@ impl<'a> MirEvaluator<'a> {
         ty: &ty::Type,
         transform: impl Fn(&CxEvalByte) -> CxEvalByte,
     ) -> Result<CxEvalValue> {
+        let size = self.defs.size_of(ty).expect("Sized type");
         match ty {
-            ty::Type::Bool => match take(alloc, transform)? {
+            ty::Type::Bool => match take(alloc, transform, 1)? {
                 [CxEvalByte::Init(0, _)] => Ok(CxEvalValue::Const(ConstExpr::BoolConst(false))),
                 [CxEvalByte::Init(1, _)] => Ok(CxEvalValue::Const(ConstExpr::BoolConst(true))),
                 [b] => Err(ConstEvalError::UbError(super::UbType::ValidityCheckFailed)),
             },
-            ty::Type::Int(int_type) => todo!(),
+            ty::Type::Int(_) => {
+                let arr = take::<16>(alloc, transform, size)?;
+            }
             ty::Type::Float(float_type) => todo!(),
             ty::Type::Char => todo!(),
             ty::Type::Str => todo!(),

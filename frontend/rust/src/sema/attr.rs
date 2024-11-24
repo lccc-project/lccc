@@ -27,6 +27,7 @@ pub enum Attr {
     NoMain,
     NoMangle,
     TargetFeature(Vec<Spanned<Symbol>>),
+    LCRustIntrinsicConstParam,
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -134,6 +135,7 @@ impl core::fmt::Display for Attr {
 
                 f.write_str(")]")
             }
+            Self::LCRustIntrinsicConstParam => f.write_str("#[lcrust::intrinsic_const_param]"),
         }
     }
 }
@@ -786,6 +788,12 @@ pub fn parse_meta(
             body: Attr::NoMangle,
             span,
         }),
+        MetaContent::MetaPath(id) if matches_simple_path!(id, lcrust::intrinsic_const_param) => {
+            Ok(Spanned {
+                body: Attr::LCRustIntrinsicConstParam,
+                span,
+            })
+        }
         m => Err(Error {
             span,
             text: format!("Invalid built-in attrbute #[{}]", m),

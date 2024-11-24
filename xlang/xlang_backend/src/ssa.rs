@@ -66,6 +66,7 @@ pub enum SsaInstruction {
     LoadImmediate(OpaqueLocation, u128),
     /// Loads an address
     LoadSymAddr(OpaqueLocation, Address),
+
     /// Initializes a (potentially large) memory location with zeroes
     ZeroInit(OpaqueLocation),
     /// Conditionally branches to the destination basic block if the comparison is satisfied.

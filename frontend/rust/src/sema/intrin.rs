@@ -128,7 +128,7 @@ macro_rules! parse_type_inner {
             asyncness: spanned!(ty::AsyncType::Normal),
             tag: spanned!(parse_tag!($(extern $lit)?)),
             retty: spanned!(box parse_type!(|$defs| $ret)),
-            paramtys: vec![$(spanned!(parse_type!(|$defs| $param))),*],
+            params: vec![$(spanned!($crate::sema::ty::FnParam{ty: spanned!(parse_type!(|$defs| $param)),attrs: ::std::vec![]})),*],
             iscvarargs: spanned!(parse_cvarargs!($($(... $($_vol2)?)?)?))
         })
     };
@@ -148,7 +148,7 @@ macro_rules! parse_intrinsic_signature {
             asyncness: spanned!(ty::AsyncType::Normal),
             tag: spanned!(AbiTag::RustIntrinsic),
             retty: spanned!(box parse_type!(|$defs| $retty)),
-            paramtys: vec![$(spanned!(parse_type!(|$defs| $param))),*],
+            params: vec![$(spanned!($crate::sema::ty::FnParam{ty: spanned!(parse_type!(|$defs| $param)),attrs: ::std::vec![]})),*],
             iscvarargs: spanned!(false),
         }
     };

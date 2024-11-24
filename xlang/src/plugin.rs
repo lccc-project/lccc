@@ -52,6 +52,24 @@ pub mod v1 {
         UnexpectedRequires(CowStr<'static>),
     }
 
+    fake_enum::fake_enum! {
+        #[repr(u16)]
+        pub enum struct RelocMode{
+            Static = 0,
+            StaticPositionIndependent = 1,
+            Shared = 2,
+        }
+    }
+
+    fake_enum::fake_enum! {
+        #[repr(u16)]
+        pub enum struct TlsRelocMode{
+            Static = 0,
+            DynInitial = 1,
+            DynAny = 2,
+        }
+    }
+
     #[allow(clippy::module_name_repetitions)]
     pub trait XLangPlugin {
         fn accept_ir(&mut self, ir: &mut File) -> Result<(), Error>;
@@ -77,6 +95,8 @@ pub mod v1 {
         fn target_matches(&self, x: StringView) -> bool;
         fn write_output(&mut self, x: DynMut<dyn Write>, mode: OutputMode) -> io::Result<()>;
         fn set_features(&mut self, _features: Span<StringView>) {}
+        fn set_relocation_mode(&mut self, _reloc_mode: RelocMode) {}
+        fn set_tls_relocation_mode(&mut self, _tls_mode: TlsRelocMode) {}
     }
 
     mod abi {

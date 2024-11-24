@@ -802,12 +802,27 @@ pub fn do_fnty_no_interp<I: Iterator<Item = TokenTree>>(
                 break;
             }
 
-            params.extend(write_spanned(
+            let mut param = TokenStream::new();
+
+            let mut param_inner = TokenStream::new();
+
+            param_inner.extend(ident("ty", span).chain(punct(":")));
+
+            param_inner.extend(write_spanned(
                 do_type(&mut inner_tree, dollar_crate)?,
                 span,
                 false,
                 dollar_crate,
             ));
+            param_inner.extend(punct(",").chain(ident("attrs", span)).chain(punct(":")));
+            write_global_path(&mut param_inner, span, ["std", "vec", "Vec", "new"]);
+            param_inner.extend(group(TokenStream::new(), Delimiter::Parenthesis));
+
+            write_crate_path(&mut param, span, dollar_crate, ["sema", "ty", "FnParam"]);
+            param.extend(group(param_inner, Delimiter::Brace));
+
+            params.extend(write_spanned(param, span, false, dollar_crate));
+
             match do_punct(&mut inner_tree, ",") {
                 Ok(_) => params.extend([TokenTree::Punct(Punct::new(',', Spacing::Alone))]),
                 Err(e) => {
@@ -875,7 +890,7 @@ pub fn do_fnty_no_interp<I: Iterator<Item = TokenTree>>(
         inner_stream.extend(retty);
         inner_stream.extend([
             comma.clone(),
-            TokenTree::Ident(Ident::new("paramtys", span)),
+            TokenTree::Ident(Ident::new("params", span)),
             colon.clone(),
         ]);
         inner_stream.extend(paramtys);

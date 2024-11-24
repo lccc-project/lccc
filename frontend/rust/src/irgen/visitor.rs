@@ -505,8 +505,15 @@ pub fn visit_fnty<V: FunctionTyVisitor>(mut visitor: V, fnty: &ty::FnType, defs:
 
     visit_type(visitor.visit_return(), &fnty.retty, defs);
 
-    for param in &fnty.paramtys {
-        visit_type(visitor.visit_param(), param, defs);
+    for param in &fnty.params {
+        if param
+            .attrs
+            .iter()
+            .any(|attr| matches!(attr.body, Attr::LCRustIntrinsicConstParam))
+        {
+            continue;
+        }
+        visit_type(visitor.visit_param(), &param.ty, defs);
     }
 
     if fnty.iscvarargs.body {

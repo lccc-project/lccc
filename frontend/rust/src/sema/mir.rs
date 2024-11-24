@@ -890,7 +890,7 @@ impl<'a> MirConverter<'a> {
             localitems,
         };
 
-        for (id, param) in fnty.paramtys.into_iter().enumerate() {
+        for (id, param) in fnty.params.into_iter().enumerate() {
             let hir_id = HirVarId(id as u32);
             let newvarid = SsaVarId(result.nextvar.fetch_increment());
             result.var_names.insert(
@@ -903,7 +903,7 @@ impl<'a> MirConverter<'a> {
             result
                 .cur_basic_block
                 .incoming_vars
-                .push((newvarid, param.body));
+                .push((newvarid, param.body.ty.body));
         }
 
         result

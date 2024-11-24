@@ -5,6 +5,7 @@ use ast::Safety;
 use attr::ReprBase;
 use cx::ConstExprConstructor;
 use ty::AbiTag;
+use ty::FnParam;
 use xlang::abi::collection::HashMap;
 use xlang::abi::collection::HashSet;
 use xlang::abi::pair::Pair;
@@ -2159,9 +2160,9 @@ impl Definitions {
                 }
                 st.push_str("fn(");
                 let mut sep = "";
-                for ty in &ptr.paramtys {
+                for param in &ptr.params {
                     st.push_str(sep);
-                    st.push_str(&self.type_name(ty));
+                    st.push_str(&self.type_name(&param.ty));
                     sep = ", ";
                 }
                 if ptr.iscvarargs.body {
@@ -2188,9 +2189,9 @@ impl Definitions {
                 }
                 st.push_str("fn(");
                 let mut sep = "";
-                for ty in &fnty.paramtys {
+                for param in &fnty.params {
                     st.push_str(sep);
-                    st.push_str(&self.type_name(ty));
+                    st.push_str(&self.type_name(&param.ty));
                     sep = ", ";
                 }
                 if fnty.iscvarargs.body {
@@ -2502,7 +2503,7 @@ impl Definitions {
                 let mut n = 0;
                 let mut sep = "";
 
-                for ty in &fnty.paramtys {
+                for ty in &fnty.params {
                     fmt.write_str(sep)?;
                     sep = ", ";
                     fmt.write_fmt(format_args!("_{}: {}", n.fetch_increment(), &ty.body))?;
@@ -2592,7 +2593,7 @@ impl Definitions {
                 let mut n = 0;
                 let mut sep = if *has_receiver { "self: " } else { "" };
 
-                for ty in &fnty.paramtys {
+                for ty in &fnty.params {
                     fmt.write_str(sep)?;
                     sep = ", ";
                     fmt.write_fmt(format_args!("_{}: {}", n.fetch_increment(), &ty.body))?;
@@ -2689,7 +2690,7 @@ impl Definitions {
                 let mut n = 0;
                 let mut sep = if *has_receiver { "self: " } else { "" };
 
-                for ty in &fnty.paramtys {
+                for ty in &fnty.params {
                     fmt.write_str(sep)?;
                     sep = ", ";
                     fmt.write_fmt(format_args!("_{}: {}", n.fetch_increment(), &ty.body))?;
@@ -3073,7 +3074,7 @@ fn collect_function(
     outer_safety: Option<Spanned<Safety>>,
     outer_span: Option<Span>,
     outer_defid: Option<DefId>,
-    _self_ty: Option<&ty::Type>,
+    self_ty: Option<&ty::Type>,
 ) -> Result<(DefinitionInner, GenericParams)> {
     let actual_tag = itemfn
         .abi
@@ -3170,11 +3171,23 @@ fn collect_function(
         })?;
     }
 
-    let paramtys = itemfn
+    let params = itemfn
         .params
         .iter()
-        .map(|param| &param.ty)
-        .map(|ty| ty.try_copy_span(|ty| ty::convert_type(defs, curmod, item, ty, None)))
+        .map(|param| {
+            param.try_copy_span(|param| {
+                Ok(FnParam {
+                    attrs: param
+                        .attrs
+                        .iter()
+                        .map(|attr| attr::parse_meta(attr, item, curmod))
+                        .collect::<Result<_>>()?,
+                    ty: param
+                        .ty
+                        .try_copy_span(|ty| convert_type(defs, curmod, item, ty, self_ty))?,
+                })
+            })
+        })
         .collect::<Result<Vec<_>>>()?;
 
     let retty = Box::new(
@@ -3203,7 +3216,7 @@ fn collect_function(
         asyncness,
         tag,
         retty,
-        paramtys,
+        params,
         iscvarargs,
     };
 
@@ -3237,11 +3250,11 @@ fn collect_function(
                     fnty.safety = sig.safety;
                     fnty.constness = sig.constness;
 
-                    fnty.paramtys.iter()
-                        .zip(&sig.paramtys)
+                    fnty.params.iter()
+                        .zip(&sig.params)
                         .enumerate()
                         .map(|(n,(def,intrin))| {
-                            if def.body != intrin.body{
+                            if def.ty != intrin.ty{
                                 Err(Error {
                                     span: itemfn.name.span,
                                     text: format!(
