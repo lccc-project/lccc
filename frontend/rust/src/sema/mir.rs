@@ -116,6 +116,16 @@ pub enum MirExpr {
         Box<Spanned<MirExpr>>,
         Box<Spanned<MirExpr>>,
     ),
+    CheckedBinary(
+        Spanned<BinaryOp>,
+        Box<Spanned<MirExpr>>,
+        Box<Spanned<MirExpr>>,
+    ),
+    UncheckedBinary(
+        Spanned<BinaryOp>,
+        Box<Spanned<MirExpr>>,
+        Box<Spanned<MirExpr>>,
+    ),
     UnaryExpr(Spanned<UnaryOp>, Box<Spanned<MirExpr>>),
     GetSymbol(DefId),
 }
@@ -161,6 +171,8 @@ impl MirExpr {
             MirExpr::Intrinsic(_, _) => todo!(),
             MirExpr::Ctor(_) => todo!(),
             MirExpr::BinaryExpr(_, _, _) => todo!(),
+            MirExpr::CheckedBinary(_, _, _) => todo!(),
+            MirExpr::UncheckedBinary(_, _, _) => todo!(),
             MirExpr::UnaryExpr(_, _) => todo!(),
         }
     }
@@ -519,6 +531,14 @@ impl core::fmt::Display for MirExpr {
             MirExpr::BinaryExpr(op, lhs, rhs) => {
                 f.write_fmt(format_args!("({} {} {})", lhs.body, op.body, rhs.body))
             }
+            MirExpr::CheckedBinary(op, lhs, rhs) => f.write_fmt(format_args!(
+                "checked({} {} {})",
+                lhs.body, op.body, rhs.body
+            )),
+            MirExpr::UncheckedBinary(op, lhs, rhs) => f.write_fmt(format_args!(
+                "unchecked({} {} {})",
+                lhs.body, op.body, rhs.body
+            )),
             MirExpr::AllocaDrop(ty, state) => {
                 f.write_fmt(format_args!("alloca_drop {} {}", ty, state))
             }
@@ -1903,6 +1923,7 @@ impl<'a> MirConverter<'a> {
         let span = thir_stat.span;
 
         match thir_stat.body {
+            ThirStatement::EndScope(_) => {}
             ThirStatement::Assign { dest, val, op } => {
                 let val = self.lower_expr(val)?;
                 self.lower_write(dest, val, op, span)?;

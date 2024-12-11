@@ -166,6 +166,26 @@ pub fn do_punct<I: Iterator<Item = TokenTree>>(
     })
 }
 
+pub fn do_puncts<I: Iterator<Item = TokenTree>, K: IntoIterator<Item = &'static str>>(
+    tree: &mut PeekMoreIterator<I>,
+    kws: K,
+) -> Result<(&'static str, Span)> {
+    let mut err = None;
+    for kw in kws {
+        match do_punct(tree, kw) {
+            Ok(span) => return Ok((kw, span)),
+            Err(e) => match err {
+                Some(er) => match alternation_combiner(Err(er), Err(e)) {
+                    Err(e) => err = Some(e),
+                    Ok(v) => match v {},
+                },
+                None => err = Some(e),
+            },
+        }
+    }
+
+    Err(err.expect("Required at least one keyword in `do_puncts`"))
+}
 pub fn do_literal<I: Iterator<Item = TokenTree>>(
     tree: &mut PeekMoreIterator<I>,
 ) -> Result<Literal> {
@@ -1071,6 +1091,7 @@ pub fn do_expr<I: Iterator<Item = TokenTree>>(
             do_expr_const_lit,
             do_expr_ssa_var,
             do_expr_read,
+            do_expr_binary,
             do_expr_tuple,
             do_expr_get_symbol,
             do_expr_get_subobject,
@@ -1658,6 +1679,69 @@ pub fn do_expr_get_symbol<I: Iterator<Item = TokenTree>>(
             ["sema", "mir", "MirExpr", "GetSymbol"],
         );
         ts.extend([TokenTree::Group(Group::new(Delimiter::Parenthesis, defid))]);
+        Ok(ts)
+    })
+}
+
+pub fn do_expr_binary<I: Iterator<Item = TokenTree>>(
+    tokens: &mut PeekMoreIterator<I>,
+    dollar_crate: &TokenStream,
+) -> Result<TokenStream> {
+    with_rewinder_accept_on_continue(tokens, |tree| {
+        let expr_ty = match do_keywords(tree, ["checked", "unchecked"]) {
+            Ok(("checked", _)) => "CheckedBinary",
+            Ok(("unchecked", _)) => "UncheckedBinary",
+            Ok(_) => unreachable!(),
+            Err(_) => "BinaryExpr",
+        };
+
+        let g = do_group(tree, Some(Delimiter::Parenthesis))?;
+        let span = g.span();
+
+        let mut inner_tree = g.stream().into_iter().peekmore();
+
+        let lhs = do_expr(&mut inner_tree, dollar_crate)?;
+
+        let op = match do_puncts(
+            &mut inner_tree,
+            ["+", "-", "*", "/", "&", "|", "^", "<<", ">>"],
+        )? {
+            ("+", span) => ("Add", span),
+            ("-", span) => ("Sub", span),
+            ("*", span) => ("Mul", span),
+            ("&", span) => ("BitAnd", span),
+            ("^", span) => ("BitXor", span),
+            ("|", span) => ("BitOr", span),
+            ("<<", span) => ("LeftShift", span),
+            (">>", span) => ("RightShift", span),
+            _ => unreachable!(),
+        };
+
+        let rhs = do_expr(&mut inner_tree, dollar_crate)?;
+        let mut op_ts = TokenStream::new();
+        write_crate_path(
+            &mut op_ts,
+            op.1,
+            dollar_crate,
+            ["sema", "mir", "BinaryOp", op.0],
+        );
+
+        let mut inner = TokenStream::new();
+        inner.extend(write_spanned(op_ts, op.1, false, dollar_crate));
+        inner.extend(punct(","));
+        inner.extend(write_spanned(lhs, span, true, dollar_crate));
+        inner.extend(punct(","));
+        inner.extend(write_spanned(rhs, span, true, dollar_crate));
+
+        let mut ts = TokenStream::new();
+
+        write_crate_path(
+            &mut ts,
+            span,
+            dollar_crate,
+            ["sema", "mir", "MirExpr", expr_ty],
+        );
+        ts.extend(group(inner, Delimiter::Parenthesis));
         Ok(ts)
     })
 }

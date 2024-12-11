@@ -624,6 +624,54 @@ def_intrinsics! {
             }>
         }
     }
+
+    ///
+    #[unobservable]
+    unsafe intrin unchecked_add<type>(a: Var<0>, b: Var<0>) -> Var<0> {
+        @<this>: {[_0: %0, _1: %0]
+            return unchecked(_0 + _1)
+        }
+    }
+
+    ///
+    #[unobservable]
+    intrin wrapping_add<type>(a: Var<0>, b: Var<0>) -> Var<0> {
+        @<this>: {[_0: %0, _1: %0]
+            return (_0 + _1)
+        }
+    }
+
+    ///
+    #[unobservable]
+    intrin overflowing_add<type>(a: Var<0>, b: Var<0>) -> (Var<0>, bool) {
+        @<this>: {[_0: %0, _1: %0]
+            return checked(_0 + _1)
+        }
+    }
+
+    ///
+    #[unobservable]
+    unsafe intrin unchecked_sub<type>(a: Var<0>, b: Var<0>) -> Var<0> {
+        @<this>: {[_0: %0, _1: %0]
+            return unchecked(_0 - _1)
+        }
+    }
+
+    ///
+    #[unobservable]
+    intrin wrapping_sub<type>(a: Var<0>, b: Var<0>) -> Var<0> {
+        @<this>: {[_0: %0, _1: %0]
+            return (_0 - _1)
+        }
+    }
+
+    ///
+    #[unobservable]
+    intrin overflowing_sub<type>(a: Var<0>, b: Var<0>) -> (Var<0>, bool) {
+        @<this>: {[_0: %0, _1: %0]
+            return checked(_0 - _1)
+        }
+    }
 }
 
 impl core::fmt::Display for IntrinsicDef {

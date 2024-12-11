@@ -40,6 +40,9 @@ pub mod traits;
 /// Try stuff
 pub mod ops;
 
+/// Operations on arrays
+pub mod array;
+
 /// ABI Safe Interface for allocation. Also provides allocator functions that can be used accross modules (on windows, the system allocator cannot be safely used to do so)
 pub mod alloc;
 /// Implementation of `std::boxed::Box` that uses the [`alloc::Allocator`] trait, and is ABI safe for all allocators

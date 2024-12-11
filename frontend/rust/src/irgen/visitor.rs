@@ -669,6 +669,8 @@ pub fn visit_expr<V: ExprVisitor>(mut visitor: V, expr: &mir::MirExpr, defs: &De
         }
         mir::MirExpr::InlineConst(_) => todo!("inline const"),
         mir::MirExpr::ConstBool(_) => todo!("bool"),
+        mir::MirExpr::CheckedBinary(op, lhs, rhs) => todo!(),
+        mir::MirExpr::UncheckedBinary(op, lhs, rhs) => todo!(),
     }
 }
 

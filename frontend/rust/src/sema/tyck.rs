@@ -13,7 +13,7 @@ pub use super::ty::Type;
 use super::{
     cx::ConstExpr,
     generics::GenericArgs,
-    hir::{HirPatternBinding, HirVarId},
+    hir::{HirPatternBinding, HirVarId, TempCtxId},
     ty::{FieldName, FnParam, FnType, IntType, SemaLifetime},
     DefId, DefinitionInner, Definitions, Error, ErrorCategory, Result, SemaHint, Spanned,
 };
@@ -288,6 +288,7 @@ pub enum ThirStatement {
         mutability: Spanned<Mutability>,
         var: Spanned<HirVarId>,
         ty: Spanned<super::ty::Type>,
+        temp_scope: Option<TempCtxId>,
     },
     Return(Spanned<ThirExpr>),
     Block(Spanned<ThirBlock>),
@@ -298,6 +299,7 @@ pub enum ThirStatement {
         method_name: Option<Spanned<Symbol>>,
         params: Vec<Spanned<ThirExpr>>,
     },
+    EndScope(TempCtxId),
 }
 
 type ThirSimpleBlock = Vec<Spanned<ThirStatement>>;
@@ -446,6 +448,11 @@ impl ThirFunctionBody {
     ) -> core::fmt::Result {
         use core::fmt::Display;
         match stmt {
+            ThirStatement::EndScope(tmp_scope) => {
+                f.write_str("/* end of temporary scope ")?;
+                tmp_scope.fmt(f)?;
+                f.write_str(" */")
+            }
             ThirStatement::Assign { dest, val, op } => {
                 tabs.fmt(f)?;
                 dest.body.fmt(f)?;
@@ -502,6 +509,7 @@ impl ThirFunctionBody {
                 mutability,
                 var,
                 ty,
+                temp_scope,
             } => {
                 tabs.fmt(f)?;
                 f.write_str("let ")?;
@@ -519,6 +527,12 @@ impl ThirFunctionBody {
 
                 f.write_str(": ")?;
                 ty.body.fmt(f)?;
+
+                if let Some(temp_scope) = temp_scope {
+                    f.write_str("/* temporary scope ")?;
+                    temp_scope.fmt(f)?;
+                    f.write_str(" */")?;
+                }
 
                 f.write_str(";\n") // Note: Assignment is on a different line
             }
@@ -1158,6 +1172,7 @@ impl<'a> ThirConverter<'a> {
         stmt: &Spanned<hir::HirStatement>,
     ) -> super::Result<Spanned<ThirStatement>> {
         stmt.try_copy_span(|hirstmt| match hirstmt {
+            hir::HirStatement::EndScope(scope) => Ok(ThirStatement::EndScope(*scope)),
             hir::HirStatement::Assign { dest, val, op } => {
                 let dest = self.convert_expr(dest)?;
                 let mut val = self.convert_rvalue(val)?;
@@ -1170,6 +1185,7 @@ impl<'a> ThirConverter<'a> {
                 mutability,
                 var,
                 ty,
+                tmp_scope,
             } => {
                 let ty = ty
                     .as_ref()
@@ -1201,6 +1217,7 @@ impl<'a> ThirConverter<'a> {
                     mutability,
                     var,
                     ty,
+                    temp_scope: *tmp_scope,
                 })
             }
             hir::HirStatement::Return(expr) => {
@@ -1729,6 +1746,7 @@ impl<'a> Inferer<'a> {
     ) -> super::Result<CyclicOperationStatus> {
         let mut status = Complete;
         match stmt {
+            ThirStatement::EndScope(_) => {}
             ThirStatement::Assign { dest, val, op } => {
                 status &= self.propagate_expr(dest)?;
                 status &= self.propagate_expr(val)?;
@@ -1737,6 +1755,7 @@ impl<'a> Inferer<'a> {
                 mutability,
                 var,
                 ty,
+                temp_scope: _,
             } => {
                 status &= self.propagate_type(ty)?;
                 let mut ty = std::mem::replace(&mut *self.vardefs[var].ty, Type::Never);

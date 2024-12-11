@@ -8,9 +8,10 @@ use crate::{
     sema::{
         generics::GenericArgs,
         mir::{RefKind, SsaVarId},
-        ty::{self, FieldName, IntWidth},
+        ty::{self, FieldName, IntWidth, ScalarNiches},
         DefId, Definitions,
     },
+    span::Span,
 };
 
 use super::{ConstEvalError, ConstExpr, Result};
@@ -40,7 +41,14 @@ pub struct CxPointer {
     alloc: AllocId,
 }
 
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum CxAllocationType {
+    Symbolic { mutable: bool },
+    Transient,
+}
+
 pub struct Allocation {
+    alloc_ty: CxAllocationType,
     align: u64,
     bytes: Vec<CxEvalByte>,
 }
@@ -51,6 +59,9 @@ pub struct MirEvaluator<'a> {
     next_allocid: u32,
     next_pointerid: u16,
     defs: &'a Definitions,
+    at_item: DefId,
+    containing_item: DefId,
+    cx_span: Span,
 }
 
 #[inline(always)]
@@ -76,11 +87,16 @@ fn take<const N: usize>(
 ) -> Result<[CxEvalByte; N]> {
     let mut elems = [CxEvalByte::Uninit; N];
 
-    for (ret, alloc_byte) in elems.iter_mut().zip(
-        alloc
-            .get(..n)
-            .ok_or(ConstEvalError::UbError(super::UbType::OutOfBoundsAccess))?,
-    ) {
+    for (ret, alloc_byte) in
+        elems
+            .iter_mut()
+            .zip(alloc.get(..n).ok_or(ConstEvalError::UbError(
+                super::UbType::OutOfBoundsAccess {
+                    offset: n,
+                    len: alloc.len(),
+                },
+            ))?)
+    {
         *ret = transform(alloc_byte);
     }
 
@@ -88,29 +104,75 @@ fn take<const N: usize>(
 }
 
 impl<'a> MirEvaluator<'a> {
-    pub fn new(defs: &'a Definitions) -> MirEvaluator {
+    pub fn new(
+        defs: &'a Definitions,
+        at_item: DefId,
+        containing_item: DefId,
+        cx_span: Span,
+    ) -> MirEvaluator {
         Self {
             allocs: HashMap::new(),
             pointers: HashMap::new(),
             next_allocid: 0,
             next_pointerid: 1,
             defs,
+            at_item,
+            containing_item,
+            cx_span,
         }
     }
 
+    pub fn take_init_int(&self, byte: CxEvalByte) -> Result<u8> {
+        match byte {
+            CxEvalByte::Init(val, frag) => {
+                if let Some(alloc) = frag
+                    .and_then(|frag| self.pointers.get(&frag))
+                    .and_then(|ptr| self.allocs.get(&ptr.alloc))
+                {
+                    match alloc.alloc_ty {
+                        CxAllocationType::Transient => {}
+                        CxAllocationType::Symbolic { .. } => {
+                            return Err(ConstEvalError::UbError(
+                                super::UbType::SymbolicPointerTransmute,
+                            ))
+                        }
+                    }
+                }
+
+                Ok(val)
+            }
+            CxEvalByte::Uninit => Err(ConstEvalError::UbError(super::UbType::ValidityCheckFailed(
+                super::ValidityError::RequiresInit,
+            ))),
+        }
+    }
+
+    #[allow(unstable_name_collisions)]
     pub fn read(
         &self,
         alloc: &[CxEvalByte],
         ty: &ty::Type,
         transform: impl Fn(&CxEvalByte) -> CxEvalByte,
     ) -> Result<CxEvalValue> {
-        let size = self.defs.size_of(ty).expect("Sized type");
+        use xlang::abi::array::ArrayExt as _;
+        let layout = self.defs.layout_of(ty, self.at_item, self.containing_item);
+        let size = layout.size.expect("read requires a sized type");
         match ty {
-            ty::Type::Bool => match take(alloc, transform, 1)? {
-                [CxEvalByte::Init(0, _)] => Ok(CxEvalValue::Const(ConstExpr::BoolConst(false))),
-                [CxEvalByte::Init(1, _)] => Ok(CxEvalValue::Const(ConstExpr::BoolConst(true))),
-                [b] => Err(ConstEvalError::UbError(super::UbType::ValidityCheckFailed)),
-            },
+            ty::Type::Bool => {
+                match take(alloc, transform, 1)?.try_map(|v| self.take_init_int(v))? {
+                    [0] => Ok(CxEvalValue::Const(ConstExpr::BoolConst(false))),
+                    [1] => Ok(CxEvalValue::Const(ConstExpr::BoolConst(true))),
+                    [b] => Err(ConstEvalError::UbError(super::UbType::ValidityCheckFailed(
+                        crate::sema::cx::ValidityError::ScalarValidityError(
+                            ScalarNiches {
+                                is_nonzero: false,
+                                max_value: 1,
+                            },
+                            b as u128,
+                        ),
+                    ))),
+                }
+            }
             ty::Type::Int(intty) => {
                 let size = size as usize;
                 let arr = take::<16>(alloc, transform, size)?;
@@ -120,27 +182,13 @@ impl<'a> MirEvaluator<'a> {
                     xlang::targets::properties::ByteOrder::LittleEndian => {
                         for b in arr.into_iter().take(size).rev() {
                             val <<= 8;
-                            match b {
-                                CxEvalByte::Init(b, _) => val |= b as u128,
-                                CxEvalByte::Uninit => {
-                                    return Err(ConstEvalError::UbError(
-                                        super::UbType::ValidityCheckFailed,
-                                    ))
-                                }
-                            }
+                            val |= self.take_init_int(b)? as u128;
                         }
                     }
                     xlang::targets::properties::ByteOrder::BigEndian => {
                         for b in arr.into_iter().take(size) {
                             val <<= 8;
-                            match b {
-                                CxEvalByte::Init(b, _) => val |= b as u128,
-                                CxEvalByte::Uninit => {
-                                    return Err(ConstEvalError::UbError(
-                                        super::UbType::ValidityCheckFailed,
-                                    ))
-                                }
-                            }
+                            val |= self.take_init_int(b)? as u128;
                         }
                     }
                     _ => panic!("We can't handle this yet."),
@@ -148,10 +196,34 @@ impl<'a> MirEvaluator<'a> {
 
                 Ok(CxEvalValue::Const(ConstExpr::IntConst(*intty, val)))
             }
-            ty::Type::Float(float_type) => todo!(),
+            ty::Type::Float(fty) => {
+                let size = size as usize;
+                let arr = take::<16>(alloc, transform, size)?;
+
+                let mut val = 0u128;
+                match self.defs.properties.arch.byte_order {
+                    xlang::targets::properties::ByteOrder::LittleEndian => {
+                        for b in arr.into_iter().take(size).rev() {
+                            val <<= 8;
+                            val |= self.take_init_int(b)? as u128;
+                        }
+                    }
+                    xlang::targets::properties::ByteOrder::BigEndian => {
+                        for b in arr.into_iter().take(size) {
+                            val <<= 8;
+                            val |= self.take_init_int(b)? as u128;
+                        }
+                    }
+                    _ => panic!("We can't handle this yet."),
+                }
+
+                Ok(CxEvalValue::Const(ConstExpr::FloatConst(*fty, val)))
+            }
             ty::Type::Char => todo!(),
             ty::Type::Str => todo!(),
-            ty::Type::Never => Err(ConstEvalError::UbError(super::UbType::ValidityCheckFailed)),
+            ty::Type::Never => Err(ConstEvalError::UbError(super::UbType::ValidityCheckFailed(
+                crate::sema::cx::ValidityError::RequiresInit,
+            ))),
             ty::Type::Tuple(vec) => todo!(),
             ty::Type::FnPtr(fn_type) => todo!(),
             ty::Type::FnItem(fn_type, def_id, generic_args) => todo!(),

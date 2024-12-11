@@ -717,20 +717,7 @@ impl<T, A: Allocator> DerefMut for Vec<T, A> {
     }
 }
 
-#[inline(always)]
-fn is_copy<T>() -> bool {
-    struct TestIsCopy<T>(bool, PhantomData<T>);
-    impl<T> Clone for TestIsCopy<T> {
-        #[inline(always)]
-        fn clone(&self) -> Self {
-            Self(false, self.1)
-        }
-    }
-
-    impl<T: Copy> Copy for TestIsCopy<T> {}
-
-    [TestIsCopy(true, PhantomData::<T>)].clone()[0].0
-}
+use crate::util::is_copy;
 
 impl<T: Clone, A: Allocator + Clone> Clone for Vec<T, A> {
     // Specialization would be nice here

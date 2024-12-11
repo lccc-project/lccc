@@ -28,7 +28,9 @@ impl PropagateUnreachable {
                 .map(|(_, expr)| expr)
                 .chain(ctor.rest_init.as_deref())
                 .any(|e| Self::expr_contains_unreachable(e)),
-            MirExpr::BinaryExpr(_, l, r) => {
+            MirExpr::BinaryExpr(_, l, r)
+            | MirExpr::CheckedBinary(_, l, r)
+            | MirExpr::UncheckedBinary(_, l, r) => {
                 Self::expr_contains_unreachable(l) || Self::expr_contains_unreachable(r)
             }
             MirExpr::UnaryExpr(_, u) => Self::expr_contains_unreachable(u),

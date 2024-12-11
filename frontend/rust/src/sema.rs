@@ -2279,6 +2279,7 @@ impl Definitions {
                     fields,
                 }))
             }
+            cx::ConstExpr::FloatConst(fty, val) => Ok(cx::ConstExpr::FloatConst(*fty, *val)),
         }
     }
 
@@ -2293,7 +2294,7 @@ impl Definitions {
                 unreachable!("Unexpanded Complex Expressions")
             }
             cx::ConstExpr::StringConst(val) => Ok(val),
-            val => panic!("{val} is not a u64"),
+            val => panic!("{val} is not a string"),
         }
     }
 
@@ -2316,6 +2317,7 @@ impl Definitions {
                 relevant_item: at_item,
                 hints: vec![],
             }),
+            cx::ConstExpr::FloatConst(fty, val) => panic!("{val}_{fty} is not a u64"),
             cx::ConstExpr::BoolConst(val) => panic!("{val} is not a u64"),
             cx::ConstExpr::Const(defid, _) => panic!("{defid} is not a u64"),
             cx::ConstExpr::Constructor(ctor) => panic!("{ctor} is not a u64"),
@@ -2347,6 +2349,9 @@ impl Definitions {
                 "\"{}\" is not a struct, union, or enum type",
                 val.escape_default()
             ),
+            cx::ConstExpr::FloatConst(fty, val) => {
+                panic!("{val}_{fty} is not a struct, union, or enum type")
+            }
         }
     }
 

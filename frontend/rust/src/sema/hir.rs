@@ -27,6 +27,21 @@ impl core::fmt::Debug for HirVarId {
     }
 }
 
+#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+pub struct TempCtxId(pub(super) u32);
+
+impl core::fmt::Display for TempCtxId {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_fmt(format_args!("!{}", self.0))
+    }
+}
+
+impl core::fmt::Debug for TempCtxId {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_fmt(format_args!("!{}", self.0))
+    }
+}
+
 pub fn parse_int_literal(
     val: Spanned<Symbol>,
     at_item: DefId,
@@ -198,6 +213,7 @@ pub enum HirStatement {
         mutability: Spanned<Mutability>,
         var: Spanned<HirVarId>,
         ty: Option<Spanned<super::ty::Type>>,
+        tmp_scope: Option<TempCtxId>,
     },
     Return(Spanned<HirExpr>),
     Block(Spanned<HirBlock>),
@@ -208,6 +224,7 @@ pub enum HirStatement {
         method_name: Option<Spanned<Symbol>>,
         params: Vec<Spanned<HirExpr>>,
     },
+    EndScope(TempCtxId),
 }
 
 type HirSimpleBlock = Vec<Spanned<HirStatement>>;
@@ -464,6 +481,11 @@ impl HirFunctionBody {
     ) -> core::fmt::Result {
         use core::fmt::Display;
         match stmt {
+            HirStatement::EndScope(tmp_scope) => {
+                f.write_str("/* end of temporary scope ")?;
+                tmp_scope.fmt(f)?;
+                f.write_str(" */")
+            }
             HirStatement::Assign { dest, val, op } => {
                 tabs.fmt(f)?;
                 dest.body.fmt(f)?;
@@ -520,6 +542,7 @@ impl HirFunctionBody {
                 mutability,
                 var,
                 ty,
+                tmp_scope,
             } => {
                 tabs.fmt(f)?;
                 f.write_str("let ")?;
@@ -538,6 +561,12 @@ impl HirFunctionBody {
                 if let Some(ty) = ty {
                     f.write_str(": ")?;
                     ty.body.fmt(f)?;
+                }
+
+                if let Some(tmp_scope) = tmp_scope {
+                    f.write_str(" /*temporary scope ")?;
+                    tmp_scope.fmt(f)?;
+                    f.write_str(" */")?;
                 }
 
                 f.write_str(";\n") // Note: Assignment is on a different line
@@ -642,6 +671,7 @@ impl<'a> HirLowerer<'a> {
                     mutability: expr.copy_span(|_| Mutability::Const),
                     var: hirvar,
                     ty: None,
+                    tmp_scope: None,
                 }));
                 let base = self.desugar_expr(base)?;
                 let args = args
@@ -689,6 +719,7 @@ impl<'a> HirLowerer<'a> {
                     mutability: expr.copy_span(|_| Mutability::Const),
                     var: hirvar,
                     ty: None,
+                    tmp_scope: None,
                 }));
                 self.desugar_stmt(
                     Some(&mut |x| HirStatement::Assign {
@@ -1049,6 +1080,7 @@ impl<'a> HirLowerer<'a> {
                     mutability,
                     var,
                     ty,
+                    tmp_scope: None,
                 }));
                 if let Some(x) = &stmt.val {
                     let val = self.desugar_expr(x)?;
