@@ -23,9 +23,7 @@ pub struct AnonType {
     pub body: AnonTypeBody,
 }
 
-
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum AnonTypeBody{
+pub enum AnonTypeBody {
     SimpleClosure(FunctionBody),
-    
 }
